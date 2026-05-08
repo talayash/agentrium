@@ -20,6 +20,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
 import { toast } from '../store/toastStore';
+import { UpdatePill } from './UpdatePill';
 
 const isMac = navigator.platform.toUpperCase().includes('MAC');
 
@@ -297,6 +298,7 @@ export function TitleBar() {
       {/* Right cluster — search, run, tool windows, settings, window controls */}
       <div className="flex items-stretch">
         <div className="flex items-center gap-0.5 pr-2 no-drag">
+          <UpdatePill />
           <button onClick={toggleChanges} className={iconBtn(changesOpen)} title="File Changes (F2)">
             <FileDiff size={15} strokeWidth={1.75} />
           </button>
