@@ -9,6 +9,7 @@ export const TERMINAL_SCROLLBACK_PRESETS = [1000, 10000, 50000, 100000] as const
 // (ships with modern Windows / VS Code) → Consolas (always installed on
 // Windows). Without this, Windows users silently fell back to Courier New.
 export const DEFAULT_TERMINAL_FONT_FAMILY = '"JetBrains Mono", "Cascadia Code", "Cascadia Mono", Consolas, "Fira Code", monospace';
+export const DEFAULT_TERMINAL_FONT_SIZE = 14;
 
 export type GridLayout = '1x1' | '1x2' | '2x1' | '2x2' | '1x3' | '3x1' | '2x3' | '3x2' | '2x4' | '4x2';
 
@@ -284,7 +285,7 @@ export const useAppStore = create<AppState>()(
       // Terminal appearance defaults (issue #21).
       // Scrollback default reduced from 100k → 50k to ease grid-mode memory.
       terminalFontFamily: DEFAULT_TERMINAL_FONT_FAMILY,
-      terminalFontSize: 14,
+      terminalFontSize: DEFAULT_TERMINAL_FONT_SIZE,
       terminalLineHeight: 1.2,
       terminalCursorStyle: 'bar' as TerminalCursorStyle,
       terminalCursorBlink: true,
