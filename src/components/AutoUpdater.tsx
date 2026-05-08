@@ -2,10 +2,12 @@ import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Download, RefreshCw, CheckCircle, AlertCircle, X, Rocket, ExternalLink } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useUpdaterStore } from '../store/updaterStore';
 
 const RELEASES_URL = 'https://github.com/talayash/claude-terminal/releases/latest';
 const FOUR_HOURS_MS = 4 * 60 * 60 * 1000;
+const THIRTY_MINUTES_MS = 30 * 60 * 1000;
 
 export function AutoUpdater() {
   const { status, updateInfo, downloadProgress, error, checkForUpdates, downloadAndInstall, restart } = useUpdaterStore();
@@ -38,6 +40,24 @@ export function AutoUpdater() {
       void checkForUpdates();
     }, FOUR_HOURS_MS);
     return () => clearInterval(id);
+  }, [checkForUpdates]);
+
+  // Re-check when the window regains focus after a long idle, so a user
+  // who minimized the app for hours/days sees updates immediately on return.
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    const win = getCurrentWindow();
+
+    win.onFocusChanged(({ payload: focused }) => {
+      if (!focused) return;
+      const last = useUpdaterStore.getState().lastCheckAt;
+      if (last !== null && Date.now() - last < THIRTY_MINUTES_MS) return;
+      void checkForUpdates();
+    }).then((un) => { unlisten = un; });
+
+    return () => {
+      unlisten?.();
+    };
   }, [checkForUpdates]);
 
   // Show banner when update is downloaded and ready to install
