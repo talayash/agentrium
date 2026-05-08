@@ -32,7 +32,7 @@ const TAG_COLORS = [
 
 export function NewTerminalModal() {
   const { closeNewTerminalModal, defaultClaudeArgs } = useAppStore();
-  const { terminals, createTerminal } = useTerminalStore();
+  const { terminals, createTerminal, createShellTerminalTab } = useTerminalStore();
 
   const [profiles, setProfiles] = useState<ConfigProfile[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
@@ -46,6 +46,7 @@ export function NewTerminalModal() {
   const [useWorktree, setUseWorktree] = useState(false);
   const [selectedModel, setSelectedModel] = useState<'default' | 'opus' | 'sonnet' | 'haiku'>('default');
   const [selectedEffort, setSelectedEffort] = useState<'default' | 'low' | 'medium' | 'high'>('default');
+  const [plainShell, setPlainShell] = useState(false);
 
   // Worktree state
   const [worktreeDetect, setWorktreeDetect] = useState<WorktreeDetectResult | null>(null);
@@ -221,48 +222,55 @@ export function NewTerminalModal() {
   const handleCreateTerminal = async () => {
     setError(null);
 
-    // Validate working directory is not empty
     if (!workingDirectory.trim()) {
       setError('Working directory is required.');
       return;
     }
 
-    // Validate claude args don't contain shell metacharacters
-    const dangerousPattern = /[;&|`$(){}<>^\n\r'"\\~*?[\]!#\t]/;
-    for (const arg of claudeArgs) {
-      if (dangerousPattern.test(arg)) {
-        setError(`Invalid character in argument: "${arg}". Remove shell metacharacters.`);
-        return;
-      }
-    }
-
     setIsCreating(true);
     try {
       const selectedProfile = profiles.find(p => p.id === selectedProfileId);
-      const baseName = selectedProfile?.name || 'Terminal';
+      const baseName = plainShell ? 'Shell' : (selectedProfile?.name || 'Terminal');
       const label = `${baseName} ${terminals.size + 1}`;
       const colorTag = TAG_COLORS[terminals.size % TAG_COLORS.length];
 
-      // Build final args with model, effort, and worktree prepended
-      const finalArgs = [...claudeArgs];
-      if (selectedModel !== 'default') {
-        finalArgs.unshift('--model', selectedModel);
-      }
-      if (selectedEffort !== 'default') {
-        finalArgs.unshift('--effort', selectedEffort);
-      }
-      if (useWorktree) {
-        finalArgs.unshift('--worktree');
-      }
+      if (plainShell) {
+        await createShellTerminalTab(
+          label,
+          workingDirectory,
+          colorTag,
+          nickname || undefined,
+        );
+      } else {
+        const dangerousPattern = /[;&|`$(){}<>^\n\r'"\\~*?[\]!#\t]/;
+        for (const arg of claudeArgs) {
+          if (dangerousPattern.test(arg)) {
+            setError(`Invalid character in argument: "${arg}". Remove shell metacharacters.`);
+            setIsCreating(false);
+            return;
+          }
+        }
 
-      await createTerminal(
-        label,
-        workingDirectory,
-        finalArgs,
-        envVars,
-        colorTag,
-        nickname || undefined
-      );
+        const finalArgs = [...claudeArgs];
+        if (selectedModel !== 'default') {
+          finalArgs.unshift('--model', selectedModel);
+        }
+        if (selectedEffort !== 'default') {
+          finalArgs.unshift('--effort', selectedEffort);
+        }
+        if (useWorktree) {
+          finalArgs.unshift('--worktree');
+        }
+
+        await createTerminal(
+          label,
+          workingDirectory,
+          finalArgs,
+          envVars,
+          colorTag,
+          nickname || undefined,
+        );
+      }
 
       closeNewTerminalModal();
     } catch (err) {
@@ -320,8 +328,30 @@ export function NewTerminalModal() {
             />
           </div>
 
+          {/* Plain Shell Toggle */}
+          <div className="flex items-center justify-between">
+            <div>
+              <label className="text-text-secondary text-[12px]">Plain shell (no Claude)</label>
+              <p className="text-text-tertiary text-[11px]">
+                Run a regular shell so you can launch wrappers like <code className="text-text-secondary">ollama launch claude</code>
+              </p>
+            </div>
+            <button
+              onClick={() => setPlainShell(!plainShell)}
+              className={`relative w-9 h-5 rounded-full transition-colors flex-shrink-0 ml-3 ${
+                plainShell ? 'bg-accent-primary' : 'bg-border-light'
+              }`}
+            >
+              <div
+                className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
+                  plainShell ? 'translate-x-4' : 'translate-x-0.5'
+                }`}
+              />
+            </button>
+          </div>
+
           {/* Profile Selection */}
-          {profiles.length > 0 && (
+          {!plainShell && profiles.length > 0 && (
             <div>
               <label className="block text-text-secondary text-[12px] mb-1.5">
                 Profile
@@ -521,6 +551,7 @@ export function NewTerminalModal() {
           </AnimatePresence>
 
           {/* Claude Arguments */}
+          {!plainShell && (
           <div>
             <label className="block text-text-secondary text-[12px] mb-1.5">
               Claude Arguments (one per line)
@@ -535,6 +566,7 @@ export function NewTerminalModal() {
               Command: <code className="text-text-secondary">claude {claudeArgs.join(' ')}</code>
             </p>
           </div>
+          )}
           {/* Worktree Toggle */}
           <div className="flex items-center justify-between">
             <div>
@@ -556,6 +588,7 @@ export function NewTerminalModal() {
           </div>
 
           {/* Model Selector */}
+          {!plainShell && (
           <div>
             <label className="block text-text-secondary text-[12px] mb-1.5">Model</label>
             <div className="flex gap-1.5">
@@ -577,8 +610,10 @@ export function NewTerminalModal() {
               ))}
             </div>
           </div>
+          )}
 
           {/* Effort Selector */}
+          {!plainShell && (
           <div>
             <label className="block text-text-secondary text-[12px] mb-1.5">Effort</label>
             <div className="flex gap-1.5">
@@ -597,6 +632,7 @@ export function NewTerminalModal() {
               ))}
             </div>
           </div>
+          )}
 
           {error && (
             <div className="p-3 rounded-md bg-error/5 ring-1 ring-error/20">
@@ -619,7 +655,7 @@ export function NewTerminalModal() {
             className="flex items-center gap-2 bg-accent-primary hover:bg-accent-secondary disabled:opacity-50 disabled:cursor-not-allowed text-white h-9 px-4 rounded-md text-[13px] font-medium transition-colors"
           >
             <Zap size={14} />
-            {isCreating ? 'Creating...' : 'Start Terminal'}
+            {isCreating ? 'Creating...' : (plainShell ? 'Start Shell' : 'Start Terminal')}
           </button>
         </div>
       </motion.div>
