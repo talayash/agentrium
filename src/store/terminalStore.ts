@@ -59,6 +59,12 @@ interface TerminalState {
     nickname?: string,
     restoredOutput?: string
   ) => Promise<string>;
+  createShellTerminalTab: (
+    label: string,
+    workingDirectory: string,
+    colorTag?: string,
+    nickname?: string,
+  ) => Promise<string>;
   closeTerminal: (id: string) => Promise<void>;
   setActiveTerminal: (id: string) => void;
   updateLabel: (id: string, label: string) => Promise<void>;
@@ -139,6 +145,50 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       return config.id;
     } catch (error) {
       console.error('Failed to create terminal:', error);
+      throw error;
+    }
+  },
+
+  createShellTerminalTab: async (label, workingDirectory, colorTag, nickname) => {
+    try {
+      const config = await invoke<TerminalConfig>('create_shell_terminal', {
+        label,
+        cwd: workingDirectory,
+      });
+      // Apply nickname/color_tag the user picked in the modal — the backend
+      // command takes only label+cwd, so we patch the persisted record here.
+      // (Falls back silently if either is empty to avoid a needless IPC.)
+      if (nickname) {
+        try { await invoke('update_terminal_nickname', { id: config.id, nickname }); } catch { /* non-fatal */ }
+      }
+      const patchedConfig: TerminalConfig = {
+        ...config,
+        color_tag: colorTag ?? config.color_tag ?? null,
+        nickname: nickname ?? config.nickname,
+      };
+
+      set((state) => {
+        const newTerminals = new Map(state.terminals);
+        // Intentionally NOT setting isShellTerminal — that flag is for bottom-
+        // pane shells. Main-tab shells appear in the sidebar and tab bar like
+        // any other terminal; their plain-shell-ness is recorded durably in
+        // the backend via claude_args=["__shell__"].
+        newTerminals.set(patchedConfig.id, {
+          config: patchedConfig,
+          xterm: null,
+          isWorktree: false,
+        });
+        return {
+          terminals: newTerminals,
+          activeTerminalId: patchedConfig.id,
+        };
+      });
+
+      get().fetchGitInfo(patchedConfig.id);
+
+      return patchedConfig.id;
+    } catch (error) {
+      console.error('Failed to create shell terminal tab:', error);
       throw error;
     }
   },
