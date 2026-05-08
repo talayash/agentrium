@@ -39,7 +39,7 @@ export const useUpdaterStore = create<UpdaterState>((set, get) => ({
     }
 
     try {
-      set({ status: 'checking', error: null });
+      set({ status: 'checking', error: null, lastCheckAt: Date.now() });
 
       let headers: Record<string, string> = {};
       try {
