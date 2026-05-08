@@ -13,26 +13,23 @@ export function AutoUpdater() {
 
   // Check for updates on mount
   useEffect(() => {
-    let cancelled = false;
     const timer = setTimeout(async () => {
       try {
-        const result = await checkForUpdates();
-        if (!cancelled && result.available) {
-          setShowBanner(true);
-        }
+        await checkForUpdates();
+        // Banner will auto-open via the ready-watcher effect once the
+        // background download completes.
       } catch {
         // Silently ignore update check failures on startup
       }
     }, 3000);
     return () => {
-      cancelled = true;
       clearTimeout(timer);
     };
   }, []);
 
-  // Show banner when update becomes available (e.g. from Settings check)
+  // Show banner when update is downloaded and ready to install
   useEffect(() => {
-    if (status === 'available' && !dismissed) {
+    if (status === 'ready' && !dismissed) {
       setShowBanner(true);
     }
   }, [status, dismissed]);
