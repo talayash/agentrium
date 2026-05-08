@@ -160,7 +160,7 @@ export function SettingsModal() {
                     </div>
                   ) : appUpdater.status === 'available' ? (
                     <button
-                      onClick={appUpdater.downloadAndInstall}
+                      onClick={() => appUpdater.downloadAndInstall()}
                       className="flex items-center gap-2 bg-accent-primary hover:bg-accent-secondary text-white h-9 px-4 rounded-md text-[12px] font-medium transition-colors"
                     >
                       <Download size={14} />
