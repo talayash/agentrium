@@ -4,9 +4,12 @@ import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { SearchAddon } from '@xterm/addon-search';
 import { WebglAddon } from '@xterm/addon-webgl';
+import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { useTerminalStore } from '../store/terminalStore';
+import { useAppStore } from '../store/appStore';
+import { resolveTerminalTheme } from '../lib/terminalThemes';
 import { TerminalSearch } from './TerminalSearch';
 import { TerminalStatusBar } from './TerminalStatusBar';
 import '@xterm/xterm/css/xterm.css';
@@ -41,6 +44,7 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const searchAddonRef = useRef<SearchAddon | null>(null);
+  const fitAddonRef = useRef<FitAddon | null>(null);
   const [searchVisible, setSearchVisible] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   // Narrow selector — only re-render when THIS terminal's instance changes,
@@ -53,6 +57,19 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
   const resizeTerminal = useTerminalStore.getState().resizeTerminal;
   const setXterm = useTerminalStore.getState().setXterm;
 
+  // Terminal appearance settings (issue #21). Scrollback and BiDi need a
+  // recreate when they change (xterm caches buffer at construction; the
+  // Unicode11 addon attaches once), so they're part of the construction effect's
+  // dep list. The other six are live-applied in the second effect below.
+  const fontFamily = useAppStore((s) => s.terminalFontFamily);
+  const fontSize = useAppStore((s) => s.terminalFontSize);
+  const lineHeight = useAppStore((s) => s.terminalLineHeight);
+  const cursorStyle = useAppStore((s) => s.terminalCursorStyle);
+  const cursorBlink = useAppStore((s) => s.terminalCursorBlink);
+  const scrollback = useAppStore((s) => s.terminalScrollback);
+  const themeName = useAppStore((s) => s.terminalTheme);
+  const bidi = useAppStore((s) => s.terminalBidi);
+
   const toggleSearch = useCallback(() => {
     setSearchVisible(prev => !prev);
   }, []);
@@ -60,41 +77,21 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
   useEffect(() => {
     if (!containerRef.current || !instance) return;
 
+    // Initial options come from the appStore (issue #21). The first effect
+    // owns construction; the second effect below live-applies the six options
+    // that don't require a recreate (font, size, line-height, cursor, theme).
+    // Scrollback and BiDi DO require a recreate, so they appear in this
+    // effect's deps.
     const terminal = new Terminal({
-      theme: {
-        background: '#101010',
-        foreground: '#E5E5E5',
-        cursor: '#E5E5E5',
-        cursorAccent: '#101010',
-        selectionBackground: 'rgba(59, 130, 246, 0.25)',
-        black: '#171717',
-        red: '#EF4444',
-        green: '#4ADE80',
-        yellow: '#FBBF24',
-        blue: '#3B82F6',
-        magenta: '#A855F7',
-        cyan: '#22D3EE',
-        white: '#E5E5E5',
-        brightBlack: '#525252',
-        brightRed: '#F87171',
-        brightGreen: '#86EFAC',
-        brightYellow: '#FDE047',
-        brightBlue: '#60A5FA',
-        brightMagenta: '#C084FC',
-        brightCyan: '#67E8F9',
-        brightWhite: '#FFFFFF',
-      },
-      fontFamily: '"JetBrains Mono", "Fira Code", monospace',
-      fontSize: 14,
-      lineHeight: 1.2,
-      cursorBlink: true,
-      cursorStyle: 'bar',
+      theme: resolveTerminalTheme(useAppStore.getState().terminalTheme),
+      fontFamily: useAppStore.getState().terminalFontFamily,
+      fontSize: useAppStore.getState().terminalFontSize,
+      lineHeight: useAppStore.getState().terminalLineHeight,
+      cursorBlink: useAppStore.getState().terminalCursorBlink,
+      cursorStyle: useAppStore.getState().terminalCursorStyle,
       cursorWidth: 2,
       allowProposedApi: true,
-      // Large scrollback so long Claude sessions stay fully scrollable, like
-      // a regular CMD/PowerShell window. ~100 bytes/line ≈ 10MB per terminal
-      // worst case, which is acceptable even with an 8-terminal grid.
-      scrollback: 100000,
+      scrollback,
     });
 
     const fitAddon = new FitAddon();
@@ -109,6 +106,19 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
     terminal.loadAddon(webLinksAddon);
     terminal.loadAddon(searchAddon);
     searchAddonRef.current = searchAddon;
+    fitAddonRef.current = fitAddon;
+
+    // BiDi (issue #21): opt-in Unicode11 addon enables grapheme-aware width
+    // calculation and the proposed BiDi rendering path in xterm. Off by
+    // default, attached only when the user enables the toggle.
+    if (bidi) {
+      try {
+        terminal.loadAddon(new Unicode11Addon());
+        terminal.unicode.activeVersion = '11';
+      } catch (err) {
+        console.warn('BiDi (Unicode11) addon failed to load:', err);
+      }
+    }
 
     terminal.open(containerRef.current);
 
@@ -215,15 +225,37 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
       resizeObserver.disconnect();
       terminal.textarea?.removeEventListener('blur', handleBlur);
       searchAddonRef.current = null;
+      fitAddonRef.current = null;
       terminalRef.current = null;
       webglAddon?.dispose();
       terminal.dispose();
     };
     // Intentionally omit store action refs from deps — they are stable via
     // getState() and including them caused the xterm instance to be recreated
-    // on every unrelated store update.
+    // on every unrelated store update. `scrollback` and `bidi` ARE in the dep
+    // list because xterm caches the buffer at construction and the Unicode11
+    // addon attaches once — flipping either has to recreate the instance.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [terminalId, !!instance, toggleSearch]);
+  }, [terminalId, !!instance, toggleSearch, scrollback, bidi]);
+
+  // Live-apply the six options that don't require recreate (issue #21).
+  // After font/size/line-height change, xterm cell metrics shift, so we
+  // re-fit and push the new size to the PTY so it knows about the new
+  // cols/rows. Cursor + theme are pure visual changes — no resize needed.
+  useEffect(() => {
+    const terminal = terminalRef.current;
+    if (!terminal) return;
+    terminal.options.fontFamily = fontFamily;
+    terminal.options.fontSize = fontSize;
+    terminal.options.lineHeight = lineHeight;
+    terminal.options.cursorStyle = cursorStyle;
+    terminal.options.cursorBlink = cursorBlink;
+    terminal.options.theme = resolveTerminalTheme(themeName);
+    // Refit + push new dimensions to the PTY whenever cell metrics may have
+    // changed. fit() is a no-op if cols/rows didn't actually shift.
+    fitAddonRef.current?.fit();
+    resizeTerminal(terminalId, terminal.cols, terminal.rows);
+  }, [fontFamily, fontSize, lineHeight, cursorStyle, cursorBlink, themeName, terminalId, resizeTerminal]);
 
   // OS → terminal file drag-drop. Tauri intercepts drag events at the window
   // level and delivers physical-pixel positions, so we hit-test against this
