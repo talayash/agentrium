@@ -5,6 +5,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { useUpdaterStore } from '../store/updaterStore';
 
 const RELEASES_URL = 'https://github.com/talayash/claude-terminal/releases/latest';
+const FOUR_HOURS_MS = 4 * 60 * 60 * 1000;
 
 export function AutoUpdater() {
   const { status, updateInfo, downloadProgress, error, checkForUpdates, downloadAndInstall, restart } = useUpdaterStore();
@@ -26,6 +27,18 @@ export function AutoUpdater() {
       clearTimeout(timer);
     };
   }, []);
+
+  // Periodic background check so users who never relaunch still see updates.
+  useEffect(() => {
+    const id = setInterval(() => {
+      const last = useUpdaterStore.getState().lastCheckAt;
+      // Guard against drift on a sleeping/throttled timer — only fire if
+      // at least 4h of wall-clock time have actually elapsed.
+      if (last !== null && Date.now() - last < FOUR_HOURS_MS) return;
+      void checkForUpdates();
+    }, FOUR_HOURS_MS);
+    return () => clearInterval(id);
+  }, [checkForUpdates]);
 
   // Show banner when update is downloaded and ready to install
   useEffect(() => {
