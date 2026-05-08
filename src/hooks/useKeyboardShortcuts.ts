@@ -1,6 +1,24 @@
 import { useEffect, useRef } from 'react';
-import { useAppStore } from '../store/appStore';
+import { useAppStore, DEFAULT_TERMINAL_FONT_SIZE } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
+
+/**
+ * Return true when the focused element is an editable surface that is NOT
+ * inside an xterm terminal — i.e., a Settings/modal input, a Monaco editor,
+ * or the global search box. In those cases we must let key events pass
+ * through to the native control instead of hijacking them for terminal zoom.
+ */
+function isFocusInNonTerminalEditable(): boolean {
+  const el = document.activeElement;
+  if (!el || el === document.body) return false;
+  // xterm's hidden textarea always lives inside an .xterm container — let
+  // shortcuts through when the user is "in" a terminal.
+  if (el.closest('.xterm')) return false;
+  const tag = el.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA') return true;
+  if ((el as HTMLElement).isContentEditable) return true;
+  return false;
+}
 
 export function useKeyboardShortcuts() {
   // Use refs for values that change frequently to avoid re-registering the listener
@@ -193,6 +211,27 @@ export function useKeyboardShortcuts() {
             : (currentIndex + 1) % terminalIds.length;
           useTerminalStore.getState().setActiveTerminal(terminalIds[nextIndex]);
         }
+      }
+
+      // Terminal font zoom. Ctrl+= / Ctrl++ / Ctrl+- / Ctrl+0.
+      // Skip when the user is in a non-terminal editable surface so that
+      // e.g. Ctrl+- in a Settings input still selects characters natively.
+      if (ctrl && !shift && (e.key === '=' || e.key === '-' || e.key === '0')) {
+        if (isFocusInNonTerminalEditable()) return;
+        e.preventDefault();
+        const { terminalFontSize, setTerminalFontSize } = useAppStore.getState();
+        if (e.key === '=') setTerminalFontSize(terminalFontSize + 1);
+        else if (e.key === '-') setTerminalFontSize(terminalFontSize - 1);
+        else setTerminalFontSize(DEFAULT_TERMINAL_FONT_SIZE);
+        return;
+      }
+      // Ctrl++ (with Shift) — same as Ctrl+= for users who reflexively press shift.
+      if (ctrl && shift && e.key === '+') {
+        if (isFocusInNonTerminalEditable()) return;
+        e.preventDefault();
+        const { terminalFontSize, setTerminalFontSize } = useAppStore.getState();
+        setTerminalFontSize(terminalFontSize + 1);
+        return;
       }
     };
 
