@@ -67,6 +67,9 @@ export const useUpdaterStore = create<UpdaterState>((set, get) => ({
           },
           status: 'available',
         });
+        // Silently download in the background. Failures land in `error` state;
+        // the title bar pill renders an error variant that retries.
+        void get().downloadAndInstall(update);
         return { available: true };
       } else {
         set({ status: 'up-to-date' });
