@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.20.9",
+    "date": "2026-05-08",
+    "features": [
+      { "title": "Customizable terminal appearance", "description": "New Appearance tab in Settings: font family/size/line-height, cursor style and blink, color theme, opt-in BiDi rendering. Scrollback default raised to 50,000 lines (configurable up to 1M). Most options apply live; scrollback and BiDi take effect on the next new terminal." },
+      { "title": "Plain shell mode", "description": "New 'Plain shell (no Claude)' toggle in the New Terminal modal — runs a regular cmd.exe/$SHELL so you can launch wrappers like `ollama launch claude …`, scripts, or anything else. Survives crash recovery." },
+      { "title": "Zoom keyboard shortcuts", "description": "Ctrl+= / Ctrl++ to grow the terminal font, Ctrl+- to shrink, Ctrl+0 to reset to default. Skipped automatically while typing in Settings or other text fields." },
+      { "title": "Title-bar update pill", "description": "When an update is downloaded and ready, a 'Relaunch update' pill now appears in the title bar — no more relying on the Settings tab. The updater also re-checks every 4 hours and on window focus after 30 minutes idle, and downloads in the background." },
+      { "title": "Less telemetry noise", "description": "Silenced ~94% of recent false-positive error reports (path-validation outside workspaces, first-run 'no rows' lookups, ResizeObserver loop warnings)." }
+    ]
+  },
+  {
     "version": "1.20.8",
     "date": "2026-05-07",
     "features": [

@@ -1,6 +1,6 @@
 {
   "name": "claude-terminal",
-  "version": "1.20.8",
+  "version": "1.20.9",
   "description": "Modern Windows desktop application for managing multiple Claude Code terminal instances",
   "type": "module",
   "scripts": {
