@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { check } from '@tauri-apps/plugin-updater';
+import { check, type Update } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { invoke } from '@tauri-apps/api/core';
 import { getVersion } from '@tauri-apps/api/app';
@@ -17,9 +17,10 @@ interface UpdaterState {
   updateInfo: UpdateInfo | null;
   downloadProgress: number;
   error: string | null;
+  lastCheckAt: number | null;
 
   checkForUpdates: () => Promise<{ available: boolean }>;
-  downloadAndInstall: () => Promise<boolean>;
+  downloadAndInstall: (preFetched?: Update) => Promise<boolean>;
   restart: () => Promise<void>;
 }
 
@@ -28,6 +29,7 @@ export const useUpdaterStore = create<UpdaterState>((set, get) => ({
   updateInfo: null,
   downloadProgress: 0,
   error: null,
+  lastCheckAt: null,
 
   checkForUpdates: async () => {
     // Don't re-check if already downloading or ready
@@ -80,10 +82,10 @@ export const useUpdaterStore = create<UpdaterState>((set, get) => ({
     }
   },
 
-  downloadAndInstall: async () => {
+  downloadAndInstall: async (preFetched?: Update) => {
     try {
       set({ status: 'downloading', downloadProgress: 0 });
-      const update = await check();
+      const update = preFetched ?? (await check());
       if (!update) {
         set({ status: 'error', error: 'Update no longer available' });
         return false;

@@ -94,7 +94,7 @@ export function AutoUpdater() {
                 )}
                 <div className="flex gap-2">
                   <button
-                    onClick={downloadAndInstall}
+                    onClick={() => downloadAndInstall()}
                     className="flex-1 flex items-center justify-center gap-2 bg-accent-primary hover:bg-accent-secondary text-white h-9 px-4 rounded-md text-[12px] font-medium transition-colors"
                   >
                     <Download size={14} />
