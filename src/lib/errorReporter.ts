@@ -3,7 +3,17 @@ import { invoke } from '@tauri-apps/api/core';
 const MESSAGE_MAX = 2048;
 const STACK_MAX = 8192;
 
+// Well-known browser noise that the global error handler picks up but doesn't
+// reflect a real bug. Match before sending so we don't pollute telemetry.
+const NOISE_PATTERNS: readonly RegExp[] = [
+  // Benign ResizeObserver warning fired when callbacks complete out of sync.
+  /^ResizeObserver loop (?:completed with undelivered notifications|limit exceeded)\.?$/i,
+];
+
 export function reportError(kind: string, message: string, stack?: string): void {
+  if (NOISE_PATTERNS.some((re) => re.test(message))) {
+    return;
+  }
   const m = clamp(scrub(message), MESSAGE_MAX);
   const s = stack ? clamp(scrub(stack), STACK_MAX) : null;
   invoke('report_error', { payload: { kind: kind ?? null, message: m, stack: s } }).catch(() => {
