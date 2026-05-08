@@ -568,6 +568,7 @@ export function NewTerminalModal() {
           </div>
           )}
           {/* Worktree Toggle */}
+          {!plainShell && (
           <div className="flex items-center justify-between">
             <div>
               <label className="text-text-secondary text-[12px]">Isolated Worktree</label>
@@ -586,6 +587,7 @@ export function NewTerminalModal() {
               />
             </button>
           </div>
+          )}
 
           {/* Model Selector */}
           {!plainShell && (
