@@ -21,11 +21,9 @@
 
 **Modified:**
 - `src/store/updaterStore.ts` — add `lastCheckAt: number | null`; refactor `downloadAndInstall` to optionally accept a pre-fetched `Update` handle; chain auto-download after `available`.
-- `src/components/AutoUpdater.tsx` — banner only auto-opens on `ready`; add 4-hour periodic interval and focus-regained listener that call `checkForUpdates`.
+- `src/components/AutoUpdater.tsx` — banner only auto-opens on `ready`; add 4-hour periodic interval and focus-regained listener that call `checkForUpdates`. Also: wrap one `onClick={downloadAndInstall}` handler in `() => downloadAndInstall()` so React's `MouseEvent` isn't passed as `preFetched` (mechanical consequence of the Task 1 signature change).
+- `src/components/SettingsModal.tsx` — wrap one `onClick={appUpdater.downloadAndInstall}` handler in `() => appUpdater.downloadAndInstall()` for the same reason.
 - `src/components/TitleBar.tsx` — render `<UpdatePill />` as the first child of the right action cluster, before `<FileDiff />` button.
-
-**Untouched:**
-- `src/components/SettingsModal.tsx` — Settings-initiated check still works because the store API surface stays compatible.
 
 ---
 
