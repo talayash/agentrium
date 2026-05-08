@@ -217,10 +217,24 @@ impl Database {
     }
 
     pub fn load_last_session(&self) -> Result<Option<Vec<TerminalConfig>>, String> {
-        match self.load_workspace(Self::LAST_SESSION_KEY) {
-            Ok(configs) => Ok(Some(configs)),
-            Err(e) if e.contains("QueryReturnedNoRows") => Ok(None),
-            Err(e) => Err(e),
+        // Use OptionalExtension so an empty table is `Ok(None)` rather than a
+        // stringified `QueryReturnedNoRows`. The previous match-on-substring
+        // tested for the variant name (`"QueryReturnedNoRows"`) but rusqlite's
+        // Display impl produces `"Query returned no rows"`, so first-run users
+        // were getting a real error reported to telemetry.
+        use rusqlite::OptionalExtension;
+        let row: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT terminals FROM workspaces WHERE name = ?1",
+                params![Self::LAST_SESSION_KEY],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?;
+        match row {
+            Some(json) => serde_json::from_str(&json).map(Some).map_err(|e| e.to_string()),
+            None => Ok(None),
         }
     }
 

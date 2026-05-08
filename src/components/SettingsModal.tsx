@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { X, Download, RefreshCw, CheckCircle, AlertCircle, ExternalLink, Check, Rocket } from 'lucide-react';
+import { X, Download, RefreshCw, CheckCircle, AlertCircle, ExternalLink, Check, Rocket, Minus, Plus } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { getVersion } from '@tauri-apps/api/app';
-import { useAppStore } from '../store/appStore';
+import { useAppStore, TERMINAL_SCROLLBACK_PRESETS, DEFAULT_TERMINAL_FONT_FAMILY } from '../store/appStore';
 import { useUpdaterStore } from '../store/updaterStore';
 import { toast } from '../store/toastStore';
+import { TerminalAppearancePreview } from './TerminalAppearancePreview';
 
 const isMac = navigator.platform.toUpperCase().includes('MAC');
 const mod = isMac ? 'Cmd' : 'Ctrl';
@@ -16,8 +17,53 @@ interface UpdateCheckResult {
   update_available: boolean;
 }
 
+// Curated font options shown in the Terminal Appearance section.
+// `value` is the font-stack passed straight to xterm; `label` is what the
+// user sees. "Auto" maps to the full DEFAULT stack so Windows users keep the
+// silent Cascadia/Consolas fallback even if they never touch the picker.
+const FONT_OPTIONS: { label: string; value: string }[] = [
+  { label: 'Auto (recommended)', value: DEFAULT_TERMINAL_FONT_FAMILY },
+  { label: 'JetBrains Mono',     value: '"JetBrains Mono", monospace' },
+  { label: 'Cascadia Code',      value: '"Cascadia Code", monospace' },
+  { label: 'Cascadia Mono',      value: '"Cascadia Mono", monospace' },
+  { label: 'Consolas',           value: 'Consolas, monospace' },
+  { label: 'Fira Code',          value: '"Fira Code", monospace' },
+  { label: 'SF Mono',            value: '"SF Mono", monospace' },
+  { label: 'Source Code Pro',    value: '"Source Code Pro", monospace' },
+  { label: 'Ubuntu Mono',        value: '"Ubuntu Mono", monospace' },
+  { label: 'System monospace',   value: 'monospace' },
+];
+
+// Tailwind-friendly button styles for the segmented groups in the
+// Terminal Appearance section. Kept here (rather than as components) since
+// they're only used in one place — colocate with their consumer.
+function segBtn(active: boolean): string {
+  return `px-2.5 h-7 text-[12px] rounded-md transition-colors ${
+    active
+      ? 'bg-accent-primary text-white'
+      : 'bg-bg-elevated ring-1 ring-border-light text-text-secondary hover:bg-white/[0.04]'
+  }`;
+}
+
 export function SettingsModal() {
-  const { closeSettings, defaultClaudeArgs, setDefaultClaudeArgs, notifyOnFinish, setNotifyOnFinish, restoreSession, setRestoreSession, telemetryEnabled, setTelemetryEnabled, errorReportingEnabled, setErrorReportingEnabled, showGitPanel, setShowGitPanel, showFileTree, setShowFileTree } = useAppStore();
+  const {
+    closeSettings,
+    defaultClaudeArgs, setDefaultClaudeArgs,
+    notifyOnFinish, setNotifyOnFinish,
+    restoreSession, setRestoreSession,
+    telemetryEnabled, setTelemetryEnabled,
+    errorReportingEnabled, setErrorReportingEnabled,
+    showGitPanel, setShowGitPanel,
+    showFileTree, setShowFileTree,
+    terminalFontFamily, setTerminalFontFamily,
+    terminalFontSize, setTerminalFontSize,
+    terminalLineHeight, setTerminalLineHeight,
+    terminalCursorStyle, setTerminalCursorStyle,
+    terminalCursorBlink, setTerminalCursorBlink,
+    terminalScrollback, setTerminalScrollback,
+    terminalTheme, setTerminalTheme,
+    terminalBidi, setTerminalBidi,
+  } = useAppStore();
   const [claudeVersion, setClaudeVersion] = useState<string>('');
   const [latestVersion, setLatestVersion] = useState<string>('');
   const [updateAvailable, setUpdateAvailable] = useState<boolean | null>(null);
@@ -296,6 +342,127 @@ export function SettingsModal() {
               <p className="text-text-tertiary text-[11px]">
                 Command: <code className="text-text-secondary">claude {argsText.split('\n').filter(Boolean).join(' ')}</code>
               </p>
+            </div>
+          </div>
+
+          {/* Terminal Appearance (issue #21) */}
+          <div>
+            <h3 className="text-text-primary text-[13px] font-medium mb-2">Terminal Appearance</h3>
+            <div className="bg-bg-primary rounded-md ring-1 ring-border p-3 space-y-3">
+              <TerminalAppearancePreview />
+
+              {/* Font family — native <select> with curated options. Each
+                  option's value is a complete font-stack passed directly to
+                  xterm. If a previously-persisted font isn't in the list
+                  (e.g. from an older build), the select falls back to "Auto"
+                  visually but the underlying value is preserved. */}
+              <div className="flex items-center justify-between gap-3">
+                <label htmlFor="ct-font-family" className="text-text-primary text-[13px] flex-shrink-0">Font family</label>
+                <select
+                  id="ct-font-family"
+                  value={FONT_OPTIONS.some(o => o.value === terminalFontFamily) ? terminalFontFamily : DEFAULT_TERMINAL_FONT_FAMILY}
+                  onChange={(e) => setTerminalFontFamily(e.target.value)}
+                  className="flex-1 min-w-0 bg-bg-elevated ring-1 ring-border-light rounded-md py-1 px-2 text-text-primary text-[12px] focus:outline-none focus:ring-accent-primary cursor-pointer"
+                >
+                  {FONT_OPTIONS.map((o) => (
+                    <option key={o.label} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Font size — stepper */}
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-text-primary text-[13px]">Font size</span>
+                <div className="flex items-center gap-1">
+                  <button onClick={() => setTerminalFontSize(terminalFontSize - 1)} aria-label="Decrease font size" className="w-7 h-7 flex items-center justify-center bg-bg-elevated ring-1 ring-border-light rounded-md text-text-secondary hover:bg-white/[0.04]">
+                    <Minus size={12} />
+                  </button>
+                  <span className="w-10 text-center text-text-primary text-[12px] tabular-nums">{terminalFontSize}</span>
+                  <button onClick={() => setTerminalFontSize(terminalFontSize + 1)} aria-label="Increase font size" className="w-7 h-7 flex items-center justify-center bg-bg-elevated ring-1 ring-border-light rounded-md text-text-secondary hover:bg-white/[0.04]">
+                    <Plus size={12} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Line height — stepper, 0.1 step */}
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-text-primary text-[13px]">Line height</span>
+                <div className="flex items-center gap-1">
+                  <button onClick={() => setTerminalLineHeight(terminalLineHeight - 0.1)} aria-label="Decrease line height" className="w-7 h-7 flex items-center justify-center bg-bg-elevated ring-1 ring-border-light rounded-md text-text-secondary hover:bg-white/[0.04]">
+                    <Minus size={12} />
+                  </button>
+                  <span className="w-10 text-center text-text-primary text-[12px] tabular-nums">{terminalLineHeight.toFixed(1)}</span>
+                  <button onClick={() => setTerminalLineHeight(terminalLineHeight + 0.1)} aria-label="Increase line height" className="w-7 h-7 flex items-center justify-center bg-bg-elevated ring-1 ring-border-light rounded-md text-text-secondary hover:bg-white/[0.04]">
+                    <Plus size={12} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Cursor style — segmented */}
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-text-primary text-[13px]">Cursor style</span>
+                <div className="flex gap-1">
+                  {(['bar', 'block', 'underline'] as const).map((s) => (
+                    <button key={s} onClick={() => setTerminalCursorStyle(s)} className={segBtn(terminalCursorStyle === s)}>
+                      {s.charAt(0).toUpperCase() + s.slice(1)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Cursor blink — toggle */}
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-text-primary text-[13px]">Cursor blink</span>
+                <button
+                  onClick={() => setTerminalCursorBlink(!terminalCursorBlink)}
+                  aria-label="Toggle cursor blink"
+                  className={`relative w-10 h-5 rounded-full transition-colors ${terminalCursorBlink ? 'bg-accent-primary' : 'bg-border-light'}`}
+                >
+                  <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${terminalCursorBlink ? 'translate-x-5' : 'translate-x-0'}`} />
+                </button>
+              </div>
+
+              {/* Scrollback — preset segmented */}
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-text-primary text-[13px]">Scrollback</p>
+                  <p className="text-text-tertiary text-[11px] mt-0.5">Lines retained per terminal. Lower values reduce memory in grid mode.</p>
+                </div>
+                <div className="flex gap-1 flex-shrink-0">
+                  {TERMINAL_SCROLLBACK_PRESETS.map((n) => (
+                    <button key={n} onClick={() => setTerminalScrollback(n)} className={segBtn(terminalScrollback === n)}>
+                      {n >= 1000 ? `${n / 1000}k` : `${n}`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Theme — segmented */}
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-text-primary text-[13px]">Theme</span>
+                <div className="flex gap-1">
+                  {(['dark', 'light'] as const).map((t) => (
+                    <button key={t} onClick={() => setTerminalTheme(t)} className={segBtn(terminalTheme === t)}>
+                      {t.charAt(0).toUpperCase() + t.slice(1)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* BiDi — toggle, opt-in */}
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-text-primary text-[13px]">BiDi rendering</p>
+                  <p className="text-text-tertiary text-[11px] mt-0.5">Right-to-left language support (Hebrew, Arabic, Persian). Toggling reattaches all open terminals.</p>
+                </div>
+                <button
+                  onClick={() => setTerminalBidi(!terminalBidi)}
+                  aria-label="Toggle BiDi rendering"
+                  className={`relative w-10 h-5 rounded-full flex-shrink-0 mt-0.5 transition-colors ${terminalBidi ? 'bg-accent-primary' : 'bg-border-light'}`}
+                >
+                  <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${terminalBidi ? 'translate-x-5' : 'translate-x-0'}`} />
+                </button>
+              </div>
             </div>
           </div>
 

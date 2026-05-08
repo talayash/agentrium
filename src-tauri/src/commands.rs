@@ -943,7 +943,19 @@ pub async fn get_worktree_info(
     path: String,
 ) -> Result<WorktreeDetectResult, String> {
     wrap_cmd("get_worktree_info", async move {
-        validate_path_is_trusted(&state, &path).await?;
+        // This is a "tell me about this path" lookup. If the path isn't a
+        // tracked workspace (e.g. user navigated outside the file tree),
+        // return the same empty shape we use for "not a git repo" instead of
+        // erroring — this isn't a bug worth reporting to telemetry.
+        if validate_path_is_trusted(&state, &path).await.is_err() {
+            return Ok(WorktreeDetectResult {
+                is_git_repo: false,
+                is_worktree: false,
+                main_repo_path: None,
+                current_branch: None,
+                worktree_root: None,
+            });
+        }
 
         // Check if inside a git work tree
         let inside_wt = shell_command("git", &["rev-parse", "--is-inside-work-tree"])
@@ -3152,7 +3164,12 @@ pub async fn list_directory(
     path: String,
 ) -> Result<Vec<DirEntryInfo>, String> {
     wrap_cmd("list_directory", async move {
-        validate_path_is_trusted(&state, &path).await?;
+        // Untrusted paths return an empty listing rather than an error: the
+        // file tree shouldn't be able to show contents outside a workspace,
+        // but a stray request isn't a bug worth telemetry-reporting.
+        if validate_path_is_trusted(&state, &path).await.is_err() {
+            return Ok(Vec::new());
+        }
 
         let mut entries: Vec<DirEntryInfo> = Vec::new();
         let read_dir = std::fs::read_dir(&path).map_err(|e| format!("Failed to read directory: {}", e))?;

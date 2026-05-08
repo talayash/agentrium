@@ -1,6 +1,15 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { invoke } from '@tauri-apps/api/core';
+import type { TerminalThemeName } from '../lib/terminalThemes';
+
+export type TerminalCursorStyle = 'bar' | 'block' | 'underline';
+export const TERMINAL_SCROLLBACK_PRESETS = [1000, 10000, 50000, 100000] as const;
+// Stack JetBrains Mono first (kept for users who have it) → Cascadia Code
+// (ships with modern Windows / VS Code) → Consolas (always installed on
+// Windows). Without this, Windows users silently fell back to Courier New.
+export const DEFAULT_TERMINAL_FONT_FAMILY = '"JetBrains Mono", "Cascadia Code", "Cascadia Mono", Consolas, "Fira Code", monospace';
+export const DEFAULT_TERMINAL_FONT_SIZE = 14;
 
 export type GridLayout = '1x1' | '1x2' | '2x1' | '2x2' | '1x3' | '3x1' | '2x3' | '3x2' | '2x4' | '4x2';
 
@@ -42,6 +51,16 @@ interface AppState {
   errorReportingEnabled: boolean;
   showGitPanel: boolean;
   showFileTree: boolean;
+
+  // Terminal appearance (issue #21)
+  terminalFontFamily: string;
+  terminalFontSize: number;
+  terminalLineHeight: number;
+  terminalCursorStyle: TerminalCursorStyle;
+  terminalCursorBlink: boolean;
+  terminalScrollback: number;
+  terminalTheme: TerminalThemeName;
+  terminalBidi: boolean;
 
   // Changes panel
   changesRefreshTrigger: number;
@@ -127,6 +146,17 @@ interface AppState {
   setErrorReportingEnabled: (enabled: boolean) => void;
   setShowGitPanel: (enabled: boolean) => void;
   setShowFileTree: (enabled: boolean) => void;
+
+  // Terminal appearance setters (issue #21)
+  setTerminalFontFamily: (font: string) => void;
+  setTerminalFontSize: (size: number) => void;
+  setTerminalLineHeight: (height: number) => void;
+  setTerminalCursorStyle: (style: TerminalCursorStyle) => void;
+  setTerminalCursorBlink: (enabled: boolean) => void;
+  setTerminalScrollback: (lines: number) => void;
+  setTerminalTheme: (theme: TerminalThemeName) => void;
+  setTerminalBidi: (enabled: boolean) => void;
+
   setPinnedRepoPath: (path: string | null) => void;
   openFileTab: (path: string) => Promise<void>;
   openDiffTab: (path: string, repoRoot: string, relativePath: string) => Promise<void>;
@@ -252,6 +282,17 @@ export const useAppStore = create<AppState>()(
       showGitPanel: true,
       showFileTree: true,
 
+      // Terminal appearance defaults (issue #21).
+      // Scrollback default reduced from 100k → 50k to ease grid-mode memory.
+      terminalFontFamily: DEFAULT_TERMINAL_FONT_FAMILY,
+      terminalFontSize: DEFAULT_TERMINAL_FONT_SIZE,
+      terminalLineHeight: 1.2,
+      terminalCursorStyle: 'bar' as TerminalCursorStyle,
+      terminalCursorBlink: true,
+      terminalScrollback: 50000,
+      terminalTheme: 'dark' as TerminalThemeName,
+      terminalBidi: false,
+
       // Changes panel
       changesRefreshTrigger: 0,
 
@@ -338,6 +379,19 @@ export const useAppStore = create<AppState>()(
       setErrorReportingEnabled: (enabled) => set({ errorReportingEnabled: enabled }),
       setShowGitPanel: (enabled) => set({ showGitPanel: enabled }),
       setShowFileTree: (enabled) => set({ showFileTree: enabled }),
+
+      // Terminal appearance setters (issue #21). Numeric setters clamp at the
+      // store boundary so out-of-range values from any caller (UI or restored
+      // persisted state) can't poison xterm options.
+      setTerminalFontFamily: (font) => set({ terminalFontFamily: font || DEFAULT_TERMINAL_FONT_FAMILY }),
+      setTerminalFontSize: (size) => set({ terminalFontSize: Math.max(8, Math.min(32, Math.round(size))) }),
+      setTerminalLineHeight: (height) => set({ terminalLineHeight: Math.max(1.0, Math.min(2.0, Math.round(height * 10) / 10)) }),
+      setTerminalCursorStyle: (style) => set({ terminalCursorStyle: style }),
+      setTerminalCursorBlink: (enabled) => set({ terminalCursorBlink: enabled }),
+      setTerminalScrollback: (lines) => set({ terminalScrollback: Math.max(100, Math.min(1000000, Math.round(lines))) }),
+      setTerminalTheme: (theme) => set({ terminalTheme: theme }),
+      setTerminalBidi: (enabled) => set({ terminalBidi: enabled }),
+
       setPinnedRepoPath: (path) => set({ pinnedRepoPath: path }),
       setExplorerHeightRatio: (ratio) => set({
         explorerHeightRatio: Math.max(0.15, Math.min(0.85, ratio)),
@@ -633,6 +687,14 @@ export const useAppStore = create<AppState>()(
         errorReportingEnabled: state.errorReportingEnabled,
         showGitPanel: state.showGitPanel,
         showFileTree: state.showFileTree,
+        terminalFontFamily: state.terminalFontFamily,
+        terminalFontSize: state.terminalFontSize,
+        terminalLineHeight: state.terminalLineHeight,
+        terminalCursorStyle: state.terminalCursorStyle,
+        terminalCursorBlink: state.terminalCursorBlink,
+        terminalScrollback: state.terminalScrollback,
+        terminalTheme: state.terminalTheme,
+        terminalBidi: state.terminalBidi,
         explorerHeightRatio: state.explorerHeightRatio,
         toolsCollapsed: state.toolsCollapsed,
         repositoriesHeightRatio: state.repositoriesHeightRatio,
