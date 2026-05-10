@@ -104,6 +104,17 @@ interface AppState {
   whatsNewOpen: boolean;
   lastSeenVersion: string | null;
 
+  // Paste-as-File drawer
+  pasteDrawerOpen: boolean;
+  pasteDrawerSeed: { content: string; targetTerminalId: string | null } | null;
+  // Paste settings (persisted)
+  pasteAutoDetectEnabled: boolean;
+  pasteAutoDetectThresholdBytes: number;
+  pasteAutoDetectThresholdLines: number;
+  pastePromptTemplate: string;
+  pasteRetention: 'close' | 'days' | 'forever';
+  pasteRetentionDays: number;
+
   toggleSidebar: () => void;
   toggleSidebarCollapse: () => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
@@ -203,6 +214,16 @@ interface AppState {
   openWhatsNew: () => void;
   closeWhatsNew: () => void;
   setLastSeenVersion: (version: string) => void;
+
+  // Paste-as-File actions
+  openPasteDrawer: (seed?: { content?: string; targetTerminalId?: string | null }) => void;
+  closePasteDrawer: () => void;
+  setPasteAutoDetectEnabled: (enabled: boolean) => void;
+  setPasteAutoDetectThresholdBytes: (n: number) => void;
+  setPasteAutoDetectThresholdLines: (n: number) => void;
+  setPastePromptTemplate: (s: string) => void;
+  setPasteRetention: (r: 'close' | 'days' | 'forever') => void;
+  setPasteRetentionDays: (n: number) => void;
 }
 
 interface SavedTerminalConfig {
@@ -314,6 +335,16 @@ export const useAppStore = create<AppState>()(
       // What's New
       whatsNewOpen: false,
       lastSeenVersion: null,
+
+      // Paste-as-File drawer
+      pasteDrawerOpen: false,
+      pasteDrawerSeed: null,
+      pasteAutoDetectEnabled: true,
+      pasteAutoDetectThresholdBytes: 4096,
+      pasteAutoDetectThresholdLines: 50,
+      pastePromptTemplate: 'Please look at @{path}',
+      pasteRetention: 'close' as 'close' | 'days' | 'forever',
+      pasteRetentionDays: 7,
 
       toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
       toggleSidebarCollapse: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
@@ -618,6 +649,21 @@ export const useAppStore = create<AppState>()(
       openWhatsNew: () => set({ whatsNewOpen: true }),
       closeWhatsNew: () => set({ whatsNewOpen: false }),
       setLastSeenVersion: (version) => set({ lastSeenVersion: version }),
+
+      // Paste-as-File actions
+      openPasteDrawer: (seed) => set({
+        pasteDrawerOpen: true,
+        pasteDrawerSeed: seed
+          ? { content: seed.content ?? '', targetTerminalId: seed.targetTerminalId ?? null }
+          : null,
+      }),
+      closePasteDrawer: () => set({ pasteDrawerOpen: false, pasteDrawerSeed: null }),
+      setPasteAutoDetectEnabled: (enabled) => set({ pasteAutoDetectEnabled: enabled }),
+      setPasteAutoDetectThresholdBytes: (n) => set({ pasteAutoDetectThresholdBytes: Math.max(256, n) }),
+      setPasteAutoDetectThresholdLines: (n) => set({ pasteAutoDetectThresholdLines: Math.max(5, n) }),
+      setPastePromptTemplate: (s) => set({ pastePromptTemplate: s }),
+      setPasteRetention: (r) => set({ pasteRetention: r }),
+      setPasteRetentionDays: (n) => set({ pasteRetentionDays: Math.max(1, n) }),
     }),
     {
       name: 'claude-terminal-app',
@@ -638,6 +684,12 @@ export const useAppStore = create<AppState>()(
         repositoriesHeightRatio: state.repositoriesHeightRatio,
         orchestrationOpen: state.orchestrationOpen,
         lastSeenVersion: state.lastSeenVersion,
+        pasteAutoDetectEnabled: state.pasteAutoDetectEnabled,
+        pasteAutoDetectThresholdBytes: state.pasteAutoDetectThresholdBytes,
+        pasteAutoDetectThresholdLines: state.pasteAutoDetectThresholdLines,
+        pastePromptTemplate: state.pastePromptTemplate,
+        pasteRetention: state.pasteRetention,
+        pasteRetentionDays: state.pasteRetentionDays,
       }),
     }
   )

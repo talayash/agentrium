@@ -2,12 +2,19 @@ import { create } from 'zustand';
 
 export type ToastType = 'success' | 'error' | 'warning' | 'info';
 
+export interface ToastAction {
+  label: string;
+  onClick: () => void;
+  primary?: boolean;
+}
+
 export interface Toast {
   id: string;
   type: ToastType;
   title: string;
   message?: string;
   duration: number;
+  actions?: ToastAction[];
 }
 
 interface ToastState {
@@ -61,14 +68,16 @@ export const useToastStore = create<ToastState>()((set) => ({
   clearAll: () => set({ toasts: [] }),
 }));
 
+type ToastOpts = { duration?: number; actions?: ToastAction[] };
+
 // Convenience functions for use outside React components
 export const toast = {
-  success: (title: string, message?: string, duration?: number) =>
-    useToastStore.getState().addToast({ type: 'success', title, message, duration }),
-  error: (title: string, message?: string, duration?: number) =>
-    useToastStore.getState().addToast({ type: 'error', title, message, duration }),
-  warning: (title: string, message?: string, duration?: number) =>
-    useToastStore.getState().addToast({ type: 'warning', title, message, duration }),
-  info: (title: string, message?: string, duration?: number) =>
-    useToastStore.getState().addToast({ type: 'info', title, message, duration }),
+  success: (title: string, message?: string, opts?: ToastOpts) =>
+    useToastStore.getState().addToast({ type: 'success', title, message, ...opts }),
+  error: (title: string, message?: string, opts?: ToastOpts) =>
+    useToastStore.getState().addToast({ type: 'error', title, message, ...opts }),
+  warning: (title: string, message?: string, opts?: ToastOpts) =>
+    useToastStore.getState().addToast({ type: 'warning', title, message, ...opts }),
+  info: (title: string, message?: string, opts?: ToastOpts) =>
+    useToastStore.getState().addToast({ type: 'info', title, message, ...opts }),
 };
