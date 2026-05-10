@@ -53,6 +53,89 @@ pub fn set_error_reporting_enabled(enabled: bool) -> Result<(), String> {
     Ok(())
 }
 
+async fn terminal_cwd(
+    state: &State<'_, AppState>,
+    terminal_id: &str,
+) -> Result<std::path::PathBuf, String> {
+    let manager = state.terminals.lock().await;
+    let term = manager
+        .terminals
+        .get(terminal_id)
+        .ok_or_else(|| format!("Unknown terminal id: {}", terminal_id))?;
+    Ok(std::path::PathBuf::from(term.config.working_directory.clone()))
+}
+
+#[command]
+pub async fn write_paste(
+    state: State<'_, AppState>,
+    terminal_id: String,
+    content: String,
+    suggested_name: Option<String>,
+    extension: String,
+) -> Result<crate::pastes::PasteEntry, String> {
+    wrap_cmd("write_paste", async move {
+        let cwd = terminal_cwd(&state, &terminal_id).await?;
+        let base = suggested_name.unwrap_or_else(|| {
+            chrono::Local::now().format("paste-%Y-%m-%d-%H%M").to_string()
+        });
+        crate::pastes::write_paste(&cwd, &content, &base, &extension)
+    })
+    .await
+}
+
+#[command]
+pub async fn list_pastes(
+    state: State<'_, AppState>,
+    terminal_id: String,
+) -> Result<Vec<crate::pastes::PasteEntry>, String> {
+    wrap_cmd("list_pastes", async move {
+        let cwd = terminal_cwd(&state, &terminal_id).await?;
+        crate::pastes::list_pastes(&cwd)
+    })
+    .await
+}
+
+#[command]
+pub async fn read_paste(
+    state: State<'_, AppState>,
+    terminal_id: String,
+    file_name: String,
+) -> Result<String, String> {
+    wrap_cmd("read_paste", async move {
+        let cwd = terminal_cwd(&state, &terminal_id).await?;
+        crate::pastes::read_paste(&cwd, &file_name)
+    })
+    .await
+}
+
+#[command]
+pub async fn delete_paste(
+    state: State<'_, AppState>,
+    terminal_id: String,
+    file_name: String,
+) -> Result<(), String> {
+    wrap_cmd("delete_paste", async move {
+        let cwd = terminal_cwd(&state, &terminal_id).await?;
+        crate::pastes::delete_paste(&cwd, &file_name)
+    })
+    .await
+}
+
+#[command]
+pub async fn purge_pastes(
+    state: State<'_, AppState>,
+    terminal_id: String,
+) -> Result<(), String> {
+    wrap_cmd("purge_pastes", async move {
+        let cwd = match terminal_cwd(&state, &terminal_id).await {
+            Ok(p) => p,
+            Err(_) => return Ok(()),
+        };
+        crate::pastes::purge_pastes(&cwd)
+    })
+    .await
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CreateTerminalRequest {
     pub label: String,
@@ -276,19 +359,31 @@ pub async fn delete_profile(state: State<'_, AppState>, id: String) -> Result<()
 #[command]
 pub async fn get_claude_version() -> Result<String, String> {
     wrap_cmd("get_claude_version", async move {
-        let output = shell_command("claude", &["--version"])
-            .output()
+        let output = run_claude(&["--version"])
             .map_err(|e| e.to_string())?;
 
         if !output.status.success() {
             return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
         }
 
-        String::from_utf8(output.stdout)
-            .map(|s| s.trim().to_string())
-            .map_err(|e| e.to_string())
+        let stdout = String::from_utf8(output.stdout)
+            .map_err(|e| e.to_string())?;
+        Ok(extract_version_line(&stdout))
     })
     .await
+}
+
+/// Run `claude` with the given args. Prefers the cached absolute path resolved
+/// via an interactive login shell (so users with PATH set in `.zshrc` work);
+/// falls back to the shell-PATH lookup if resolution failed.
+fn run_claude(args: &[&str]) -> std::io::Result<std::process::Output> {
+    if let Some(path) = crate::claude_path::cached() {
+        let mut cmd = std::process::Command::new(&path);
+        for a in args { cmd.arg(a); }
+        cmd.output()
+    } else {
+        shell_command("claude", args).output()
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -302,13 +397,11 @@ pub struct UpdateCheckResult {
 pub async fn check_claude_update() -> Result<UpdateCheckResult, String> {
     wrap_cmd("check_claude_update", async move {
         // Get current version
-        let current_output = shell_command("claude", &["--version"])
-            .output()
+        let current_output = run_claude(&["--version"])
             .map_err(|e| format!("Failed to get current version: {}", e))?;
 
-        let current_version = String::from_utf8_lossy(&current_output.stdout)
-            .trim()
-            .to_string();
+        let current_stdout = String::from_utf8_lossy(&current_output.stdout);
+        let current_version = extract_version_line(&current_stdout);
 
         if current_version.is_empty() {
             return Err("Claude Code is not installed".to_string());
@@ -319,9 +412,8 @@ pub async fn check_claude_update() -> Result<UpdateCheckResult, String> {
             .output()
             .map_err(|e| format!("Failed to check latest version: {}", e))?;
 
-        let latest_version = String::from_utf8_lossy(&npm_output.stdout)
-            .trim()
-            .to_string();
+        let npm_stdout = String::from_utf8_lossy(&npm_output.stdout);
+        let latest_version = extract_version_line(&npm_stdout);
 
         if latest_version.is_empty() {
             return Err("Failed to fetch latest version from npm".to_string());
@@ -353,6 +445,9 @@ pub async fn update_claude_code() -> Result<String, String> {
             .map_err(|e| format!("Failed to run npm: {}", e))?;
 
         if output.status.success() {
+            // npm may have moved the binary or the user may have switched
+            // node versions — drop the cache so the next call re-resolves.
+            crate::claude_path::invalidate();
             Ok("Claude Code updated successfully!".to_string())
         } else {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -445,9 +540,57 @@ fn shell_command(program: &str, args: &[&str]) -> std::process::Command {
             full_cmd.push_str(&shell_escape_arg(arg));
         }
         let mut cmd = std::process::Command::new(shell);
-        cmd.arg("-lc").arg(&full_cmd);
+        // -lic (login + interactive + command). The `-i` is what gets
+        // ~/.zshrc / ~/.bashrc sourced. Without it (plain -lc) only
+        // ~/.zshenv and ~/.zprofile run, which means PATH additions for
+        // tools installed via nvm / fnm / volta / `npm config prefix` /
+        // `~/.local/bin` are invisible — `claude --version`, `node`, `npm`
+        // all return "command not found" for users who only export those
+        // dirs from their interactive rc file.
+        cmd.arg("-lic").arg(&full_cmd);
         cmd
     }
+}
+
+/// Pick a sensible "version" string from a command's stdout.
+///
+/// With the shell helper now using `-lic`, an interactive shell's init may
+/// print banners / prompts / conda init blurbs to stdout *before* the actual
+/// version line. We scan from the bottom for a line that contains a
+/// dotted-numeric version. Falls back to the trimmed full output if nothing
+/// matches (e.g. unusual `--version` formats we don't want to silently drop).
+fn extract_version_line(stdout: &str) -> String {
+    for line in stdout.lines().rev() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() { continue; }
+        // Cheap manual scan instead of pulling regex into the hot path:
+        // require <digits>.<digits>.<digits> somewhere in the line.
+        if has_semver_like(trimmed) {
+            return trimmed.to_string();
+        }
+    }
+    stdout.trim().to_string()
+}
+
+fn has_semver_like(s: &str) -> bool {
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i].is_ascii_digit() {
+            let mut j = i;
+            let mut dots = 0;
+            while j < bytes.len() && (bytes[j].is_ascii_digit() || bytes[j] == b'.') {
+                if bytes[j] == b'.' { dots += 1; }
+                j += 1;
+            }
+            // `1.2.3` style — at least two dots between numeric runs.
+            if dots >= 2 && j > i + 4 { return true; }
+            i = j.max(i + 1);
+        } else {
+            i += 1;
+        }
+    }
+    false
 }
 
 #[command]
@@ -458,8 +601,8 @@ pub async fn check_system_requirements() -> Result<SystemStatus, String> {
 
         let (node_installed, node_version) = match node_result {
             Ok(output) if output.status.success() => {
-                let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                (true, Some(version))
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                (true, Some(extract_version_line(&stdout)))
             }
             _ => (false, None),
         };
@@ -469,19 +612,20 @@ pub async fn check_system_requirements() -> Result<SystemStatus, String> {
 
         let (npm_installed, npm_version) = match npm_result {
             Ok(output) if output.status.success() => {
-                let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                (true, Some(version))
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                (true, Some(extract_version_line(&stdout)))
             }
             _ => (false, None),
         };
 
-        // Check Claude Code
-        let claude_result = shell_command("claude", &["--version"]).output();
+        // Check Claude Code via the resolved absolute path when available
+        // (avoids any shell-PATH guessing). Falls back to the shell helper.
+        let claude_result = run_claude(&["--version"]);
 
         let (claude_installed, claude_version) = match claude_result {
             Ok(output) if output.status.success() => {
-                let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                (true, Some(version))
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                (true, Some(extract_version_line(&stdout)))
             }
             _ => (false, None),
         };
@@ -506,6 +650,9 @@ pub async fn install_claude_code() -> Result<String, String> {
             .map_err(|e| e.to_string())?;
 
         if output.status.success() {
+            // Drop any cached "claude not found" so the next system check
+            // re-resolves the freshly-installed binary.
+            crate::claude_path::invalidate();
             Ok("Claude Code installed successfully!".to_string())
         } else {
             Err(String::from_utf8_lossy(&output.stderr).to_string())
@@ -3500,4 +3647,50 @@ pub async fn search_in_files(
         })
     })
     .await
+}
+
+#[cfg(test)]
+mod version_extraction_tests {
+    use super::{extract_version_line, has_semver_like};
+
+    #[test]
+    fn extracts_simple_version() {
+        assert_eq!(extract_version_line("1.0.17\n"), "1.0.17");
+        assert_eq!(extract_version_line("v20.18.0\n"), "v20.18.0");
+    }
+
+    #[test]
+    fn extracts_version_with_suffix() {
+        assert_eq!(
+            extract_version_line("1.0.17 (Claude Code)\n"),
+            "1.0.17 (Claude Code)"
+        );
+    }
+
+    #[test]
+    fn skips_init_noise_picks_version_line() {
+        // p10k / conda init / banner stuff before the actual version output.
+        let stdout = "p10k: warning: instant prompt configured\n\
+                      (base) Welcome back!\n\
+                      1.0.17\n";
+        assert_eq!(extract_version_line(stdout), "1.0.17");
+    }
+
+    #[test]
+    fn falls_back_to_full_output_when_no_semver() {
+        // Don't silently lose unusual `--version` output (e.g. a prerelease
+        // tag without dotted numerics) — return what we got.
+        assert_eq!(extract_version_line("nightly-build\n"), "nightly-build");
+    }
+
+    #[test]
+    fn semver_detector_rejects_two_part_version() {
+        // `npm view`-like single-number / two-part outputs are uncommon for
+        // the tools we care about, but we want to be sure we require the
+        // full X.Y.Z shape.
+        assert!(!has_semver_like("1.0"));
+        assert!(!has_semver_like("v20"));
+        assert!(has_semver_like("0.1.2"));
+        assert!(has_semver_like("20.18.0"));
+    }
 }

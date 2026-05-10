@@ -151,6 +151,11 @@ fn main() {
             commands::search_in_files,
             commands::report_error,
             commands::set_error_reporting_enabled,
+            commands::write_paste,
+            commands::list_pastes,
+            commands::read_paste,
+            commands::delete_paste,
+            commands::purge_pastes,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
