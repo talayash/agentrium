@@ -6,6 +6,8 @@ mod config;
 mod database;
 mod telemetry;
 mod error_reporter;
+mod claude_path;
+mod pastes;
 
 use tauri::Manager;
 use std::sync::Arc;
