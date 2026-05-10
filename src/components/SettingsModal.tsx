@@ -471,6 +471,105 @@ export function SettingsModal() {
             </div>
           </div>
 
+          {/* Pastes */}
+          <div>
+            <h3 className="text-text-primary text-[13px] font-medium mb-2">Pastes</h3>
+            <div className="bg-bg-primary rounded-md ring-1 ring-border p-3 space-y-3">
+              <p className="text-text-tertiary text-[11px]">
+                Capture large pastes (logs, JSON) into a file under <code>.claudeterminal/pastes/</code> and reference them in Claude Code via @mention.
+              </p>
+
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-text-primary text-[13px]">Auto-detect large pastes</p>
+                  <p className="text-text-tertiary text-[11px] mt-0.5">
+                    Offer "Save as file" when you paste big chunks into a terminal.
+                  </p>
+                </div>
+                <button
+                  onClick={() => useAppStore.getState().setPasteAutoDetectEnabled(!useAppStore.getState().pasteAutoDetectEnabled)}
+                  className={`relative w-10 h-5 rounded-full transition-colors ${
+                    useAppStore((s) => s.pasteAutoDetectEnabled) ? 'bg-accent-primary' : 'bg-border-light'
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                      useAppStore((s) => s.pasteAutoDetectEnabled) ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between gap-3">
+                <label className="text-text-secondary text-[12px]">Threshold (bytes)</label>
+                <input
+                  type="number"
+                  min={256}
+                  value={useAppStore((s) => s.pasteAutoDetectThresholdBytes)}
+                  onChange={(e) =>
+                    useAppStore.getState().setPasteAutoDetectThresholdBytes(parseInt(e.target.value, 10) || 4096)
+                  }
+                  className="w-28 bg-bg-elevated text-text-primary text-right text-[12px] px-2 py-1 rounded ring-1 ring-border"
+                />
+              </div>
+
+              <div className="flex items-center justify-between gap-3">
+                <label className="text-text-secondary text-[12px]">Threshold (lines)</label>
+                <input
+                  type="number"
+                  min={5}
+                  value={useAppStore((s) => s.pasteAutoDetectThresholdLines)}
+                  onChange={(e) =>
+                    useAppStore.getState().setPasteAutoDetectThresholdLines(parseInt(e.target.value, 10) || 50)
+                  }
+                  className="w-28 bg-bg-elevated text-text-primary text-right text-[12px] px-2 py-1 rounded ring-1 ring-border"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-text-secondary text-[12px]">
+                  Prompt template <span className="text-text-tertiary">(use <code>{'{path}'}</code>)</span>
+                </label>
+                <input
+                  type="text"
+                  value={useAppStore((s) => s.pastePromptTemplate)}
+                  onChange={(e) => useAppStore.getState().setPastePromptTemplate(e.target.value)}
+                  className="bg-bg-elevated text-text-primary text-[12px] px-2 py-1 rounded ring-1 ring-border font-mono"
+                />
+              </div>
+
+              <div className="flex items-center justify-between gap-3">
+                <label className="text-text-secondary text-[12px]">Retention</label>
+                <select
+                  value={useAppStore((s) => s.pasteRetention)}
+                  onChange={(e) =>
+                    useAppStore.getState().setPasteRetention(e.target.value as 'close' | 'days' | 'forever')
+                  }
+                  className="bg-bg-elevated text-text-primary text-[12px] px-2 py-1 rounded ring-1 ring-border"
+                >
+                  <option value="close">Delete on terminal close</option>
+                  <option value="days">Keep for N days</option>
+                  <option value="forever">Keep forever</option>
+                </select>
+              </div>
+
+              {useAppStore((s) => s.pasteRetention) === 'days' && (
+                <div className="flex items-center justify-between gap-3">
+                  <label className="text-text-secondary text-[12px]">Days to keep</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={useAppStore((s) => s.pasteRetentionDays)}
+                    onChange={(e) =>
+                      useAppStore.getState().setPasteRetentionDays(parseInt(e.target.value, 10) || 7)
+                    }
+                    className="w-28 bg-bg-elevated text-text-primary text-right text-[12px] px-2 py-1 rounded ring-1 ring-border"
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+
           {/* Keyboard Shortcuts */}
           <div>
             <h3 className="text-text-primary text-[13px] font-medium mb-2">Keyboard Shortcuts</h3>
@@ -488,6 +587,7 @@ export function SettingsModal() {
                 ['Add to Grid', `${mod}+Shift+G`],
                 ['Split View', `${mod}+\\`],
                 ['Snippets', `${mod}+Shift+S`],
+                ['Paste as File', `${mod}+Shift+V`],
                 ['Search Terminal', `${mod}+Shift+F`],
                 ['Worktree Manager', `${mod}+Shift+W`],
                 ['Claude Config', 'F6'],

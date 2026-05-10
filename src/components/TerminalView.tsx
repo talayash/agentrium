@@ -7,6 +7,8 @@ import { WebglAddon } from '@xterm/addon-webgl';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { useTerminalStore } from '../store/terminalStore';
+import { useAppStore } from '../store/appStore';
+import { toast } from '../store/toastStore';
 import { TerminalSearch } from './TerminalSearch';
 import { TerminalStatusBar } from './TerminalStatusBar';
 import '@xterm/xterm/css/xterm.css';
@@ -196,10 +198,81 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
       return true;
     });
 
+    // Track time of the last input event so we can identify chunks that arrive
+    // as a single block (clipboard paste) vs. interactive typing.
+    let lastDataTs = 0;
+    let bypassDetectOnce = false;
+
     terminal.onData((data) => {
-      writeToTerminal(terminalId, data).catch((err) => {
-        console.error(`Failed to write to terminal ${terminalId}:`, err);
-      });
+      const now = performance.now();
+      const isLikelyPaste = data.length > 64 && (now - lastDataTs > 16 || lastDataTs === 0);
+      lastDataTs = now;
+
+      if (bypassDetectOnce) {
+        bypassDetectOnce = false;
+        writeToTerminal(terminalId, data).catch((err) => {
+          console.error(`Failed to write to terminal ${terminalId}:`, err);
+        });
+        return;
+      }
+
+      // Pull the latest settings each call — these change in Settings without
+      // re-rendering this terminal.
+      const app = useAppStore.getState();
+      if (!isLikelyPaste || !app.pasteAutoDetectEnabled) {
+        writeToTerminal(terminalId, data).catch((err) => {
+          console.error(`Failed to write to terminal ${terminalId}:`, err);
+        });
+        return;
+      }
+
+      const bytes = new TextEncoder().encode(data).length;
+      const lines = data.split('\n').length;
+      if (bytes < app.pasteAutoDetectThresholdBytes && lines < app.pasteAutoDetectThresholdLines) {
+        writeToTerminal(terminalId, data).catch((err) => {
+          console.error(`Failed to write to terminal ${terminalId}:`, err);
+        });
+        return;
+      }
+
+      // Suppress forwarding to PTY; offer the choice via a toast with actions.
+      toast.info(
+        'Large paste detected',
+        `${(bytes / 1024).toFixed(1)} KB · ${lines} lines`,
+        {
+          duration: 8000,
+          actions: [
+            {
+              label: 'Save & Reference',
+              primary: true,
+              onClick: () => {
+                useAppStore.getState().openPasteDrawer({
+                  content: data,
+                  targetTerminalId: terminalId,
+                });
+              },
+            },
+            {
+              label: 'Paste anyway',
+              onClick: () => {
+                bypassDetectOnce = true;
+                writeToTerminal(terminalId, data).catch((err) => {
+                  console.error(`Failed to write to terminal ${terminalId}:`, err);
+                });
+              },
+            },
+            {
+              label: "Don't ask again",
+              onClick: () => {
+                useAppStore.getState().setPasteAutoDetectEnabled(false);
+                writeToTerminal(terminalId, data).catch((err) => {
+                  console.error(`Failed to write to terminal ${terminalId}:`, err);
+                });
+              },
+            },
+          ],
+        },
+      );
     });
 
     const resizeObserver = new ResizeObserver(() => {

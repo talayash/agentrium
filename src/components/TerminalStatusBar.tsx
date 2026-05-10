@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
-import { RotateCw, Square, ClipboardCopy, Clock, FolderOpen, Check } from 'lucide-react';
+import { RotateCw, Square, ClipboardCopy, Clock, FolderOpen, Check, ClipboardPaste } from 'lucide-react';
 import { useTerminalStore } from '../store/terminalStore';
+import { useAppStore } from '../store/appStore';
 
 interface TerminalStatusBarProps {
   terminalId: string;
@@ -125,6 +126,21 @@ export function TerminalStatusBar({ terminalId }: TerminalStatusBarProps) {
             <Square size={10} />
           </button>
         )}
+
+        <button
+          onClick={async () => {
+            let clipboardText = '';
+            try { clipboardText = await navigator.clipboard.readText(); } catch { /* ignore */ }
+            useAppStore.getState().openPasteDrawer({
+              content: clipboardText,
+              targetTerminalId: terminalId,
+            });
+          }}
+          className="p-0.5 rounded hover:bg-white/[0.08] text-text-tertiary hover:text-accent-primary transition-colors"
+          title="Paste as file (Ctrl+Shift+V)"
+        >
+          <ClipboardPaste size={10} />
+        </button>
 
         <button
           onClick={handleCopyOutput}
