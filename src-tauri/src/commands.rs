@@ -1346,7 +1346,14 @@ pub async fn git_list_stashes(
         validate_path_is_trusted(&state, &path).await?;
         // Format: "<ref>\x1f<subject>" — \x1f (unit separator) is safe against
         // colons/spaces in the subject.
-        let out = run_git(&path, &["stash", "list", "--format=%gd\x1f%s"])?;
+        // A non-git terminal cwd is a valid state for the stash panel to query —
+        // treat git's "not a git repository" as an empty list, same shape as
+        // get_worktree_info uses for non-repo paths.
+        let out = match run_git(&path, &["stash", "list", "--format=%gd\x1f%s"]) {
+            Ok(out) => out,
+            Err(e) if e.contains("not a git repository") => return Ok(Vec::new()),
+            Err(e) => return Err(e),
+        };
         let mut entries = Vec::new();
         for line in out.lines() {
             let mut parts = line.splitn(2, '\x1f');
@@ -3016,8 +3023,10 @@ pub async fn create_shell_terminal(
     cwd: String,
 ) -> Result<crate::terminal::TerminalConfig, String> {
     wrap_cmd("create_shell_terminal", async move {
-        validate_path_is_trusted(&state, &cwd).await?;
-
+        // Mirror create_terminal: trust the user-supplied cwd. The trust check
+        // exists to prevent the renderer from probing arbitrary paths via git
+        // commands, but spawning a shell IS the user's explicit action and the
+        // shell has full FS access once spawned anyway.
         let (tx, mut rx) = mpsc::channel::<(String, Vec<u8>)>(1000);
 
         let config = {
