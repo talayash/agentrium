@@ -45,7 +45,11 @@ impl Database {
 
         let db_path = data_dir.join("claudeterminal.db");
         let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+        Self::init_schema(&conn)?;
+        Ok(Self { conn })
+    }
 
+    fn init_schema(conn: &Connection) -> Result<(), String> {
         conn.execute_batch(
             "
             PRAGMA journal_mode=WAL;
@@ -99,9 +103,15 @@ impl Database {
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
             );
-            "
-        ).map_err(|e| e.to_string())?;
+            ",
+        )
+        .map_err(|e| e.to_string())
+    }
 
+    #[cfg(test)]
+    fn new_in_memory() -> Result<Self, String> {
+        let conn = Connection::open_in_memory().map_err(|e| e.to_string())?;
+        Self::init_schema(&conn)?;
         Ok(Self { conn })
     }
 
@@ -217,10 +227,24 @@ impl Database {
     }
 
     pub fn load_last_session(&self) -> Result<Option<Vec<TerminalConfig>>, String> {
-        match self.load_workspace(Self::LAST_SESSION_KEY) {
-            Ok(configs) => Ok(Some(configs)),
-            Err(e) if e.contains("QueryReturnedNoRows") => Ok(None),
-            Err(e) => Err(e),
+        // Use OptionalExtension so an empty table is `Ok(None)` rather than a
+        // stringified `QueryReturnedNoRows`. The previous match-on-substring
+        // tested for the variant name (`"QueryReturnedNoRows"`) but rusqlite's
+        // Display impl produces `"Query returned no rows"`, so first-run users
+        // were getting a real error reported to telemetry.
+        use rusqlite::OptionalExtension;
+        let row: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT terminals FROM workspaces WHERE name = ?1",
+                params![Self::LAST_SESSION_KEY],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?;
+        match row {
+            Some(json) => serde_json::from_str(&json).map(Some).map_err(|e| e.to_string()),
+            None => Ok(None),
         }
     }
 
@@ -367,5 +391,241 @@ impl Database {
             }
             Err(e) => Err(e.to_string()),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::terminal::{TerminalConfig, TerminalStatus};
+    use chrono::{Duration, Utc};
+    use std::collections::HashMap;
+
+    fn make_profile(id: &str, name: &str) -> ConfigProfile {
+        let mut env = HashMap::new();
+        env.insert("FOO".to_string(), "bar".to_string());
+        ConfigProfile {
+            id: id.to_string(),
+            name: name.to_string(),
+            description: Some("desc".to_string()),
+            working_directory: "C:/work".to_string(),
+            claude_args: vec!["--model".to_string(), "opus".to_string()],
+            env_vars: env,
+            is_default: false,
+        }
+    }
+
+    fn make_terminal(id: &str, offset_secs: i64) -> TerminalConfig {
+        TerminalConfig {
+            id: id.to_string(),
+            label: format!("term-{}", id),
+            nickname: None,
+            profile_id: None,
+            working_directory: "C:/work".to_string(),
+            claude_args: vec![],
+            env_vars: HashMap::new(),
+            created_at: Utc::now() + Duration::seconds(offset_secs),
+            status: TerminalStatus::Running,
+            color_tag: None,
+        }
+    }
+
+    #[test]
+    fn init_schema_is_idempotent() {
+        let db = Database::new_in_memory().unwrap();
+        // Re-running the migration on the same connection must not error.
+        Database::init_schema(&db.conn).unwrap();
+    }
+
+    #[test]
+    fn profile_round_trips_complex_args_and_env() {
+        let db = Database::new_in_memory().unwrap();
+        let p = make_profile("p1", "default");
+        db.save_profile(&p).unwrap();
+
+        let loaded = db.get_profiles().unwrap();
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].id, "p1");
+        assert_eq!(loaded[0].claude_args, vec!["--model", "opus"]);
+        assert_eq!(loaded[0].env_vars.get("FOO"), Some(&"bar".to_string()));
+    }
+
+    #[test]
+    fn save_profile_treats_repeat_id_as_upsert() {
+        let db = Database::new_in_memory().unwrap();
+        let mut p = make_profile("p1", "first");
+        db.save_profile(&p).unwrap();
+        p.name = "second".to_string();
+        db.save_profile(&p).unwrap();
+
+        let loaded = db.get_profiles().unwrap();
+        assert_eq!(loaded.len(), 1, "save_profile must upsert by id");
+        assert_eq!(loaded[0].name, "second");
+    }
+
+    #[test]
+    fn save_profile_rejects_empty_or_too_long_name() {
+        let db = Database::new_in_memory().unwrap();
+        let mut p = make_profile("p1", "");
+        assert!(db.save_profile(&p).is_err());
+
+        p.name = "x".repeat(256);
+        assert!(db.save_profile(&p).is_err());
+    }
+
+    #[test]
+    fn delete_profile_removes_only_the_target() {
+        let db = Database::new_in_memory().unwrap();
+        db.save_profile(&make_profile("p1", "a")).unwrap();
+        db.save_profile(&make_profile("p2", "b")).unwrap();
+        db.delete_profile("p1").unwrap();
+
+        let loaded = db.get_profiles().unwrap();
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].id, "p2");
+    }
+
+    #[test]
+    fn workspace_round_trip() {
+        let db = Database::new_in_memory().unwrap();
+        let terminals = vec![make_terminal("t1", 0), make_terminal("t2", 1)];
+        db.save_workspace("my-ws", &terminals).unwrap();
+
+        let loaded = db.load_workspace("my-ws").unwrap();
+        assert_eq!(loaded.len(), 2);
+        assert_eq!(loaded[0].id, "t1");
+        assert_eq!(loaded[1].id, "t2");
+    }
+
+    #[test]
+    fn save_workspace_validates_user_facing_names_but_allows_internal_keys() {
+        let db = Database::new_in_memory().unwrap();
+        assert!(db.save_workspace("", &[]).is_err());
+        assert!(db.save_workspace(&"x".repeat(256), &[]).is_err());
+
+        // __-prefixed keys bypass the length check (used for __last_session__).
+        assert!(db.save_workspace("__internal__", &[make_terminal("t", 0)]).is_ok());
+    }
+
+    #[test]
+    fn delete_workspace_refuses_internal_keys() {
+        let db = Database::new_in_memory().unwrap();
+        db.save_workspace("__last_session__", &[make_terminal("t", 0)])
+            .unwrap();
+        assert!(db.delete_workspace("__last_session__").is_err());
+    }
+
+    #[test]
+    fn get_workspaces_hides_internal_last_session_entry() {
+        let db = Database::new_in_memory().unwrap();
+        db.save_workspace("real", &[make_terminal("t", 0)]).unwrap();
+        db.save_workspace("__last_session__", &[make_terminal("t", 0)])
+            .unwrap();
+
+        let listed = db.get_workspaces().unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].name, "real");
+    }
+
+    #[test]
+    fn load_last_session_returns_ok_none_on_empty_db() {
+        // Regression: a stringly-typed match against "QueryReturnedNoRows" used
+        // to surface a real error to telemetry on first run. The fix routes the
+        // empty-row case through OptionalExtension; this test pins that.
+        let db = Database::new_in_memory().unwrap();
+        assert!(matches!(db.load_last_session(), Ok(None)));
+    }
+
+    #[test]
+    fn last_session_round_trips_and_sorts_by_created_at() {
+        let db = Database::new_in_memory().unwrap();
+        // Insert out of order; save_last_session must sort ascending.
+        let unordered = vec![make_terminal("late", 10), make_terminal("early", 0)];
+        db.save_last_session(&unordered).unwrap();
+
+        let loaded = db.load_last_session().unwrap().expect("session present");
+        assert_eq!(loaded.iter().map(|t| t.id.as_str()).collect::<Vec<_>>(), vec!["early", "late"]);
+    }
+
+    #[test]
+    fn save_last_session_with_empty_list_clears_the_row() {
+        let db = Database::new_in_memory().unwrap();
+        db.save_last_session(&[make_terminal("t", 0)]).unwrap();
+        assert!(db.load_last_session().unwrap().is_some());
+
+        db.save_last_session(&[]).unwrap();
+        assert!(db.load_last_session().unwrap().is_none());
+    }
+
+    #[test]
+    fn session_history_insert_then_close_sets_ended_at() {
+        let db = Database::new_in_memory().unwrap();
+        let id = db
+            .insert_session_history("t1", "label", "2026-01-01T00:00:00Z", Some("/log/path"))
+            .unwrap();
+        assert!(id > 0);
+        db.update_session_ended("t1", "2026-01-01T01:00:00Z").unwrap();
+
+        let entries = db.get_session_history().unwrap();
+        let found = entries.iter().find(|e| e.id == id).expect("entry present");
+        assert_eq!(found.ended_at.as_deref(), Some("2026-01-01T01:00:00Z"));
+        assert_eq!(found.log_path.as_deref(), Some("/log/path"));
+    }
+
+    #[test]
+    fn get_log_path_for_terminal_returns_the_most_recent_non_null_path() {
+        let db = Database::new_in_memory().unwrap();
+        db.insert_session_history("t1", "old", "2026-01-01T00:00:00Z", Some("/old"))
+            .unwrap();
+        db.insert_session_history("t1", "new", "2026-01-02T00:00:00Z", Some("/new"))
+            .unwrap();
+
+        assert_eq!(
+            db.get_log_path_for_terminal("t1").unwrap().as_deref(),
+            Some("/new")
+        );
+        assert_eq!(db.get_log_path_for_terminal("missing").unwrap(), None);
+    }
+
+    #[test]
+    fn snippet_validation_and_round_trip() {
+        let db = Database::new_in_memory().unwrap();
+        let valid = Snippet {
+            id: "s1".to_string(),
+            title: "title".to_string(),
+            content: "body".to_string(),
+            category: "General".to_string(),
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+        };
+        db.save_snippet(&valid).unwrap();
+
+        let invalid_empty = Snippet { title: String::new(), ..valid.clone() };
+        assert!(db.save_snippet(&invalid_empty).is_err());
+
+        let invalid_long = Snippet { title: "x".repeat(256), ..valid };
+        assert!(db.save_snippet(&invalid_long).is_err());
+
+        let listed = db.get_snippets().unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].id, "s1");
+    }
+
+    #[test]
+    fn session_summary_save_get_overwrites_per_terminal() {
+        let db = Database::new_in_memory().unwrap();
+        db.save_session_summary("t1", "first").unwrap();
+        db.save_session_summary("t1", "second").unwrap();
+
+        assert_eq!(db.get_session_summary("t1").unwrap().as_deref(), Some("second"));
+        assert_eq!(db.get_session_summary("missing").unwrap(), None);
+    }
+
+    #[test]
+    fn installation_id_is_stable_across_calls() {
+        let db = Database::new_in_memory().unwrap();
+        let a = db.get_or_create_installation_id().unwrap();
+        let b = db.get_or_create_installation_id().unwrap();
+        assert_eq!(a, b);
+        assert!(!a.is_empty());
     }
 }

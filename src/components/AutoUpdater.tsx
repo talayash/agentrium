@@ -2,9 +2,12 @@ import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Download, RefreshCw, CheckCircle, AlertCircle, X, Rocket, ExternalLink } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useUpdaterStore } from '../store/updaterStore';
 
 const RELEASES_URL = 'https://github.com/talayash/claude-terminal/releases/latest';
+const FOUR_HOURS_MS = 4 * 60 * 60 * 1000;
+const THIRTY_MINUTES_MS = 30 * 60 * 1000;
 
 export function AutoUpdater() {
   const { status, updateInfo, downloadProgress, error, checkForUpdates, downloadAndInstall, restart } = useUpdaterStore();
@@ -13,26 +16,53 @@ export function AutoUpdater() {
 
   // Check for updates on mount
   useEffect(() => {
-    let cancelled = false;
     const timer = setTimeout(async () => {
       try {
-        const result = await checkForUpdates();
-        if (!cancelled && result.available) {
-          setShowBanner(true);
-        }
+        await checkForUpdates();
+        // Banner will auto-open via the ready-watcher effect once the
+        // background download completes.
       } catch {
         // Silently ignore update check failures on startup
       }
     }, 3000);
     return () => {
-      cancelled = true;
       clearTimeout(timer);
     };
   }, []);
 
-  // Show banner when update becomes available (e.g. from Settings check)
+  // Periodic background check so users who never relaunch still see updates.
   useEffect(() => {
-    if (status === 'available' && !dismissed) {
+    const id = setInterval(() => {
+      const last = useUpdaterStore.getState().lastCheckAt;
+      // Guard against drift on a sleeping/throttled timer — only fire if
+      // at least 4h of wall-clock time have actually elapsed.
+      if (last !== null && Date.now() - last < FOUR_HOURS_MS) return;
+      void checkForUpdates();
+    }, FOUR_HOURS_MS);
+    return () => clearInterval(id);
+  }, [checkForUpdates]);
+
+  // Re-check when the window regains focus after a long idle, so a user
+  // who minimized the app for hours/days sees updates immediately on return.
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    const win = getCurrentWindow();
+
+    win.onFocusChanged(({ payload: focused }) => {
+      if (!focused) return;
+      const last = useUpdaterStore.getState().lastCheckAt;
+      if (last !== null && Date.now() - last < THIRTY_MINUTES_MS) return;
+      void checkForUpdates();
+    }).then((un) => { unlisten = un; });
+
+    return () => {
+      unlisten?.();
+    };
+  }, [checkForUpdates]);
+
+  // Show banner when update is downloaded and ready to install
+  useEffect(() => {
+    if (status === 'ready' && !dismissed) {
       setShowBanner(true);
     }
   }, [status, dismissed]);
@@ -94,7 +124,7 @@ export function AutoUpdater() {
                 )}
                 <div className="flex gap-2">
                   <button
-                    onClick={downloadAndInstall}
+                    onClick={() => downloadAndInstall()}
                     className="flex-1 flex items-center justify-center gap-2 bg-accent-primary hover:bg-accent-secondary text-white h-9 px-4 rounded-md text-[12px] font-medium transition-colors"
                   >
                     <Download size={14} />

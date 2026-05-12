@@ -94,7 +94,7 @@ interface SavedTerminalConfig {
 
 function App() {
   const { sidebarOpen, sidebarCollapsed, hintsOpen, changesOpen, orchestrationOpen, settingsOpen, profileModalOpen, newTerminalModalOpen, workspaceModalOpen, worktreeModalOpen, sessionHistoryOpen, snippetsModalOpen, commandPaletteOpen, globalSearchOpen, whatsNewOpen, claudeConfigOpen, sessionTimelineOpen, memoryEditorOpen, notifyOnFinish, restoreSession, triggerChangesRefresh, showRestoreBanner, pendingRestoreConfigs, setShowRestoreBanner, setPendingRestoreConfigs, lastSeenVersion, setLastSeenVersion, openWhatsNew } = useAppStore();
-  const { handleTerminalOutput, updateTerminalStatus, setLoopMode, setSessionSummary, createTerminal } = useTerminalStore();
+  const { handleTerminalOutput, updateTerminalStatus, setLoopMode, setSessionSummary, createTerminal, createShellTerminalTab } = useTerminalStore();
   const [showSetup, setShowSetup] = useState<boolean | null>(null);
   const { notify } = useNotification();
 
@@ -279,15 +279,30 @@ function App() {
     for (let i = 0; i < pendingRestoreConfigs.length; i++) {
       const config = pendingRestoreConfigs[i];
       try {
-        await createTerminal(
-          config.label,
-          config.working_directory,
-          config.claude_args,
-          config.env_vars,
-          config.color_tag ?? undefined,
-          config.nickname ?? undefined,
-          logs[i] ?? undefined
-        );
+        if (config.claude_args[0] === '__shell__') {
+          // Plain shell — re-spawn as a main-tab shell. We deliberately don't
+          // restore the script-runner sentinel '__script__' here; that's a
+          // child terminal owned by its parent and gets recreated on demand.
+          await createShellTerminalTab(
+            config.label,
+            config.working_directory,
+            config.color_tag ?? undefined,
+            config.nickname ?? undefined,
+          );
+        } else if (config.claude_args[0] === '__script__') {
+          // Script runner — owned by parent terminal, skip on restore.
+          continue;
+        } else {
+          await createTerminal(
+            config.label,
+            config.working_directory,
+            config.claude_args,
+            config.env_vars,
+            config.color_tag ?? undefined,
+            config.nickname ?? undefined,
+            logs[i] ?? undefined
+          );
+        }
       } catch (err) {
         console.error('Failed to restore terminal:', config.label, err);
       }

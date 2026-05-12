@@ -252,3 +252,86 @@ pub fn get_default_hints() -> Vec<HintCategory> {
         },
     ]
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_profile() -> ConfigProfile {
+        let mut env = HashMap::new();
+        env.insert("KEY".to_string(), "value".to_string());
+        ConfigProfile {
+            id: "p1".to_string(),
+            name: "Default".to_string(),
+            description: Some("desc".to_string()),
+            working_directory: "C:/work".to_string(),
+            claude_args: vec!["--model".to_string(), "opus".to_string()],
+            env_vars: env,
+            is_default: true,
+        }
+    }
+
+    #[test]
+    fn config_profile_serde_round_trips() {
+        let p = sample_profile();
+        let json = serde_json::to_string(&p).unwrap();
+        let back: ConfigProfile = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(back.id, p.id);
+        assert_eq!(back.name, p.name);
+        assert_eq!(back.description, p.description);
+        assert_eq!(back.working_directory, p.working_directory);
+        assert_eq!(back.claude_args, p.claude_args);
+        assert_eq!(back.env_vars, p.env_vars);
+        assert_eq!(back.is_default, p.is_default);
+    }
+
+    #[test]
+    fn config_profile_round_trips_when_optional_fields_are_empty() {
+        let p = ConfigProfile {
+            id: "p1".to_string(),
+            name: "min".to_string(),
+            description: None,
+            working_directory: String::new(),
+            claude_args: vec![],
+            env_vars: HashMap::new(),
+            is_default: false,
+        };
+        let json = serde_json::to_string(&p).unwrap();
+        let back: ConfigProfile = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(back.description, None);
+        assert!(back.claude_args.is_empty());
+        assert!(back.env_vars.is_empty());
+    }
+
+    #[test]
+    fn default_hints_have_at_least_one_category_and_no_blank_entries() {
+        let categories = get_default_hints();
+        assert!(!categories.is_empty(), "expected at least one category");
+
+        for cat in &categories {
+            assert!(!cat.name.is_empty(), "category name is blank");
+            assert!(!cat.icon.is_empty(), "category icon is blank");
+            assert!(!cat.hints.is_empty(), "category {} has no hints", cat.name);
+            for hint in &cat.hints {
+                assert!(!hint.title.is_empty(), "hint title in {} is blank", cat.name);
+                assert!(!hint.command.is_empty(), "hint command in {} is blank", cat.name);
+                assert!(
+                    !hint.description.is_empty(),
+                    "hint description in {} is blank",
+                    cat.name
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn default_hints_lead_with_top_10_commands_category() {
+        // The UI surfaces categories in order; "Top 10 Commands" must come
+        // first so the most common prompts are visible above the fold.
+        let categories = get_default_hints();
+        assert_eq!(categories[0].name, "Top 10 Commands");
+        assert_eq!(categories[0].hints.len(), 10);
+    }
+}

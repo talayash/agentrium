@@ -260,6 +260,48 @@ claude-terminal/
 
 ## Troubleshooting
 
+### Security warnings on first launch
+
+The installers are signed with code-signing certificates, but new releases may
+still trigger OS-level warnings until trust reputation accumulates. The app is
+not actually damaged or unsafe — these are platform-level checks against
+unrecognized binaries.
+
+#### Windows — "Windows protected your PC" (SmartScreen)
+
+Windows SmartScreen blocks executables downloaded from the internet until they
+build up reputation, even when correctly signed.
+
+1. When the blue SmartScreen dialog appears, click **More info**.
+2. Click **Run anyway**.
+
+If you also see a yellow "Unknown publisher" UAC prompt, the installer was
+likely downloaded from an older release before code signing was enabled — grab
+the latest installer from the
+[Releases page](https://github.com/talayash/claude-terminal/releases/latest).
+
+#### macOS — "ClaudeTerminal is damaged and can't be opened"
+
+This message is misleading: the app is intact, but the macOS `.dmg` is not yet
+notarized through Apple's notary service, so Gatekeeper rejects it after the
+browser tags the download with a quarantine attribute. Remove the attribute
+from Terminal:
+
+```bash
+# Before opening the DMG
+xattr -d com.apple.quarantine ~/Downloads/ClaudeTerminal_*.dmg
+
+# Or, if you've already dragged the app to /Applications
+xattr -cr /Applications/ClaudeTerminal.app
+```
+
+Then open the app normally. The right-click → **Open** workaround does not
+work for the "damaged" variant of the error — only `xattr` does.
+
+> Proper Apple notarization is tracked in
+> [#25](https://github.com/talayash/claude-terminal/issues/25); once it lands,
+> these steps will no longer be required on macOS.
+
 ### Claude Code not detected
 
 1. Ensure Node.js is installed: `node --version`

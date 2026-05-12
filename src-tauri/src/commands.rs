@@ -1090,7 +1090,19 @@ pub async fn get_worktree_info(
     path: String,
 ) -> Result<WorktreeDetectResult, String> {
     wrap_cmd("get_worktree_info", async move {
-        validate_path_is_trusted(&state, &path).await?;
+        // This is a "tell me about this path" lookup. If the path isn't a
+        // tracked workspace (e.g. user navigated outside the file tree),
+        // return the same empty shape we use for "not a git repo" instead of
+        // erroring — this isn't a bug worth reporting to telemetry.
+        if validate_path_is_trusted(&state, &path).await.is_err() {
+            return Ok(WorktreeDetectResult {
+                is_git_repo: false,
+                is_worktree: false,
+                main_repo_path: None,
+                current_branch: None,
+                worktree_root: None,
+            });
+        }
 
         // Check if inside a git work tree
         let inside_wt = shell_command("git", &["rev-parse", "--is-inside-work-tree"])
@@ -1481,7 +1493,14 @@ pub async fn git_list_stashes(
         validate_path_is_trusted(&state, &path).await?;
         // Format: "<ref>\x1f<subject>" — \x1f (unit separator) is safe against
         // colons/spaces in the subject.
-        let out = run_git(&path, &["stash", "list", "--format=%gd\x1f%s"])?;
+        // A non-git terminal cwd is a valid state for the stash panel to query —
+        // treat git's "not a git repository" as an empty list, same shape as
+        // get_worktree_info uses for non-repo paths.
+        let out = match run_git(&path, &["stash", "list", "--format=%gd\x1f%s"]) {
+            Ok(out) => out,
+            Err(e) if e.contains("not a git repository") => return Ok(Vec::new()),
+            Err(e) => return Err(e),
+        };
         let mut entries = Vec::new();
         for line in out.lines() {
             let mut parts = line.splitn(2, '\x1f');
@@ -3151,8 +3170,10 @@ pub async fn create_shell_terminal(
     cwd: String,
 ) -> Result<crate::terminal::TerminalConfig, String> {
     wrap_cmd("create_shell_terminal", async move {
-        validate_path_is_trusted(&state, &cwd).await?;
-
+        // Mirror create_terminal: trust the user-supplied cwd. The trust check
+        // exists to prevent the renderer from probing arbitrary paths via git
+        // commands, but spawning a shell IS the user's explicit action and the
+        // shell has full FS access once spawned anyway.
         let (tx, mut rx) = mpsc::channel::<(String, Vec<u8>)>(1000);
 
         let config = {
@@ -3299,7 +3320,12 @@ pub async fn list_directory(
     path: String,
 ) -> Result<Vec<DirEntryInfo>, String> {
     wrap_cmd("list_directory", async move {
-        validate_path_is_trusted(&state, &path).await?;
+        // Untrusted paths return an empty listing rather than an error: the
+        // file tree shouldn't be able to show contents outside a workspace,
+        // but a stray request isn't a bug worth telemetry-reporting.
+        if validate_path_is_trusted(&state, &path).await.is_err() {
+            return Ok(Vec::new());
+        }
 
         let mut entries: Vec<DirEntryInfo> = Vec::new();
         let read_dir = std::fs::read_dir(&path).map_err(|e| format!("Failed to read directory: {}", e))?;
