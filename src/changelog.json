@@ -1,7 +1,7 @@
 [
   {
     "version": "1.21.0",
-    "date": "2026-05-10",
+    "date": "2026-05-12",
     "features": [
       { "title": "Paste as File (Ctrl+Shift+V)", "description": "New right-side drawer captures large pastes (logs, JSON, stack traces) into a file under .claudeterminal/pastes/ and types a Claude Code @mention so the file is auto-attached to your next prompt. Auto-creates a .gitignore so paste artifacts never leak into your repo." },
       { "title": "Auto-detect large pastes", "description": "When you paste something big straight into a terminal, a non-blocking toast offers Save & Reference / Paste anyway / Don't ask again. Threshold and prompt template are configurable in Settings → Pastes." },
