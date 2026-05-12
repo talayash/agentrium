@@ -14,6 +14,7 @@ import { WorkspaceModal } from './components/WorkspaceModal';
 import { WorktreeModal } from './components/WorktreeModal';
 import { SessionHistory } from './components/SessionHistory';
 import { SnippetsModal } from './components/SnippetsModal';
+import { PasteAsFileDrawer } from './components/PasteAsFileDrawer';
 import { CommandPalette } from './components/CommandPalette';
 import { SetupWizard } from './components/SetupWizard';
 import { AutoUpdater } from './components/AutoUpdater';
@@ -442,6 +443,7 @@ function App() {
           <AnimatePresence>
             {globalSearchOpen && <GlobalSearchModal />}
           </AnimatePresence>
+          <PasteAsFileDrawer />
         </>
       )}
 

@@ -311,6 +311,12 @@ describe('appStore — persist partialize', () => {
     'repositoriesHeightRatio',
     'orchestrationOpen',
     'lastSeenVersion',
+    'pasteAutoDetectEnabled',
+    'pasteAutoDetectThresholdBytes',
+    'pasteAutoDetectThresholdLines',
+    'pastePromptTemplate',
+    'pasteRetention',
+    'pasteRetentionDays',
   ].sort();
 
   it('persists exactly the allow-listed keys, and no transient ones', () => {

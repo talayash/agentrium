@@ -472,7 +472,7 @@ dependencies = [
 
 [[package]]
 name = "claude-terminal"
-version = "1.20.9"
+version = "1.21.0"
 dependencies = [
  "chrono",
  "directories",
@@ -494,6 +494,7 @@ dependencies = [
  "tauri-plugin-shell",
  "tauri-plugin-store",
  "tauri-plugin-updater",
+ "tempfile",
  "tokio",
  "url",
  "uuid",

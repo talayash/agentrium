@@ -201,6 +201,20 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       try { await invoke('close_terminal', { id: childId }); } catch { /* already gone */ }
     }
 
+    // Best-effort paste cleanup BEFORE close_terminal — the backend resolves
+    // terminal_id → cwd via the still-alive TerminalManager. Dynamic-import
+    // to avoid an appStore↔terminalStore import cycle.
+    try {
+      const { useAppStore } = await import('./appStore');
+      const { usePasteStore } = await import('./pasteStore');
+      if (useAppStore.getState().pasteRetention === 'close') {
+        await invoke('purge_pastes', { terminalId: id }).catch(() => {});
+      }
+      usePasteStore.getState().clearForTerminal(id);
+    } catch {
+      // ignore — cleanup is best-effort
+    }
+
     await invoke('close_terminal', { id });
 
     set((state) => {

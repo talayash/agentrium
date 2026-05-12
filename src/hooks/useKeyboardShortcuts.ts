@@ -62,6 +62,20 @@ export function useKeyboardShortcuts() {
         useAppStore.getState().openSnippetsModal();
       }
 
+      // Paste as file: Ctrl+Shift+V
+      if (ctrl && shift && e.key === 'V') {
+        e.preventDefault();
+        const activeId = activeIdRef.current;
+        (async () => {
+          let clipboardText = '';
+          try { clipboardText = await navigator.clipboard.readText(); } catch { /* ignore */ }
+          useAppStore.getState().openPasteDrawer({
+            content: clipboardText,
+            targetTerminalId: activeId,
+          });
+        })();
+      }
+
       // Split View: Ctrl+\
       if (ctrl && e.key === '\\') {
         e.preventDefault();

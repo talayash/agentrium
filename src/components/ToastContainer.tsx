@@ -38,17 +38,32 @@ const COLOR_MAP: Record<ToastType, { icon: string; bar: string; tint: string; ri
   },
 };
 
-function ToastItem({ id, type, title, message, duration }: {
+function actionClasses(a: import('../store/toastStore').ToastAction): string {
+  const variant: 'primary' | 'neutral' | 'danger' = a.variant ?? (a.primary ? 'primary' : 'neutral');
+  switch (variant) {
+    case 'primary':
+      return 'bg-accent-primary text-white hover:bg-accent-primary/90 shadow-[0_2px_6px_rgba(0,0,0,0.3)]';
+    case 'danger':
+      return 'bg-warning/15 text-warning ring-1 ring-warning/40 hover:bg-warning/25';
+    case 'neutral':
+    default:
+      return 'bg-white/[0.06] text-text-primary ring-1 ring-white/10 hover:bg-white/[0.12]';
+  }
+}
+
+function ToastItem({ id, type, title, message, duration, actions }: {
   id: string;
   type: ToastType;
   title: string;
   message?: string;
   duration: number;
+  actions?: import('../store/toastStore').ToastAction[];
 }) {
   const removeToast = useToastStore((s) => s.removeToast);
   const progressRef = useRef<HTMLDivElement>(null);
   const Icon = ICON_MAP[type];
   const colors = COLOR_MAP[type];
+  const hasActions = !!actions && actions.length > 0;
 
   useEffect(() => {
     const el = progressRef.current;
@@ -67,32 +82,51 @@ function ToastItem({ id, type, title, message, duration }: {
       animate={{ opacity: 1, x: 0, scale: 1 }}
       exit={{ opacity: 0, x: 80, scale: 0.95 }}
       transition={{ duration: 0.2, ease: 'easeOut' }}
-      className={`relative overflow-hidden rounded-lg bg-elevation-3 ring-1 ${colors.ring} shadow-[0_8px_28px_rgba(0,0,0,0.6)] backdrop-blur-xl w-[320px] pointer-events-auto isolate`}
+      className={`relative overflow-hidden rounded-lg bg-elevation-3 ring-1 ${colors.ring} shadow-[0_8px_28px_rgba(0,0,0,0.6)] backdrop-blur-xl pointer-events-auto isolate ${
+        hasActions ? 'w-[420px]' : 'w-[320px]'
+      }`}
     >
       {/* Colored tint layer — sits above the opaque base so the card stays opaque */}
       <div className={`absolute inset-0 pointer-events-none ${colors.tint}`} />
-      {/* Left status accent bar */}
-      <div className={`absolute left-0 top-0 bottom-0 w-[3px] ${colors.bar}`} />
+      {/* Left status accent bar — thicker when the toast has actions so it
+          reads as a decision card, not a passing notification */}
+      <div className={`absolute left-0 top-0 bottom-0 ${hasActions ? 'w-[5px]' : 'w-[3px]'} ${colors.bar}`} />
 
       {/* Content */}
-      <div className="relative flex items-start gap-2.5 px-3 py-2.5 pl-4">
-        <Icon size={16} className={`${colors.icon} mt-0.5 shrink-0`} />
-        <div className="flex-1 min-w-0">
-          <p className="text-text-primary text-[12px] font-medium leading-tight">
-            {title}
-          </p>
-          {message && (
-            <p className="text-text-secondary text-[11px] mt-0.5 leading-snug">
-              {message}
+      <div className={`relative flex flex-col ${hasActions ? 'gap-2.5 px-4 py-3 pl-5' : 'gap-1.5 px-3 py-2.5 pl-4'}`}>
+        <div className={`flex items-start ${hasActions ? 'gap-3' : 'gap-2.5'}`}>
+          <Icon size={hasActions ? 20 : 16} className={`${colors.icon} ${hasActions ? 'mt-0.5' : 'mt-0.5'} shrink-0`} />
+          <div className="flex-1 min-w-0">
+            <p className={`text-text-primary font-semibold leading-tight ${hasActions ? 'text-[13px]' : 'text-[12px]'}`}>
+              {title}
             </p>
-          )}
+            {message && (
+              <p className={`text-text-secondary mt-1 leading-snug ${hasActions ? 'text-[12px]' : 'text-[11px] mt-0.5'}`}>
+                {message}
+              </p>
+            )}
+          </div>
+          <button
+            onClick={() => removeToast(id)}
+            className="text-text-tertiary hover:text-text-secondary transition-colors shrink-0 mt-0.5"
+            aria-label="Dismiss"
+          >
+            <X size={13} />
+          </button>
         </div>
-        <button
-          onClick={() => removeToast(id)}
-          className="text-text-tertiary hover:text-text-secondary transition-colors shrink-0 mt-0.5"
-        >
-          <X size={13} />
-        </button>
+        {hasActions && (
+          <div className="flex flex-wrap gap-2 mt-0.5">
+            {actions!.map((a, i) => (
+              <button
+                key={i}
+                onClick={() => { a.onClick(); removeToast(id); }}
+                className={`text-[12px] font-medium px-3 py-1.5 rounded-md transition-colors ${actionClasses(a)}`}
+              >
+                {a.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Progress bar */}
