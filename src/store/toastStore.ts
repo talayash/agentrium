@@ -5,6 +5,11 @@ export type ToastType = 'success' | 'error' | 'warning' | 'info';
 export interface ToastAction {
   label: string;
   onClick: () => void;
+  /** Visual treatment. `primary` is recommended action (solid accent),
+   * `neutral` is a regular alternative, `danger` is destructive/disabling
+   * (amber tint). Defaults to `neutral`. The legacy `primary: true` flag
+   * is still honored for backwards compatibility. */
+  variant?: 'primary' | 'neutral' | 'danger';
   primary?: boolean;
 }
 

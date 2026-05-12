@@ -236,15 +236,17 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
       }
 
       // Suppress forwarding to PTY; offer the choice via a toast with actions.
-      toast.info(
+      // `warning` (amber) reads as "attention needed" — louder than info blue,
+      // which the user said felt easy to miss.
+      toast.warning(
         'Large paste detected',
-        `${(bytes / 1024).toFixed(1)} KB · ${lines} lines`,
+        `${(bytes / 1024).toFixed(1)} KB · ${lines} lines — pasting this directly into Claude Code can hang the terminal. Save it as a file and reference it instead?`,
         {
-          duration: 8000,
+          duration: 15000,
           actions: [
             {
               label: 'Save & Reference',
-              primary: true,
+              variant: 'primary',
               onClick: () => {
                 useAppStore.getState().openPasteDrawer({
                   content: data,
@@ -254,6 +256,7 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
             },
             {
               label: 'Paste anyway',
+              variant: 'neutral',
               onClick: () => {
                 bypassDetectOnce = true;
                 writeToTerminal(terminalId, data).catch((err) => {
@@ -263,6 +266,7 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
             },
             {
               label: "Don't ask again",
+              variant: 'danger',
               onClick: () => {
                 useAppStore.getState().setPasteAutoDetectEnabled(false);
                 writeToTerminal(terminalId, data).catch((err) => {
