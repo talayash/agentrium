@@ -242,4 +242,89 @@ mod tests {
             ("c.txt".into(), id2),
         ]);
     }
+
+    #[test]
+    fn rejects_empty_or_whitespace_name() {
+        let d = db();
+        assert!(create_changelist(d.conn(), "/r", "").is_err());
+        assert!(create_changelist(d.conn(), "/r", "   ").is_err());
+        assert!(create_changelist(d.conn(), "/r", "\t\n").is_err());
+    }
+
+    #[test]
+    fn rejects_overlong_name() {
+        let d = db();
+        let too_long = "x".repeat(81);
+        let err = create_changelist(d.conn(), "/r", &too_long).unwrap_err();
+        assert!(err.contains("<= 80"), "expected length error, got: {}", err);
+    }
+
+    #[test]
+    fn rename_to_existing_name_fails() {
+        let d = db();
+        create_changelist(d.conn(), "/r", "alpha").unwrap();
+        let id_b = create_changelist(d.conn(), "/r", "beta").unwrap();
+        let err = rename_changelist(d.conn(), id_b, "alpha").unwrap_err();
+        assert!(err.contains("already exists"), "expected uniqueness error, got: {}", err);
+    }
+
+    #[test]
+    fn rename_unknown_id_returns_error() {
+        let d = db();
+        let err = rename_changelist(d.conn(), 9999, "anything").unwrap_err();
+        assert!(err.contains("not found"));
+    }
+
+    #[test]
+    fn delete_unknown_id_returns_error() {
+        let d = db();
+        let err = delete_changelist(d.conn(), 9999).unwrap_err();
+        assert!(err.contains("not found"));
+    }
+
+    #[test]
+    fn assign_with_empty_files_list_is_noop() {
+        let d = db();
+        let id = create_changelist(d.conn(), "/r", "x").unwrap();
+        assign_files_to_changelist(d.conn(), "/r", &[], Some(id)).unwrap();
+        let count: i64 = d
+            .conn()
+            .query_row(
+                "SELECT COUNT(*) FROM changelist_files WHERE repo_path = '/r'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn assign_upsert_moves_file_between_lists() {
+        let d = db();
+        let id1 = create_changelist(d.conn(), "/r", "first").unwrap();
+        let id2 = create_changelist(d.conn(), "/r", "second").unwrap();
+
+        assign_files_to_changelist(d.conn(), "/r", &["a.txt".into()], Some(id1)).unwrap();
+        let after1: Vec<(String, i64)> = get_changelist_assignments(d.conn(), "/r").unwrap();
+        assert_eq!(after1, vec![("a.txt".into(), id1)]);
+
+        // Reassigning the same file moves it; no duplicate row.
+        assign_files_to_changelist(d.conn(), "/r", &["a.txt".into()], Some(id2)).unwrap();
+        let after2: Vec<(String, i64)> = get_changelist_assignments(d.conn(), "/r").unwrap();
+        assert_eq!(after2, vec![("a.txt".into(), id2)]);
+    }
+
+    #[test]
+    fn worktrees_have_independent_changelists() {
+        let d = db();
+        let main_id = create_changelist(d.conn(), "/main", "feature").unwrap();
+        let wt_id = create_changelist(d.conn(), "/worktree", "feature").unwrap();
+        assert_ne!(main_id, wt_id);
+
+        let main_lists = list_changelists(d.conn(), "/main").unwrap();
+        let wt_lists = list_changelists(d.conn(), "/worktree").unwrap();
+        // Each repo sees: Default + its own "feature".
+        assert_eq!(main_lists.len(), 2);
+        assert_eq!(wt_lists.len(), 2);
+    }
 }
