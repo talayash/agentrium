@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.22.0",
+    "date": "2026-05-14",
+    "features": [
+      { "title": "New Settings panel (Ctrl+,)", "description": "Replaced the narrow modal with a categorized window: Appearance & Behavior, Editor, Terminal, Version Control, Claude Code, Tools, Privacy & About. Live search filters across all settings. New keys: theme mode (dark/light/auto), UI density (compact/comfortable/spacious), accent color picker, UI font scale, reduce motion, notification sound + DND hours, session auto-save interval, confirm-on-close, Monaco editor prefs (tab size / word wrap / minimap / font), terminal shell override + copy-on-select + paste binding, git commit-message template + default auto-stage + default merge strategy, Claude default model + binary path override." },
+      { "title": "Changelists in File Changes", "description": "IntelliJ-style local file grouping. Create / rename / delete named changelists per repo, move files via right-click, and Stage all from a list with one click. Mappings persist across commits (sticky). Backed by two new SQLite tables — additive, no migration required." },
+      { "title": "Streamlined sidebar — Explorer only", "description": "Removed the terminal list and Tools footer from the sidebar; the file tree now owns the full height. Terminals are still managed via the tab strip and the new title-bar Recent Terminals dropdown (Layers icon)." },
+      { "title": "Tools moved to title bar", "description": "Workspaces, Snippets, Session History, Session Timeline, Claude Config, Memory Editor, and Manage Profiles are now in a single Tools dropdown (wrench icon) in the title bar. Same modals — fewer clicks." },
+      { "title": "Live working indicator on tabs", "description": "A pulsing dot and a shimmering underline tell you which tab is actively producing output. Output-activity based — language-agnostic and version-proof. Respects Reduce motion in Settings." }
+    ]
+  },
+  {
     "version": "1.21.0",
     "date": "2026-05-12",
     "features": [
