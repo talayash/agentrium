@@ -4,7 +4,7 @@
 
 **ClaudeTerminal** is a cross-platform desktop application (Windows and macOS) for managing multiple Claude Code CLI terminal instances from a unified interface. Built with Tauri 2.x (Rust backend) and React 18 (TypeScript frontend), it provides tabbed and grid views of parallel Claude Code sessions with PTY-based terminal emulation. The release workflow produces NSIS/MSI installers for Windows and `.dmg`/`.app` bundles for both Apple Silicon and Intel Macs.
 
-Current version: **1.21.1**
+Current version: **1.21.2**
 
 ## Tech Stack
 
