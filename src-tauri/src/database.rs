@@ -103,13 +103,36 @@ impl Database {
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS changelists (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                repo_path TEXT NOT NULL,
+                name TEXT NOT NULL,
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                UNIQUE(repo_path, name)
+            );
+
+            CREATE TABLE IF NOT EXISTS changelist_files (
+                repo_path TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                changelist_id INTEGER NOT NULL REFERENCES changelists(id) ON DELETE CASCADE,
+                PRIMARY KEY (repo_path, file_path)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_changelist_files_repo ON changelist_files(repo_path);
+            CREATE INDEX IF NOT EXISTS idx_changelist_files_list ON changelist_files(changelist_id);
             ",
         )
         .map_err(|e| e.to_string())
     }
 
+    pub(crate) fn conn(&self) -> &Connection {
+        &self.conn
+    }
+
     #[cfg(test)]
-    fn new_in_memory() -> Result<Self, String> {
+    pub(crate) fn new_in_memory() -> Result<Self, String> {
         let conn = Connection::open_in_memory().map_err(|e| e.to_string())?;
         Self::init_schema(&conn)?;
         Ok(Self { conn })
