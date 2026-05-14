@@ -472,7 +472,7 @@ dependencies = [
 
 [[package]]
 name = "claude-terminal"
-version = "1.21.0"
+version = "1.21.1"
 dependencies = [
  "chrono",
  "directories",
