@@ -135,28 +135,6 @@ jobs:
           # AZURE_TENANT_ID inherited from job-level env. sign-windows.ps1 no-ops when TRUSTED_SIGNING_ENABLED is unset.
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          # Apple code signing + notarization. tauri-action / tauri bundler reads
-          # these natively and skips signing when they are empty, so leaving any
-          # of the secrets unset is a safe no-op — the build still produces an
-          # unsigned .app/.dmg. To enable signing, populate all of:
-          #   APPLE_CERTIFICATE                  base64-encoded .p12
-          #   APPLE_CERTIFICATE_PASSWORD         .p12 password
-          #   APPLE_SIGNING_IDENTITY             e.g. "Developer ID Application: Acme (TEAMID)"
-          # And for notarization (App Store Connect API key — preferred):
-          #   APPLE_API_ISSUER                   App Store Connect issuer UUID
-          #   APPLE_API_KEY                      key ID (e.g. ABCD1234)
-          #   APPLE_API_KEY_PATH                 path to the .p8 private key file
-          # OR (legacy Apple ID auth):
-          #   APPLE_ID, APPLE_PASSWORD (app-specific), APPLE_TEAM_ID
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
-          APPLE_API_KEY_PATH: ${{ secrets.APPLE_API_KEY_PATH }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           releaseId: ${{ needs.create-release.outputs.release_id }}
           updaterJsonKeepUniversal: true
