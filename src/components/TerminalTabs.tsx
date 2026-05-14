@@ -13,6 +13,8 @@ import { ScriptsMenu } from './ScriptsMenu';
 import { ScriptChildPane } from './ScriptChildPane';
 import { BottomTerminalPane } from './BottomTerminalPane';
 import { getDragData, isTerminalDrag } from '../utils/dragDrop';
+import { useNowTick } from '../hooks/useNowTick';
+import { getLastOutputAt } from '../lib/terminalActivity';
 
 function fileBasename(p: string): string {
   const trimmed = p.replace(/[\\/]+$/, '');
@@ -25,6 +27,7 @@ const isMac = navigator.platform.toUpperCase().includes('MAC');
 export function TerminalTabs() {
   const { terminals, activeTerminalId, setActiveTerminal, closeTerminal, unreadTerminalIds, gitInfoCache, reorderTerminals, scriptChildren, closeScript } = useTerminalStore();
   const { openNewTerminalModal, gridMode, toggleGridMode, addToGrid, gridTerminalIds, splitMode, splitTerminalIds, splitOrientation, splitRatio, setSplitOrientation, setSplitRatio, clearSplit, setSplitTerminals, setSplitMode, openFiles, activeFilePath, setActiveFilePath, closeFileTab, showFileTree } = useAppStore();
+  const now = useNowTick();
 
   // Selecting a terminal clears the file-tab focus (so terminal view shows),
   // selecting a file clears the terminal focus-visual intent.
@@ -211,6 +214,9 @@ export function TerminalTabs() {
               const model = instance?.model;
               const isWorktree = instance?.isWorktree;
               const loopInfo = instance?.loopInfo;
+              const lastOutputAt = getLastOutputAt(terminal.id);
+              const isWorking = lastOutputAt != null && now - lastOutputAt < 2000;
+              const isActiveTab = activeTerminalId === terminal.id && !activeFilePath;
 
               return (
               <Reorder.Item
@@ -236,7 +242,7 @@ export function TerminalTabs() {
                       : activeTerminalId === terminal.id && !activeFilePath
                         ? 'bg-elevation-0 text-text-primary'
                         : 'hover:bg-white/[0.045] text-text-secondary'
-                  }`}
+                  } ${isWorking && !isActiveTab ? 'ct-working-tab' : ''}`}
                 >
                   {/* IntelliJ-style bottom underline for active tab */}
                   {((activeTerminalId === terminal.id && !activeFilePath) || splitDropTargetId === terminal.id) && (
@@ -247,6 +253,12 @@ export function TerminalTabs() {
                   )}
                   {unreadTerminalIds.has(terminal.id) && activeTerminalId !== terminal.id && (
                     <div className="w-1.5 h-1.5 rounded-full bg-accent-primary flex-shrink-0" />
+                  )}
+                  {isWorking && (
+                    <div
+                      className="ct-working-dot w-2 h-2 rounded-full bg-success flex-shrink-0 text-success"
+                      title="Claude is working&hellip;"
+                    />
                   )}
                   {terminal.color_tag && (
                     <div className={`w-2 h-2 rounded-full ${terminal.color_tag} flex-shrink-0`} />

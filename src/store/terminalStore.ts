@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import { Terminal } from '@xterm/xterm';
 import type { WorktreeDetectResult } from '../types/git';
+import { markTerminalActive, clearTerminalActivity } from '../lib/terminalActivity';
 
 export interface TerminalConfig {
   id: string;
@@ -235,6 +236,11 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       const newUnread = new Set(state.unreadTerminalIds);
       newUnread.delete(id);
 
+      // Clear activity tracking so a stale lastOutputAt can't pulse a
+      // re-created terminal that happens to reuse the same id.
+      clearTerminalActivity(id);
+      if (childId) clearTerminalActivity(childId);
+
       const newGitCache = new Map(state.gitInfoCache);
       newGitCache.delete(id);
 
@@ -329,6 +335,9 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
     if (instance?.xterm) {
       instance.xterm.write(data);
     }
+    // Active-work indicator: record the timestamp in a plain Map (no Zustand
+    // set() — that would defeat the streaming-rate optimization below).
+    markTerminalActive(id);
     // Short-circuit — if the terminal is already marked unread, skip the
     // Set clone + set() call. At streaming rates this used to fire thousands
     // of times per second and re-render every subscriber.
