@@ -7,7 +7,7 @@ import { Sidebar } from './components/Sidebar';
 import { TerminalTabs } from './components/TerminalTabs';
 import { HintsPanel } from './components/HintsPanel';
 import { FileChangesPanel } from './components/FileChangesPanel';
-import { SettingsModal } from './components/SettingsModal';
+import { SettingsWindow } from './components/settings/SettingsWindow';
 import { ProfileModal } from './components/ProfileModal';
 import { NewTerminalModal } from './components/NewTerminalModal';
 import { WorkspaceModal } from './components/WorkspaceModal';
@@ -448,7 +448,7 @@ function App() {
           <StatusBar />
 
           <AnimatePresence>
-            {settingsOpen && <SettingsModal />}
+            {settingsOpen && <SettingsWindow />}
             {profileModalOpen && <ProfileModal />}
             {newTerminalModalOpen && <NewTerminalModal />}
             {workspaceModalOpen && <WorkspaceModal />}
