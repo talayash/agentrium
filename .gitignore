@@ -44,6 +44,9 @@ coverage/
 *.bak
 .cache/
 
+# Superpowers brainstorming session artifacts
+.superpowers/
+
 # Lock files (optional - uncomment if you want to exclude)
 # package-lock.json
 # yarn.lock
