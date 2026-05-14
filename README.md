@@ -18,7 +18,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/platform-Windows-blue?style=flat-square" alt="Platform">
+  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS-blue?style=flat-square" alt="Platform">
   <img src="https://img.shields.io/badge/version-1.21.1-green?style=flat-square" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-orange?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/Tauri-2.x-purple?style=flat-square" alt="Tauri">
@@ -29,7 +29,7 @@
 
 ## Overview
 
-**ClaudeTerminal** is a sleek, modern Windows desktop application designed to help developers manage multiple [Claude Code](https://docs.anthropic.com/en/docs/claude-code) terminal instances from a unified interface. Built with Tauri and React, it provides a powerful workspace for running parallel Claude Code sessions with custom configurations, real-time monitoring, and intelligent command assistance.
+**ClaudeTerminal** is a sleek, modern cross-platform desktop application (Windows and macOS) designed to help developers manage multiple [Claude Code](https://docs.anthropic.com/en/docs/claude-code) terminal instances from a unified interface. Built with Tauri and React, it provides a powerful workspace for running parallel Claude Code sessions with custom configurations, real-time monitoring, and intelligent command assistance.
 
 ## Screenshots
 
@@ -124,12 +124,16 @@ Before installing ClaudeTerminal, ensure you have:
 
 ### Download
 
-Download the latest release for Windows from the [Releases page](https://github.com/talayash/claude-terminal/releases/latest):
+Download the latest release for your platform from the [Releases page](https://github.com/talayash/claude-terminal/releases/latest):
 
-| Installer Type | Description |
-|---------------|-------------|
-| [ClaudeTerminal_1.21.1_x64-setup.exe](https://github.com/talayash/claude-terminal/releases/latest/download/ClaudeTerminal_1.21.1_x64-setup.exe) | NSIS Installer (Recommended) |
-| [ClaudeTerminal_1.21.1_x64_en-US.msi](https://github.com/talayash/claude-terminal/releases/latest/download/ClaudeTerminal_1.21.1_x64_en-US.msi) | MSI Installer |
+| Platform | Installer | Description |
+|---|---|---|
+| Windows | [ClaudeTerminal_1.21.1_x64-setup.exe](https://github.com/talayash/claude-terminal/releases/latest/download/ClaudeTerminal_1.21.1_x64-setup.exe) | NSIS Installer (Recommended) |
+| Windows | [ClaudeTerminal_1.21.1_x64_en-US.msi](https://github.com/talayash/claude-terminal/releases/latest/download/ClaudeTerminal_1.21.1_x64_en-US.msi) | MSI Installer |
+| macOS (Apple Silicon) | `ClaudeTerminal_1.21.1_aarch64.dmg` | DMG for M1/M2/M3/M4 Macs |
+| macOS (Intel) | `ClaudeTerminal_1.21.1_x64.dmg` | DMG for Intel Macs |
+
+> macOS builds are currently not code-signed/notarized — first launch will require right-click → Open or approval in System Settings → Privacy & Security.
 
 ### First Launch
 
