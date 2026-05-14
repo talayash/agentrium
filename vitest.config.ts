@@ -10,6 +10,7 @@ export default defineConfig({
       ['src/components/**', 'jsdom'],
       ['src/hooks/**', 'jsdom'],
       ['src/store/**', 'jsdom'],
+      ['src/lib/**', 'jsdom'],
     ],
     clearMocks: true,
     restoreMocks: true,
