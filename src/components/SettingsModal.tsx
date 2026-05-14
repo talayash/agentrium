@@ -744,7 +744,7 @@ export function SettingsModal() {
               {[
                 ['New Terminal', `${mod}+Shift+N`],
                 ['Close Terminal', `${mod}+W`],
-                ['Toggle Sidebar', `${mod}+B`],
+                ['Toggle Explorer', `${mod}+B`],
                 ['Command Palette', `${mod}+P`],
                 ['Toggle Hints', 'F1'],
                 ['Switch Tab', `${mod}+Tab`],
