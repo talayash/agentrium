@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, FolderOpen, Terminal, Zap, GitBranch, GitFork, Plus, Loader2, ChevronDown } from 'lucide-react';
+import { X, FolderOpen, Terminal, Zap, GitBranch, GitFork, Plus, Loader2, ChevronDown, Pencil } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
@@ -31,7 +31,7 @@ const TAG_COLORS = [
 ];
 
 export function NewTerminalModal() {
-  const { closeNewTerminalModal, defaultClaudeArgs } = useAppStore();
+  const { closeNewTerminalModal, defaultClaudeArgs, openProfileModal, profileModalOpen } = useAppStore();
   const { terminals, createTerminal, createShellTerminalTab } = useTerminalStore();
 
   const [profiles, setProfiles] = useState<ConfigProfile[]>([]);
@@ -66,6 +66,16 @@ export function NewTerminalModal() {
     loadProfiles();
     loadDefaultDirectory();
   }, []);
+
+  // Reload profiles when the ProfileModal closes — picks up any add/edit/delete
+  // the user just made without forcing them to reopen New Terminal.
+  const prevProfileModalOpen = useRef(profileModalOpen);
+  useEffect(() => {
+    if (prevProfileModalOpen.current && !profileModalOpen) {
+      loadProfiles();
+    }
+    prevProfileModalOpen.current = profileModalOpen;
+  }, [profileModalOpen]);
 
   useEffect(() => {
     // When profile is selected, update form with profile settings
@@ -351,11 +361,18 @@ export function NewTerminalModal() {
           </div>
 
           {/* Profile Selection */}
-          {!plainShell && profiles.length > 0 && (
+          {!plainShell && (
             <div>
-              <label className="block text-text-secondary text-[12px] mb-1.5">
-                Profile
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-text-secondary text-[12px]">Profile</label>
+                <button
+                  onClick={() => openProfileModal()}
+                  className="flex items-center gap-1 text-[11px] text-accent-primary hover:text-accent-secondary transition-colors"
+                >
+                  <Plus size={12} />
+                  Add Profile
+                </button>
+              </div>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   onClick={() => setSelectedProfileId(null)}
@@ -369,20 +386,34 @@ export function NewTerminalModal() {
                   <p className="text-text-tertiary text-[11px]">Custom settings</p>
                 </button>
                 {profiles.map((profile) => (
-                  <button
+                  <div
                     key={profile.id}
-                    onClick={() => setSelectedProfileId(profile.id)}
-                    className={`p-2.5 rounded-md text-left transition-colors ${
+                    className={`relative group rounded-md transition-colors ${
                       selectedProfileId === profile.id
                         ? 'bg-accent-primary/10 ring-1 ring-accent-primary/30'
                         : 'bg-bg-primary ring-1 ring-border hover:ring-border-light'
                     }`}
                   >
-                    <p className="text-text-primary text-[12px] font-medium truncate">{profile.name}</p>
-                    <p className="text-text-tertiary text-[11px] truncate">
-                      {profile.description || profile.working_directory || 'No description'}
-                    </p>
-                  </button>
+                    <button
+                      onClick={() => setSelectedProfileId(profile.id)}
+                      className="w-full p-2.5 pr-8 text-left"
+                    >
+                      <p className="text-text-primary text-[12px] font-medium truncate">{profile.name}</p>
+                      <p className="text-text-tertiary text-[11px] truncate">
+                        {profile.description || profile.working_directory || 'No description'}
+                      </p>
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openProfileModal(profile.id);
+                      }}
+                      title="Edit profile"
+                      className="absolute top-1.5 right-1.5 p-1 rounded text-text-tertiary hover:text-text-primary hover:bg-white/[0.06] opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <Pencil size={11} />
+                    </button>
+                  </div>
                 ))}
               </div>
             </div>
