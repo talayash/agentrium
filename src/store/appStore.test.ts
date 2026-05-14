@@ -68,6 +68,48 @@ function resetAppStore() {
     memoryEditorOpen: false,
     whatsNewOpen: false,
     lastSeenVersion: null,
+    pasteDrawerOpen: false,
+    pasteDrawerSeed: null,
+    pasteAutoDetectEnabled: true,
+    pasteAutoDetectThresholdBytes: 4096,
+    pasteAutoDetectThresholdLines: 50,
+    pastePromptTemplate: 'Please look at @{path}',
+    pasteRetention: 'close',
+    pasteRetentionDays: 7,
+
+    // Appearance & Behavior (NEW v1.22.0)
+    themeMode: 'dark',
+    uiDensity: 'comfortable',
+    accentColorHex: '#3574F0',
+    uiFontScale: 1.0,
+    uiReduceMotion: false,
+    notificationSoundEnabled: false,
+    dndEnabled: false,
+    dndStart: '22:00',
+    dndEnd: '08:00',
+    sessionAutoSaveIntervalSec: 30,
+    confirmOnAppClose: true,
+    // Editor (NEW v1.22.0)
+    editorTabSize: 2,
+    editorRenderWhitespace: false,
+    editorWordWrap: true,
+    editorMinimap: false,
+    editorAutoSaveOnBlur: false,
+    editorFontFamily: '"JetBrains Mono", "Cascadia Code", Consolas, monospace',
+    editorFontSize: 13,
+    editorLineHeight: 1.5,
+    // Terminal behavior (NEW v1.22.0)
+    terminalShellPathOverride: '',
+    terminalCopyOnSelect: false,
+    terminalPasteShortcut: 'ctrl+shift+v',
+    // VCS (NEW v1.22.0)
+    vcsCommitMessageTemplate: '',
+    vcsDefaultAutoStage: 'none',
+    vcsDefaultMergeStrategy: 'merge',
+    vcsChangelistsConfirmDelete: true,
+    // Claude (NEW v1.22.0)
+    claudeDefaultModel: null,
+    claudeBinaryPathOverride: '',
   });
 }
 
@@ -317,6 +359,39 @@ describe('appStore — persist partialize', () => {
     'pastePromptTemplate',
     'pasteRetention',
     'pasteRetentionDays',
+    // Appearance & Behavior (NEW v1.22.0)
+    'themeMode',
+    'uiDensity',
+    'accentColorHex',
+    'uiFontScale',
+    'uiReduceMotion',
+    'notificationSoundEnabled',
+    'dndEnabled',
+    'dndStart',
+    'dndEnd',
+    'sessionAutoSaveIntervalSec',
+    'confirmOnAppClose',
+    // Editor (NEW v1.22.0)
+    'editorTabSize',
+    'editorRenderWhitespace',
+    'editorWordWrap',
+    'editorMinimap',
+    'editorAutoSaveOnBlur',
+    'editorFontFamily',
+    'editorFontSize',
+    'editorLineHeight',
+    // Terminal behavior (NEW v1.22.0)
+    'terminalShellPathOverride',
+    'terminalCopyOnSelect',
+    'terminalPasteShortcut',
+    // VCS (NEW v1.22.0)
+    'vcsCommitMessageTemplate',
+    'vcsDefaultAutoStage',
+    'vcsDefaultMergeStrategy',
+    'vcsChangelistsConfirmDelete',
+    // Claude (NEW v1.22.0)
+    'claudeDefaultModel',
+    'claudeBinaryPathOverride',
   ].sort();
 
   it('persists exactly the allow-listed keys, and no transient ones', () => {
@@ -346,5 +421,83 @@ describe('appStore — persist partialize', () => {
     ]) {
       expect(stored).not.toHaveProperty(key);
     }
+  });
+});
+
+describe('appStore — appearance v1.22.0 setters', () => {
+  it('setUiFontScale clamps to 0.85..1.25 with 2-decimal rounding', () => {
+    const { setUiFontScale } = useAppStore.getState();
+    setUiFontScale(0.5);
+    expect(useAppStore.getState().uiFontScale).toBe(0.85);
+    setUiFontScale(2);
+    expect(useAppStore.getState().uiFontScale).toBe(1.25);
+    setUiFontScale(1.075);
+    expect(useAppStore.getState().uiFontScale).toBeCloseTo(1.08, 5);
+  });
+
+  it('setAccentColorHex falls back to default on invalid input', () => {
+    const { setAccentColorHex } = useAppStore.getState();
+    setAccentColorHex('#abc');
+    expect(useAppStore.getState().accentColorHex).toBe('#abc');
+    setAccentColorHex('#ABCDEF');
+    expect(useAppStore.getState().accentColorHex).toBe('#ABCDEF');
+    setAccentColorHex('not a color');
+    expect(useAppStore.getState().accentColorHex).toBe('#3574F0');
+  });
+
+  it('setThemeMode / setUiDensity / setUiReduceMotion set as given', () => {
+    const s = useAppStore.getState();
+    s.setThemeMode('light');
+    expect(useAppStore.getState().themeMode).toBe('light');
+    s.setUiDensity('compact');
+    expect(useAppStore.getState().uiDensity).toBe('compact');
+    s.setUiReduceMotion(true);
+    expect(useAppStore.getState().uiReduceMotion).toBe(true);
+  });
+});
+
+describe('appStore — notifications + session v1.22.0 setters', () => {
+  it('setDndStart / setDndEnd validate HH:mm shape', () => {
+    const s = useAppStore.getState();
+    s.setDndStart('23:30');
+    expect(useAppStore.getState().dndStart).toBe('23:30');
+    s.setDndStart('bogus');
+    expect(useAppStore.getState().dndStart).toBe('22:00');
+    s.setDndEnd('07:15');
+    expect(useAppStore.getState().dndEnd).toBe('07:15');
+  });
+
+  it('setSessionAutoSaveIntervalSec clamps to 10..600', () => {
+    const { setSessionAutoSaveIntervalSec } = useAppStore.getState();
+    setSessionAutoSaveIntervalSec(5);
+    expect(useAppStore.getState().sessionAutoSaveIntervalSec).toBe(10);
+    setSessionAutoSaveIntervalSec(10_000);
+    expect(useAppStore.getState().sessionAutoSaveIntervalSec).toBe(600);
+    setSessionAutoSaveIntervalSec(45.6);
+    expect(useAppStore.getState().sessionAutoSaveIntervalSec).toBe(46);
+  });
+});
+
+describe('appStore — editor v1.22.0 setters', () => {
+  it('setEditorTabSize clamps to 1..8 and rounds', () => {
+    const { setEditorTabSize } = useAppStore.getState();
+    setEditorTabSize(0);
+    expect(useAppStore.getState().editorTabSize).toBe(1);
+    setEditorTabSize(99);
+    expect(useAppStore.getState().editorTabSize).toBe(8);
+    setEditorTabSize(4.6);
+    expect(useAppStore.getState().editorTabSize).toBe(5);
+  });
+
+  it('setEditorFontSize / setEditorLineHeight clamp like the terminal counterparts', () => {
+    const s = useAppStore.getState();
+    s.setEditorFontSize(2);
+    expect(useAppStore.getState().editorFontSize).toBe(8);
+    s.setEditorFontSize(99);
+    expect(useAppStore.getState().editorFontSize).toBe(32);
+    s.setEditorLineHeight(0.5);
+    expect(useAppStore.getState().editorLineHeight).toBe(1.0);
+    s.setEditorLineHeight(5);
+    expect(useAppStore.getState().editorLineHeight).toBe(2.0);
   });
 });
