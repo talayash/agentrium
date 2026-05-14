@@ -5,6 +5,7 @@ import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
 import { toast } from '../store/toastStore';
 import { InlineDiffView } from './InlineDiffView';
+import { ChangelistSection } from './ChangelistSection';
 import type { WorktreeInfo } from '../types/git';
 import { getFileIconUrl } from '../utils/fileIcons';
 
@@ -622,21 +623,12 @@ export function FileChangesPanel() {
             />
           )}
 
-          {hasUnstaged && (
-            <ChangeGroup
-              title="Changes"
-              count={unstagedChanges.length}
-              files={unstagedChanges}
-              staged={false}
-              expandedFile={expandedFile}
-              setExpandedFile={setExpandedFile}
-              activeTerminalId={activeTerminalId}
-              pathOverride={usingSelectedRepo ? selectedRepoPath : null}
-              repoRoot={activePath}
-              stagingPaths={stagingPaths}
+          {hasUnstaged && activePath && (
+            <ChangelistSection
+              repoPath={activePath}
+              unstagedFiles={unstagedChanges}
               onStage={stageFiles}
-              onUnstage={unstageFiles}
-              onBulk={() => stageFiles(unstagedChanges.map((f) => f.path))}
+              refreshTrigger={changesRefreshTrigger}
             />
           )}
         </div>
