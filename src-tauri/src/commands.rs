@@ -487,17 +487,7 @@ pub async fn check_claude_update() -> Result<UpdateCheckResult, String> {
             return Err("Claude Code is not installed".to_string());
         }
 
-        // Get latest version from npm
-        let npm_output = shell_command("npm", &["view", "@anthropic-ai/claude-code", "version"])
-            .output()
-            .map_err(|e| format!("Failed to check latest version: {}", e))?;
-
-        let npm_stdout = String::from_utf8_lossy(&npm_output.stdout);
-        let latest_version = extract_version_line(&npm_stdout);
-
-        if latest_version.is_empty() {
-            return Err("Failed to fetch latest version from npm".to_string());
-        }
+        let latest_version = fetch_latest_claude_version().await?;
 
         // Extract version number from current version string (e.g., "1.0.17 (Claude Code)" -> "1.0.17")
         let current_ver_clean = current_version
@@ -515,6 +505,39 @@ pub async fn check_claude_update() -> Result<UpdateCheckResult, String> {
         })
     })
     .await
+}
+
+/// Fetch `@anthropic-ai/claude-code` latest version directly from the npm
+/// registry. Avoids the npm CLI (slow Node startup, PATH issues on macOS).
+/// Two attempts with a short backoff to ride out transient network blips.
+async fn fetch_latest_claude_version() -> Result<String, String> {
+    #[derive(serde::Deserialize)]
+    struct LatestResponse { version: String }
+
+    const REGISTRY_URL: &str = "https://registry.npmjs.org/@anthropic-ai/claude-code/latest";
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+        .map_err(|e| format!("HTTP client build failed: {}", e))?;
+
+    let mut last_err: Option<String> = None;
+    for attempt in 0..2 {
+        if attempt > 0 {
+            tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+        }
+        match client.get(REGISTRY_URL).header("accept", "application/json").send().await {
+            Ok(resp) if resp.status().is_success() => {
+                match resp.json::<LatestResponse>().await {
+                    Ok(parsed) if !parsed.version.is_empty() => return Ok(parsed.version),
+                    Ok(_) => last_err = Some("npm registry returned empty version".to_string()),
+                    Err(e) => last_err = Some(format!("Parse error from npm registry: {}", e)),
+                }
+            }
+            Ok(resp) => last_err = Some(format!("npm registry returned HTTP {}", resp.status())),
+            Err(e) => last_err = Some(format!("Network error: {}", e)),
+        }
+    }
+    Err(last_err.unwrap_or_else(|| "Failed to fetch latest version from npm".to_string()))
 }
 
 #[command]
