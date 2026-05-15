@@ -136,6 +136,60 @@
   --ij-tab-underline: #3574F0;   /* Active tab underline */
   --ij-divider: #181819;         /* Hard dividers between tool windows / editor */
   --ij-divider-soft: #393B40;    /* Soft dividers inside a panel */
+
+  /* Density tokens — driven by Appearance setting, default = comfortable */
+  --ui-row-py: 6px;
+  --ui-row-px: 8px;
+
+  /* UI font scale (default 1.0, range 0.85..1.25). */
+  --ui-font-scale: 1;
+}
+
+:root[data-density="compact"]     { --ui-row-py: 4px; --ui-row-px: 6px; }
+:root[data-density="comfortable"] { --ui-row-py: 6px; --ui-row-px: 8px; }
+:root[data-density="spacious"]    { --ui-row-py: 8px; --ui-row-px: 10px; }
+
+/* Reduce motion — neutralizes Framer + CSS transitions when opted in. */
+:root[data-reduce-motion="true"] *,
+:root[data-reduce-motion="true"] *::before,
+:root[data-reduce-motion="true"] *::after {
+  animation-duration: 0.001s !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001s !important;
+}
+
+/* Active-work tab indicator keyframes (Phase 5). Reduce-motion neutralizes. */
+@keyframes ct-pulse-dot {
+  0%, 100% { transform: scale(1);    opacity: 1; }
+  50%      { transform: scale(1.35); opacity: 0.55; }
+}
+@keyframes ct-shimmer {
+  0%   { background-position: -120px 0; }
+  100% { background-position:  240px 0; }
+}
+
+.ct-working-dot {
+  animation: ct-pulse-dot 1.4s ease-in-out infinite;
+  box-shadow: 0 0 6px currentColor;
+}
+
+.ct-working-tab { position: relative; }
+.ct-working-tab::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--accent-primary) 30%,
+    var(--accent-secondary) 50%,
+    var(--accent-primary) 70%,
+    transparent 100%
+  );
+  background-size: 200px 2px;
+  background-repeat: no-repeat;
+  animation: ct-shimmer 1.6s linear infinite;
 }
 
 * {

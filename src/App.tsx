@@ -7,7 +7,7 @@ import { Sidebar } from './components/Sidebar';
 import { TerminalTabs } from './components/TerminalTabs';
 import { HintsPanel } from './components/HintsPanel';
 import { FileChangesPanel } from './components/FileChangesPanel';
-import { SettingsModal } from './components/SettingsModal';
+import { SettingsWindow } from './components/settings/SettingsWindow';
 import { ProfileModal } from './components/ProfileModal';
 import { NewTerminalModal } from './components/NewTerminalModal';
 import { WorkspaceModal } from './components/WorkspaceModal';
@@ -31,6 +31,13 @@ import { useTerminalStore } from './store/terminalStore';
 import { toast } from './store/toastStore';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useNotification } from './hooks/useNotification';
+import {
+  applyAccentColor,
+  applyThemeMode,
+  applyDensity,
+  applyReduceMotion,
+  applyUiFontScale,
+} from './lib/accentTheme';
 import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
 import { getVersion } from '@tauri-apps/api/app';
@@ -99,6 +106,20 @@ function App() {
   const { notify } = useNotification();
 
   useKeyboardShortcuts();
+
+  // v1.22.0 — apply theme/density/accent/motion/scale on store change.
+  const themeMode = useAppStore((s) => s.themeMode);
+  const uiDensity = useAppStore((s) => s.uiDensity);
+  const accentColorHex = useAppStore((s) => s.accentColorHex);
+  const uiReduceMotion = useAppStore((s) => s.uiReduceMotion);
+  const uiFontScale = useAppStore((s) => s.uiFontScale);
+  useEffect(() => {
+    applyThemeMode(themeMode);
+    applyDensity(uiDensity);
+    applyAccentColor(accentColorHex);
+    applyReduceMotion(uiReduceMotion);
+    applyUiFontScale(uiFontScale);
+  }, [themeMode, uiDensity, accentColorHex, uiReduceMotion, uiFontScale]);
 
   useEffect(() => {
     // Check if Claude Code is installed on startup
@@ -427,7 +448,7 @@ function App() {
           <StatusBar />
 
           <AnimatePresence>
-            {settingsOpen && <SettingsModal />}
+            {settingsOpen && <SettingsWindow />}
             {profileModalOpen && <ProfileModal />}
             {newTerminalModalOpen && <NewTerminalModal />}
             {workspaceModalOpen && <WorkspaceModal />}

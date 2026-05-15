@@ -11,6 +11,15 @@ export const TERMINAL_SCROLLBACK_PRESETS = [1000, 10000, 50000, 100000] as const
 export const DEFAULT_TERMINAL_FONT_FAMILY = '"JetBrains Mono", "Cascadia Code", "Cascadia Mono", Consolas, "Fira Code", monospace';
 export const DEFAULT_TERMINAL_FONT_SIZE = 14;
 
+// IntelliJ overhaul (v1.22.0) — appearance + behavior settings.
+export type UiDensity = 'compact' | 'comfortable' | 'spacious';
+export type ThemeMode = 'dark' | 'light' | 'auto';
+export type AutoStageMode = 'none' | 'tracked' | 'all';
+export type MergeStrategy = 'merge' | 'rebase' | 'ff-only';
+export const DEFAULT_ACCENT_COLOR = '#3574F0';
+export const DEFAULT_UI_FONT_SCALE = 1.0;
+export const DEFAULT_EDITOR_FONT_FAMILY = '"JetBrains Mono", "Cascadia Code", Consolas, monospace';
+
 export type GridLayout = '1x1' | '1x2' | '2x1' | '2x2' | '1x3' | '3x1' | '2x3' | '3x2' | '2x4' | '4x2';
 
 export type SplitOrientation = 'horizontal' | 'vertical';
@@ -61,6 +70,44 @@ interface AppState {
   terminalScrollback: number;
   terminalTheme: TerminalThemeName;
   terminalBidi: boolean;
+
+  // Appearance & Behavior (NEW v1.22.0)
+  themeMode: ThemeMode;
+  uiDensity: UiDensity;
+  accentColorHex: string;
+  uiFontScale: number;
+  uiReduceMotion: boolean;
+  notificationSoundEnabled: boolean;
+  dndEnabled: boolean;
+  dndStart: string;
+  dndEnd: string;
+  sessionAutoSaveIntervalSec: number;
+  confirmOnAppClose: boolean;
+
+  // Editor (NEW v1.22.0) — Monaco
+  editorTabSize: number;
+  editorRenderWhitespace: boolean;
+  editorWordWrap: boolean;
+  editorMinimap: boolean;
+  editorAutoSaveOnBlur: boolean;
+  editorFontFamily: string;
+  editorFontSize: number;
+  editorLineHeight: number;
+
+  // Terminal behavior (NEW v1.22.0)
+  terminalShellPathOverride: string;
+  terminalCopyOnSelect: boolean;
+  terminalPasteShortcut: 'ctrl+v' | 'ctrl+shift+v';
+
+  // VCS (NEW v1.22.0)
+  vcsCommitMessageTemplate: string;
+  vcsDefaultAutoStage: AutoStageMode;
+  vcsDefaultMergeStrategy: MergeStrategy;
+  vcsChangelistsConfirmDelete: boolean;
+
+  // Claude Code defaults (NEW v1.22.0)
+  claudeDefaultModel: 'opus' | 'sonnet' | 'haiku' | null;
+  claudeBinaryPathOverride: string;
 
   // Changes panel
   changesRefreshTrigger: number;
@@ -167,6 +214,44 @@ interface AppState {
   setTerminalScrollback: (lines: number) => void;
   setTerminalTheme: (theme: TerminalThemeName) => void;
   setTerminalBidi: (enabled: boolean) => void;
+
+  // Appearance & Behavior setters (NEW v1.22.0)
+  setThemeMode: (mode: ThemeMode) => void;
+  setUiDensity: (density: UiDensity) => void;
+  setAccentColorHex: (hex: string) => void;
+  setUiFontScale: (scale: number) => void;
+  setUiReduceMotion: (enabled: boolean) => void;
+  setNotificationSoundEnabled: (enabled: boolean) => void;
+  setDndEnabled: (enabled: boolean) => void;
+  setDndStart: (hhmm: string) => void;
+  setDndEnd: (hhmm: string) => void;
+  setSessionAutoSaveIntervalSec: (sec: number) => void;
+  setConfirmOnAppClose: (enabled: boolean) => void;
+
+  // Editor setters (NEW v1.22.0)
+  setEditorTabSize: (size: number) => void;
+  setEditorRenderWhitespace: (enabled: boolean) => void;
+  setEditorWordWrap: (enabled: boolean) => void;
+  setEditorMinimap: (enabled: boolean) => void;
+  setEditorAutoSaveOnBlur: (enabled: boolean) => void;
+  setEditorFontFamily: (family: string) => void;
+  setEditorFontSize: (size: number) => void;
+  setEditorLineHeight: (height: number) => void;
+
+  // Terminal behavior setters (NEW v1.22.0)
+  setTerminalShellPathOverride: (path: string) => void;
+  setTerminalCopyOnSelect: (enabled: boolean) => void;
+  setTerminalPasteShortcut: (shortcut: 'ctrl+v' | 'ctrl+shift+v') => void;
+
+  // VCS setters (NEW v1.22.0)
+  setVcsCommitMessageTemplate: (template: string) => void;
+  setVcsDefaultAutoStage: (mode: AutoStageMode) => void;
+  setVcsDefaultMergeStrategy: (strategy: MergeStrategy) => void;
+  setVcsChangelistsConfirmDelete: (enabled: boolean) => void;
+
+  // Claude setters (NEW v1.22.0)
+  setClaudeDefaultModel: (model: 'opus' | 'sonnet' | 'haiku' | null) => void;
+  setClaudeBinaryPathOverride: (path: string) => void;
 
   setPinnedRepoPath: (path: string | null) => void;
   openFileTab: (path: string) => Promise<void>;
@@ -314,6 +399,44 @@ export const useAppStore = create<AppState>()(
       terminalTheme: 'dark' as TerminalThemeName,
       terminalBidi: false,
 
+      // Appearance & Behavior defaults (NEW v1.22.0)
+      themeMode: 'dark' as ThemeMode,
+      uiDensity: 'comfortable' as UiDensity,
+      accentColorHex: DEFAULT_ACCENT_COLOR,
+      uiFontScale: DEFAULT_UI_FONT_SCALE,
+      uiReduceMotion: false,
+      notificationSoundEnabled: false,
+      dndEnabled: false,
+      dndStart: '22:00',
+      dndEnd: '08:00',
+      sessionAutoSaveIntervalSec: 30,
+      confirmOnAppClose: true,
+
+      // Editor defaults (NEW v1.22.0)
+      editorTabSize: 2,
+      editorRenderWhitespace: false,
+      editorWordWrap: true,
+      editorMinimap: false,
+      editorAutoSaveOnBlur: false,
+      editorFontFamily: DEFAULT_EDITOR_FONT_FAMILY,
+      editorFontSize: 13,
+      editorLineHeight: 1.5,
+
+      // Terminal behavior defaults (NEW v1.22.0)
+      terminalShellPathOverride: '',
+      terminalCopyOnSelect: false,
+      terminalPasteShortcut: 'ctrl+shift+v' as 'ctrl+v' | 'ctrl+shift+v',
+
+      // VCS defaults (NEW v1.22.0)
+      vcsCommitMessageTemplate: '',
+      vcsDefaultAutoStage: 'none' as AutoStageMode,
+      vcsDefaultMergeStrategy: 'merge' as MergeStrategy,
+      vcsChangelistsConfirmDelete: true,
+
+      // Claude defaults (NEW v1.22.0)
+      claudeDefaultModel: null as 'opus' | 'sonnet' | 'haiku' | null,
+      claudeBinaryPathOverride: '',
+
       // Changes panel
       changesRefreshTrigger: 0,
 
@@ -422,6 +545,54 @@ export const useAppStore = create<AppState>()(
       setTerminalScrollback: (lines) => set({ terminalScrollback: Math.max(100, Math.min(1000000, Math.round(lines))) }),
       setTerminalTheme: (theme) => set({ terminalTheme: theme }),
       setTerminalBidi: (enabled) => set({ terminalBidi: enabled }),
+
+      // Appearance & Behavior setters (NEW v1.22.0).
+      // Numeric setters clamp; string setters validate shape and fall back.
+      setThemeMode: (mode) => set({ themeMode: mode }),
+      setUiDensity: (density) => set({ uiDensity: density }),
+      setAccentColorHex: (hex) => {
+        const ok = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(hex);
+        set({ accentColorHex: ok ? hex : DEFAULT_ACCENT_COLOR });
+      },
+      setUiFontScale: (scale) =>
+        set({ uiFontScale: Math.max(0.85, Math.min(1.25, Math.round(scale * 100) / 100)) }),
+      setUiReduceMotion: (enabled) => set({ uiReduceMotion: enabled }),
+      setNotificationSoundEnabled: (enabled) => set({ notificationSoundEnabled: enabled }),
+      setDndEnabled: (enabled) => set({ dndEnabled: enabled }),
+      setDndStart: (hhmm) => set({ dndStart: /^\d{2}:\d{2}$/.test(hhmm) ? hhmm : '22:00' }),
+      setDndEnd: (hhmm) => set({ dndEnd: /^\d{2}:\d{2}$/.test(hhmm) ? hhmm : '08:00' }),
+      setSessionAutoSaveIntervalSec: (sec) =>
+        set({ sessionAutoSaveIntervalSec: Math.max(10, Math.min(600, Math.round(sec))) }),
+      setConfirmOnAppClose: (enabled) => set({ confirmOnAppClose: enabled }),
+
+      // Editor setters (NEW v1.22.0)
+      setEditorTabSize: (size) =>
+        set({ editorTabSize: Math.max(1, Math.min(8, Math.round(size))) }),
+      setEditorRenderWhitespace: (enabled) => set({ editorRenderWhitespace: enabled }),
+      setEditorWordWrap: (enabled) => set({ editorWordWrap: enabled }),
+      setEditorMinimap: (enabled) => set({ editorMinimap: enabled }),
+      setEditorAutoSaveOnBlur: (enabled) => set({ editorAutoSaveOnBlur: enabled }),
+      setEditorFontFamily: (family) =>
+        set({ editorFontFamily: family || DEFAULT_EDITOR_FONT_FAMILY }),
+      setEditorFontSize: (size) =>
+        set({ editorFontSize: Math.max(8, Math.min(32, Math.round(size))) }),
+      setEditorLineHeight: (height) =>
+        set({ editorLineHeight: Math.max(1.0, Math.min(2.0, Math.round(height * 10) / 10)) }),
+
+      // Terminal behavior setters (NEW v1.22.0)
+      setTerminalShellPathOverride: (path) => set({ terminalShellPathOverride: path }),
+      setTerminalCopyOnSelect: (enabled) => set({ terminalCopyOnSelect: enabled }),
+      setTerminalPasteShortcut: (s) => set({ terminalPasteShortcut: s }),
+
+      // VCS setters (NEW v1.22.0)
+      setVcsCommitMessageTemplate: (template) => set({ vcsCommitMessageTemplate: template }),
+      setVcsDefaultAutoStage: (mode) => set({ vcsDefaultAutoStage: mode }),
+      setVcsDefaultMergeStrategy: (strategy) => set({ vcsDefaultMergeStrategy: strategy }),
+      setVcsChangelistsConfirmDelete: (enabled) => set({ vcsChangelistsConfirmDelete: enabled }),
+
+      // Claude setters (NEW v1.22.0)
+      setClaudeDefaultModel: (model) => set({ claudeDefaultModel: model }),
+      setClaudeBinaryPathOverride: (path) => set({ claudeBinaryPathOverride: path }),
 
       setPinnedRepoPath: (path) => set({ pinnedRepoPath: path }),
       setExplorerHeightRatio: (ratio) => set({
@@ -752,6 +923,44 @@ export const useAppStore = create<AppState>()(
         pastePromptTemplate: state.pastePromptTemplate,
         pasteRetention: state.pasteRetention,
         pasteRetentionDays: state.pasteRetentionDays,
+
+        // Appearance & Behavior (NEW v1.22.0)
+        themeMode: state.themeMode,
+        uiDensity: state.uiDensity,
+        accentColorHex: state.accentColorHex,
+        uiFontScale: state.uiFontScale,
+        uiReduceMotion: state.uiReduceMotion,
+        notificationSoundEnabled: state.notificationSoundEnabled,
+        dndEnabled: state.dndEnabled,
+        dndStart: state.dndStart,
+        dndEnd: state.dndEnd,
+        sessionAutoSaveIntervalSec: state.sessionAutoSaveIntervalSec,
+        confirmOnAppClose: state.confirmOnAppClose,
+
+        // Editor (NEW v1.22.0)
+        editorTabSize: state.editorTabSize,
+        editorRenderWhitespace: state.editorRenderWhitespace,
+        editorWordWrap: state.editorWordWrap,
+        editorMinimap: state.editorMinimap,
+        editorAutoSaveOnBlur: state.editorAutoSaveOnBlur,
+        editorFontFamily: state.editorFontFamily,
+        editorFontSize: state.editorFontSize,
+        editorLineHeight: state.editorLineHeight,
+
+        // Terminal behavior (NEW v1.22.0)
+        terminalShellPathOverride: state.terminalShellPathOverride,
+        terminalCopyOnSelect: state.terminalCopyOnSelect,
+        terminalPasteShortcut: state.terminalPasteShortcut,
+
+        // VCS (NEW v1.22.0)
+        vcsCommitMessageTemplate: state.vcsCommitMessageTemplate,
+        vcsDefaultAutoStage: state.vcsDefaultAutoStage,
+        vcsDefaultMergeStrategy: state.vcsDefaultMergeStrategy,
+        vcsChangelistsConfirmDelete: state.vcsChangelistsConfirmDelete,
+
+        // Claude (NEW v1.22.0)
+        claudeDefaultModel: state.claudeDefaultModel,
+        claudeBinaryPathOverride: state.claudeBinaryPathOverride,
       }),
     }
   )

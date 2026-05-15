@@ -21,6 +21,8 @@ import { useAppStore } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
 import { toast } from '../store/toastStore';
 import { UpdatePill } from './UpdatePill';
+import { RecentTerminalsMenu } from './titlebar/RecentTerminalsMenu';
+import { ToolsMenu } from './titlebar/ToolsMenu';
 
 const isMac = navigator.platform.toUpperCase().includes('MAC');
 
@@ -308,6 +310,11 @@ export function TitleBar() {
           <button onClick={toggleHints} className={iconBtn(hintsOpen)} title="Command Hints">
             <Lightbulb size={15} strokeWidth={1.75} />
           </button>
+
+          <div className="w-px h-4 bg-[var(--ij-divider-soft)] mx-1" />
+
+          <RecentTerminalsMenu />
+          <ToolsMenu />
 
           <div className="w-px h-4 bg-[var(--ij-divider-soft)] mx-1" />
 

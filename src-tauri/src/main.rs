@@ -8,6 +8,7 @@ mod telemetry;
 mod error_reporter;
 mod claude_path;
 mod pastes;
+mod changelists;
 
 use tauri::Manager;
 use std::sync::Arc;
@@ -156,6 +157,12 @@ fn main() {
             commands::read_paste,
             commands::delete_paste,
             commands::purge_pastes,
+            commands::list_changelists,
+            commands::create_changelist,
+            commands::rename_changelist,
+            commands::delete_changelist,
+            commands::assign_files_to_changelist,
+            commands::get_changelist_assignments,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {

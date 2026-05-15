@@ -136,6 +136,86 @@ pub async fn purge_pastes(
     .await
 }
 
+// --- Changelists (v1.22.0) ----------------------------------------------------
+
+#[command]
+pub async fn list_changelists(
+    state: State<'_, AppState>,
+    repo_path: String,
+) -> Result<Vec<crate::changelists::ChangelistInfo>, String> {
+    wrap_cmd("list_changelists", async move {
+        let db = state.db.lock().await;
+        crate::changelists::list_changelists(db.conn(), &repo_path)
+    })
+    .await
+}
+
+#[command]
+pub async fn create_changelist(
+    state: State<'_, AppState>,
+    repo_path: String,
+    name: String,
+) -> Result<i64, String> {
+    wrap_cmd("create_changelist", async move {
+        let db = state.db.lock().await;
+        crate::changelists::create_changelist(db.conn(), &repo_path, &name)
+    })
+    .await
+}
+
+#[command]
+pub async fn rename_changelist(
+    state: State<'_, AppState>,
+    id: i64,
+    new_name: String,
+) -> Result<(), String> {
+    wrap_cmd("rename_changelist", async move {
+        let db = state.db.lock().await;
+        crate::changelists::rename_changelist(db.conn(), id, &new_name)
+    })
+    .await
+}
+
+#[command]
+pub async fn delete_changelist(
+    state: State<'_, AppState>,
+    id: i64,
+) -> Result<(), String> {
+    wrap_cmd("delete_changelist", async move {
+        let db = state.db.lock().await;
+        crate::changelists::delete_changelist(db.conn(), id)
+    })
+    .await
+}
+
+#[command]
+pub async fn assign_files_to_changelist(
+    state: State<'_, AppState>,
+    repo_path: String,
+    file_paths: Vec<String>,
+    changelist_id: Option<i64>,
+) -> Result<(), String> {
+    wrap_cmd("assign_files_to_changelist", async move {
+        let db = state.db.lock().await;
+        crate::changelists::assign_files_to_changelist(
+            db.conn(), &repo_path, &file_paths, changelist_id,
+        )
+    })
+    .await
+}
+
+#[command]
+pub async fn get_changelist_assignments(
+    state: State<'_, AppState>,
+    repo_path: String,
+) -> Result<Vec<(String, i64)>, String> {
+    wrap_cmd("get_changelist_assignments", async move {
+        let db = state.db.lock().await;
+        crate::changelists::get_changelist_assignments(db.conn(), &repo_path)
+    })
+    .await
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CreateTerminalRequest {
     pub label: String,

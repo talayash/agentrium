@@ -18,10 +18,17 @@ interface UpdaterState {
   downloadProgress: number;
   error: string | null;
   lastCheckAt: number | null;
+  // Banner gating — keep the user in control of when they're prompted.
+  bannerDismissedVersion: string | null;  // "Later" — suppress banner for this version until next launch
+  bannerSnoozedUntil: number | null;       // "Remind in 4h" — epoch ms after which the banner may show again
+  notifiedVersion: string | null;          // version we've already sent a desktop toast for (avoid duplicate toasts)
 
   checkForUpdates: () => Promise<{ available: boolean }>;
   downloadAndInstall: (preFetched?: Update) => Promise<boolean>;
   restart: () => Promise<void>;
+  dismissBanner: () => void;
+  snoozeBanner: (ms: number) => void;
+  markNotified: (version: string) => void;
 }
 
 export const useUpdaterStore = create<UpdaterState>((set, get) => ({
@@ -30,6 +37,9 @@ export const useUpdaterStore = create<UpdaterState>((set, get) => ({
   downloadProgress: 0,
   error: null,
   lastCheckAt: null,
+  bannerDismissedVersion: null,
+  bannerSnoozedUntil: null,
+  notifiedVersion: null,
 
   checkForUpdates: async () => {
     // Don't re-check if already downloading or ready
@@ -59,6 +69,10 @@ export const useUpdaterStore = create<UpdaterState>((set, get) => ({
       const update = await check({ headers });
 
       if (update) {
+        const prevVersion = get().updateInfo?.version;
+        // If a *newer* update appeared, reset any dismissal/snooze for the
+        // previous version so the user is re-prompted for the new one.
+        const versionChanged = prevVersion !== update.version;
         set({
           updateInfo: {
             version: update.version,
@@ -66,10 +80,10 @@ export const useUpdaterStore = create<UpdaterState>((set, get) => ({
             body: update.body || '',
           },
           status: 'available',
+          ...(versionChanged
+            ? { bannerDismissedVersion: null, bannerSnoozedUntil: null, notifiedVersion: null }
+            : {}),
         });
-        // Silently download in the background. Failures land in `error` state;
-        // the title bar pill renders an error variant that retries.
-        void get().downloadAndInstall(update);
         return { available: true };
       } else {
         set({ status: 'up-to-date' });
@@ -136,5 +150,18 @@ export const useUpdaterStore = create<UpdaterState>((set, get) => ({
       console.error('Failed to restart:', err);
       set({ error: 'Failed to restart. Please restart manually.' });
     }
+  },
+
+  dismissBanner: () => {
+    const version = get().updateInfo?.version ?? null;
+    set({ bannerDismissedVersion: version, bannerSnoozedUntil: null });
+  },
+
+  snoozeBanner: (ms: number) => {
+    set({ bannerSnoozedUntil: Date.now() + ms, bannerDismissedVersion: null });
+  },
+
+  markNotified: (version: string) => {
+    set({ notifiedVersion: version });
   },
 }));
