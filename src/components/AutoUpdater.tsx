@@ -1,26 +1,35 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Download, RefreshCw, CheckCircle, AlertCircle, X, Rocket, ExternalLink } from 'lucide-react';
+import { Download, RefreshCw, X, Rocket, Clock } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useUpdaterStore } from '../store/updaterStore';
 
-const RELEASES_URL = 'https://github.com/talayash/claude-terminal/releases/latest';
 const FOUR_HOURS_MS = 4 * 60 * 60 * 1000;
 const THIRTY_MINUTES_MS = 30 * 60 * 1000;
 
 export function AutoUpdater() {
-  const { status, updateInfo, downloadProgress, error, checkForUpdates, downloadAndInstall, restart } = useUpdaterStore();
-  const [showBanner, setShowBanner] = useState(false);
-  const [dismissed, setDismissed] = useState(false);
+  const {
+    status,
+    updateInfo,
+    downloadProgress,
+    bannerDismissedVersion,
+    bannerSnoozedUntil,
+    notifiedVersion,
+    checkForUpdates,
+    downloadAndInstall,
+    restart,
+    dismissBanner,
+    snoozeBanner,
+    markNotified,
+  } = useUpdaterStore();
+  const [now, setNow] = useState(() => Date.now());
 
   // Check for updates on mount
   useEffect(() => {
     const timer = setTimeout(async () => {
       try {
         await checkForUpdates();
-        // Banner will auto-open via the ready-watcher effect once the
-        // background download completes.
       } catch {
         // Silently ignore update check failures on startup
       }
@@ -60,20 +69,41 @@ export function AutoUpdater() {
     };
   }, [checkForUpdates]);
 
-  // Show banner when update is downloaded and ready to install
+  // When a snooze is active, tick once after it expires so the banner reappears.
   useEffect(() => {
-    if (status === 'ready' && !dismissed) {
-      setShowBanner(true);
+    if (bannerSnoozedUntil === null) return;
+    const remaining = bannerSnoozedUntil - Date.now();
+    if (remaining <= 0) {
+      setNow(Date.now());
+      return;
     }
-  }, [status, dismissed]);
+    const id = setTimeout(() => setNow(Date.now()), remaining);
+    return () => clearTimeout(id);
+  }, [bannerSnoozedUntil]);
 
-  const dismissBanner = () => {
-    setDismissed(true);
-    setShowBanner(false);
-  };
+  // Fire a desktop toast once per detected version so users see the update
+  // even if the app is minimized/backgrounded.
+  useEffect(() => {
+    if (status !== 'available' || !updateInfo) return;
+    if (notifiedVersion === updateInfo.version) return;
+    void invoke('send_notification', {
+      title: 'ClaudeTerminal update available',
+      body: `Version ${updateInfo.version} is ready to install. Open the app to update.`,
+    }).catch(() => {
+      // Notification failures are non-fatal — the in-app banner still shows.
+    });
+    markNotified(updateInfo.version);
+  }, [status, updateInfo, notifiedVersion, markNotified]);
 
-  // Don't show anything if dismissed or no banner needed
-  if (!showBanner || dismissed) {
+  const snoozeActive = bannerSnoozedUntil !== null && now < bannerSnoozedUntil;
+  const dismissedForCurrent =
+    updateInfo !== null && bannerDismissedVersion === updateInfo.version;
+
+  const bannerEligible =
+    status === 'available' || status === 'downloading' || status === 'ready';
+  const showBanner = bannerEligible && !dismissedForCurrent && !snoozeActive;
+
+  if (!showBanner) {
     return null;
   }
 
@@ -90,23 +120,18 @@ export function AutoUpdater() {
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
             <div className="flex items-center gap-2">
-              {status === 'checking' && <RefreshCw size={14} className="text-text-secondary animate-spin" />}
               {status === 'available' && <Download size={14} className="text-accent-primary" />}
               {status === 'downloading' && <RefreshCw size={14} className="text-accent-primary animate-spin" />}
               {status === 'ready' && <Rocket size={14} className="text-success" />}
-              {status === 'up-to-date' && <CheckCircle size={14} className="text-success" />}
-              {status === 'error' && <AlertCircle size={14} className="text-error" />}
               <span className="text-text-primary text-[13px] font-medium">
-                {status === 'checking' && 'Checking for updates...'}
                 {status === 'available' && `Update Available: v${updateInfo?.version}`}
                 {status === 'downloading' && 'Downloading update...'}
                 {status === 'ready' && 'Update Ready'}
-                {status === 'up-to-date' && 'Up to date'}
-                {status === 'error' && 'Update Error'}
               </span>
             </div>
             <button
               onClick={dismissBanner}
+              title="Dismiss until next launch"
               className="p-1 rounded hover:bg-white/[0.06] text-text-tertiary transition-colors"
             >
               <X size={14} />
@@ -122,17 +147,24 @@ export function AutoUpdater() {
                     {updateInfo.body}
                   </p>
                 )}
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <button
                     onClick={() => downloadAndInstall()}
-                    className="flex-1 flex items-center justify-center gap-2 bg-accent-primary hover:bg-accent-secondary text-white h-9 px-4 rounded-md text-[12px] font-medium transition-colors"
+                    className="flex-1 min-w-[140px] flex items-center justify-center gap-2 bg-accent-primary hover:bg-accent-secondary text-white h-9 px-4 rounded-md text-[12px] font-medium transition-colors"
                   >
                     <Download size={14} />
-                    Download & Install
+                    Update Now
+                  </button>
+                  <button
+                    onClick={() => snoozeBanner(FOUR_HOURS_MS)}
+                    className="flex items-center justify-center gap-1.5 px-3 h-9 text-text-secondary hover:text-text-primary hover:bg-white/[0.04] rounded-md text-[12px] transition-colors"
+                  >
+                    <Clock size={12} />
+                    Remind in 4h
                   </button>
                   <button
                     onClick={dismissBanner}
-                    className="px-4 h-9 text-text-secondary hover:text-text-primary hover:bg-white/[0.04] rounded-md text-[12px] transition-colors"
+                    className="px-3 h-9 text-text-secondary hover:text-text-primary hover:bg-white/[0.04] rounded-md text-[12px] transition-colors"
                   >
                     Later
                   </button>
@@ -178,35 +210,6 @@ export function AutoUpdater() {
               </div>
             )}
 
-            {status === 'error' && (
-              <div className="space-y-2">
-                <p className="text-error text-[11px]">
-                  {error || 'An error occurred while checking for updates.'}
-                </p>
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => checkForUpdates()}
-                    className="flex items-center gap-2 text-text-secondary hover:text-text-primary text-[12px] transition-colors"
-                  >
-                    <RefreshCw size={12} />
-                    Try Again
-                  </button>
-                  <button
-                    onClick={() => invoke('open_external_url', { url: RELEASES_URL })}
-                    className="flex items-center gap-2 text-accent-primary hover:text-accent-secondary text-[12px] transition-colors"
-                  >
-                    <ExternalLink size={12} />
-                    Download Manually
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {status === 'up-to-date' && (
-              <p className="text-text-tertiary text-[12px]">
-                You're running the latest version of ClaudeTerminal.
-              </p>
-            )}
           </div>
         </div>
       </motion.div>
