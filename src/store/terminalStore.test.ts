@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+const invokeMock = vi.fn(
+  async (_cmd: string, _args?: Record<string, unknown>): Promise<unknown> => undefined,
+);
 vi.mock('@tauri-apps/api/core', () => ({
-  invoke: vi.fn(async () => undefined),
+  invoke: (cmd: string, args?: Record<string, unknown>) => invokeMock(cmd, args),
 }));
 
 import type { TerminalConfig } from './terminalStore';
@@ -198,5 +201,35 @@ describe('terminalStore — per-terminal mutators', () => {
   it('getTerminalList returns one TerminalConfig per instance', () => {
     const list = useTerminalStore.getState().getTerminalList();
     expect(list.map((c) => c.id).sort()).toEqual(['a', 'b']);
+  });
+});
+
+describe('terminalStore — writeToTerminal chunking', () => {
+  beforeEach(() => {
+    seed(['a']);
+    invokeMock.mockClear();
+  });
+
+  it('sends a small write as a single invoke call', async () => {
+    await useTerminalStore.getState().writeToTerminal('a', 'hello');
+
+    expect(invokeMock).toHaveBeenCalledTimes(1);
+    const [cmd, args] = invokeMock.mock.calls[0]!;
+    expect(cmd).toBe('write_to_terminal');
+    expect((args as { id: string; data: number[] }).id).toBe('a');
+    expect((args as { id: string; data: number[] }).data).toEqual([0x68, 0x65, 0x6c, 0x6c, 0x6f]);
+  });
+
+  it('chunks a paste larger than 60 KB into multiple sequential writes', async () => {
+    // 200 KB of ASCII forces 4 chunks under the 60 KB cap (60 + 60 + 60 + 20).
+    const big = 'x'.repeat(200 * 1024);
+    await useTerminalStore.getState().writeToTerminal('a', big);
+
+    expect(invokeMock).toHaveBeenCalledTimes(4);
+    const dataLengths = invokeMock.mock.calls.map(
+      (call) => (call[1] as { data: number[] }).data.length,
+    );
+    expect(dataLengths.reduce((n, len) => n + len, 0)).toBe(big.length);
+    expect(dataLengths.every((len) => len <= 60 * 1024)).toBe(true);
   });
 });

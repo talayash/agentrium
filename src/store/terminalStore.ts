@@ -3,6 +3,11 @@ import { invoke } from '@tauri-apps/api/core';
 import { Terminal } from '@xterm/xterm';
 import type { WorktreeDetectResult } from '../types/git';
 import { markTerminalActive, clearTerminalActivity } from '../lib/terminalActivity';
+import { chunkUtf8Bytes } from '../lib/chunkUtf8';
+
+// Stay safely under the backend's 64 KB per-write cap so very large pastes
+// (multi-hundred KB) don't hit "Write payload too large".
+const TERMINAL_WRITE_CHUNK_BYTES = 60 * 1024;
 
 export interface TerminalConfig {
   id: string;
@@ -298,8 +303,14 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
   },
 
   writeToTerminal: async (id, data) => {
-    const encoder = new TextEncoder();
-    await invoke('write_to_terminal', { id, data: Array.from(encoder.encode(data)) });
+    const bytes = new TextEncoder().encode(data);
+    if (bytes.length <= TERMINAL_WRITE_CHUNK_BYTES) {
+      await invoke('write_to_terminal', { id, data: Array.from(bytes) });
+      return;
+    }
+    for (const chunk of chunkUtf8Bytes(bytes, TERMINAL_WRITE_CHUNK_BYTES)) {
+      await invoke('write_to_terminal', { id, data: Array.from(chunk) });
+    }
   },
 
   resizeTerminal: async (id, cols, rows) => {
