@@ -1,5 +1,13 @@
 [
   {
+    "version": "1.22.2",
+    "date": "2026-05-17",
+    "features": [
+      { "title": "Right-click context menu in the Explorer", "description": "Full IntelliJ/VSCode-style menu on files and folders: Open, Refresh, Show in File Explorer (Reveal in Finder on macOS), Cut/Copy/Paste, Copy Path / Copy Relative Path, inline Rename, and Delete (moves to Recycle Bin / Trash so you can recover). Cut items dim until pasted; the root row blocks Cut/Rename/Delete to prevent accidents." },
+      { "title": "Stash & Pull when your tree is dirty", "description": "When you click Pull on a repo with uncommitted changes, the File Changes panel now offers Stash & Pull instead of failing — your local edits are auto-stashed, the pull runs, and the stash is popped back so you keep working without losing changes." }
+    ]
+  },
+  {
     "version": "1.22.1",
     "date": "2026-05-17",
     "features": [
