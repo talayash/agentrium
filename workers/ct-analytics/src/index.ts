@@ -17,6 +17,7 @@
  *   GET  /stats                  legacy dashboard payload (back-compat)
  *   GET  /stats/live             active in last 15 min, by version/os/country
  *   GET  /stats/history?days=30&metric=dau|heartbeats|update_checks|version|os|country
+ *   GET  /errors/summary?days=7&limit=20   top error groups + by source/version/os/day
  */
 
 interface Env {
@@ -381,6 +382,77 @@ async function handleStatsLive(env: Env): Promise<Response> {
   );
 }
 
+async function handleErrorsSummary(url: URL, env: Env): Promise<Response> {
+  const days = Math.min(
+    Math.max(parseInt(url.searchParams.get('days') ?? '7', 10) || 7, 1),
+    ERROR_RETENTION_DAYS,
+  );
+  const limit = Math.min(Math.max(parseInt(url.searchParams.get('limit') ?? '20', 10) || 20, 1), 100);
+  const since = `-${days} days`;
+
+  const [totals, groupsRes, bySourceRes, byVersionRes, byOsRes, byDayRes] = await Promise.all([
+    env.DB.prepare(
+      "SELECT COUNT(*) AS total, COUNT(DISTINCT installation_id) AS affected_installations, COUNT(DISTINCT fingerprint) AS unique_fingerprints FROM errors WHERE ts >= datetime('now', ?)",
+    )
+      .bind(since)
+      .first<{ total: number; affected_installations: number; unique_fingerprints: number }>(),
+    env.DB.prepare(
+      "SELECT fingerprint, COUNT(*) AS occurrences, COUNT(DISTINCT installation_id) AS users, " +
+        'MAX(ts) AS last_seen, MIN(ts) AS first_seen, ' +
+        'MAX(source) AS source, MAX(kind) AS kind, MAX(message) AS message, MAX(stack) AS stack, ' +
+        'GROUP_CONCAT(DISTINCT app_version) AS versions ' +
+        "FROM errors WHERE ts >= datetime('now', ?) " +
+        'GROUP BY fingerprint ORDER BY occurrences DESC LIMIT ?',
+    )
+      .bind(since, limit)
+      .all<{
+        fingerprint: string;
+        occurrences: number;
+        users: number;
+        last_seen: string;
+        first_seen: string;
+        source: string;
+        kind: string | null;
+        message: string;
+        stack: string | null;
+        versions: string;
+      }>(),
+    env.DB.prepare(
+      "SELECT source, COUNT(*) AS count FROM errors WHERE ts >= datetime('now', ?) GROUP BY source ORDER BY count DESC",
+    )
+      .bind(since)
+      .all<{ source: string; count: number }>(),
+    env.DB.prepare(
+      "SELECT app_version AS version, COUNT(*) AS count FROM errors WHERE ts >= datetime('now', ?) GROUP BY app_version ORDER BY count DESC",
+    )
+      .bind(since)
+      .all<{ version: string; count: number }>(),
+    env.DB.prepare(
+      "SELECT os, COUNT(*) AS count FROM errors WHERE ts >= datetime('now', ?) GROUP BY os ORDER BY count DESC",
+    )
+      .bind(since)
+      .all<{ os: string; count: number }>(),
+    env.DB.prepare(
+      "SELECT substr(ts, 1, 10) AS date, COUNT(*) AS count FROM errors WHERE ts >= datetime('now', ?) GROUP BY substr(ts, 1, 10) ORDER BY date",
+    )
+      .bind(since)
+      .all<{ date: string; count: number }>(),
+  ]);
+
+  return json({
+    window_days: days,
+    generated_at: new Date().toISOString(),
+    total_errors: totals?.total ?? 0,
+    affected_installations: totals?.affected_installations ?? 0,
+    unique_fingerprints: totals?.unique_fingerprints ?? 0,
+    top_groups: groupsRes.results ?? [],
+    by_source: bySourceRes.results ?? [],
+    by_version: byVersionRes.results ?? [],
+    by_os: byOsRes.results ?? [],
+    by_day: byDayRes.results ?? [],
+  });
+}
+
 async function handleStatsHistory(url: URL, env: Env): Promise<Response> {
   const days = Math.min(Math.max(parseInt(url.searchParams.get('days') ?? '30', 10) || 30, 1), MAX_HISTORY_DAYS);
   const metric = url.searchParams.get('metric') ?? 'dau';
@@ -463,6 +535,11 @@ export default {
         const denied = requireToken(request, env.STATS_TOKEN);
         if (denied) return denied;
         return await handleStatsHistory(url, env);
+      }
+      if (request.method === 'GET' && url.pathname === '/errors/summary') {
+        const denied = requireToken(request, env.STATS_TOKEN);
+        if (denied) return denied;
+        return await handleErrorsSummary(url, env);
       }
     } catch (err) {
       console.error('[fetch] unhandled error:', err);
