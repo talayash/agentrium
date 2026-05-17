@@ -798,6 +798,223 @@ pub async fn open_external_url(url: String) -> Result<(), String> {
     .await
 }
 
+/// Reject paths with null bytes or that resolve to a parent of themselves
+/// (basic sanity gate shared by the file-tree mutation commands).
+fn validate_path(s: &str) -> Result<(), String> {
+    if s.is_empty() || s.contains('\0') {
+        return Err("Invalid path".to_string());
+    }
+    Ok(())
+}
+
+/// Recursive copy for a directory tree. `dst` must not already exist.
+fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dst)?;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let ty = entry.file_type()?;
+        let child_src = entry.path();
+        let child_dst = dst.join(entry.file_name());
+        if ty.is_dir() {
+            copy_dir_recursive(&child_src, &child_dst)?;
+        } else if ty.is_symlink() {
+            // Preserve symlinks rather than copying through them.
+            #[cfg(unix)]
+            {
+                let target = std::fs::read_link(&child_src)?;
+                std::os::unix::fs::symlink(target, &child_dst)?;
+            }
+            #[cfg(windows)]
+            {
+                // On Windows, symlinks need elevation. Fall back to copying
+                // the file the link points to — best-effort but safe.
+                std::fs::copy(&child_src, &child_dst)?;
+            }
+        } else {
+            std::fs::copy(&child_src, &child_dst)?;
+        }
+    }
+    Ok(())
+}
+
+/// Rename a file or folder in place (parent stays the same). Refuses to
+/// overwrite an existing entry at the destination — UI should ask the user
+/// first if they really want to replace it.
+#[command]
+pub async fn rename_path(from: String, to: String) -> Result<(), String> {
+    wrap_cmd("rename_path", async move {
+        validate_path(&from)?;
+        validate_path(&to)?;
+        let from_p = std::path::PathBuf::from(&from);
+        let to_p = std::path::PathBuf::from(&to);
+        if !from_p.exists() {
+            return Err("Source path does not exist".to_string());
+        }
+        if to_p.exists() {
+            return Err("A file with that name already exists".to_string());
+        }
+        // Restrict rename to the same parent — moves use move_path instead.
+        if from_p.parent() != to_p.parent() {
+            return Err("Rename target must be in the same folder".to_string());
+        }
+        std::fs::rename(&from_p, &to_p).map_err(|e| e.to_string())
+    })
+    .await
+}
+
+/// Send a file or folder to the OS trash/recycle bin. The `trash` crate
+/// handles Windows (SHFileOperation), macOS (NSFileManager trashItem), and
+/// Linux (XDG trash spec) — entries can be restored manually by the user.
+#[command]
+pub async fn trash_path(path: String) -> Result<(), String> {
+    wrap_cmd("trash_path", async move {
+        validate_path(&path)?;
+        let p = std::path::PathBuf::from(&path);
+        if !p.exists() {
+            return Err("Path does not exist".to_string());
+        }
+        trash::delete(&p).map_err(|e| e.to_string())
+    })
+    .await
+}
+
+/// Move a file or folder into `dest_dir` (keeps the original basename).
+/// Refuses to overwrite an existing entry; refuses to move a folder into
+/// itself or any of its descendants (which would leave the source orphaned).
+#[command]
+pub async fn move_into_dir(source: String, dest_dir: String) -> Result<(), String> {
+    wrap_cmd("move_into_dir", async move {
+        validate_path(&source)?;
+        validate_path(&dest_dir)?;
+        let src = std::path::PathBuf::from(&source);
+        let dst_dir = std::path::PathBuf::from(&dest_dir);
+        if !src.exists() {
+            return Err("Source does not exist".to_string());
+        }
+        if !dst_dir.is_dir() {
+            return Err("Destination is not a folder".to_string());
+        }
+        let name = src
+            .file_name()
+            .ok_or_else(|| "Source has no file name".to_string())?;
+        let dst = dst_dir.join(name);
+        if dst.exists() {
+            return Err("A file with that name already exists in the destination".to_string());
+        }
+        // Block moving a folder into itself or its own subtree.
+        let src_canon = std::fs::canonicalize(&src).map_err(|e| e.to_string())?;
+        let dst_dir_canon = std::fs::canonicalize(&dst_dir).map_err(|e| e.to_string())?;
+        if dst_dir_canon == src_canon || dst_dir_canon.starts_with(&src_canon) {
+            return Err("Cannot move a folder into itself".to_string());
+        }
+        // Fall back to copy+delete when fs::rename can't cross volumes.
+        if let Err(rename_err) = std::fs::rename(&src, &dst) {
+            let meta = std::fs::metadata(&src).map_err(|e| e.to_string())?;
+            if meta.is_dir() {
+                copy_dir_recursive(&src, &dst).map_err(|e| {
+                    format!("Move failed ({}); cross-volume copy also failed: {}", rename_err, e)
+                })?;
+                std::fs::remove_dir_all(&src).map_err(|e| e.to_string())?;
+            } else {
+                std::fs::copy(&src, &dst).map_err(|e| e.to_string())?;
+                std::fs::remove_file(&src).map_err(|e| e.to_string())?;
+            }
+        }
+        Ok(())
+    })
+    .await
+}
+
+/// Copy a file or folder into `dest_dir` (keeps the original basename).
+#[command]
+pub async fn copy_into_dir(source: String, dest_dir: String) -> Result<(), String> {
+    wrap_cmd("copy_into_dir", async move {
+        validate_path(&source)?;
+        validate_path(&dest_dir)?;
+        let src = std::path::PathBuf::from(&source);
+        let dst_dir = std::path::PathBuf::from(&dest_dir);
+        if !src.exists() {
+            return Err("Source does not exist".to_string());
+        }
+        if !dst_dir.is_dir() {
+            return Err("Destination is not a folder".to_string());
+        }
+        let name = src
+            .file_name()
+            .ok_or_else(|| "Source has no file name".to_string())?;
+        let dst = dst_dir.join(name);
+        if dst.exists() {
+            return Err("A file with that name already exists in the destination".to_string());
+        }
+        let src_canon = std::fs::canonicalize(&src).map_err(|e| e.to_string())?;
+        let dst_dir_canon = std::fs::canonicalize(&dst_dir).map_err(|e| e.to_string())?;
+        if dst_dir_canon.starts_with(&src_canon) {
+            return Err("Cannot copy a folder into itself".to_string());
+        }
+        let meta = std::fs::metadata(&src).map_err(|e| e.to_string())?;
+        if meta.is_dir() {
+            copy_dir_recursive(&src, &dst).map_err(|e| e.to_string())?;
+        } else {
+            std::fs::copy(&src, &dst).map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    })
+    .await
+}
+
+/// Reveal a path in the OS file manager. Directories are opened; files are
+/// shown selected inside their parent folder (Windows `explorer /select,`,
+/// macOS `open -R`). Args are passed individually so there is no shell
+/// interpolation; the path is canonicalized so symlinks/relative inputs are
+/// resolved before we hand them to the native command.
+#[command]
+pub async fn reveal_in_file_manager(path: String) -> Result<(), String> {
+    wrap_cmd("reveal_in_file_manager", async move {
+        if path.is_empty() || path.contains('\0') {
+            return Err("Invalid path".to_string());
+        }
+        let canonical = std::fs::canonicalize(&path).map_err(|e| e.to_string())?;
+        let meta = std::fs::metadata(&canonical).map_err(|e| e.to_string())?;
+
+        if meta.is_dir() {
+            open::that(&canonical).map_err(|e| e.to_string())?;
+            return Ok(());
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            // `explorer /select,<path>` needs the path joined to the flag with a
+            // comma. Strip the verbatim `\\?\` prefix that `canonicalize` adds —
+            // explorer.exe doesn't understand it. spawn() (vs status()) avoids
+            // blocking on explorer's own exit code, which is famously nonzero
+            // even on success.
+            let s = canonical.to_string_lossy();
+            let display = s.strip_prefix(r"\\?\").unwrap_or(&s);
+            std::process::Command::new("explorer.exe")
+                .arg(format!("/select,{}", display))
+                .spawn()
+                .map_err(|e| e.to_string())?;
+        }
+        #[cfg(target_os = "macos")]
+        {
+            std::process::Command::new("open")
+                .arg("-R")
+                .arg(canonical.as_os_str())
+                .spawn()
+                .map_err(|e| e.to_string())?;
+        }
+        #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+        {
+            // Linux fallback: no portable "reveal" — open the parent folder.
+            if let Some(parent) = canonical.parent() {
+                open::that(parent).map_err(|e| e.to_string())?;
+            }
+        }
+        Ok(())
+    })
+    .await
+}
+
 #[command]
 pub async fn get_workspaces(
     state: State<'_, AppState>,
