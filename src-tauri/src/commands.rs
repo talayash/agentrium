@@ -3110,6 +3110,7 @@ pub async fn git_pull_branch(
     remote: String,
     branch: String,
     strategy: PullStrategy,
+    auto_stash: Option<bool>,
 ) -> Result<String, String> {
     wrap_cmd("git_pull_branch", async move {
         validate_path_is_trusted(&state, &path).await?;
@@ -3126,14 +3127,26 @@ pub async fn git_pull_branch(
         reject_bad_ref(&remote, "remote")?;
         reject_bad_ref(&branch, "branch")?;
 
-        // Refuse to pull when the working tree is dirty — merges on top of uncommitted
-        // changes leave the user in a messy state. Better to fail fast with advice.
+        // When the tree is dirty, refuse by default. If the caller opts in to
+        // auto_stash, stash (including untracked) → pull → pop. Frontend uses
+        // this for the "Stash & Pull" confirm flow.
+        let auto_stash = auto_stash.unwrap_or(false);
         let dirty = run_git(&path, &["status", "--porcelain"])?;
-        if !dirty.trim().is_empty() {
+        let is_dirty = !dirty.trim().is_empty();
+        if is_dirty && !auto_stash {
             return Err(
                 "Working tree has uncommitted changes — commit or stash first, then pull.".into(),
             );
         }
+
+        let stashed = if is_dirty {
+            let ts = chrono::Utc::now().format("%Y%m%dT%H%M%SZ");
+            let msg = format!("claude-terminal: auto-stash before pull {}", ts);
+            run_git(&path, &["stash", "push", "-u", "-m", &msg])?;
+            true
+        } else {
+            false
+        };
 
         let mut args: Vec<&str> = vec!["pull"];
         match strategy {
@@ -3151,18 +3164,49 @@ pub async fn git_pull_branch(
             .map_err(|e| format!("Failed to run git pull: {}", e))?;
         let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+
         if !output.status.success() {
-            return Err(if !stderr.is_empty() { stderr } else { stdout });
+            let pull_err = if !stderr.is_empty() { stderr } else { stdout };
+            if stashed {
+                // Restore the auto-stash so the user isn't left with both a failed
+                // pull and an orphan stash. Best-effort — if pop conflicts, the
+                // stash stays in the list and the user can recover manually.
+                let _ = run_git(&path, &["stash", "pop"]);
+                return Err(format!(
+                    "Pull failed; your changes were restored from auto-stash.\n\n{}",
+                    pull_err
+                ));
+            }
+            return Err(pull_err);
         }
+
         // Surface the combined output so the UI can show "Already up to date." or merge summary.
-        let combined = if stderr.is_empty() {
+        let pull_combined = if stderr.is_empty() {
             stdout
         } else if stdout.is_empty() {
             stderr
         } else {
             format!("{}\n{}", stdout, stderr)
         };
-        Ok(combined)
+
+        if stashed {
+            let pop = shell_command("git", &["stash", "pop"])
+                .current_dir(&path)
+                .output()
+                .map_err(|e| format!("Failed to run git stash pop: {}", e))?;
+            if !pop.status.success() {
+                let pop_err = String::from_utf8_lossy(&pop.stderr).trim().to_string();
+                // Pop conflicted. The stash stays applied with conflict markers,
+                // and the stash entry remains in the list for safety. The user
+                // resolves conflicts in-tree and then `git stash drop` manually.
+                return Ok(format!(
+                    "{}\n\nPull succeeded, but restoring your stashed changes hit conflicts — resolve them in the working tree, then run `git stash drop` once you're done.\n\n{}",
+                    pull_combined, pop_err
+                ));
+            }
+        }
+
+        Ok(pull_combined)
     })
     .await
 }
