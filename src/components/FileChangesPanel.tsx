@@ -15,6 +15,30 @@ function pathBasename(p: string): string {
   return idx === -1 ? trimmed : trimmed.slice(idx + 1);
 }
 
+const DIRTY_TREE_PREFIX = 'Working tree has uncommitted changes';
+
+// Invokes git_pull_branch; on a dirty-tree refusal, prompts the user to stash,
+// pull, and pop. Throws the original error if the user cancels, or any other
+// error untouched. Backend handles the stash/pop atomicity.
+async function pullWithStashConfirm(args: {
+  path: string;
+  remote: string;
+  branch: string;
+  strategy: 'merge' | 'rebase' | 'ff-only';
+}): Promise<string> {
+  try {
+    return await invoke<string>('git_pull_branch', { ...args, autoStash: false });
+  } catch (err) {
+    const msg = typeof err === 'string' ? err : '';
+    if (!msg.startsWith(DIRTY_TREE_PREFIX)) throw err;
+    const ok = window.confirm(
+      `${msg}\n\nStash your changes, pull from ${args.remote}/${args.branch}, then re-apply the stash?`,
+    );
+    if (!ok) throw err;
+    return await invoke<string>('git_pull_branch', { ...args, autoStash: true });
+  }
+}
+
 interface FileChange {
   path: string;
   status: string;
@@ -273,7 +297,7 @@ export function FileChangesPanel() {
           return;
         }
       }
-      const msg = await invoke<string>('git_pull_branch', {
+      const msg = await pullWithStashConfirm({
         path: activePath,
         remote,
         branch,
@@ -1106,7 +1130,7 @@ function RepoRow({ repo }: { repo: ScannedGitRepo }) {
 
     setPulling(true);
     try {
-      const msg = await invoke<string>('git_pull_branch', {
+      const msg = await pullWithStashConfirm({
         path: repo.path,
         remote,
         branch,
