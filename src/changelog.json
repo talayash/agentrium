@@ -1,5 +1,13 @@
 [
   {
+    "version": "1.22.1",
+    "date": "2026-05-17",
+    "features": [
+      { "title": "Fix Add Profile stacking on New Terminal", "description": "Clicking + Add Profile from the New Terminal screen now opens the Configuration Profiles modal on top instead of hiding it behind. New Terminal stays mounted underneath and reloads the profile list as soon as you close the editor." },
+      { "title": "Faster Claude Code update check", "description": "check_claude_update now queries registry.npmjs.org directly via reqwest with a 5s timeout and a single 400ms retry, instead of shelling out to npm view. Update checks are noticeably snappier and no longer depend on a working npm CLI." }
+    ]
+  },
+  {
     "version": "1.22.0",
     "date": "2026-05-15",
     "features": [
