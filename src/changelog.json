@@ -1,5 +1,13 @@
 [
   {
+    "version": "1.22.4",
+    "date": "2026-05-18",
+    "features": [
+      { "title": "Sessions panel — browse and resume past Claude conversations", "description": "A new collapsible Sessions section above the Explorer lists every Claude conversation stored for the active terminal's folder, newest-first, with a preview of the opening message. Click a row to open it in a new tab; right-click for \"Resume in current terminal\" (replaces the running Claude in place) or to reveal the .jsonl file. Sessions and Explorer share the sidebar via a drag-resize handle." },
+      { "title": "Fix: Restore didn't actually restore", "description": "When opening a session from the new panel, Claude was showing its first-run theme picker instead of resuming. The --resume <id> argument was being parsed by Commander.js as \"open picker\" plus a stray prompt; we now pass --resume=<id> (equals form) which Commander needs for optional-value flags. Conversations now actually re-attach." }
+    ]
+  },
+  {
     "version": "1.22.3",
     "date": "2026-05-18",
     "features": [
