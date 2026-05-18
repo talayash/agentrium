@@ -1,5 +1,12 @@
 [
   {
+    "version": "1.22.3",
+    "date": "2026-05-18",
+    "features": [
+      { "title": "Restore now actually resumes Claude conversations", "description": "Previously \"Restore last session\" reopened your terminals in the right folder but Claude itself started fresh — the painted transcript on screen had no relationship to the live Claude process. Now restore re-attaches Claude to your previous conversation: terminals saved by this build use `claude --resume <id>` for an exact match (the session id is captured automatically while you work), and older saves fall back to `claude --continue` to attach to the most recent session in that folder. /clear is handled too." }
+    ]
+  },
+  {
     "version": "1.22.2",
     "date": "2026-05-17",
     "features": [
