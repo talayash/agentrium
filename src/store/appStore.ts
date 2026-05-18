@@ -122,6 +122,12 @@ interface AppState {
   // Sidebar layout
   explorerHeightRatio: number; // 0.15..0.85, portion of sidebar height reserved for Explorer
   toolsCollapsed: boolean; // sidebar footer (Workspaces/Snippets/etc.) — collapsed gives Explorer more height
+  // Persistent collapse state for the two stacked sidebar sections.
+  sessionsCollapsed: boolean;
+  explorerCollapsed: boolean;
+  // Portion of the (Sessions + Explorer) column reserved for Sessions when
+  // both sections are expanded. 0.15..0.85; the rest goes to Explorer.
+  sessionsHeightRatio: number;
 
   // File Changes panel split: Repositories (top) vs Changes (bottom)
   repositoriesHeightRatio: number; // 0.15..0.85
@@ -266,6 +272,9 @@ interface AppState {
   setExplorerHeightRatio: (ratio: number) => void;
   setRepositoriesHeightRatio: (ratio: number) => void;
   toggleToolsCollapsed: () => void;
+  toggleSessionsCollapsed: () => void;
+  toggleExplorerCollapsed: () => void;
+  setSessionsHeightRatio: (ratio: number) => void;
 
   // Global Search actions (Ctrl+Shift+F)
   openGlobalSearch: () => void;
@@ -453,6 +462,11 @@ export const useAppStore = create<AppState>()(
       // Tools footer collapsed by default — surfaces more explorer space; user
       // can expand on demand to reach Workspaces / Snippets / Profiles / etc.
       toolsCollapsed: true,
+      // Sessions section starts collapsed so the Explorer (the more frequent
+      // tool) keeps its current screen real estate by default. Users opt-in.
+      sessionsCollapsed: true,
+      explorerCollapsed: false,
+      sessionsHeightRatio: 0.35,
 
       // File Changes split (default: repositories takes 35% of available column)
       repositoriesHeightRatio: 0.35,
@@ -603,6 +617,10 @@ export const useAppStore = create<AppState>()(
         repositoriesHeightRatio: Math.max(0.15, Math.min(0.85, ratio)),
       }),
       toggleToolsCollapsed: () => set((state) => ({ toolsCollapsed: !state.toolsCollapsed })),
+      toggleSessionsCollapsed: () => set((state) => ({ sessionsCollapsed: !state.sessionsCollapsed })),
+      toggleExplorerCollapsed: () => set((state) => ({ explorerCollapsed: !state.explorerCollapsed })),
+      setSessionsHeightRatio: (ratio) =>
+        set({ sessionsHeightRatio: Math.max(0.15, Math.min(0.85, ratio)) }),
 
       openGlobalSearch: () => set({ globalSearchOpen: true }),
       closeGlobalSearch: () => set({ globalSearchOpen: false }),
@@ -915,6 +933,9 @@ export const useAppStore = create<AppState>()(
         terminalBidi: state.terminalBidi,
         explorerHeightRatio: state.explorerHeightRatio,
         toolsCollapsed: state.toolsCollapsed,
+        sessionsCollapsed: state.sessionsCollapsed,
+        explorerCollapsed: state.explorerCollapsed,
+        sessionsHeightRatio: state.sessionsHeightRatio,
         repositoriesHeightRatio: state.repositoriesHeightRatio,
         orchestrationOpen: state.orchestrationOpen,
         lastSeenVersion: state.lastSeenVersion,

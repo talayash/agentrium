@@ -94,6 +94,8 @@ export function FileTreePanel() {
   const openFileTab = useAppStore((s) => s.openFileTab);
   const changesRefreshTrigger = useAppStore((s) => s.changesRefreshTrigger);
   const triggerChangesRefresh = useAppStore((s) => s.triggerChangesRefresh);
+  const collapsed = useAppStore((s) => s.explorerCollapsed);
+  const toggleCollapsed = useAppStore((s) => s.toggleExplorerCollapsed);
 
   const activeCwd = useMemo(() => {
     if (!activeTerminalId) return null;
@@ -507,24 +509,35 @@ export function FileTreePanel() {
   }, [contextMenu, rootPath, clipboard, openFileTab, refreshFolder, doReveal, doPaste, doCopyPath, doCopyRelativePath]);
 
   return (
-    <div className="flex flex-col h-full min-h-0 border-t border-[var(--ij-divider-soft)]">
+    <div className="flex flex-col h-full min-h-0 overflow-hidden">
       {/* Section header */}
       <div className="flex items-center justify-between h-[26px] px-3 flex-shrink-0">
-        <div className="flex items-center gap-1.5 text-text-secondary">
-          <span className="text-[11px] font-semibold uppercase tracking-[0.06em]">Explorer</span>
-        </div>
         <button
-          onClick={refreshRoot}
-          disabled={rootLoading}
-          className="w-5 h-5 flex items-center justify-center rounded-[4px] hover:bg-white/[0.06] text-text-tertiary hover:text-text-secondary transition-colors disabled:opacity-40"
-          title="Refresh"
+          onClick={toggleCollapsed}
+          className="flex items-center gap-1.5 text-text-secondary hover:text-text-primary transition-colors"
+          title={collapsed ? 'Expand Explorer' : 'Collapse Explorer'}
         >
-          <RefreshCw size={11} className={rootLoading ? 'animate-spin' : ''} strokeWidth={1.75} />
+          {collapsed ? (
+            <ChevronRight size={11} strokeWidth={2} />
+          ) : (
+            <ChevronDown size={11} strokeWidth={2} />
+          )}
+          <span className="text-[11px] font-semibold uppercase tracking-[0.06em]">Explorer</span>
         </button>
+        {!collapsed && (
+          <button
+            onClick={refreshRoot}
+            disabled={rootLoading}
+            className="w-5 h-5 flex items-center justify-center rounded-[4px] hover:bg-white/[0.06] text-text-tertiary hover:text-text-secondary transition-colors disabled:opacity-40"
+            title="Refresh"
+          >
+            <RefreshCw size={11} className={rootLoading ? 'animate-spin' : ''} strokeWidth={1.75} />
+          </button>
+        )}
       </div>
 
       {/* Root path label */}
-      {rootPath && (
+      {!collapsed && rootPath && (
         <div
           className="px-3 pb-1 flex-shrink-0 cursor-default"
           onContextMenu={(e) => openContextMenu(e, rootPath, true)}
@@ -536,7 +549,7 @@ export function FileTreePanel() {
       )}
 
       {/* Tree content */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden py-1">
+      {!collapsed && <div className="flex-1 overflow-y-auto overflow-x-hidden py-1">
         {!rootPath && (
           <div className="px-3 py-2 text-text-tertiary text-[11px]">
             No active terminal
@@ -565,7 +578,7 @@ export function FileTreePanel() {
             onRenameCancel={() => setRenamingPath(null)}
           />
         ))}
-      </div>
+      </div>}
 
       {/* Right-click context menu */}
       {contextMenu && menuItems.length > 0 && (

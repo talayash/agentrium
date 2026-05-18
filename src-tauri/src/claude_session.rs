@@ -10,11 +10,26 @@
 //! dir means we still work the first time Claude is run in a new project —
 //! the encoded dir may not exist yet when we take the snapshot.
 
+use serde::Serialize;
 use std::collections::HashSet;
+use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 
 fn claude_projects_dir() -> Option<PathBuf> {
     directories::BaseDirs::new().map(|d| d.home_dir().join(".claude").join("projects"))
+}
+
+/// Summary of one session for the sidebar list. We keep this small —
+/// timestamps and a preview are enough for the user to pick the right
+/// conversation. Full content is loaded on demand when the user resumes.
+#[derive(Debug, Clone, Serialize)]
+pub struct ClaudeSessionInfo {
+    pub id: String,
+    pub modified_at: String,
+    /// Excerpt of the first user message in the conversation; `None` if we
+    /// couldn't find one in the first few JSONL lines (e.g. empty file or
+    /// a format we don't recognise).
+    pub preview: Option<String>,
 }
 
 /// Encode a working-directory path the way Claude Code names its project
@@ -78,6 +93,74 @@ pub fn find_new_session_for_cwd(
         }
     }
     newest.map(|(stem, _)| stem)
+}
+
+/// Read the first few lines of a session JSONL and extract a short excerpt
+/// from the first user message. Returns `None` if no user message is found
+/// in the scanned window. Defensive across the two content shapes Claude
+/// uses (string vs list of content blocks).
+fn read_first_user_preview(path: &std::path::Path, max_lines: usize, max_chars: usize) -> Option<String> {
+    let file = std::fs::File::open(path).ok()?;
+    let reader = BufReader::new(file);
+    for line in reader.lines().take(max_lines).flatten() {
+        let v: serde_json::Value = match serde_json::from_str(&line) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        // Each entry has a "type" tag. We only care about user turns.
+        if v.get("type").and_then(|t| t.as_str()) != Some("user") {
+            continue;
+        }
+        let msg = v.get("message")?;
+        let content = msg.get("content")?;
+        // Two shapes: a plain string, or an array of content blocks where
+        // each block has a `text` field for text parts. Take the first text
+        // we can find.
+        let text: Option<String> = match content {
+            serde_json::Value::String(s) => Some(s.clone()),
+            serde_json::Value::Array(parts) => parts
+                .iter()
+                .find_map(|p| p.get("text").and_then(|t| t.as_str()).map(|s| s.to_string())),
+            _ => None,
+        };
+        let mut t = text?;
+        // Collapse whitespace + truncate so the sidebar row stays compact.
+        t = t.split_whitespace().collect::<Vec<_>>().join(" ");
+        if t.chars().count() > max_chars {
+            t = t.chars().take(max_chars).collect::<String>() + "…";
+        }
+        if t.is_empty() {
+            return None;
+        }
+        return Some(t);
+    }
+    None
+}
+
+/// List every `.jsonl` session file Claude has stored for the given cwd,
+/// sorted newest-first. Returns an empty list when the project dir doesn't
+/// exist yet — first-run in a new folder is a normal state.
+pub fn list_sessions_for_cwd(cwd: &str) -> Vec<ClaudeSessionInfo> {
+    let mut out: Vec<(ClaudeSessionInfo, std::time::SystemTime)> = Vec::new();
+    let Some(root) = claude_projects_dir() else { return Vec::new() };
+    let dir = root.join(encode_cwd(cwd));
+    let Ok(entries) = std::fs::read_dir(&dir) else { return Vec::new() };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().map(|e| e == "jsonl").unwrap_or(false) {
+            let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else { continue };
+            let Ok(meta) = entry.metadata() else { continue };
+            let Ok(modified) = meta.modified() else { continue };
+            let modified_at = chrono::DateTime::<chrono::Utc>::from(modified).to_rfc3339();
+            let preview = read_first_user_preview(&path, 20, 120);
+            out.push((
+                ClaudeSessionInfo { id: stem.to_string(), modified_at, preview },
+                modified,
+            ));
+        }
+    }
+    out.sort_by(|a, b| b.1.cmp(&a.1));
+    out.into_iter().map(|(info, _)| info).collect()
 }
 
 #[cfg(test)]

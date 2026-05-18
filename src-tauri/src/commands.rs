@@ -870,6 +870,22 @@ pub async fn open_external_url(url: String) -> Result<(), String> {
     .await
 }
 
+/// List Claude session `.jsonl` files for a given cwd. Returns newest-first;
+/// each entry has the session id (UUID stem), file mtime, and a short
+/// excerpt of the first user message for previewing in the sidebar.
+#[command]
+pub async fn list_claude_sessions(
+    cwd: String,
+) -> Result<Vec<crate::claude_session::ClaudeSessionInfo>, String> {
+    wrap_cmd("list_claude_sessions", async move {
+        if cwd.is_empty() || cwd.contains('\0') {
+            return Err("Invalid cwd".to_string());
+        }
+        Ok(crate::claude_session::list_sessions_for_cwd(&cwd))
+    })
+    .await
+}
+
 /// Reject paths with null bytes or that resolve to a parent of themselves
 /// (basic sanity gate shared by the file-tree mutation commands).
 fn validate_path(s: &str) -> Result<(), String> {
