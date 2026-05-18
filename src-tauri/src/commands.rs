@@ -224,6 +224,16 @@ pub struct CreateTerminalRequest {
     pub env_vars: HashMap<String, String>,
     pub color_tag: Option<String>,
     pub nickname: Option<String>,
+    /// When set, the spawned `claude` is launched with `--resume <id>` to
+    /// re-attach the conversation exactly. The frontend supplies this from
+    /// the saved session-restore row when we previously captured an id.
+    #[serde(default)]
+    pub resume_session_id: Option<String>,
+    /// When true (and `resume_session_id` is unset), spawn with `--continue`
+    /// so Claude attaches to the most recent session in this cwd. Used as
+    /// the restore fallback for saves predating session-id capture.
+    #[serde(default)]
+    pub continue_recent: bool,
 }
 
 #[command]
@@ -251,6 +261,14 @@ pub async fn create_terminal(
             logs_dir.join(filename).to_string_lossy().to_string()
         };
 
+        // Snapshot Claude's project dir *before* spawning so we can later
+        // diff for the new session file. Cheap (a few dozen file paths) and
+        // synchronous — must happen before the PTY starts the claude process.
+        let session_snapshot = crate::claude_session::snapshot_session_files();
+        let resume_id = request.resume_session_id.clone();
+        let continue_recent = request.continue_recent && resume_id.is_none();
+        let working_directory = request.working_directory.clone();
+
         let config = {
             let mut terminals = state.terminals.lock().await;
             terminals.create_terminal(
@@ -262,8 +280,62 @@ pub async fn create_terminal(
                 request.nickname,
                 tx,
                 Some(log_path.clone()),
+                request.resume_session_id,
+                continue_recent,
             )?
         };
+
+        // Detect the session id Claude assigned to this terminal. We don't
+        // know when the user will send their first message (Claude only
+        // writes the .jsonl after a user turn), so the watcher runs for the
+        // full lifetime of the terminal and keeps overwriting the captured
+        // id whenever a newer .jsonl appears in the same cwd dir. That way
+        // `/clear` (which rotates the session id) is handled transparently.
+        if let Some(id) = resume_id.as_deref() {
+            eprintln!("[session-resume] spawning '{}' with --resume {}", config.label, id);
+        } else if continue_recent {
+            eprintln!("[session-resume] spawning '{}' with --continue", config.label);
+            // No detection task: `--continue` means we're attaching to the
+            // newest existing session in this cwd, so any pre-existing .jsonl
+            // would *appear* new to our snapshot. The captured id from the
+            // first user turn on the next save will still be correct for the
+            // restored conversation, so we let the watcher run on the next
+            // spawn rather than try to figure out which file we're attached
+            // to from outside.
+        } else {
+            let manager = state.terminals.clone();
+            let detect_id = config.id.clone();
+            let detect_label = config.label.clone();
+            let cwd_for_log = working_directory.clone();
+            tokio::spawn(async move {
+                let mut last_recorded: Option<String> = None;
+                loop {
+                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                    // Stop watching once the terminal is gone — both saves
+                    // CPU and avoids racing close_terminal.
+                    {
+                        let m = manager.lock().await;
+                        if !m.terminals.contains_key(&detect_id) {
+                            return;
+                        }
+                    }
+                    if let Some(session_id) = crate::claude_session::find_new_session_for_cwd(
+                        &session_snapshot,
+                        &cwd_for_log,
+                    ) {
+                        if last_recorded.as_deref() != Some(&session_id) {
+                            eprintln!(
+                                "[session-detect] '{}' bound to session {} (cwd={})",
+                                detect_label, session_id, cwd_for_log
+                            );
+                            let mut m = manager.lock().await;
+                            m.update_claude_session_id(&detect_id, session_id.clone());
+                            last_recorded = Some(session_id);
+                        }
+                    }
+                }
+            });
+        }
 
         // Insert session history entry
         {
@@ -1082,7 +1154,16 @@ pub async fn get_last_session(
 ) -> Result<Option<Vec<crate::terminal::TerminalConfig>>, String> {
     wrap_cmd("get_last_session", async move {
         let db = state.db.lock().await;
-        db.load_last_session()
+        let configs = db.load_last_session()?;
+        if let Some(ref cs) = configs {
+            for c in cs {
+                eprintln!(
+                    "[session-restore] '{}' has claude_session_id = {:?}",
+                    c.label, c.claude_session_id
+                );
+            }
+        }
+        Ok(configs)
     })
     .await
 }

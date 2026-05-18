@@ -97,6 +97,7 @@ interface SavedTerminalConfig {
   claude_args: string[];
   env_vars: Record<string, string>;
   color_tag: string | null;
+  claude_session_id?: string | null;
 }
 
 function App() {
@@ -314,6 +315,15 @@ function App() {
           // Script runner — owned by parent terminal, skip on restore.
           continue;
         } else {
+          // Restore semantics:
+          //   - If we captured a session id last run: `claude --resume <id>` —
+          //     exact attach. Claude redraws the conversation; we suppress the
+          //     painted log so the transcript isn't doubled.
+          //   - Otherwise (old save, or detection never fired): fall back to
+          //     `claude --continue` — attaches to the most recent session in
+          //     this cwd. Same suppression rule.
+          const sessionId = config.claude_session_id ?? undefined;
+          const willResume = sessionId !== undefined;
           await createTerminal(
             config.label,
             config.working_directory,
@@ -321,7 +331,9 @@ function App() {
             config.env_vars,
             config.color_tag ?? undefined,
             config.nickname ?? undefined,
-            logs[i] ?? undefined
+            willResume ? undefined : (logs[i] ?? undefined),
+            sessionId,
+            !willResume,  // continue_recent: fall back to --continue
           );
         }
       } catch (err) {

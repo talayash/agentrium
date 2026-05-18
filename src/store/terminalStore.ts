@@ -20,6 +20,11 @@ export interface TerminalConfig {
   created_at: string;
   status: 'Running' | 'Idle' | 'Error' | 'Stopped';
   color_tag: string | null;
+  /** UUID of the Claude Code conversation this terminal is bound to. Populated
+   *  by the backend a few seconds after spawn (snapshot/diff of
+   *  ~/.claude/projects/<encoded-cwd>/*.jsonl) and used by session restore to
+   *  re-attach via `claude --resume <id>`. */
+  claude_session_id?: string | null;
 }
 
 export interface LoopInfo {
@@ -63,7 +68,9 @@ interface TerminalState {
     envVars: Record<string, string>,
     colorTag?: string,
     nickname?: string,
-    restoredOutput?: string
+    restoredOutput?: string,
+    resumeSessionId?: string,
+    continueRecent?: boolean,
   ) => Promise<string>;
   createShellTerminalTab: (
     label: string,
@@ -111,7 +118,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
   bottomTerminalIds: [],
   activeBottomTerminalId: null,
 
-  createTerminal: async (label, workingDirectory, claudeArgs, envVars, colorTag, nickname, restoredOutput) => {
+  createTerminal: async (label, workingDirectory, claudeArgs, envVars, colorTag, nickname, restoredOutput, resumeSessionId, continueRecent) => {
     try {
       const config = await invoke<TerminalConfig>('create_terminal', {
         request: {
@@ -121,6 +128,8 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
           env_vars: envVars,
           color_tag: colorTag || null,
           nickname: nickname || null,
+          resume_session_id: resumeSessionId || null,
+          continue_recent: !!continueRecent,
         },
       });
       // Parse model, effort, worktree from claude_args

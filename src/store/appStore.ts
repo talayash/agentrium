@@ -349,6 +349,7 @@ interface SavedTerminalConfig {
   claude_args: string[];
   env_vars: Record<string, string>;
   color_tag: string | null;
+  claude_session_id?: string | null;
 }
 
 // Helper to determine optimal layout based on terminal count

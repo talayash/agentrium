@@ -450,6 +450,7 @@ mod tests {
             created_at: Utc::now() + Duration::seconds(offset_secs),
             status: TerminalStatus::Running,
             color_tag: None,
+            claude_session_id: None,
         }
     }
 
