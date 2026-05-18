@@ -104,7 +104,11 @@ impl TerminalManager {
             if id.contains(Self::SHELL_METACHARACTERS) {
                 return Err("Invalid session id".to_string());
             }
-            vec!["--resume".to_string(), id.to_string()]
+            // `--resume` is `[value]` in Claude's help (optional argument), so
+            // Commander.js parses `--resume <id>` as "open picker" plus `<id>`
+            // as a stray positional. The `=` form is the only safe way to
+            // bind an optional argument.
+            vec![format!("--resume={}", id)]
         } else if continue_recent {
             vec!["--continue".to_string()]
         } else {
