@@ -1,5 +1,12 @@
 [
   {
+    "version": "1.22.5",
+    "date": "2026-05-18",
+    "features": [
+      { "title": "Maintenance release", "description": "CI hardening — the persistence-allow-list test now includes the new sidebar keys added in 1.22.4, so master builds stay green. No user-facing changes." }
+    ]
+  },
+  {
     "version": "1.22.4",
     "date": "2026-05-18",
     "features": [
