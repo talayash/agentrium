@@ -19,6 +19,12 @@ pub struct TerminalConfig {
     pub created_at: DateTime<Utc>,
     pub status: TerminalStatus,
     pub color_tag: Option<String>,
+    /// UUID of the Claude Code session this terminal is bound to, if we were
+    /// able to detect it after spawn. Persisted with the session-restore row
+    /// so the next launch can re-attach the conversation via `--resume <id>`.
+    /// `serde(default)` keeps existing rows from older builds deserializable.
+    #[serde(default)]
+    pub claude_session_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -74,6 +80,8 @@ impl TerminalManager {
         nickname: Option<String>,
         tx: mpsc::Sender<(String, Vec<u8>)>,
         log_file_path: Option<String>,
+        resume_session_id: Option<String>,
+        continue_recent: bool,
     ) -> Result<TerminalConfig, String> {
         // Validate claude_args: reject any argument containing shell metacharacters
         for arg in &claude_args {
@@ -84,6 +92,33 @@ impl TerminalManager {
                 ));
             }
         }
+
+        // Inject a resume flag for spawn-only — `claude_args` persisted on
+        // the config stays untouched so the next restore can re-decide which
+        // flag to inject.
+        // `--resume <id>` wins over `--continue` when we have an exact id;
+        // both are exclusive of plain (no-flag) spawn.
+        // The session id is a UUID Claude generates, but we still run it
+        // through the metacharacter check as defense-in-depth.
+        let injected: Vec<String> = if let Some(id) = resume_session_id.as_deref() {
+            if id.contains(Self::SHELL_METACHARACTERS) {
+                return Err("Invalid session id".to_string());
+            }
+            vec!["--resume".to_string(), id.to_string()]
+        } else if continue_recent {
+            vec!["--continue".to_string()]
+        } else {
+            vec![]
+        };
+        let injected_len = injected.len();
+        let claude_args: Vec<String> = if injected_len > 0 {
+            let mut v = Vec::with_capacity(claude_args.len() + injected_len);
+            v.extend(injected);
+            v.extend(claude_args);
+            v
+        } else {
+            claude_args
+        };
 
         // Filter out blocked environment variables
         let safe_env_vars: HashMap<String, String> = env_vars
@@ -178,11 +213,18 @@ impl TerminalManager {
             nickname,
             profile_id: None,
             working_directory,
-            claude_args,
+            // Persist the *user-facing* args (without our injected resume
+            // flags) so the next restore is free to re-decide.
+            claude_args: if injected_len > 0 {
+                claude_args.iter().skip(injected_len).cloned().collect()
+            } else {
+                claude_args.clone()
+            },
             env_vars: safe_env_vars,
             created_at: Utc::now(),
             status: TerminalStatus::Running,
             color_tag,
+            claude_session_id: resume_session_id,
         };
 
         let mut reader = pty_pair.master.try_clone_reader()
@@ -327,6 +369,7 @@ impl TerminalManager {
             created_at: Utc::now(),
             status: TerminalStatus::Running,
             color_tag: None,
+            claude_session_id: None,
         };
 
         let mut reader = pty_pair.master.try_clone_reader()
@@ -435,6 +478,7 @@ impl TerminalManager {
             created_at: Utc::now(),
             status: TerminalStatus::Running,
             color_tag: None,
+            claude_session_id: None,
         };
 
         let mut reader = pty_pair.master.try_clone_reader()
@@ -552,6 +596,15 @@ impl TerminalManager {
             Ok(())
         } else {
             Err("Terminal not found".to_string())
+        }
+    }
+
+    /// Attach the detected Claude session id to a live terminal. Silent
+    /// no-op when the terminal has already been closed — detection races
+    /// the user, and a stale write here shouldn't surface as an error.
+    pub fn update_claude_session_id(&mut self, id: &str, session_id: String) {
+        if let Some(terminal) = self.terminals.get_mut(id) {
+            terminal.config.claude_session_id = Some(session_id);
         }
     }
 }
