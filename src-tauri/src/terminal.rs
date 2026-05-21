@@ -6,6 +6,7 @@ use std::thread::JoinHandle;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
+use crate::error_reporter::{self, ErrorSource};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TerminalConfig {
@@ -266,6 +267,18 @@ impl TerminalManager {
                     }
                     Err(e) => {
                         eprintln!("Error reading from pty: {}", e);
+                        // Capture so we hear about broken-mid-session terminals.
+                        // RustCommand (not RustPanic) because the PTY is a
+                        // command-owned resource; we don't want to pollute the
+                        // panic stream with background-thread I/O. The 60s
+                        // dedup window in the reporter collapses repeated
+                        // identical errors.
+                        error_reporter::report_blocking(
+                            ErrorSource::RustCommand,
+                            Some("pty_reader_error".to_string()),
+                            e.to_string(),
+                            None,
+                        );
                         let _ = tx.blocking_send((
                             terminal_id.clone(),
                             format!("\r\n[Error reading from terminal: {}]\r\n", e).into_bytes(),
