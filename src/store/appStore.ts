@@ -53,6 +53,8 @@ interface AppState {
   workspaceModalOpen: boolean;
   worktreeModalOpen: boolean;
   worktreeModalRepoPath: string | null;
+  pushModalOpen: boolean;
+  pushModalRepoPath: string | null;
   defaultClaudeArgs: string[];
   notifyOnFinish: boolean;
   restoreSession: boolean;
@@ -203,6 +205,8 @@ interface AppState {
   closeWorkspaceModal: () => void;
   openWorktreeModal: (repoPath: string) => void;
   closeWorktreeModal: () => void;
+  openPushModal: (repoPath: string) => void;
+  closePushModal: () => void;
   setDefaultClaudeArgs: (args: string[]) => void;
   setNotifyOnFinish: (enabled: boolean) => void;
   setRestoreSession: (enabled: boolean) => void;
@@ -390,6 +394,8 @@ export const useAppStore = create<AppState>()(
       workspaceModalOpen: false,
       worktreeModalOpen: false,
       worktreeModalRepoPath: null,
+      pushModalOpen: false,
+      pushModalRepoPath: null,
       defaultClaudeArgs: [],
       notifyOnFinish: true,
       restoreSession: true,
@@ -541,6 +547,8 @@ export const useAppStore = create<AppState>()(
       closeWorkspaceModal: () => set({ workspaceModalOpen: false }),
       openWorktreeModal: (repoPath) => set({ worktreeModalOpen: true, worktreeModalRepoPath: repoPath }),
       closeWorktreeModal: () => set({ worktreeModalOpen: false, worktreeModalRepoPath: null }),
+      openPushModal: (repoPath) => set({ pushModalOpen: true, pushModalRepoPath: repoPath }),
+      closePushModal: () => set({ pushModalOpen: false, pushModalRepoPath: null }),
       setDefaultClaudeArgs: (args) => set({ defaultClaudeArgs: args }),
       setNotifyOnFinish: (enabled) => set({ notifyOnFinish: enabled }),
       setRestoreSession: (enabled) => set({ restoreSession: enabled }),

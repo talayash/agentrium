@@ -51,7 +51,7 @@ export function SettingsWindow() {
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.15 }}
-      className="fixed inset-0 bg-black/55 backdrop-blur-sm flex items-center justify-center z-50"
+      className="fixed inset-0 bg-black/55 flex items-center justify-center z-50"
       onClick={(e) => { if (e.target === e.currentTarget) closeSettings(); }}
     >
       <motion.div
@@ -60,7 +60,7 @@ export function SettingsWindow() {
         exit={{ opacity: 0, scale: 0.98 }}
         transition={{ duration: 0.15 }}
         onClick={(e) => e.stopPropagation()}
-        className="bg-elevation-0 ring-1 ring-white/[0.08] rounded-lg shadow-elevation-4 w-[92vw] max-w-[1100px] h-[80vh] max-h-[720px] grid grid-rows-[44px_1fr] overflow-hidden"
+        className="bg-elevation-0 border border-[var(--ij-divider-soft)] rounded-lg w-[92vw] max-w-[1100px] h-[80vh] max-h-[720px] grid grid-rows-[44px_1fr] overflow-hidden"
       >
         <div className="flex items-center justify-between px-3 bg-elevation-1 border-b border-[var(--ij-divider-soft)]">
           <div className="flex items-center gap-3">

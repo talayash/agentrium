@@ -109,6 +109,7 @@ fn main() {
             commands::get_repo_branches,
             commands::checkout_branch,
             commands::git_commit,
+            commands::get_push_preview,
             commands::git_push,
             commands::git_stage_files,
             commands::git_unstage_files,

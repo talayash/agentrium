@@ -6,7 +6,7 @@ import { useAppStore } from '../store/appStore';
 import { toast } from '../store/toastStore';
 import { InlineDiffView } from './InlineDiffView';
 import { ChangelistSection } from './ChangelistSection';
-import type { WorktreeInfo } from '../types/git';
+import type { WorktreeInfo, PushPreview } from '../types/git';
 import { getFileIconUrl } from '../utils/fileIcons';
 
 function pathBasename(p: string): string {
@@ -208,8 +208,16 @@ export function FileChangesPanel() {
       if (thenPush) {
         setPushing(true);
         try {
-          await invoke('git_push', { path: activePath });
-          toast.success('Pushed', 'Changes pushed to remote');
+          const preview = await invoke<PushPreview>('get_push_preview', { path: activePath });
+          await invoke('git_push', {
+            path: activePath,
+            remote: preview.default_remote,
+            remoteBranch: preview.default_remote_branch,
+            mode: 'normal',
+            pushTags: false,
+            setUpstream: !preview.has_upstream,
+          });
+          toast.success('Pushed', `Pushed to ${preview.default_remote}/${preview.default_remote_branch}`);
         } catch (err) {
           toast.error('Push failed', typeof err === 'string' ? err : 'Unknown error');
         } finally {
@@ -356,9 +364,9 @@ export function FileChangesPanel() {
     [worktrees]
   );
 
-  const fetchChanges = useCallback(async () => {
+  const fetchChanges = useCallback(async (silent = false) => {
     if (!activeTerminalId) return;
-    setLoading(true);
+    if (!silent) setLoading(true);
     setError(null);
     try {
       const data = usingSelectedRepo && selectedRepoPath
@@ -368,7 +376,7 @@ export function FileChangesPanel() {
     } catch (err) {
       setError(String(err));
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [activeTerminalId, selectedRepoPath, usingSelectedRepo]);
 
@@ -376,6 +384,24 @@ export function FileChangesPanel() {
     fetchChanges();
     setExpandedFile(null);
   }, [activeTerminalId, changesRefreshTrigger, selectedRepoPath, fetchChanges]);
+
+  // Auto-refresh: window focus + tab visibility + slow interval while panel is mounted.
+  // Silent so the spinner doesn't flash on every tick. Manual refresh button stays loud.
+  const fetchRef = useRef(fetchChanges);
+  useEffect(() => { fetchRef.current = fetchChanges; }, [fetchChanges]);
+  useEffect(() => {
+    const tick = () => {
+      if (document.visibilityState === 'visible') void fetchRef.current(true);
+    };
+    const interval = window.setInterval(tick, 5000);
+    window.addEventListener('focus', tick);
+    document.addEventListener('visibilitychange', tick);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', tick);
+      document.removeEventListener('visibilitychange', tick);
+    };
+  }, []);
 
   // Group changes by status
   const stagedChanges = result?.changes.filter((c) => c.staged) ?? [];
@@ -442,7 +468,16 @@ export function FileChangesPanel() {
               <span>Pull</span>
             </button>
             <button
-              onClick={fetchChanges}
+              onClick={() => { if (activePath) useAppStore.getState().openPushModal(activePath); }}
+              disabled={!activePath || !result?.is_git_repo}
+              className="flex items-center gap-1 h-6 px-1.5 rounded text-[11px] text-sky-400 hover:bg-sky-500/10 transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
+              title="Push commits to remote (Ctrl+Shift+K)"
+            >
+              <Upload size={12} strokeWidth={2} />
+              <span>Push</span>
+            </button>
+            <button
+              onClick={() => fetchChanges()}
               disabled={loading || !activeTerminalId}
               className="p-1 rounded hover:bg-white/[0.04] text-text-secondary transition-colors disabled:opacity-40"
               title="Refresh"

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useAppStore, DEFAULT_TERMINAL_FONT_SIZE } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
+import { toast } from '../store/toastStore';
 
 /**
  * Return true when the focused element is an editable surface that is NOT
@@ -185,6 +186,28 @@ export function useKeyboardShortcuts() {
       if (ctrl && e.key === 'g') {
         e.preventDefault();
         useAppStore.getState().toggleGridMode();
+      }
+
+      // Push modal: Ctrl+Shift+K (IntelliJ parity)
+      if (ctrl && shift && e.key === 'K') {
+        e.preventDefault();
+        const activeId = activeIdRef.current;
+        if (!activeId) {
+          toast.info('Push', 'No active terminal');
+          return;
+        }
+        const gitInfo = useTerminalStore.getState().gitInfoCache.get(activeId);
+        if (!gitInfo?.is_git_repo) {
+          toast.info('Push', 'Not in a git repository');
+          return;
+        }
+        const terminal = terminalsRef.current.get(activeId);
+        const path = terminal?.config.working_directory;
+        if (!path) {
+          toast.info('Push', 'No working directory');
+          return;
+        }
+        useAppStore.getState().openPushModal(path);
       }
 
       // Worktree Modal: Ctrl+Shift+W
