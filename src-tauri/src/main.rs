@@ -199,3 +199,40 @@ fn main() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
+#[cfg(test)]
+mod panic_hook_tests {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+
+    /// Smoke test: a panic inside `std::thread::spawn` is visible to the
+    /// default panic hook (and therefore to our `set_hook` in `main`). We
+    /// don't install the real hook here — that would race with other tests
+    /// and need ErrorReporter init. Instead we set our own hook for the
+    /// duration of the test, panic on a worker thread, and assert the hook
+    /// fired.
+    #[test]
+    fn thread_spawn_panic_invokes_global_hook() {
+        let fired = Arc::new(AtomicBool::new(false));
+        let fired_clone = fired.clone();
+
+        let prev = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |_info| {
+            fired_clone.store(true, Ordering::SeqCst);
+        }));
+
+        let handle = std::thread::spawn(|| {
+            panic!("intentional thread-panic for hook coverage");
+        });
+        // The join returns Err on a panicked thread; that's expected.
+        let _ = handle.join();
+
+        // Restore so other tests aren't affected.
+        std::panic::set_hook(prev);
+
+        assert!(
+            fired.load(Ordering::SeqCst),
+            "global panic hook did not fire from a std::thread::spawn panic"
+        );
+    }
+}
