@@ -15,6 +15,40 @@ impl ErrorSource {
     }
 }
 
+/// Marker prefix used to tag a `Result::Err(String)` as user-input validation
+/// rather than an internal bug. `wrap_cmd` detects this prefix and:
+///   1. strips it before returning the error to the frontend (so UI is unchanged), and
+///   2. skips telemetry reporting.
+/// `\x01` (SOH) is a control character that does not appear in any error
+/// message we generate or any library `Display` impl we depend on. Do NOT
+/// build `user_err` strings from untrusted external input.
+pub const USER_ERR_PREFIX: &str = "\x01u\x01";
+
+/// Tag `msg` as a user-input validation error. The returned `String` is what
+/// you should return from a command body via `Err(user_err(...))`.
+pub fn user_err(msg: impl Into<String>) -> String {
+    let mut s = String::from(USER_ERR_PREFIX);
+    s.push_str(&msg.into());
+    s
+}
+
+/// True if `s` was produced by `user_err`.
+pub fn is_user_error(s: &str) -> bool {
+    s.starts_with(USER_ERR_PREFIX)
+}
+
+/// Return the original message without the `USER_ERR_PREFIX` if present;
+/// otherwise return the input unchanged. Allocation-free in the common case.
+pub fn strip_user_prefix(s: &str) -> &str {
+    s.strip_prefix(USER_ERR_PREFIX).unwrap_or(s)
+}
+
+/// Single source of truth: should this `Err(String)` be sent to telemetry?
+/// `wrap_cmd` calls this so the rule lives next to the helpers.
+pub fn should_report(err: &str) -> bool {
+    !is_user_error(err)
+}
+
 pub fn scrub(input: &str) -> String {
     use std::sync::OnceLock;
     static WIN_USER: OnceLock<regex::Regex> = OnceLock::new();
@@ -395,5 +429,34 @@ mod tests {
         set_enabled(true);
         assert!(is_enabled());
         set_enabled(false);
+    }
+
+    #[test]
+    fn user_err_round_trips_via_strip() {
+        let e = user_err("Working tree dirty");
+        assert!(e.starts_with(USER_ERR_PREFIX));
+        assert_eq!(strip_user_prefix(&e), "Working tree dirty");
+    }
+
+    #[test]
+    fn strip_user_prefix_passthrough_for_plain_strings() {
+        assert_eq!(strip_user_prefix("ordinary error"), "ordinary error");
+    }
+
+    #[test]
+    fn is_user_error_detects_prefixed_string() {
+        assert!(is_user_error(&user_err("x")));
+        assert!(!is_user_error("plain"));
+        assert!(!is_user_error(""));
+    }
+
+    #[test]
+    fn should_report_skips_user_errors() {
+        assert!(!should_report(&user_err("validation")));
+    }
+
+    #[test]
+    fn should_report_keeps_internal_errors() {
+        assert!(should_report("DB connection refused"));
     }
 }
