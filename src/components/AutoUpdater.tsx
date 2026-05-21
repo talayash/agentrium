@@ -4,6 +4,7 @@ import { Download, RefreshCw, X, Rocket, Clock } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useUpdaterStore } from '../store/updaterStore';
+import { reportInvokeFailure } from '../lib/errorReporter';
 
 const FOUR_HOURS_MS = 4 * 60 * 60 * 1000;
 const THIRTY_MINUTES_MS = 30 * 60 * 1000;
@@ -89,8 +90,10 @@ export function AutoUpdater() {
     void invoke('send_notification', {
       title: 'ClaudeTerminal update available',
       body: `Version ${updateInfo.version} is ready to install. Open the app to update.`,
-    }).catch(() => {
+    }).catch((err) => {
       // Notification failures are non-fatal — the in-app banner still shows.
+      // We still report so we know if the OS notification path is broken.
+      reportInvokeFailure('send_notification', err);
     });
     markNotified(updateInfo.version);
   }, [status, updateInfo, notifiedVersion, markNotified]);
