@@ -17,13 +17,19 @@ where
     match fut.await {
         Ok(v) => Ok(v),
         Err(e) => {
-            tokio::spawn(error_reporter::report(
-                ErrorSource::RustCommand,
-                Some(name.to_string()),
-                e.clone(),
-                None,
-            ));
-            Err(e)
+            if error_reporter::should_report(&e) {
+                tokio::spawn(error_reporter::report(
+                    ErrorSource::RustCommand,
+                    Some(name.to_string()),
+                    e.clone(),
+                    None,
+                ));
+                Err(e)
+            } else {
+                // User-input error: strip the marker prefix so the frontend
+                // sees a plain message, and skip telemetry.
+                Err(error_reporter::strip_user_prefix(&e).to_string())
+            }
         }
     }
 }
@@ -4179,5 +4185,32 @@ mod version_extraction_tests {
         assert!(!has_semver_like("v20"));
         assert!(has_semver_like("0.1.2"));
         assert!(has_semver_like("20.18.0"));
+    }
+}
+
+#[cfg(test)]
+mod wrap_cmd_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn wrap_cmd_strips_prefix_from_user_error() {
+        let result: Result<(), String> = wrap_cmd("dummy", async {
+            Err(error_reporter::user_err("input was bad"))
+        }).await;
+        assert_eq!(result, Err("input was bad".to_string()));
+    }
+
+    #[tokio::test]
+    async fn wrap_cmd_passes_through_internal_error_unchanged() {
+        let result: Result<(), String> = wrap_cmd("dummy", async {
+            Err("io failure".to_string())
+        }).await;
+        assert_eq!(result, Err("io failure".to_string()));
+    }
+
+    #[tokio::test]
+    async fn wrap_cmd_passes_through_ok_unchanged() {
+        let result: Result<i32, String> = wrap_cmd("dummy", async { Ok(42) }).await;
+        assert_eq!(result, Ok(42));
     }
 }
