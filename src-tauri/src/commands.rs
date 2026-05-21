@@ -1482,7 +1482,7 @@ pub struct WorktreeDetectResult {
 async fn validate_path_is_trusted(state: &State<'_, AppState>, path: &str) -> Result<(), String> {
     let canonical_path = std::path::Path::new(path)
         .canonicalize()
-        .map_err(|e| format!("Invalid path '{}': {}", path, e))?;
+        .map_err(|e| error_reporter::user_err(format!("Invalid path '{}': {}", path, e)))?;
 
     let terminals = state.terminals.lock().await;
     let known_dirs = terminals.get_all_configs();
@@ -1499,10 +1499,10 @@ async fn validate_path_is_trusted(state: &State<'_, AppState>, path: &str) -> Re
     });
 
     if !is_trusted {
-        return Err(format!(
+        return Err(error_reporter::user_err(format!(
             "Path '{}' is not under any active terminal's working directory",
             canonical_path.display()
-        ));
+        )));
     }
     Ok(())
 }
@@ -3454,9 +3454,9 @@ pub async fn git_pull_branch(
         let dirty = run_git(&path, &["status", "--porcelain"])?;
         let is_dirty = !dirty.trim().is_empty();
         if is_dirty && !auto_stash {
-            return Err(
-                "Working tree has uncommitted changes — commit or stash first, then pull.".into(),
-            );
+            return Err(error_reporter::user_err(
+                "Working tree has uncommitted changes — commit or stash first, then pull.",
+            ));
         }
 
         let stashed = if is_dirty {
@@ -4212,5 +4212,16 @@ mod wrap_cmd_tests {
     async fn wrap_cmd_passes_through_ok_unchanged() {
         let result: Result<i32, String> = wrap_cmd("dummy", async { Ok(42) }).await;
         assert_eq!(result, Ok(42));
+    }
+
+    #[tokio::test]
+    async fn wrap_cmd_passes_through_validate_path_is_trusted_error_clean() {
+        // Document that callers see the same string they would have before
+        // migration. The prefix is stripped invisibly.
+        let inner_msg = "Invalid path 'agentic-dev': not found";
+        let result: Result<(), String> = wrap_cmd("scan_git_repos", async {
+            Err(error_reporter::user_err(inner_msg))
+        }).await;
+        assert_eq!(result, Err(inner_msg.to_string()));
     }
 }
