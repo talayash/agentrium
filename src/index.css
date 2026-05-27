@@ -168,6 +168,17 @@
   100% { background-position:  240px 0; }
 }
 
+/* Tab drag "pickup": the floating ghost fades + settles in when grabbed.
+   Only opacity is animated here — position/rotate/scale are written live as an
+   inline transform, so they must not be touched by this keyframe. */
+@keyframes ct-ghost-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.ct-ghost {
+  animation: ct-ghost-in 110ms ease-out;
+}
+
 .ct-working-dot {
   animation: ct-pulse-dot 1.4s ease-in-out infinite;
   box-shadow: 0 0 6px currentColor;
