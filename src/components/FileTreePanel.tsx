@@ -13,6 +13,7 @@ import {
   Trash2,
   Link2,
   CornerDownRight,
+  TerminalSquare,
 } from 'lucide-react';
 import { useAppStore } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
@@ -21,6 +22,18 @@ import { toast } from '../store/toastStore';
 
 const isMac = navigator.platform.toUpperCase().includes('MAC');
 const REVEAL_LABEL = isMac ? 'Reveal in Finder' : 'Show in File Explorer';
+
+// Mirror the tag-color palette used by NewTerminalModal so terminals opened
+// from the tree get the same cycling color tags as ones opened via the modal.
+const TERMINAL_TAG_COLORS = [
+  'bg-red-500',
+  'bg-orange-500',
+  'bg-yellow-500',
+  'bg-green-500',
+  'bg-blue-500',
+  'bg-purple-500',
+  'bg-pink-500',
+];
 
 interface ContextMenuState {
   x: number;
@@ -90,7 +103,10 @@ function relativeToRoot(p: string, root: string): string {
 export function FileTreePanel() {
   const activeTerminalId = useTerminalStore((s) => s.activeTerminalId);
   const terminals = useTerminalStore((s) => s.terminals);
+  const createTerminal = useTerminalStore((s) => s.createTerminal);
   const pinnedRepoPath = useAppStore((s) => s.pinnedRepoPath);
+  const defaultClaudeArgs = useAppStore((s) => s.defaultClaudeArgs);
+  const setPinnedRepoPath = useAppStore((s) => s.setPinnedRepoPath);
   const openFileTab = useAppStore((s) => s.openFileTab);
   const changesRefreshTrigger = useAppStore((s) => s.changesRefreshTrigger);
   const triggerChangesRefresh = useAppStore((s) => s.triggerChangesRefresh);
@@ -308,6 +324,30 @@ export function FileTreePanel() {
     }
   }, []);
 
+  /** Spawn a new Claude terminal rooted at `path` and make it active. The new
+   *  terminal becomes the active tab, so the Explorer (which roots at the
+   *  active terminal's cwd) re-roots to show this folder. Clearing any pinned
+   *  repo guarantees the tree follows the new terminal rather than staying on
+   *  a repo pinned by the Changes panel. */
+  const doOpenInTerminal = useCallback(async (path: string) => {
+    try {
+      const size = useTerminalStore.getState().terminals.size;
+      const label = `Terminal ${size + 1}`;
+      const colorTag = TERMINAL_TAG_COLORS[size % TERMINAL_TAG_COLORS.length];
+      await createTerminal(
+        label,
+        path,
+        [...defaultClaudeArgs],
+        {},
+        colorTag,
+        basename(path),
+      );
+      setPinnedRepoPath(null);
+    } catch (err) {
+      toast.error('Could not open terminal', typeof err === 'string' ? err : String(err));
+    }
+  }, [createTerminal, defaultClaudeArgs, setPinnedRepoPath]);
+
   const doCopyPath = useCallback(async (path: string) => {
     try {
       await navigator.clipboard.writeText(path);
@@ -430,6 +470,12 @@ export function FileTreePanel() {
     if (isDir) {
       items.push({
         kind: 'item',
+        label: 'Open in New Terminal',
+        icon: <TerminalSquare size={13} strokeWidth={1.75} />,
+        onClick: () => { void doOpenInTerminal(path); },
+      });
+      items.push({
+        kind: 'item',
         label: 'Refresh',
         shortcut: 'F5',
         icon: <RefreshCw size={13} strokeWidth={1.75} />,
@@ -506,7 +552,7 @@ export function FileTreePanel() {
     });
 
     return items;
-  }, [contextMenu, rootPath, clipboard, openFileTab, refreshFolder, doReveal, doPaste, doCopyPath, doCopyRelativePath]);
+  }, [contextMenu, rootPath, clipboard, openFileTab, refreshFolder, doReveal, doOpenInTerminal, doPaste, doCopyPath, doCopyRelativePath]);
 
   return (
     <div className="flex flex-col h-full min-h-0 overflow-hidden">
