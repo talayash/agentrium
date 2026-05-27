@@ -49,7 +49,7 @@ export function RecentTerminalsMenu() {
         title="Recent Terminals"
         aria-label="Recent Terminals"
       >
-        <Layers size={13} strokeWidth={1.75} className="text-text-secondary" />
+        <Layers size={13} strokeWidth={2} className="text-pink-400" />
         <ChevronDown size={10} strokeWidth={2} className="text-text-tertiary" />
       </button>
 
