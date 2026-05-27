@@ -4,9 +4,11 @@ import {
   getAllWebviewWindows,
   getCurrentWebviewWindow,
 } from '@tauri-apps/api/webviewWindow';
-import { PhysicalPosition } from '@tauri-apps/api/dpi';
+import { PhysicalPosition, PhysicalSize } from '@tauri-apps/api/dpi';
 import { emit, listen } from '@tauri-apps/api/event';
+import { useTerminalStore } from '../store/terminalStore';
 import type { TerminalConfig } from '../store/terminalStore';
+import type { WindowGeometry } from './windowLayout';
 
 const TRANSFER_EVENT = 'ct://tab-transfer';
 const TRANSFER_DONE_EVENT = 'ct://tab-transfer-done';
@@ -58,6 +60,45 @@ export async function createDetachedWindow(ids: string[], physX: number, physY: 
 }
 
 /**
+ * Recreate a detached window on startup at its saved geometry and hand it the
+ * given (already-restored) terminal ids, detaching them from the main window.
+ * Mirrors a tear-off but driven by the persisted layout instead of a drag.
+ */
+export async function restoreDetachedWindow(ids: string[], geometry?: WindowGeometry): Promise<void> {
+  if (ids.length === 0) return;
+  const label = `detached-${crypto.randomUUID()}`;
+  const idsParam = encodeURIComponent(ids.join(','));
+
+  const win = new WebviewWindow(label, {
+    url: `index.html?mode=detached&ids=${idsParam}`,
+    width: 1000,
+    height: 680,
+    minWidth: 480,
+    minHeight: 320,
+    decorations: false,
+    transparent: true,
+    title: 'ClaudeTerminal',
+  });
+
+  win.once('tauri://created', () => {
+    if (geometry) {
+      win
+        .setPosition(new PhysicalPosition(Math.round(geometry.x), Math.round(geometry.y)))
+        .then(() => win.setSize(new PhysicalSize(Math.round(geometry.w), Math.round(geometry.h))))
+        .catch(() => {
+          /* geometry restore is best-effort */
+        });
+    }
+  });
+  win.once('tauri://error', (e) => {
+    console.error('[tabTransfer] failed to restore detached window:', e);
+  });
+
+  // The new window adopts these ids on load; remove them from main now.
+  useTerminalStore.getState().detachTerminals(ids);
+}
+
+/**
  * Route a dropped set of tabs. Reads the global cursor position and hit-tests
  * it against every window's outer bounds:
  *   - over another window  → emit a transfer to that window;
@@ -78,20 +119,17 @@ export async function routeTabDrop(ids: string[], sourceLabel: string): Promise<
   }
 
   let target: string | null = null;
-  let overSource = false;
   const windows = await getAllWebviewWindows();
   for (const w of windows) {
+    if (w.label === sourceLabel) continue; // can't transfer into yourself
     try {
       const pos = await w.outerPosition();
       const size = await w.outerSize();
       const inside =
         cx >= pos.x && cx <= pos.x + size.width && cy >= pos.y && cy <= pos.y + size.height;
-      if (!inside) continue;
-      if (w.label === sourceLabel) {
-        overSource = true;
-      } else {
+      if (inside) {
         target = w.label;
-        break; // a non-source window wins
+        break;
       }
     } catch {
       // Window may have closed mid-drag — skip it.
@@ -99,11 +137,20 @@ export async function routeTabDrop(ids: string[], sourceLabel: string): Promise<
   }
 
   if (target) {
+    // Dropped over another window → transfer the tab(s) there.
     await emit(TRANSFER_EVENT, { targetLabel: target, ids, sourceLabel } as TransferPayload);
-  } else if (!overSource) {
+  } else {
+    // Dropped over the source window's own body, or empty desktop → tear off a
+    // new window at the cursor. (Drops over the source's tab strip are handled
+    // as a reorder before routeTabDrop is ever called.)
     await createDetachedWindow(ids, cx, cy);
   }
-  // overSource && !target → dropped on the source window's own body; do nothing.
+
+  // Remove the tab(s) from the SOURCE window immediately so they don't linger
+  // there while the destination renders them. The PTYs stay alive in the
+  // backend — the new/target window adopts them independently (and the DONE
+  // event from a transfer makes this a harmless no-op if it lands again).
+  useTerminalStore.getState().detachTerminals(ids);
 }
 
 /**

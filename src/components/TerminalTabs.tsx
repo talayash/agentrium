@@ -13,6 +13,7 @@ import { ScriptChildPane } from './ScriptChildPane';
 import { BottomTerminalPane } from './BottomTerminalPane';
 import { useNowTick } from '../hooks/useNowTick';
 import { useTabDrag } from '../hooks/useTabDrag';
+import { getWindowMode } from '../lib/windowMode';
 import { getLastOutputAt } from '../lib/terminalActivity';
 
 function fileBasename(p: string): string {
@@ -28,8 +29,9 @@ export function TerminalTabs() {
   const { openNewTerminalModal, gridMode, toggleGridMode, addToGrid, gridTerminalIds, splitMode, splitTerminalIds, splitOrientation, splitRatio, setSplitOrientation, setSplitRatio, clearSplit, setSplitTerminals, setSplitMode, openFiles, activeFilePath, setActiveFilePath, closeFileTab, showFileTree } = useAppStore();
   const now = useNowTick();
 
-  // Tab drag/drop + multi-select + tear-off, shared with the detached window.
-  const { isSelected, onTabClick, dropIndex, splitDropTargetId, tabDragProps, containerDragProps } = useTabDrag('main', 'main');
+  // Tab drag/drop + multi-select + tear-off. Keyed on this window's label so a
+  // detached window routes transfers from its own identity.
+  const { isSelected, isDragging, dropIndex, splitDropTargetId, tabHandlers, ghost } = useTabDrag(getWindowMode().label, 'main');
 
   const focusFile = useCallback((path: string) => {
     setActiveFilePath(path);
@@ -174,7 +176,7 @@ export function TerminalTabs() {
           )}
           <ul
             ref={tabsContainerRef}
-            {...containerDragProps}
+            data-tab-strip
             className="flex items-center overflow-x-auto scrollbar-none list-none m-0 p-0"
           >
             {terminalList.map((terminal, index) => {
@@ -186,6 +188,7 @@ export function TerminalTabs() {
               const isWorking = lastOutputAt != null && now - lastOutputAt < 2000;
               const isActiveTab = activeTerminalId === terminal.id && !activeFilePath;
               const selected = isSelected(terminal.id);
+              const dragged = isDragging(terminal.id);
 
               return (
               <li key={terminal.id} className="flex items-center flex-shrink-0">
@@ -197,8 +200,7 @@ export function TerminalTabs() {
                   role="tab"
                   tabIndex={0}
                   aria-selected={isActiveTab}
-                  {...tabDragProps(terminal.id, index)}
-                  onClick={(e) => onTabClick(e, terminal.id)}
+                  {...tabHandlers(terminal.id, index)}
                   onAuxClick={(e) => {
                     // Middle-click (mouse wheel) closes the tab — same as VS Code.
                     if (e.button === 1) {
@@ -212,7 +214,7 @@ export function TerminalTabs() {
                       : isActiveTab
                         ? 'bg-elevation-0 text-text-primary'
                         : 'hover:bg-white/[0.045] text-text-secondary'
-                  } ${selected && !isActiveTab ? 'ring-1 ring-inset ring-accent-primary/40' : ''} ${isWorking && !isActiveTab ? 'ct-working-tab' : ''}`}
+                  } ${selected && !isActiveTab ? 'ring-1 ring-inset ring-accent-primary/40' : ''} ${dragged ? 'opacity-40' : ''} ${isWorking && !isActiveTab ? 'ct-working-tab' : ''}`}
                 >
                   {/* IntelliJ-style bottom underline for active tab */}
                   {(isActiveTab || splitDropTargetId === terminal.id) && (
@@ -520,6 +522,7 @@ export function TerminalTabs() {
       </div>
 
       <BottomTerminalPane />
+      {ghost}
     </div>
   );
 }
