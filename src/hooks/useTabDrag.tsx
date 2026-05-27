@@ -70,6 +70,8 @@ export function useTabDrag(windowLabel: string, variant: 'main' | 'detached' = '
   const [dropIndex, setDropIndex] = useState<number | null>(null);
   const [splitDropTargetId, setSplitDropTargetId] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
+  // Ids currently being dragged — drives the strip's slide-aside preview order.
+  const [dragIds, setDragIds] = useState<string[]>([]);
   const [dragMeta, setDragMeta] = useState<DragMeta>({ label: '', count: 0, colorTag: null, width: 0 });
 
   const startRef = useRef<DragStart | null>(null);
@@ -90,6 +92,7 @@ export function useTabDrag(windowLabel: string, variant: 'main' | 'detached' = '
     dragIdsRef.current = [];
     dropIndexRef.current = null;
     setDragging(false);
+    setDragIds([]);
     setDropIndex(null);
   }, []);
 
@@ -105,10 +108,12 @@ export function useTabDrag(windowLabel: string, variant: 'main' | 'detached' = '
 
   const commitReorder = useCallback(
     (ids: string[], at: number) => {
-      const order = tabOrder();
-      const remaining = order.filter((tid) => !ids.includes(tid));
-      const removedBefore = order.slice(0, at).filter((tid) => ids.includes(tid)).length;
-      const insertAt = at - removedBefore;
+      // `at` is an index among the NON-dragged tabs (the drop index is computed
+      // over visible, non-dragged tabs — see computeDropIndex), so insert there
+      // directly. This matches the strip's slide-aside preview order, so commit
+      // produces no visual jump.
+      const remaining = tabOrder().filter((tid) => !ids.includes(tid));
+      const insertAt = Math.max(0, Math.min(at, remaining.length));
       reorderTerminals([...remaining.slice(0, insertAt), ...ids, ...remaining.slice(insertAt)]);
     },
     [reorderTerminals],
@@ -129,7 +134,9 @@ export function useTabDrag(windowLabel: string, variant: 'main' | 'detached' = '
   };
 
   const computeDropIndex = (ul: HTMLElement, clientX: number): number => {
-    const tabs = Array.from(ul.querySelectorAll<HTMLElement>('[role="tab"]'));
+    // Only the non-dragged tabs (the dragged ones render as a faded gap that we
+    // exclude via [data-dragging]); the index is the slot among them.
+    const tabs = Array.from(ul.querySelectorAll<HTMLElement>('[role="tab"]:not([data-dragging])'));
     for (let i = 0; i < tabs.length; i++) {
       const r = tabs[i].getBoundingClientRect();
       if (clientX < r.left + r.width / 2) return i;
@@ -182,6 +189,7 @@ export function useTabDrag(windowLabel: string, variant: 'main' | 'detached' = '
         // Initialize ghost position before first paint so it doesn't flash at 0,0.
         lastPosRef.current = { x: e.clientX - s.offsetX, y: e.clientY - s.offsetY };
         setDragMeta({ label: info.label, count: dragIdsRef.current.length, colorTag: info.colorTag, width: s.width });
+        setDragIds(dragIdsRef.current); // triggers the strip slide-aside preview
         setDragging(true); // renders the ghost; positioned from lastPosRef on mount
       }
 
@@ -333,7 +341,8 @@ export function useTabDrag(windowLabel: string, variant: 'main' | 'detached' = '
 
   return {
     isSelected: (id: string) => selectedIds.has(id),
-    isDragging: (id: string) => dragging && dragIdsRef.current.includes(id),
+    isDragging: (id: string) => dragIds.includes(id),
+    dragIds,
     dropIndex,
     splitDropTargetId,
     tabHandlers,

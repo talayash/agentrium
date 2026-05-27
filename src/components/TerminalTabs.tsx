@@ -32,7 +32,7 @@ export function TerminalTabs() {
 
   // Tab drag/drop + multi-select + tear-off. Keyed on this window's label so a
   // detached window routes transfers from its own identity.
-  const { isSelected, isDragging, dropIndex, splitDropTargetId, tabHandlers, ghost } = useTabDrag(getWindowMode().label, 'main');
+  const { isSelected, isDragging, dragIds, dropIndex, splitDropTargetId, tabHandlers, ghost } = useTabDrag(getWindowMode().label, 'main');
 
   const focusFile = useCallback((path: string) => {
     setActiveFilePath(path);
@@ -47,6 +47,24 @@ export function TerminalTabs() {
         .map((t) => t.config),
     [terminals]
   );
+
+  // Slide-aside preview order: while dragging, the dragged tab(s) are pulled out
+  // and re-inserted at the drop slot, so the other tabs (motion.li `layout`)
+  // physically part to open a gap where the tab will land. The dragged tab(s)
+  // render as a faded placeholder = the gap. When the cursor leaves the strip
+  // (dropIndex null), the gap stays at its original slot. Commit uses the same
+  // index, so dropping produces no jump.
+  const renderList = useMemo(() => {
+    if (dragIds.length === 0) return terminalList;
+    const draggedSet = new Set(dragIds);
+    const nonDragged = terminalList.filter((t) => !draggedSet.has(t.id));
+    const draggedTabs = terminalList.filter((t) => draggedSet.has(t.id));
+    if (draggedTabs.length === 0) return terminalList;
+    const firstIdx = terminalList.findIndex((t) => draggedSet.has(t.id));
+    const origAt = terminalList.slice(0, firstIdx).filter((t) => !draggedSet.has(t.id)).length;
+    const at = dropIndex != null ? Math.max(0, Math.min(dropIndex, nonDragged.length)) : origAt;
+    return [...nonDragged.slice(0, at), ...draggedTabs, ...nonDragged.slice(at)];
+  }, [terminalList, dragIds, dropIndex]);
 
   const handleNewTab = () => {
     openNewTerminalModal();
@@ -181,7 +199,7 @@ export function TerminalTabs() {
             className="flex items-center overflow-x-auto scrollbar-none list-none m-0 p-0"
           >
             <AnimatePresence initial={false}>
-            {terminalList.flatMap((terminal, index) => {
+            {renderList.map((terminal, index) => {
               const instance = terminals.get(terminal.id);
               const model = instance?.model;
               const isWorktree = instance?.isWorktree;
@@ -192,24 +210,7 @@ export function TerminalTabs() {
               const selected = isSelected(terminal.id);
               const dragged = isDragging(terminal.id);
 
-              const els: JSX.Element[] = [];
-              // Sliding insertion indicator — same key across positions so Framer
-              // animates it gliding between slots (FLIP).
-              if (dropIndex === index) {
-                els.push(
-                  <motion.span
-                    key="drop-indicator"
-                    layout
-                    initial={{ opacity: 0, scaleY: 0.4 }}
-                    animate={{ opacity: 1, scaleY: 1 }}
-                    exit={{ opacity: 0, scaleY: 0.4 }}
-                    transition={{ duration: 0.12 }}
-                    className="w-[3px] h-5 mx-[1px] self-center rounded-full bg-accent-primary flex-shrink-0"
-                    aria-hidden
-                  />,
-                );
-              }
-              els.push(
+              return (
               <motion.li
                 key={terminal.id}
                 layout
@@ -223,6 +224,7 @@ export function TerminalTabs() {
                   role="tab"
                   tabIndex={0}
                   aria-selected={isActiveTab}
+                  data-dragging={dragged ? '' : undefined}
                   {...tabHandlers(terminal.id, index)}
                   onAuxClick={(e) => {
                     // Middle-click (mouse wheel) closes the tab — same as VS Code.
@@ -237,7 +239,7 @@ export function TerminalTabs() {
                       : isActiveTab
                         ? 'bg-elevation-0 text-text-primary'
                         : 'hover:bg-white/[0.045] text-text-secondary'
-                  } ${selected && !isActiveTab ? 'ring-1 ring-inset ring-accent-primary/40' : ''} ${dragged ? 'opacity-30 scale-95' : ''} ${isWorking && !isActiveTab ? 'ct-working-tab' : ''}`}
+                  } ${selected && !isActiveTab ? 'ring-1 ring-inset ring-accent-primary/40' : ''} ${dragged ? 'opacity-20' : ''} ${isWorking && !isActiveTab ? 'ct-working-tab' : ''}`}
                 >
                   {/* IntelliJ-style bottom underline for active tab */}
                   {(isActiveTab || splitDropTargetId === terminal.id) && (
@@ -329,24 +331,9 @@ export function TerminalTabs() {
                     </button>
                   </div>
                 </div>
-              </motion.li>,
+              </motion.li>
               );
-              return els;
             })}
-            {/* Trailing insertion indicator (drop at end of strip) — same key as
-                the in-flow one so it glides to the end instead of popping. */}
-            {dropIndex === terminalList.length && terminalList.length > 0 && (
-              <motion.span
-                key="drop-indicator"
-                layout
-                initial={{ opacity: 0, scaleY: 0.4 }}
-                animate={{ opacity: 1, scaleY: 1 }}
-                exit={{ opacity: 0, scaleY: 0.4 }}
-                transition={{ duration: 0.12 }}
-                className="w-[3px] h-5 mx-[1px] self-center rounded-full bg-accent-primary flex-shrink-0"
-                aria-hidden
-              />
-            )}
             </AnimatePresence>
           </ul>
 
