@@ -95,6 +95,18 @@ interface TerminalState {
   fetchGitInfo: (terminalId: string) => Promise<void>;
   reorderTerminals: (orderedIds: string[]) => void;
 
+  // Multi-window tear-off support. The PTY lives in the shared backend, so
+  // moving a tab between windows is purely a frontend store handoff:
+  //   - adoptTerminal: register a terminal whose PTY already exists (NO spawn).
+  //     Used when a tab is torn off / transferred into this window. An optional
+  //     restoredOutput seeds prior scrollback (from get_session_log), mirroring
+  //     session restore.
+  //   - detachTerminals: remove terminals from THIS window's store + dispose
+  //     their xterms WITHOUT calling close_terminal — the PTY keeps running so
+  //     another window can adopt it.
+  adoptTerminal: (config: TerminalConfig, restoredOutput?: string) => void;
+  detachTerminals: (ids: string[]) => void;
+
   // Run an npm script in a child terminal tied to the given parent. Returns
   // the new child's id. If the parent already has a script running, that
   // child is closed first so the new one replaces it. `cwdOverride` lets the
@@ -451,6 +463,79 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
     }
     return { terminals: next };
   }),
+
+  adoptTerminal: (config, restoredOutput) => {
+    const claudeArgs = config.claude_args || [];
+    let model: string | undefined;
+    let effort: string | undefined;
+    const isWorktree = claudeArgs.includes('--worktree');
+    for (let i = 0; i < claudeArgs.length; i++) {
+      if (claudeArgs[i] === '--model' && i + 1 < claudeArgs.length) model = claudeArgs[i + 1];
+      if (claudeArgs[i] === '--effort' && i + 1 < claudeArgs.length) effort = claudeArgs[i + 1];
+    }
+
+    set((state) => {
+      const newTerminals = new Map(state.terminals);
+      // Guard against a duplicate adopt (e.g. the transfer event firing twice):
+      // keep the existing instance — clobbering it would drop a live xterm.
+      if (!newTerminals.has(config.id)) {
+        newTerminals.set(config.id, { config, xterm: null, restoredOutput, model, effort, isWorktree });
+      }
+      return { terminals: newTerminals, activeTerminalId: config.id };
+    });
+
+    get().fetchGitInfo(config.id);
+  },
+
+  detachTerminals: (ids) => {
+    if (ids.length === 0) return;
+    const idSet = new Set(ids);
+
+    set((state) => {
+      const newTerminals = new Map(state.terminals);
+      const newUnread = new Set(state.unreadTerminalIds);
+      const newGitCache = new Map(state.gitInfoCache);
+      const newChildren = new Map(state.scriptChildren);
+
+      for (const id of ids) {
+        const inst = newTerminals.get(id);
+        if (inst?.xterm) inst.xterm.dispose();
+        newTerminals.delete(id);
+        newUnread.delete(id);
+        newGitCache.delete(id);
+        clearTerminalActivity(id);
+
+        // Drop any local script-child entry for this parent. We do NOT close
+        // the child's PTY — detach never kills processes — but the child isn't
+        // carried across windows in v1, so just forget it locally.
+        const childId = newChildren.get(id);
+        if (childId) {
+          const childInst = newTerminals.get(childId);
+          if (childInst?.xterm) childInst.xterm.dispose();
+          newTerminals.delete(childId);
+          newChildren.delete(id);
+        }
+      }
+
+      // If the active tab was detached, fall back to a remaining main-tab
+      // terminal (never a script child or bottom-pane shell).
+      let nextActive = state.activeTerminalId;
+      if (nextActive && idSet.has(nextActive)) {
+        const remainingIds = Array.from(newTerminals.values())
+          .filter((t) => !t.scriptParentId && !t.isShellTerminal)
+          .map((t) => t.config.id);
+        nextActive = remainingIds[0] || null;
+      }
+
+      return {
+        terminals: newTerminals,
+        unreadTerminalIds: newUnread,
+        gitInfoCache: newGitCache,
+        scriptChildren: newChildren,
+        activeTerminalId: nextActive,
+      };
+    });
+  },
 
   runScript: async (parentId, scriptName, cwdOverride) => {
     const parent = get().terminals.get(parentId);

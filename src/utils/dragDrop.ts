@@ -4,6 +4,12 @@ export interface DragPayload {
   terminalId: string;
   source: 'sidebar' | 'grid' | 'tab';
   sourceIndex?: number;
+  /** All dragged terminal ids when a multi-selection is dragged (tab source).
+   *  Falls back to [terminalId] when absent. */
+  ids?: string[];
+  /** Label of the window the drag originated from (tab source). Used by the
+   *  cross-window tear-off / transfer engine. */
+  windowLabel?: string;
 }
 
 export function setDragData(e: React.DragEvent, payload: DragPayload) {

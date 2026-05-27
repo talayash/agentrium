@@ -70,6 +70,7 @@ fn main() {
             commands::resize_terminal,
             commands::close_terminal,
             commands::get_terminals,
+            commands::get_cursor_position,
             commands::update_terminal_label,
             commands::update_terminal_nickname,
             commands::save_profile,
@@ -172,6 +173,13 @@ fn main() {
             commands::get_changelist_assignments,
         ])
         .on_window_event(|window, event| {
+            // Only the main window owns the app lifecycle. Detached (tear-off)
+            // windows are labelled `detached-*`; closing one must NOT save the
+            // session or tear down every PTY — that close is handled in JS
+            // (the "return to main / close terminals" dialog).
+            if window.label() != "main" {
+                return;
+            }
             if let tauri::WindowEvent::CloseRequested { .. } = event {
                 let app_state = window.state::<AppState>();
                 let terminals = app_state.terminals.clone();

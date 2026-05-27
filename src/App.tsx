@@ -26,6 +26,9 @@ import { SessionTimeline } from './components/SessionTimeline';
 import { MemoryEditor } from './components/MemoryEditor';
 import { StatusBar } from './components/StatusBar';
 import { ToastContainer } from './components/ToastContainer';
+import { DetachedApp } from './components/DetachedApp';
+import { getWindowMode } from './lib/windowMode';
+import { installTransferReceiver } from './lib/tabTransfer';
 import { useAppStore } from './store/appStore';
 import { useTerminalStore } from './store/terminalStore';
 import { toast } from './store/toastStore';
@@ -102,7 +105,7 @@ interface SavedTerminalConfig {
 
 function App() {
   const { sidebarOpen, sidebarCollapsed, hintsOpen, changesOpen, orchestrationOpen, settingsOpen, profileModalOpen, newTerminalModalOpen, workspaceModalOpen, worktreeModalOpen, sessionHistoryOpen, snippetsModalOpen, commandPaletteOpen, globalSearchOpen, whatsNewOpen, claudeConfigOpen, sessionTimelineOpen, memoryEditorOpen, notifyOnFinish, restoreSession, triggerChangesRefresh, showRestoreBanner, pendingRestoreConfigs, setShowRestoreBanner, setPendingRestoreConfigs, lastSeenVersion, setLastSeenVersion, openWhatsNew } = useAppStore();
-  const { handleTerminalOutput, updateTerminalStatus, setLoopMode, setSessionSummary, createTerminal, createShellTerminalTab } = useTerminalStore();
+  const { handleTerminalOutput, updateTerminalStatus, setLoopMode, setSessionSummary, createTerminal, createShellTerminalTab, adoptTerminal, detachTerminals } = useTerminalStore();
   const [showSetup, setShowSetup] = useState<boolean | null>(null);
   const { notify } = useNotification();
 
@@ -178,6 +181,13 @@ function App() {
     const interval = setInterval(sendHeartbeat, 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, [showSetup]);
+
+  // Receive tabs torn off / transferred into the main window (and "return to
+  // main" from a closing detached window). Releases tabs transferred away.
+  useEffect(
+    () => installTransferReceiver('main', adoptTerminal, detachTerminals),
+    [adoptTerminal, detachTerminals],
+  );
 
   useEffect(() => {
     const unlisten = listen<{ id: string; data: number[] }>('terminal-output', (event) => {
@@ -486,9 +496,13 @@ function App() {
 }
 
 function AppWithBoundary() {
+  // A torn-off window renders a minimal layout and must NOT run App()'s
+  // setup/restore/telemetry hooks. The mode is constant for the window's
+  // lifetime, so branching at this level keeps hook order stable in each.
+  const { mode } = getWindowMode();
   return (
     <ErrorBoundary>
-      <App />
+      {mode === 'detached' ? <DetachedApp /> : <App />}
     </ErrorBoundary>
   );
 }

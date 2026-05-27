@@ -1,5 +1,4 @@
 import { useMemo, useState, useCallback, useRef, useEffect } from 'react';
-import { Reorder } from 'framer-motion';
 import { X, Plus, Grid3X3, SplitSquareHorizontal, RotateCw, GitBranch, ChevronLeft, ChevronRight, Copy, File as FileIcon } from 'lucide-react';
 import appIconUrl from '../assets/app-icon.png';
 import { useTerminalStore } from '../store/terminalStore';
@@ -12,8 +11,8 @@ import { FileEditorView } from './FileEditorView';
 import { ScriptsMenu } from './ScriptsMenu';
 import { ScriptChildPane } from './ScriptChildPane';
 import { BottomTerminalPane } from './BottomTerminalPane';
-import { getDragData, isTerminalDrag } from '../utils/dragDrop';
 import { useNowTick } from '../hooks/useNowTick';
+import { useTabDrag } from '../hooks/useTabDrag';
 import { getLastOutputAt } from '../lib/terminalActivity';
 
 function fileBasename(p: string): string {
@@ -25,16 +24,12 @@ function fileBasename(p: string): string {
 const isMac = navigator.platform.toUpperCase().includes('MAC');
 
 export function TerminalTabs() {
-  const { terminals, activeTerminalId, setActiveTerminal, closeTerminal, unreadTerminalIds, gitInfoCache, reorderTerminals, scriptChildren, closeScript } = useTerminalStore();
+  const { terminals, activeTerminalId, closeTerminal, unreadTerminalIds, gitInfoCache, scriptChildren, closeScript } = useTerminalStore();
   const { openNewTerminalModal, gridMode, toggleGridMode, addToGrid, gridTerminalIds, splitMode, splitTerminalIds, splitOrientation, splitRatio, setSplitOrientation, setSplitRatio, clearSplit, setSplitTerminals, setSplitMode, openFiles, activeFilePath, setActiveFilePath, closeFileTab, showFileTree } = useAppStore();
   const now = useNowTick();
 
-  // Selecting a terminal clears the file-tab focus (so terminal view shows),
-  // selecting a file clears the terminal focus-visual intent.
-  const focusTerminal = useCallback((id: string) => {
-    setActiveFilePath(null);
-    setActiveTerminal(id);
-  }, [setActiveFilePath, setActiveTerminal]);
+  // Tab drag/drop + multi-select + tear-off, shared with the detached window.
+  const { isSelected, onTabClick, dropIndex, splitDropTargetId, tabDragProps, containerDragProps } = useTabDrag('main', 'main');
 
   const focusFile = useCallback((path: string) => {
     setActiveFilePath(path);
@@ -61,8 +56,6 @@ export function TerminalTabs() {
     }
   };
 
-  const [splitDropTargetId, setSplitDropTargetId] = useState<string | null>(null);
-
   const handleSplitWith = (terminalId: string) => {
     if (activeTerminalId && terminalId !== activeTerminalId) {
       setSplitTerminals([activeTerminalId, terminalId]);
@@ -84,29 +77,6 @@ export function TerminalTabs() {
       nickname ?? undefined,
     );
   };
-
-  const handleTabDragOver = useCallback((e: React.DragEvent, tabTerminalId: string) => {
-    if (isTerminalDrag(e)) {
-      e.preventDefault();
-      e.dataTransfer.dropEffect = 'move';
-      setSplitDropTargetId(tabTerminalId);
-    }
-  }, []);
-
-  const handleTabDragLeave = useCallback((e: React.DragEvent) => {
-    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-      setSplitDropTargetId(null);
-    }
-  }, []);
-
-  const handleTabDrop = useCallback((e: React.DragEvent, tabTerminalId: string) => {
-    e.preventDefault();
-    setSplitDropTargetId(null);
-    const payload = getDragData(e);
-    if (!payload || payload.terminalId === tabTerminalId) return;
-    setSplitTerminals([tabTerminalId, payload.terminalId]);
-    setSplitMode(true);
-  }, [setSplitTerminals, setSplitMode]);
 
   // Tab scroll overflow detection
   const tabsContainerRef = useRef<HTMLUListElement>(null);
@@ -202,14 +172,12 @@ export function TerminalTabs() {
               <ChevronLeft size={14} className="text-text-secondary" strokeWidth={1.75} />
             </button>
           )}
-          <Reorder.Group
+          <ul
             ref={tabsContainerRef}
-            axis="x"
-            values={terminalList}
-            onReorder={(next) => reorderTerminals(next.map((t) => t.id))}
-            className="flex items-center overflow-x-auto scrollbar-none"
+            {...containerDragProps}
+            className="flex items-center overflow-x-auto scrollbar-none list-none m-0 p-0"
           >
-            {terminalList.map((terminal) => {
+            {terminalList.map((terminal, index) => {
               const instance = terminals.get(terminal.id);
               const model = instance?.model;
               const isWorktree = instance?.isWorktree;
@@ -217,15 +185,20 @@ export function TerminalTabs() {
               const lastOutputAt = getLastOutputAt(terminal.id);
               const isWorking = lastOutputAt != null && now - lastOutputAt < 2000;
               const isActiveTab = activeTerminalId === terminal.id && !activeFilePath;
+              const selected = isSelected(terminal.id);
 
               return (
-              <Reorder.Item
-                key={terminal.id}
-                value={terminal}
-                className="flex-shrink-0"
-              >
-                <button
-                  onClick={() => focusTerminal(terminal.id)}
+              <li key={terminal.id} className="flex items-center flex-shrink-0">
+                {/* Reorder insertion indicator */}
+                {dropIndex === index && (
+                  <span className="w-[2px] h-5 bg-accent-primary rounded-full flex-shrink-0" aria-hidden />
+                )}
+                <div
+                  role="tab"
+                  tabIndex={0}
+                  aria-selected={isActiveTab}
+                  {...tabDragProps(terminal.id, index)}
+                  onClick={(e) => onTabClick(e, terminal.id)}
                   onAuxClick={(e) => {
                     // Middle-click (mouse wheel) closes the tab — same as VS Code.
                     if (e.button === 1) {
@@ -233,19 +206,16 @@ export function TerminalTabs() {
                       closeTerminal(terminal.id);
                     }
                   }}
-                  onDragOver={(e) => handleTabDragOver(e, terminal.id)}
-                  onDragLeave={handleTabDragLeave}
-                  onDrop={(e) => handleTabDrop(e, terminal.id)}
-                  className={`group relative flex items-center gap-2 px-3 h-9 text-[12px] transition-colors ${
+                  className={`group relative flex items-center gap-2 px-3 h-9 text-[12px] cursor-pointer select-none transition-colors ${
                     splitDropTargetId === terminal.id
                       ? 'bg-accent-primary/12 text-accent-primary'
-                      : activeTerminalId === terminal.id && !activeFilePath
+                      : isActiveTab
                         ? 'bg-elevation-0 text-text-primary'
                         : 'hover:bg-white/[0.045] text-text-secondary'
-                  } ${isWorking && !isActiveTab ? 'ct-working-tab' : ''}`}
+                  } ${selected && !isActiveTab ? 'ring-1 ring-inset ring-accent-primary/40' : ''} ${isWorking && !isActiveTab ? 'ct-working-tab' : ''}`}
                 >
                   {/* IntelliJ-style bottom underline for active tab */}
-                  {((activeTerminalId === terminal.id && !activeFilePath) || splitDropTargetId === terminal.id) && (
+                  {(isActiveTab || splitDropTargetId === terminal.id) && (
                     <span className="absolute left-2 right-2 bottom-0 h-[2px] rounded-t bg-accent-primary" />
                   )}
                   {splitDropTargetId === terminal.id && (
@@ -333,11 +303,17 @@ export function TerminalTabs() {
                       <X size={12} />
                     </button>
                   </div>
-                </button>
-              </Reorder.Item>
+                </div>
+              </li>
               );
             })}
-          </Reorder.Group>
+            {/* Trailing insertion indicator (drop at end of strip) */}
+            {dropIndex === terminalList.length && terminalList.length > 0 && (
+              <li className="flex items-center flex-shrink-0" aria-hidden>
+                <span className="w-[2px] h-5 bg-accent-primary rounded-full flex-shrink-0" />
+              </li>
+            )}
+          </ul>
 
           {/* File tabs — rendered inline next to terminal tabs, VS Code style */}
           {openFiles.length > 0 && (

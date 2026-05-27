@@ -452,6 +452,16 @@ pub async fn get_terminals(
     .await
 }
 
+/// Global cursor position in physical (device) pixels, relative to the
+/// top-left of the desktop. Used by the tab tear-off / cross-window transfer
+/// logic to hit-test the drop point against each window's outer bounds
+/// (which `outerPosition()`/`outerSize()` also report in physical pixels).
+#[command]
+pub fn get_cursor_position(app: AppHandle) -> Result<(f64, f64), String> {
+    let pos = app.cursor_position().map_err(|e| e.to_string())?;
+    Ok((pos.x, pos.y))
+}
+
 #[command]
 pub async fn update_terminal_label(
     state: State<'_, AppState>,
