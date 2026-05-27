@@ -202,6 +202,13 @@ fn main() {
                         manager.close_all();
                     }
                 });
+                // The main window is the app. Closing it quits everything
+                // (including any torn-off windows) — matching the original
+                // single-window behavior. Torn-off windows persist their layout
+                // during the session, so the next launch restores them. This
+                // exit force-closes detached windows without firing their JS
+                // close dialog.
+                window.app_handle().exit(0);
             }
         })
         .run(tauri::generate_context!())
