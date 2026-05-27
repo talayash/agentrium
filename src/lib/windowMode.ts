@@ -1,6 +1,6 @@
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 
-export type WindowMode = 'main' | 'detached';
+export type WindowMode = 'main' | 'detached' | 'dragpreview';
 
 export interface WindowModeInfo {
   mode: WindowMode;
@@ -23,7 +23,9 @@ export function getWindowMode(): WindowModeInfo {
   if (cached) return cached;
 
   const params = new URLSearchParams(window.location.search);
-  const mode: WindowMode = params.get('mode') === 'detached' ? 'detached' : 'main';
+  const rawMode = params.get('mode');
+  const mode: WindowMode =
+    rawMode === 'detached' ? 'detached' : rawMode === 'dragpreview' ? 'dragpreview' : 'main';
   const idsParam = params.get('ids') ?? '';
   const initialIds = idsParam
     .split(',')

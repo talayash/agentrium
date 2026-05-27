@@ -27,6 +27,8 @@ import { MemoryEditor } from './components/MemoryEditor';
 import { StatusBar } from './components/StatusBar';
 import { ToastContainer } from './components/ToastContainer';
 import { getWindowMode } from './lib/windowMode';
+import { DragPreview } from './components/DragPreview';
+import { WebviewWindow, getAllWebviewWindows } from '@tauri-apps/api/webviewWindow';
 import { installTransferReceiver, requestTransfer, restoreDetachedWindow } from './lib/tabTransfer';
 import { keyOf, upsertEntry, removeEntry, getDetachedEntries, currentGeometry } from './lib/windowLayout';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -207,6 +209,38 @@ function App() {
     () => installTransferReceiver(windowLabel, adoptTerminal, detachTerminals),
     [windowLabel, adoptTerminal, detachTerminals],
   );
+
+  // Pre-create the transparent, always-on-top "drag-preview" overlay (hidden)
+  // once, so tab drags can show the lifted tab OUTSIDE the window without
+  // per-drag window-creation latency. Main window only.
+  useEffect(() => {
+    if (isDetached) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const existing = await getAllWebviewWindows();
+        if (cancelled || existing.some((w) => w.label === 'drag-preview')) return;
+        new WebviewWindow('drag-preview', {
+          url: 'index.html?mode=dragpreview',
+          width: 240,
+          height: 64,
+          decorations: false,
+          transparent: true,
+          alwaysOnTop: true,
+          skipTaskbar: true,
+          focus: false,
+          resizable: false,
+          shadow: false,
+          visible: false,
+        });
+      } catch (err) {
+        console.error('Failed to create drag-preview overlay:', err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isDetached]);
 
   // Detached windows adopt the specific tabs named in their URL: fetch configs
   // from the shared backend (no spawn) and seed scrollback from the session log.
@@ -725,9 +759,12 @@ function App() {
 }
 
 function AppWithBoundary() {
+  // The drag-preview overlay boots the same bundle but renders only the
+  // floating tab — keep it out of the full app entirely.
+  const { mode } = getWindowMode();
   return (
     <ErrorBoundary>
-      <App />
+      {mode === 'dragpreview' ? <DragPreview /> : <App />}
     </ErrorBoundary>
   );
 }

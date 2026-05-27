@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { emit } from '@tauri-apps/api/event';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
 import { getDragData, isTerminalDrag } from '../utils/dragDrop';
 import { routeTabDrop } from '../lib/tabTransfer';
+import { DRAG_PREVIEW_START, DRAG_PREVIEW_END } from '../components/DragPreview';
 
 const DRAG_THRESHOLD = 6; // px before a press becomes a drag
 const STRIP_PAD = 28; // px of slack around the strip that still counts as "in strip"
@@ -35,51 +37,33 @@ interface DragStart {
   pointerId: number;
   el: HTMLElement;
   ul: HTMLElement | null;
-  // Offset of the cursor within the grabbed tab + the tab's width, so the ghost
-  // is carried from the exact grab point at the tab's real size (Chrome/Arc feel).
-  offsetX: number;
-  offsetY: number;
-  width: number;
-}
-
-interface DragMeta {
-  label: string;
-  count: number;
-  colorTag: string | null;
   width: number;
 }
 
 /**
- * Pointer-based tab drag/drop. HTML5 drag-and-drop is unreliable in WebView2
- * (especially dragging out of the window), so the tab's own drag uses pointer
- * events + pointer capture and a floating ghost. One gesture covers:
- *   - reorder within the strip (insertion indicator via `dropIndex`),
+ * Pointer-based tab drag/drop. HTML5 DnD is unreliable in WebView2, so the tab
+ * drag uses pointer events + pointer capture. The lifted "carry" visual is a
+ * separate transparent, always-on-top overlay window (see DragPreview) that
+ * follows the cursor — so the dragged tab is visible even OUTSIDE the window (a
+ * DOM ghost would be clipped to its window). One gesture covers:
+ *   - reorder within the strip (slide-aside: other tabs part to open a gap),
  *   - drag-out: release outside the strip → `routeTabDrop` tears off a new
- *     window (release over the body/desktop) or transfers the tab(s) into the
- *     window under the cursor,
+ *     window or transfers into the window under the cursor,
  *   - Ctrl/Cmd+click multi-select.
  * Incoming sidebar/grid drags still arrive as HTML5 drops → split (main only).
- *
- * Smoothness: the ghost follows the cursor via a direct GPU `transform` write
- * (no React state per move), and `dropIndex` only updates when the insertion
- * slot actually changes — so a drag re-renders the tab bar rarely, not on every
- * mouse move.
  */
 export function useTabDrag(windowLabel: string, variant: 'main' | 'detached' = 'main') {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [dropIndex, setDropIndex] = useState<number | null>(null);
   const [splitDropTargetId, setSplitDropTargetId] = useState<string | null>(null);
-  const [dragging, setDragging] = useState(false);
   // Ids currently being dragged — drives the strip's slide-aside preview order.
   const [dragIds, setDragIds] = useState<string[]>([]);
-  const [dragMeta, setDragMeta] = useState<DragMeta>({ label: '', count: 0, colorTag: null, width: 0 });
 
   const startRef = useRef<DragStart | null>(null);
   const dragIdsRef = useRef<string[]>([]);
   const suppressClickRef = useRef(false);
-  const ghostRef = useRef<HTMLDivElement | null>(null);
-  const lastPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const dropIndexRef = useRef<number | null>(null);
+  const previewActiveRef = useRef(false);
 
   const reorderTerminals = useTerminalStore((s) => s.reorderTerminals);
   const setActiveTerminal = useTerminalStore((s) => s.setActiveTerminal);
@@ -87,17 +71,24 @@ export function useTabDrag(windowLabel: string, variant: 'main' | 'detached' = '
   const setSplitTerminals = useAppStore((s) => s.setSplitTerminals);
   const setSplitMode = useAppStore((s) => s.setSplitMode);
 
+  const endPreview = useCallback(() => {
+    if (previewActiveRef.current) {
+      previewActiveRef.current = false;
+      void emit(DRAG_PREVIEW_END);
+    }
+  }, []);
+
   const resetDrag = useCallback(() => {
     startRef.current = null;
     dragIdsRef.current = [];
     dropIndexRef.current = null;
-    setDragging(false);
     setDragIds([]);
     setDropIndex(null);
-  }, []);
+    endPreview();
+  }, [endPreview]);
 
   // Safety net: if a drag is lost (window blur, e.g. release outside the window
-  // where pointer capture didn't follow), clear the ghost so it isn't stuck.
+  // where pointer capture didn't follow), clear state + hide the overlay.
   useEffect(() => {
     const onBlur = () => {
       if (startRef.current?.moved) resetDrag();
@@ -108,10 +99,9 @@ export function useTabDrag(windowLabel: string, variant: 'main' | 'detached' = '
 
   const commitReorder = useCallback(
     (ids: string[], at: number) => {
-      // `at` is an index among the NON-dragged tabs (the drop index is computed
-      // over visible, non-dragged tabs — see computeDropIndex), so insert there
-      // directly. This matches the strip's slide-aside preview order, so commit
-      // produces no visual jump.
+      // `at` is an index among the NON-dragged tabs (see computeDropIndex), so
+      // insert there directly — matching the strip's slide-aside preview order,
+      // so commit produces no visual jump.
       const remaining = tabOrder().filter((tid) => !ids.includes(tid));
       const insertAt = Math.max(0, Math.min(at, remaining.length));
       reorderTerminals([...remaining.slice(0, insertAt), ...ids, ...remaining.slice(insertAt)]);
@@ -124,18 +114,9 @@ export function useTabDrag(windowLabel: string, variant: 'main' | 'detached' = '
     return { label: cfg?.nickname || cfg?.label || 'Terminal', colorTag: cfg?.color_tag ?? null };
   };
 
-  // The ghost is carried from the grab point (cursor - offset) with a subtle
-  // lift: a small tilt + scale that reads as "picked up".
-  const ghostTransform = (cx: number, cy: number, s: DragStart): string => {
-    const x = cx - s.offsetX;
-    const y = cy - s.offsetY;
-    lastPosRef.current = { x, y };
-    return `translate3d(${x}px, ${y}px, 0) rotate(-2deg) scale(1.04)`;
-  };
-
   const computeDropIndex = (ul: HTMLElement, clientX: number): number => {
-    // Only the non-dragged tabs (the dragged ones render as a faded gap that we
-    // exclude via [data-dragging]); the index is the slot among them.
+    // Only the non-dragged tabs (the dragged one renders as a faded gap, marked
+    // [data-dragging] and excluded); the index is the slot among them.
     const tabs = Array.from(ul.querySelectorAll<HTMLElement>('[role="tab"]:not([data-dragging])'));
     for (let i = 0; i < tabs.length; i++) {
       const r = tabs[i].getBoundingClientRect();
@@ -160,11 +141,8 @@ export function useTabDrag(windowLabel: string, variant: 'main' | 'detached' = '
       pointerId: e.pointerId,
       el,
       ul,
-      offsetX: e.clientX - rect.left,
-      offsetY: e.clientY - rect.top,
       width: rect.width,
     };
-    // Capture so we keep getting move/up even when the cursor leaves the tab.
     try {
       el.setPointerCapture(e.pointerId);
     } catch {
@@ -176,7 +154,6 @@ export function useTabDrag(windowLabel: string, variant: 'main' | 'detached' = '
     (e: React.PointerEvent) => {
       const s = startRef.current;
       if (!s) return;
-      lastPosRef.current = { x: e.clientX, y: e.clientY };
 
       if (!s.moved) {
         if (Math.hypot(e.clientX - s.x, e.clientY - s.y) < DRAG_THRESHOLD) return;
@@ -186,15 +163,16 @@ export function useTabDrag(windowLabel: string, variant: 'main' | 'detached' = '
         const ids = tabOrder().filter((tid) => sel.has(tid));
         dragIdsRef.current = ids.length ? ids : [s.id];
         const info = tabInfo(dragIdsRef.current[0]);
-        // Initialize ghost position before first paint so it doesn't flash at 0,0.
-        lastPosRef.current = { x: e.clientX - s.offsetX, y: e.clientY - s.offsetY };
-        setDragMeta({ label: info.label, count: dragIdsRef.current.length, colorTag: info.colorTag, width: s.width });
         setDragIds(dragIdsRef.current); // triggers the strip slide-aside preview
-        setDragging(true); // renders the ghost; positioned from lastPosRef on mount
+        // Show the floating overlay (the lifted tab that can leave the window).
+        previewActiveRef.current = true;
+        void emit(DRAG_PREVIEW_START, {
+          label: info.label,
+          color: info.colorTag,
+          count: dragIdsRef.current.length,
+          width: s.width,
+        });
       }
-
-      // Move the ghost directly (no re-render).
-      if (ghostRef.current) ghostRef.current.style.transform = ghostTransform(e.clientX, e.clientY, s);
 
       // Reorder indicator: only update state when the slot actually changes.
       let nextIndex: number | null = null;
@@ -228,7 +206,6 @@ export function useTabDrag(windowLabel: string, variant: 'main' | 'detached' = '
       startRef.current = null;
       return;
     }
-    // It was a drag: suppress the click that the browser fires after pointerup.
     suppressClickRef.current = true;
     const ids = dragIdsRef.current;
     const di = dropIndexRef.current;
@@ -310,35 +287,6 @@ export function useTabDrag(windowLabel: string, variant: 'main' | 'detached' = '
     [onPointerDown, onPointerMove, onPointerUp, onPointerCancel, onClick, onDragOver, onDragLeave, onDrop],
   );
 
-  const ghostNode = dragging ? (
-    <div
-      ref={ghostRef}
-      className="ct-ghost"
-      style={{
-        position: 'fixed',
-        left: 0,
-        top: 0,
-        transform: `translate3d(${lastPosRef.current.x}px, ${lastPosRef.current.y}px, 0) rotate(-2deg) scale(1.04)`,
-        transformOrigin: 'center',
-        width: dragMeta.width || undefined,
-        willChange: 'transform',
-        zIndex: 100,
-        pointerEvents: 'none',
-        boxShadow: '0 10px 28px rgba(0,0,0,0.45), 0 2px 8px rgba(0,0,0,0.35)',
-      }}
-    >
-      <div className="h-9 px-3 flex items-center gap-2 rounded-md bg-elevation-0 ring-1 ring-accent-primary/70 text-[12px] text-text-primary select-none overflow-hidden">
-        {dragMeta.colorTag && <div className={`w-2 h-2 rounded-full ${dragMeta.colorTag} flex-shrink-0`} />}
-        <span className="truncate">{dragMeta.label}</span>
-        {dragMeta.count > 1 && (
-          <span className="text-[10px] px-1 rounded bg-accent-primary/20 text-accent-primary flex-shrink-0">
-            +{dragMeta.count - 1}
-          </span>
-        )}
-      </div>
-    </div>
-  ) : null;
-
   return {
     isSelected: (id: string) => selectedIds.has(id),
     isDragging: (id: string) => dragIds.includes(id),
@@ -346,6 +294,5 @@ export function useTabDrag(windowLabel: string, variant: 'main' | 'detached' = '
     dropIndex,
     splitDropTargetId,
     tabHandlers,
-    ghost: ghostNode,
   };
 }

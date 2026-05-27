@@ -122,6 +122,7 @@ export async function routeTabDrop(ids: string[], sourceLabel: string): Promise<
   const windows = await getAllWebviewWindows();
   for (const w of windows) {
     if (w.label === sourceLabel) continue; // can't transfer into yourself
+    if (w.label === 'drag-preview') continue; // the floating overlay isn't a target
     try {
       const pos = await w.outerPosition();
       const size = await w.outerSize();

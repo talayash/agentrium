@@ -32,7 +32,7 @@ export function TerminalTabs() {
 
   // Tab drag/drop + multi-select + tear-off. Keyed on this window's label so a
   // detached window routes transfers from its own identity.
-  const { isSelected, isDragging, dragIds, dropIndex, splitDropTargetId, tabHandlers, ghost } = useTabDrag(getWindowMode().label, 'main');
+  const { isSelected, isDragging, dragIds, dropIndex, splitDropTargetId, tabHandlers } = useTabDrag(getWindowMode().label, 'main');
 
   const focusFile = useCallback((path: string) => {
     setActiveFilePath(path);
@@ -542,7 +542,6 @@ export function TerminalTabs() {
       </div>
 
       <BottomTerminalPane />
-      {ghost}
     </div>
   );
 }
