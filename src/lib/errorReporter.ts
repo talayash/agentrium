@@ -34,3 +34,27 @@ function scrub(s: string): string {
 function clamp(s: string, max: number): string {
   return s.length > max ? s.slice(0, max) : s;
 }
+
+/**
+ * Convenience wrapper for `.catch` handlers on user-action `invoke(...)` calls.
+ * Normalizes the rejection value into a message + stack and forwards to
+ * `reportError`. Background pollers should NOT use this — only user-visible
+ * actions where a silent failure is a user-facing bug.
+ */
+export function reportInvokeFailure(kind: string, err: unknown): void {
+  if (err instanceof Error) {
+    reportError(kind, err.message, err.stack);
+    return;
+  }
+  if (typeof err === 'string') {
+    reportError(kind, err);
+    return;
+  }
+  let message: string;
+  try {
+    message = JSON.stringify(err);
+  } catch {
+    message = String(err);
+  }
+  reportError(kind, message);
+}

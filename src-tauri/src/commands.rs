@@ -17,13 +17,19 @@ where
     match fut.await {
         Ok(v) => Ok(v),
         Err(e) => {
-            tokio::spawn(error_reporter::report(
-                ErrorSource::RustCommand,
-                Some(name.to_string()),
-                e.clone(),
-                None,
-            ));
-            Err(e)
+            if error_reporter::should_report(&e) {
+                tokio::spawn(error_reporter::report(
+                    ErrorSource::RustCommand,
+                    Some(name.to_string()),
+                    e.clone(),
+                    None,
+                ));
+                Err(e)
+            } else {
+                // User-input error: strip the marker prefix so the frontend
+                // sees a plain message, and skip telemetry.
+                Err(error_reporter::strip_user_prefix(&e).to_string())
+            }
         }
     }
 }
@@ -1476,7 +1482,7 @@ pub struct WorktreeDetectResult {
 async fn validate_path_is_trusted(state: &State<'_, AppState>, path: &str) -> Result<(), String> {
     let canonical_path = std::path::Path::new(path)
         .canonicalize()
-        .map_err(|e| format!("Invalid path '{}': {}", path, e))?;
+        .map_err(|e| error_reporter::user_err(format!("Invalid path '{}': {}", path, e)))?;
 
     let terminals = state.terminals.lock().await;
     let known_dirs = terminals.get_all_configs();
@@ -1493,10 +1499,10 @@ async fn validate_path_is_trusted(state: &State<'_, AppState>, path: &str) -> Re
     });
 
     if !is_trusted {
-        return Err(format!(
+        return Err(error_reporter::user_err(format!(
             "Path '{}' is not under any active terminal's working directory",
             canonical_path.display()
-        ));
+        )));
     }
     Ok(())
 }
@@ -1863,14 +1869,208 @@ pub enum AutoStageMode {
     All,
 }
 
+#[derive(Debug, Serialize)]
+pub struct PushCommit {
+    pub sha: String,
+    pub short_sha: String,
+    pub subject: String,
+    pub author: String,
+    pub time_iso: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PushPreview {
+    pub local_branch: String,
+    pub remotes: Vec<String>,
+    pub default_remote: String,
+    pub default_remote_branch: String,
+    pub has_upstream: bool,
+    pub commits: Vec<PushCommit>,
+    pub ahead: usize,
+    pub behind: usize,
+}
+
+#[derive(Debug, Deserialize, Clone, Copy)]
+#[serde(rename_all = "snake_case")]
+pub enum PushMode {
+    Normal,
+    ForceWithLease,
+}
+
+/// Reject inputs that could break the refspec or shell out — used for `remote`
+/// and `remote_branch` arguments coming from the frontend.
+fn validate_ref_token(value: &str, label: &str) -> Result<(), String> {
+    let v = value.trim();
+    if v.is_empty() {
+        return Err(format!("{} cannot be empty", label));
+    }
+    if v.starts_with('-') {
+        return Err(format!("{} cannot start with '-'", label));
+    }
+    for c in v.chars() {
+        if c.is_control() || c.is_whitespace() {
+            return Err(format!("{} contains an invalid character", label));
+        }
+        if matches!(c, ':' | '?' | '*' | '[' | '^' | '~' | '\\' | '\0') {
+            return Err(format!("{} contains an invalid character", label));
+        }
+    }
+    Ok(())
+}
+
+#[command]
+pub async fn get_push_preview(
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<PushPreview, String> {
+    wrap_cmd("get_push_preview", async move {
+        validate_path_is_trusted(&state, &path).await?;
+
+        // Local HEAD branch — refuse detached HEAD.
+        let local_branch = run_git(&path, &["rev-parse", "--abbrev-ref", "HEAD"])?
+            .trim()
+            .to_string();
+        if local_branch.is_empty() || local_branch == "HEAD" {
+            return Err("Cannot push from a detached HEAD".to_string());
+        }
+
+        // Configured remotes.
+        let remotes_raw = run_git(&path, &["remote"])?;
+        let remotes: Vec<String> = remotes_raw
+            .lines()
+            .map(|l| l.trim().to_string())
+            .filter(|l| !l.is_empty())
+            .collect();
+        if remotes.is_empty() {
+            return Err("Repository has no remotes configured".to_string());
+        }
+
+        // Upstream lookup — non-fatal if missing.
+        let upstream = run_git(
+            &path,
+            &["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
+        )
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+
+        let (default_remote, default_remote_branch, has_upstream) = match upstream {
+            Some(s) => match s.split_once('/') {
+                Some((r, b)) => (r.to_string(), b.to_string(), true),
+                None => {
+                    let r = if remotes.iter().any(|x| x == "origin") {
+                        "origin".to_string()
+                    } else {
+                        remotes[0].clone()
+                    };
+                    (r, local_branch.clone(), false)
+                }
+            },
+            None => {
+                let r = if remotes.iter().any(|x| x == "origin") {
+                    "origin".to_string()
+                } else {
+                    remotes[0].clone()
+                };
+                (r, local_branch.clone(), false)
+            }
+        };
+
+        // Commit list — separator \x1f is safe against subjects with colons.
+        let log_format = "--format=%H\x1f%h\x1f%s\x1f%an\x1f%aI";
+        let commits_raw = if has_upstream {
+            let range = format!("{}/{}..HEAD", default_remote, default_remote_branch);
+            run_git(&path, &["log", &range, log_format]).unwrap_or_default()
+        } else {
+            // Commits on this branch not present on any remote.
+            run_git(&path, &["log", "HEAD", "--not", "--remotes", log_format])
+                .unwrap_or_default()
+        };
+
+        let commits: Vec<PushCommit> = commits_raw
+            .lines()
+            .filter_map(|line| {
+                let mut parts = line.splitn(5, '\x1f');
+                let sha = parts.next()?.to_string();
+                let short_sha = parts.next()?.to_string();
+                let subject = parts.next()?.to_string();
+                let author = parts.next()?.to_string();
+                let time_iso = parts.next()?.to_string();
+                if sha.is_empty() {
+                    return None;
+                }
+                Some(PushCommit {
+                    sha,
+                    short_sha,
+                    subject,
+                    author,
+                    time_iso,
+                })
+            })
+            .collect();
+
+        let ahead = commits.len();
+        let behind = if has_upstream {
+            let range = format!("HEAD..{}/{}", default_remote, default_remote_branch);
+            run_git(&path, &["rev-list", "--count", &range])
+                .ok()
+                .and_then(|s| s.trim().parse::<usize>().ok())
+                .unwrap_or(0)
+        } else {
+            0
+        };
+
+        Ok(PushPreview {
+            local_branch,
+            remotes,
+            default_remote,
+            default_remote_branch,
+            has_upstream,
+            commits,
+            ahead,
+            behind,
+        })
+    })
+    .await
+}
+
 #[command]
 pub async fn git_push(
     state: State<'_, AppState>,
     path: String,
+    remote: String,
+    remote_branch: String,
+    mode: PushMode,
+    push_tags: bool,
+    set_upstream: bool,
 ) -> Result<(), String> {
     wrap_cmd("git_push", async move {
         validate_path_is_trusted(&state, &path).await?;
-        run_git(&path, &["push"]).map(|_| ())
+        validate_ref_token(&remote, "Remote")?;
+        validate_ref_token(&remote_branch, "Remote branch")?;
+
+        // Re-validate the remote against `git remote` — don't trust the frontend.
+        let remotes_raw = run_git(&path, &["remote"])?;
+        let known: Vec<&str> = remotes_raw.lines().map(|l| l.trim()).collect();
+        if !known.iter().any(|r| *r == remote.as_str()) {
+            return Err(format!("Unknown remote: {}", remote));
+        }
+
+        let mut args: Vec<String> = vec!["push".into()];
+        if set_upstream {
+            args.push("-u".into());
+        }
+        if matches!(mode, PushMode::ForceWithLease) {
+            args.push("--force-with-lease".into());
+        }
+        if push_tags {
+            args.push("--tags".into());
+        }
+        args.push(remote.clone());
+        args.push(format!("HEAD:{}", remote_branch));
+
+        let str_args: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+        run_git(&path, &str_args).map(|_| ())
     })
     .await
 }
@@ -3448,9 +3648,9 @@ pub async fn git_pull_branch(
         let dirty = run_git(&path, &["status", "--porcelain"])?;
         let is_dirty = !dirty.trim().is_empty();
         if is_dirty && !auto_stash {
-            return Err(
-                "Working tree has uncommitted changes — commit or stash first, then pull.".into(),
-            );
+            return Err(error_reporter::user_err(
+                "Working tree has uncommitted changes — commit or stash first, then pull.",
+            ));
         }
 
         let stashed = if is_dirty {
@@ -4179,5 +4379,43 @@ mod version_extraction_tests {
         assert!(!has_semver_like("v20"));
         assert!(has_semver_like("0.1.2"));
         assert!(has_semver_like("20.18.0"));
+    }
+}
+
+#[cfg(test)]
+mod wrap_cmd_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn wrap_cmd_strips_prefix_from_user_error() {
+        let result: Result<(), String> = wrap_cmd("dummy", async {
+            Err(error_reporter::user_err("input was bad"))
+        }).await;
+        assert_eq!(result, Err("input was bad".to_string()));
+    }
+
+    #[tokio::test]
+    async fn wrap_cmd_passes_through_internal_error_unchanged() {
+        let result: Result<(), String> = wrap_cmd("dummy", async {
+            Err("io failure".to_string())
+        }).await;
+        assert_eq!(result, Err("io failure".to_string()));
+    }
+
+    #[tokio::test]
+    async fn wrap_cmd_passes_through_ok_unchanged() {
+        let result: Result<i32, String> = wrap_cmd("dummy", async { Ok(42) }).await;
+        assert_eq!(result, Ok(42));
+    }
+
+    #[tokio::test]
+    async fn wrap_cmd_passes_through_validate_path_is_trusted_error_clean() {
+        // Document that callers see the same string they would have before
+        // migration. The prefix is stripped invisibly.
+        let inner_msg = "Invalid path 'agentic-dev': not found";
+        let result: Result<(), String> = wrap_cmd("scan_git_repos", async {
+            Err(error_reporter::user_err(inner_msg))
+        }).await;
+        assert_eq!(result, Err(inner_msg.to_string()));
     }
 }

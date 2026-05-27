@@ -1,9 +1,12 @@
 [
   {
-    "version": "1.22.5",
-    "date": "2026-05-18",
+    "version": "1.22.6",
+    "date": "2026-05-21",
     "features": [
-      { "title": "Maintenance release", "description": "CI hardening — the persistence-allow-list test now includes the new sidebar keys added in 1.22.4, so master builds stay green. No user-facing changes." }
+      { "title": "Push Commits popup (Ctrl+Shift+K)", "description": "IntelliJ-style push dialog showing the commits about to be pushed, with inline editing of the destination remote and branch. Split-button supports a guarded Force Push (with lease). Also accessible from a new Push button in the File Changes panel header and a Push to remote… entry in the title-bar branch dropdown." },
+      { "title": "Colorful title-bar tool icons", "description": "File Changes, Agent Teams, Hints, Settings, Tools, and Recent Terminals each get a distinct accent color (emerald / violet / amber / sky / orange / pink) for at-a-glance scanability instead of the previous uniform gray." },
+      { "title": "Settings window: clean defined border", "description": "Removed the backdrop blur halo and replaced the soft glow ring around the Settings modal with a defined 1px border so the dialog edge looks crisp on all backgrounds." },
+      { "title": "File Changes panel auto-refreshes", "description": "The panel now refreshes silently whenever the window regains focus, the tab becomes visible, and every 5 seconds while it's open — so the list reflects what Claude (or you) just wrote without clicking Refresh." }
     ]
   },
   {

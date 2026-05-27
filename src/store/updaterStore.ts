@@ -3,6 +3,7 @@ import { check, type Update } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { invoke } from '@tauri-apps/api/core';
 import { getVersion } from '@tauri-apps/api/app';
+import { reportInvokeFailure } from '../lib/errorReporter';
 
 interface UpdateInfo {
   version: string;
@@ -91,6 +92,7 @@ export const useUpdaterStore = create<UpdaterState>((set, get) => ({
       }
     } catch (err) {
       console.error('Update check failed:', err);
+      reportInvokeFailure('updater_check', err);
       set({
         status: 'error',
         error: err instanceof Error ? err.message : 'Failed to check for updates',
@@ -132,6 +134,7 @@ export const useUpdaterStore = create<UpdaterState>((set, get) => ({
       return true;
     } catch (err) {
       console.error('Update download failed:', err);
+      reportInvokeFailure('updater_download_install', err);
       const msg = err instanceof Error ? err.message : String(err);
       set({ status: 'error', error: `Failed to auto-update: ${msg}. Please download manually.` });
       return false;
@@ -143,11 +146,13 @@ export const useUpdaterStore = create<UpdaterState>((set, get) => ({
       await invoke('save_session_for_restore');
     } catch (err) {
       console.error('Failed to save session before restart:', err);
+      reportInvokeFailure('save_session_for_restore', err);
     }
     try {
       await relaunch();
     } catch (err) {
       console.error('Failed to restart:', err);
+      reportInvokeFailure('updater_restart', err);
       set({ error: 'Failed to restart. Please restart manually.' });
     }
   },
