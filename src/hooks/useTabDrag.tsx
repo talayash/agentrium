@@ -35,6 +35,18 @@ interface DragStart {
   pointerId: number;
   el: HTMLElement;
   ul: HTMLElement | null;
+  // Offset of the cursor within the grabbed tab + the tab's width, so the ghost
+  // is carried from the exact grab point at the tab's real size (Chrome/Arc feel).
+  offsetX: number;
+  offsetY: number;
+  width: number;
+}
+
+interface DragMeta {
+  label: string;
+  count: number;
+  colorTag: string | null;
+  width: number;
 }
 
 /**
@@ -58,7 +70,7 @@ export function useTabDrag(windowLabel: string, variant: 'main' | 'detached' = '
   const [dropIndex, setDropIndex] = useState<number | null>(null);
   const [splitDropTargetId, setSplitDropTargetId] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
-  const [dragMeta, setDragMeta] = useState<{ label: string; count: number }>({ label: '', count: 0 });
+  const [dragMeta, setDragMeta] = useState<DragMeta>({ label: '', count: 0, colorTag: null, width: 0 });
 
   const startRef = useRef<DragStart | null>(null);
   const dragIdsRef = useRef<string[]>([]);
@@ -102,15 +114,18 @@ export function useTabDrag(windowLabel: string, variant: 'main' | 'detached' = '
     [reorderTerminals],
   );
 
-  const labelFor = (id: string): string => {
+  const tabInfo = (id: string): { label: string; colorTag: string | null } => {
     const cfg = useTerminalStore.getState().terminals.get(id)?.config;
-    return cfg?.nickname || cfg?.label || 'Terminal';
+    return { label: cfg?.nickname || cfg?.label || 'Terminal', colorTag: cfg?.color_tag ?? null };
   };
 
-  const positionGhost = (x: number, y: number) => {
+  // The ghost is carried from the grab point (cursor - offset) with a subtle
+  // lift: a small tilt + scale that reads as "picked up".
+  const ghostTransform = (cx: number, cy: number, s: DragStart): string => {
+    const x = cx - s.offsetX;
+    const y = cy - s.offsetY;
     lastPosRef.current = { x, y };
-    const el = ghostRef.current;
-    if (el) el.style.transform = `translate3d(${x + 12}px, ${y + 12}px, 0)`;
+    return `translate3d(${x}px, ${y}px, 0) rotate(-2deg) scale(1.04)`;
   };
 
   const computeDropIndex = (ul: HTMLElement, clientX: number): number => {
@@ -128,7 +143,20 @@ export function useTabDrag(windowLabel: string, variant: 'main' | 'detached' = '
     if ((e.target as HTMLElement).closest('button,[role="button"]')) return;
     const el = e.currentTarget as HTMLElement;
     const ul = el.closest('[data-tab-strip]') as HTMLElement | null;
-    startRef.current = { x: e.clientX, y: e.clientY, id, index, moved: false, pointerId: e.pointerId, el, ul };
+    const rect = el.getBoundingClientRect();
+    startRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      id,
+      index,
+      moved: false,
+      pointerId: e.pointerId,
+      el,
+      ul,
+      offsetX: e.clientX - rect.left,
+      offsetY: e.clientY - rect.top,
+      width: rect.width,
+    };
     // Capture so we keep getting move/up even when the cursor leaves the tab.
     try {
       el.setPointerCapture(e.pointerId);
@@ -150,12 +178,15 @@ export function useTabDrag(windowLabel: string, variant: 'main' | 'detached' = '
         const sel = selectedIds.has(s.id) && selectedIds.size > 1 ? selectedIds : new Set([s.id]);
         const ids = tabOrder().filter((tid) => sel.has(tid));
         dragIdsRef.current = ids.length ? ids : [s.id];
-        setDragMeta({ label: labelFor(dragIdsRef.current[0]), count: dragIdsRef.current.length });
+        const info = tabInfo(dragIdsRef.current[0]);
+        // Initialize ghost position before first paint so it doesn't flash at 0,0.
+        lastPosRef.current = { x: e.clientX - s.offsetX, y: e.clientY - s.offsetY };
+        setDragMeta({ label: info.label, count: dragIdsRef.current.length, colorTag: info.colorTag, width: s.width });
         setDragging(true); // renders the ghost; positioned from lastPosRef on mount
       }
 
       // Move the ghost directly (no re-render).
-      positionGhost(e.clientX, e.clientY);
+      if (ghostRef.current) ghostRef.current.style.transform = ghostTransform(e.clientX, e.clientY, s);
 
       // Reorder indicator: only update state when the slot actually changes.
       let nextIndex: number | null = null;
@@ -274,21 +305,29 @@ export function useTabDrag(windowLabel: string, variant: 'main' | 'detached' = '
   const ghostNode = dragging ? (
     <div
       ref={ghostRef}
+      className="ct-ghost"
       style={{
         position: 'fixed',
         left: 0,
         top: 0,
-        transform: `translate3d(${lastPosRef.current.x + 12}px, ${lastPosRef.current.y + 12}px, 0)`,
+        transform: `translate3d(${lastPosRef.current.x}px, ${lastPosRef.current.y}px, 0) rotate(-2deg) scale(1.04)`,
+        transformOrigin: 'center',
+        width: dragMeta.width || undefined,
         willChange: 'transform',
         zIndex: 100,
         pointerEvents: 'none',
+        boxShadow: '0 10px 28px rgba(0,0,0,0.45), 0 2px 8px rgba(0,0,0,0.35)',
       }}
-      className="px-3 h-7 flex items-center gap-1.5 rounded-md bg-bg-elevated ring-1 ring-accent-primary/70 shadow-elevation-4 text-[12px] text-text-primary select-none"
     >
-      <span className="max-w-[180px] truncate">{dragMeta.label}</span>
-      {dragMeta.count > 1 && (
-        <span className="text-[10px] px-1 rounded bg-accent-primary/20 text-accent-primary">+{dragMeta.count - 1}</span>
-      )}
+      <div className="h-9 px-3 flex items-center gap-2 rounded-md bg-elevation-0 ring-1 ring-accent-primary/70 text-[12px] text-text-primary select-none overflow-hidden">
+        {dragMeta.colorTag && <div className={`w-2 h-2 rounded-full ${dragMeta.colorTag} flex-shrink-0`} />}
+        <span className="truncate">{dragMeta.label}</span>
+        {dragMeta.count > 1 && (
+          <span className="text-[10px] px-1 rounded bg-accent-primary/20 text-accent-primary flex-shrink-0">
+            +{dragMeta.count - 1}
+          </span>
+        )}
+      </div>
     </div>
   ) : null;
 

@@ -1,4 +1,5 @@
 import { useMemo, useState, useCallback, useRef, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { X, Plus, Grid3X3, SplitSquareHorizontal, RotateCw, GitBranch, ChevronLeft, ChevronRight, Copy, File as FileIcon } from 'lucide-react';
 import appIconUrl from '../assets/app-icon.png';
 import { useTerminalStore } from '../store/terminalStore';
@@ -179,7 +180,8 @@ export function TerminalTabs() {
             data-tab-strip
             className="flex items-center overflow-x-auto scrollbar-none list-none m-0 p-0"
           >
-            {terminalList.map((terminal, index) => {
+            <AnimatePresence initial={false}>
+            {terminalList.flatMap((terminal, index) => {
               const instance = terminals.get(terminal.id);
               const model = instance?.model;
               const isWorktree = instance?.isWorktree;
@@ -190,12 +192,33 @@ export function TerminalTabs() {
               const selected = isSelected(terminal.id);
               const dragged = isDragging(terminal.id);
 
-              return (
-              <li key={terminal.id} className="flex items-center flex-shrink-0">
-                {/* Reorder insertion indicator */}
-                {dropIndex === index && (
-                  <span className="w-[2px] h-5 bg-accent-primary rounded-full flex-shrink-0" aria-hidden />
-                )}
+              const els: JSX.Element[] = [];
+              // Sliding insertion indicator — same key across positions so Framer
+              // animates it gliding between slots (FLIP).
+              if (dropIndex === index) {
+                els.push(
+                  <motion.span
+                    key="drop-indicator"
+                    layout
+                    initial={{ opacity: 0, scaleY: 0.4 }}
+                    animate={{ opacity: 1, scaleY: 1 }}
+                    exit={{ opacity: 0, scaleY: 0.4 }}
+                    transition={{ duration: 0.12 }}
+                    className="w-[3px] h-5 mx-[1px] self-center rounded-full bg-accent-primary flex-shrink-0"
+                    aria-hidden
+                  />,
+                );
+              }
+              els.push(
+              <motion.li
+                key={terminal.id}
+                layout
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.85 }}
+                transition={{ type: 'spring', stiffness: 700, damping: 42, mass: 0.6 }}
+                className="flex items-center flex-shrink-0"
+              >
                 <div
                   role="tab"
                   tabIndex={0}
@@ -208,13 +231,13 @@ export function TerminalTabs() {
                       closeTerminal(terminal.id);
                     }
                   }}
-                  className={`group relative flex items-center gap-2 px-3 h-9 text-[12px] cursor-pointer select-none transition-colors ${
+                  className={`group relative flex items-center gap-2 px-3 h-9 text-[12px] cursor-pointer select-none transition-all duration-150 ${
                     splitDropTargetId === terminal.id
                       ? 'bg-accent-primary/12 text-accent-primary'
                       : isActiveTab
                         ? 'bg-elevation-0 text-text-primary'
                         : 'hover:bg-white/[0.045] text-text-secondary'
-                  } ${selected && !isActiveTab ? 'ring-1 ring-inset ring-accent-primary/40' : ''} ${dragged ? 'opacity-40' : ''} ${isWorking && !isActiveTab ? 'ct-working-tab' : ''}`}
+                  } ${selected && !isActiveTab ? 'ring-1 ring-inset ring-accent-primary/40' : ''} ${dragged ? 'opacity-30 scale-95' : ''} ${isWorking && !isActiveTab ? 'ct-working-tab' : ''}`}
                 >
                   {/* IntelliJ-style bottom underline for active tab */}
                   {(isActiveTab || splitDropTargetId === terminal.id) && (
@@ -306,15 +329,25 @@ export function TerminalTabs() {
                     </button>
                   </div>
                 </div>
-              </li>
+              </motion.li>,
               );
+              return els;
             })}
-            {/* Trailing insertion indicator (drop at end of strip) */}
+            {/* Trailing insertion indicator (drop at end of strip) — same key as
+                the in-flow one so it glides to the end instead of popping. */}
             {dropIndex === terminalList.length && terminalList.length > 0 && (
-              <li className="flex items-center flex-shrink-0" aria-hidden>
-                <span className="w-[2px] h-5 bg-accent-primary rounded-full flex-shrink-0" />
-              </li>
+              <motion.span
+                key="drop-indicator"
+                layout
+                initial={{ opacity: 0, scaleY: 0.4 }}
+                animate={{ opacity: 1, scaleY: 1 }}
+                exit={{ opacity: 0, scaleY: 0.4 }}
+                transition={{ duration: 0.12 }}
+                className="w-[3px] h-5 mx-[1px] self-center rounded-full bg-accent-primary flex-shrink-0"
+                aria-hidden
+              />
             )}
+            </AnimatePresence>
           </ul>
 
           {/* File tabs — rendered inline next to terminal tabs, VS Code style */}
