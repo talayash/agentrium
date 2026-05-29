@@ -5,6 +5,29 @@ import { invoke } from '@tauri-apps/api/core';
 import { getVersion } from '@tauri-apps/api/app';
 import { reportInvokeFailure } from '../lib/errorReporter';
 
+// Reqwest / Tauri updater surface a handful of message shapes when the network
+// is flaky, the GitHub edge is briefly unreachable, or the latest.json hasn't
+// been published yet. None of them are actionable bugs, so we keep the UI
+// status='error' but skip telemetry — otherwise a single user behind a hotel
+// wifi can dominate the error report (see fingerprint 6d37063a).
+const TRANSIENT_NETWORK_PATTERNS: readonly RegExp[] = [
+  /error sending request/i,
+  /could not fetch a valid release json/i,
+  /connection (?:refused|reset|closed|aborted)/i,
+  /dns (?:error|lookup)/i,
+  /failed to lookup address/i,
+  /timed? ?out/i,
+  /network is unreachable/i,
+  /no such host/i,
+  /unable to (?:resolve|connect)/i,
+];
+
+export function isTransientNetworkError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : '';
+  if (!msg) return false;
+  return TRANSIENT_NETWORK_PATTERNS.some((re) => re.test(msg));
+}
+
 interface UpdateInfo {
   version: string;
   date: string;
@@ -92,7 +115,9 @@ export const useUpdaterStore = create<UpdaterState>((set, get) => ({
       }
     } catch (err) {
       console.error('Update check failed:', err);
-      reportInvokeFailure('updater_check', err);
+      if (!isTransientNetworkError(err)) {
+        reportInvokeFailure('updater_check', err);
+      }
       set({
         status: 'error',
         error: err instanceof Error ? err.message : 'Failed to check for updates',
@@ -134,7 +159,9 @@ export const useUpdaterStore = create<UpdaterState>((set, get) => ({
       return true;
     } catch (err) {
       console.error('Update download failed:', err);
-      reportInvokeFailure('updater_download_install', err);
+      if (!isTransientNetworkError(err)) {
+        reportInvokeFailure('updater_download_install', err);
+      }
       const msg = err instanceof Error ? err.message : String(err);
       set({ status: 'error', error: `Failed to auto-update: ${msg}. Please download manually.` });
       return false;

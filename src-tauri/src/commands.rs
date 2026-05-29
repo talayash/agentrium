@@ -1222,14 +1222,26 @@ pub async fn get_terminal_changes(
     id: String,
 ) -> Result<FileChangesResult, String> {
     wrap_cmd("get_terminal_changes", async move {
+        // The FileChangesPanel polls on a debounced effect; if the active
+        // terminal closes between the schedule and the call we'd otherwise
+        // error with "Terminal not found" and pollute telemetry. An empty
+        // not-a-repo result is the closest benign analog for "nothing to show".
         let working_directory = {
             let terminals = state.terminals.lock().await;
             let configs = terminals.get_all_configs();
-            configs
-                .into_iter()
-                .find(|c| c.id == id)
-                .map(|c| c.working_directory.clone())
-                .ok_or_else(|| "Terminal not found".to_string())?
+            match configs.into_iter().find(|c| c.id == id) {
+                Some(c) => c.working_directory.clone(),
+                None => {
+                    return Ok(FileChangesResult {
+                        terminal_id: id,
+                        working_directory: String::new(),
+                        changes: vec![],
+                        is_git_repo: false,
+                        branch: None,
+                        error: None,
+                    });
+                }
+            }
         };
 
         // Check if it's a git repo and get branch name
@@ -1357,7 +1369,7 @@ pub async fn get_file_diff(
             let config = configs
                 .into_iter()
                 .find(|c| c.id == id)
-                .ok_or_else(|| "Terminal not found".to_string())?;
+                .ok_or_else(|| error_reporter::user_err("Terminal not found"))?;
 
             // Run git status for this specific file to determine its status
             let status_output = shell_command("git", &["status", "--porcelain", "--", &file_path])

@@ -537,35 +537,41 @@ impl TerminalManager {
         Ok(config)
     }
 
+    /// Silent no-op when the id is no longer in the map. xterm.js can dispatch
+    /// a final keystroke after `close_terminal` removes the entry, and surfacing
+    /// that as `Err("Terminal not found")` produced a flood of telemetry events
+    /// plus a frontend UnhandledRejection from the resize observer's callback —
+    /// see error fingerprints 599c11f8 / 808a0ce1.
     pub fn write(&mut self, id: &str, data: &[u8]) -> Result<(), String> {
-        if let Some(terminal) = self.terminals.get_mut(id) {
-            terminal
-                .writer
-                .write_all(data)
-                .map_err(|e| format!("Failed to write: {}", e))?;
-            terminal.writer.flush().map_err(|e| format!("Failed to flush: {}", e))?;
-            Ok(())
-        } else {
-            Err("Terminal not found".to_string())
-        }
+        let Some(terminal) = self.terminals.get_mut(id) else {
+            return Ok(());
+        };
+        terminal
+            .writer
+            .write_all(data)
+            .map_err(|e| format!("Failed to write: {}", e))?;
+        terminal.writer.flush().map_err(|e| format!("Failed to flush: {}", e))?;
+        Ok(())
     }
 
+    /// Silent no-op when the id is no longer in the map. The ResizeObserver in
+    /// TerminalView fires once more after the close_terminal call removes the
+    /// entry; we don't want that race to produce an error report.
     pub fn resize(&mut self, id: &str, cols: u16, rows: u16) -> Result<(), String> {
-        if let Some(terminal) = self.terminals.get_mut(id) {
-            terminal
-                .pty_pair
-                .master
-                .resize(PtySize {
-                    rows,
-                    cols,
-                    pixel_width: 0,
-                    pixel_height: 0,
-                })
-                .map_err(|e| format!("Failed to resize: {}", e))?;
-            Ok(())
-        } else {
-            Err("Terminal not found".to_string())
-        }
+        let Some(terminal) = self.terminals.get_mut(id) else {
+            return Ok(());
+        };
+        terminal
+            .pty_pair
+            .master
+            .resize(PtySize {
+                rows,
+                cols,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .map_err(|e| format!("Failed to resize: {}", e))?;
+        Ok(())
     }
 
     pub fn close(&mut self, id: &str) -> Result<(), String> {
@@ -623,5 +629,31 @@ impl TerminalManager {
         if let Some(terminal) = self.terminals.get_mut(id) {
             terminal.config.claude_session_id = Some(session_id);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn write_returns_ok_when_terminal_missing() {
+        let mut mgr = TerminalManager::new();
+        assert_eq!(mgr.write("does-not-exist", b"hello"), Ok(()));
+    }
+
+    #[test]
+    fn resize_returns_ok_when_terminal_missing() {
+        let mut mgr = TerminalManager::new();
+        assert_eq!(mgr.resize("does-not-exist", 120, 30), Ok(()));
+    }
+
+    #[test]
+    fn label_and_nickname_updates_still_error_when_missing() {
+        // These commands aren't on the close-race path; we want them to keep
+        // surfacing real bugs.
+        let mut mgr = TerminalManager::new();
+        assert!(mgr.update_label("nope", "x".to_string()).is_err());
+        assert!(mgr.update_nickname("nope", "x".to_string()).is_err());
     }
 }
