@@ -35,6 +35,13 @@ jobs:
   backend:
     name: Backend (cargo test)
     runs-on: ubuntu-latest
+    env:
+      # crates.io intermittently returns "Error in the HTTP2 framing layer"
+      # on the GitHub Actions runners (last seen 2026-05-29 run 71338258625).
+      # Disabling HTTP/2 multiplexing and bumping the retry count is the
+      # documented mitigation — cargo falls back to HTTP/1.1 for the fetch.
+      CARGO_HTTP_MULTIPLEXING: 'false'
+      CARGO_NET_RETRY: '10'
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
@@ -66,6 +73,25 @@ jobs:
             pkg-config \
             build-essential
 
+      - name: Fetch dependencies
+        # Separating fetch from test means a transient registry blip only
+        # retries the (cheap, fast) fetch step instead of restarting the
+        # 5+ minute compile. The shell `for` loop adds a job-level retry
+        # on top of CARGO_NET_RETRY, which only retries individual files.
+        working-directory: src-tauri
+        run: |
+          for attempt in 1 2 3; do
+            if cargo fetch --locked; then
+              exit 0
+            fi
+            echo "cargo fetch failed (attempt $attempt) — retrying in 15s"
+            sleep 15
+          done
+          echo "cargo fetch failed after 3 attempts"
+          exit 1
+
       - name: Run cargo test
         working-directory: src-tauri
-        run: cargo test --locked
+        # --offline forces use of the cache populated by the fetch step;
+        # any remaining network errors here would be a real bug.
+        run: cargo test --locked --offline

@@ -77,6 +77,11 @@ jobs:
     # Lifted to job-level so step `if:` conditions can read it (step env isn't available there).
     env:
       AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      # crates.io intermittently returns "Error in the HTTP2 framing layer" on
+      # GitHub Actions. Force HTTP/1.1 and bump the retry count so transient
+      # blips don't fail a full release build.
+      CARGO_HTTP_MULTIPLEXING: 'false'
+      CARGO_NET_RETRY: '10'
 
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
