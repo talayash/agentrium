@@ -83,6 +83,9 @@ impl TerminalManager {
         log_file_path: Option<String>,
         resume_session_id: Option<String>,
         continue_recent: bool,
+        // `http://127.0.0.1:<port>` base of the embedded OTLP receiver, or
+        // None when cost tracking is disabled / the receiver failed to start.
+        otel_endpoint: Option<String>,
     ) -> Result<TerminalConfig, String> {
         // Validate claude_args: reject any argument containing shell metacharacters
         for arg in &claude_args {
@@ -133,6 +136,10 @@ impl TerminalManager {
                 !Self::BLOCKED_ENV_VARS.iter().any(|blocked| blocked.eq_ignore_ascii_case(&upper))
             })
             .collect();
+
+        // Generate the id early so it can be injected as an OTel resource
+        // attribute (terminal.id) — the receiver routes metrics back by it.
+        let id = Uuid::new_v4().to_string();
 
         let pty_system = native_pty_system();
 
@@ -207,11 +214,26 @@ impl TerminalManager {
             cmd.env(key, value);
         }
 
+        // Inject Claude Code OpenTelemetry config LAST so it wins over any
+        // user-profile env, pointing the CLI's OTLP metrics exporter at our
+        // embedded localhost receiver and tagging the resource with our id.
+        if let Some(endpoint) = otel_endpoint.as_deref() {
+            cmd.env("CLAUDE_CODE_ENABLE_TELEMETRY", "1");
+            cmd.env("OTEL_METRICS_EXPORTER", "otlp");
+            cmd.env("OTEL_EXPORTER_OTLP_PROTOCOL", "http/json");
+            cmd.env("OTEL_EXPORTER_OTLP_METRICS_PROTOCOL", "http/json");
+            cmd.env("OTEL_EXPORTER_OTLP_ENDPOINT", endpoint);
+            cmd.env("OTEL_EXPORTER_OTLP_COMPRESSION", "none");
+            // 3s export interval ≈ near-real-time without hammering (default 60s).
+            cmd.env("OTEL_METRIC_EXPORT_INTERVAL", "3000");
+            cmd.env("OTEL_METRICS_INCLUDE_SESSION_ID", "true");
+            cmd.env("OTEL_RESOURCE_ATTRIBUTES", format!("terminal.id={}", id));
+        }
+
         // Spawn the command
         let _child = pty_pair.slave.spawn_command(cmd)
             .map_err(|e| format!("Failed to spawn command: {}", e))?;
 
-        let id = Uuid::new_v4().to_string();
         let config = TerminalConfig {
             id: id.clone(),
             label,
