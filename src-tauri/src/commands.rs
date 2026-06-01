@@ -371,6 +371,7 @@ pub async fn create_terminal(
         let terminal_id = config.id.clone();
         let db_arc = state.db.clone();
         let terminals_arc = state.terminals.clone();
+        let otel_agg = state.otel_agg.clone();
 
         let app_clone = app.clone();
         tokio::spawn(async move {
@@ -393,6 +394,13 @@ pub async fn create_terminal(
                 ).await {
                     let _ = manager.update_status(&terminal_id, crate::terminal::TerminalStatus::Stopped);
                 }
+            }
+            // Drop accumulated telemetry on the natural process-exit path too —
+            // close_terminal() handles the user-close path, but a terminal that
+            // exits on its own would otherwise leak its aggregator entry until
+            // the tab is closed or the app restarts.
+            if let Ok(mut agg) = otel_agg.lock() {
+                agg.forget(&terminal_id);
             }
             {
                 let db = db_arc.lock().await;

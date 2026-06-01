@@ -207,7 +207,16 @@ pub fn start(app: tauri::AppHandle) -> std::io::Result<(u16, Arc<Mutex<MetricsAg
     let agg_thread = agg.clone();
 
     std::thread::spawn(move || {
+        // Cap the body we'll buffer. The only legitimate client is the local
+        // claude CLI posting small OTLP payloads (a few KB); the bound stops a
+        // misbehaving local process from OOMing us with a giant body.
+        const MAX_OTLP_BODY_BYTES: usize = 4 * 1024 * 1024;
         for mut request in server.incoming_requests() {
+            // Reject oversized payloads up front via Content-Length.
+            if request.body_length().is_some_and(|n| n > MAX_OTLP_BODY_BYTES) {
+                let _ = request.respond(tiny_http::Response::empty(413));
+                continue;
+            }
             // Only metrics POSTs carry a body we care about.
             let mut body = String::new();
             let _ = request.as_reader().read_to_string(&mut body);
