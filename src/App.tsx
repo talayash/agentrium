@@ -32,6 +32,7 @@ import { useTerminalStore } from './store/terminalStore';
 import { toast } from './store/toastStore';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useNotification } from './hooks/useNotification';
+import { useSessionStateDetection } from './hooks/useSessionStateDetection';
 import {
   applyAccentColor,
   applyThemeMode,
@@ -108,6 +109,7 @@ function App() {
   const { notify } = useNotification();
 
   useKeyboardShortcuts();
+  useSessionStateDetection();
 
   // v1.22.0 — apply theme/density/accent/motion/scale on store change.
   const themeMode = useAppStore((s) => s.themeMode);
