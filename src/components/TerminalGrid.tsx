@@ -5,6 +5,7 @@ import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore, GridLayout } from '../store/appStore';
 import { TerminalView } from './TerminalView';
 import { setDragData, getDragData, isTerminalDrag } from '../utils/dragDrop';
+import { computeGridNavTarget } from '../lib/gridNav';
 
 // Grid layout configurations
 const GRID_CONFIGS: Record<GridLayout, { cols: number; rows: number }> = {
@@ -306,29 +307,16 @@ export function TerminalGrid() {
   // Propagation keep Alt+Arrow / Alt+1-8 from also reaching xterm.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (!e.altKey || e.ctrlKey || e.metaKey) return;
       const ids = gridTerminalIds;
-      if (ids.length === 0) return;
+      const target = computeGridNavTarget(e, gridFocusedIndex, config.cols, ids.length);
+      if (target === null) return; // not ours - pass through to the focused terminal
 
-      const { cols } = config;
-      const cur = gridFocusedIndex ?? 0;
-      let next = cur;
-
-      if (e.key === 'ArrowRight') next = Math.min(cur + 1, ids.length - 1);
-      else if (e.key === 'ArrowLeft') next = Math.max(cur - 1, 0);
-      else if (e.key === 'ArrowDown') next = Math.min(cur + cols, ids.length - 1);
-      else if (e.key === 'ArrowUp') next = Math.max(cur - cols, 0);
-      else if (e.code.startsWith('Digit')) {
-        const n = Number(e.code.slice(5)); // Alt+1..8 jumps to that pane
-        if (!Number.isInteger(n) || n < 1 || n > ids.length) return;
-        next = n - 1;
-      } else return;
-
+      // Consume so Alt+Arrow / Alt+1-8 never also reach xterm.
       e.preventDefault();
       e.stopImmediatePropagation();
-      if (next !== cur || gridFocusedIndex === null) {
-        setGridFocusedIndex(next);
-        focusPaneTerminal(ids[next]);
+      if (target !== gridFocusedIndex) {
+        setGridFocusedIndex(target);
+        focusPaneTerminal(ids[target]);
       }
     };
 

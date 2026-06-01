@@ -479,6 +479,20 @@ describe('appStore - appearance v1.22.0 setters', () => {
     expect(second.count).toBe(2);
     expect(second.lastUsedTs).toBeGreaterThanOrEqual(first.lastUsedTs);
   });
+
+  it('minimal-UI toggle setters flip status bar / tab activity / compact title bar', () => {
+    const s = useAppStore.getState();
+    s.setShowStatusBar(false);
+    expect(useAppStore.getState().showStatusBar).toBe(false);
+    s.setShowStatusBar(true);
+    expect(useAppStore.getState().showStatusBar).toBe(true);
+
+    s.setShowTabActivity(false);
+    expect(useAppStore.getState().showTabActivity).toBe(false);
+
+    s.setCompactTitleBar(true);
+    expect(useAppStore.getState().compactTitleBar).toBe(true);
+  });
 });
 
 describe('appStore - notifications + session v1.22.0 setters', () => {
