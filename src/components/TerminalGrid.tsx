@@ -113,10 +113,12 @@ const TerminalCell = memo(function TerminalCell({ terminalId, index, isFocused, 
       )}
 
       {/* Cell Header */}
-      <div className={`flex items-center justify-between px-3 h-6 bg-bg-secondary border-b ${
-        isFocused ? 'border-accent-primary/30' : 'border-border'
+      <div className={`flex items-center justify-between px-3 h-6 border-b ${
+        isFocused ? 'bg-accent-primary/10 border-accent-primary/40' : 'bg-bg-secondary border-border'
       }`}>
-        <span className="text-[11px] text-text-secondary truncate font-medium cursor-grab">
+        <span className={`text-[11px] truncate font-medium cursor-grab ${
+          isFocused ? 'text-text-primary' : 'text-text-secondary'
+        }`}>
           {terminal.config.nickname || terminal.config.label}
         </span>
         <div className="flex items-center gap-0.5">
@@ -288,36 +290,51 @@ export function TerminalGrid() {
   const filledCells = gridTerminalIds.length;
   const emptyCells = Math.max(0, Math.min(totalCells - filledCells, 8 - filledCells));
 
-  // Handle keyboard navigation
+  // Move real keyboard focus to a pane's terminal so the user can type right
+  // after navigating, without clicking.
+  const focusPaneTerminal = useCallback((id: string | undefined) => {
+    if (!id) return;
+    requestAnimationFrame(() => {
+      useTerminalStore.getState().terminals.get(id)?.xterm?.focus();
+    });
+  }, []);
+
+  // Spatial pane navigation, gated behind Alt. The old handler hijacked BARE
+  // arrow keys whenever a pane was focused, so they were double-handled - the
+  // PTY received them (shell history / cursor / vim) AND the grid moved focus.
+  // Alt frees bare arrows for the terminal; capture phase + stopImmediate-
+  // Propagation keep Alt+Arrow / Alt+1-8 from also reaching xterm.
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (!gridFocusedIndex && gridFocusedIndex !== 0) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!e.altKey || e.ctrlKey || e.metaKey) return;
+      const ids = gridTerminalIds;
+      if (ids.length === 0) return;
 
       const { cols } = config;
-      let newIndex = gridFocusedIndex;
+      const cur = gridFocusedIndex ?? 0;
+      let next = cur;
 
-      if (e.key === 'ArrowRight') {
-        newIndex = Math.min(gridFocusedIndex + 1, gridTerminalIds.length - 1);
-      } else if (e.key === 'ArrowLeft') {
-        newIndex = Math.max(gridFocusedIndex - 1, 0);
-      } else if (e.key === 'ArrowDown') {
-        newIndex = Math.min(gridFocusedIndex + cols, gridTerminalIds.length - 1);
-      } else if (e.key === 'ArrowUp') {
-        newIndex = Math.max(gridFocusedIndex - cols, 0);
-      } else if (e.key === 'Escape') {
-        setGridFocusedIndex(null);
-        return;
-      }
+      if (e.key === 'ArrowRight') next = Math.min(cur + 1, ids.length - 1);
+      else if (e.key === 'ArrowLeft') next = Math.max(cur - 1, 0);
+      else if (e.key === 'ArrowDown') next = Math.min(cur + cols, ids.length - 1);
+      else if (e.key === 'ArrowUp') next = Math.max(cur - cols, 0);
+      else if (e.code.startsWith('Digit')) {
+        const n = Number(e.code.slice(5)); // Alt+1..8 jumps to that pane
+        if (!Number.isInteger(n) || n < 1 || n > ids.length) return;
+        next = n - 1;
+      } else return;
 
-      if (newIndex !== gridFocusedIndex) {
-        e.preventDefault();
-        setGridFocusedIndex(newIndex);
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (next !== cur || gridFocusedIndex === null) {
+        setGridFocusedIndex(next);
+        focusPaneTerminal(ids[next]);
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [gridFocusedIndex, config, gridTerminalIds.length, setGridFocusedIndex]);
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [gridFocusedIndex, config, gridTerminalIds, setGridFocusedIndex, focusPaneTerminal]);
 
   const handleMaximize = useCallback((terminalId: string) => {
     setActiveTerminal(terminalId);
@@ -334,6 +351,9 @@ export function TerminalGrid() {
           <span className="text-text-tertiary text-[11px]">
             ({gridTerminalIds.length}/8)
           </span>
+          {gridTerminalIds.length > 1 && (
+            <span className="text-text-tertiary text-[11px]">· Alt+Arrows / Alt+1-8 to navigate</span>
+          )}
         </div>
 
         <div className="flex items-center gap-2">
