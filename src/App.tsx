@@ -41,6 +41,7 @@ import {
   applyUiFontScale,
 } from './lib/accentTheme';
 import { listen } from '@tauri-apps/api/event';
+import type { TerminalMetricsPayload } from './lib/sessionMetrics';
 import { invoke } from '@tauri-apps/api/core';
 import { getVersion } from '@tauri-apps/api/app';
 
@@ -104,7 +105,7 @@ interface SavedTerminalConfig {
 
 function App() {
   const { sidebarOpen, sidebarCollapsed, hintsOpen, changesOpen, orchestrationOpen, settingsOpen, profileModalOpen, newTerminalModalOpen, workspaceModalOpen, worktreeModalOpen, pushModalOpen, sessionHistoryOpen, snippetsModalOpen, commandPaletteOpen, globalSearchOpen, whatsNewOpen, claudeConfigOpen, sessionTimelineOpen, memoryEditorOpen, notifyOnFinish, restoreSession, triggerChangesRefresh, showRestoreBanner, pendingRestoreConfigs, setShowRestoreBanner, setPendingRestoreConfigs, lastSeenVersion, setLastSeenVersion, openWhatsNew } = useAppStore();
-  const { handleTerminalOutput, updateTerminalStatus, setLoopMode, setSessionSummary, createTerminal, createShellTerminalTab } = useTerminalStore();
+  const { handleTerminalOutput, updateTerminalStatus, setLoopMode, setSessionSummary, createTerminal, createShellTerminalTab, applyTerminalMetrics } = useTerminalStore();
   const [showSetup, setShowSetup] = useState<boolean | null>(null);
   const { notify } = useNotification();
 
@@ -203,6 +204,15 @@ function App() {
       unlisten.then(fn => fn());
     };
   }, [handleTerminalOutput, setLoopMode]);
+
+  useEffect(() => {
+    const unlisten = listen<TerminalMetricsPayload>('terminal-metrics', (event) => {
+      applyTerminalMetrics(event.payload);
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [applyTerminalMetrics]);
 
   useEffect(() => {
     const unlisten = listen<{ id: string }>('terminal-finished', (event) => {
