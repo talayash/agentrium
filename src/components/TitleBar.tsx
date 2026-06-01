@@ -146,28 +146,12 @@ export function TitleBar() {
     ? 'bg-error'
     : 'bg-text-tertiary';
 
-  // Colorful per-icon variants for the right-side tool cluster.
-  const COLOR_BTN = {
-    emerald: {
-      base: 'text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300',
-      active: 'bg-emerald-500/20 text-emerald-300 ring-1 ring-inset ring-emerald-500/40',
-    },
-    violet: {
-      base: 'text-violet-400 hover:bg-violet-500/10 hover:text-violet-300',
-      active: 'bg-violet-500/20 text-violet-300 ring-1 ring-inset ring-violet-500/40',
-    },
-    amber: {
-      base: 'text-amber-400 hover:bg-amber-500/10 hover:text-amber-300',
-      active: 'bg-amber-500/20 text-amber-200 ring-1 ring-inset ring-amber-500/40',
-    },
-    sky: {
-      base: 'text-sky-400 hover:bg-sky-500/10 hover:text-sky-300',
-      active: 'bg-sky-500/20 text-sky-300 ring-1 ring-inset ring-sky-500/40',
-    },
-  } as const;
-  const colorBtn = (active: boolean, color: keyof typeof COLOR_BTN) =>
+  // Neutral monochrome styling for the right-side tool cluster.
+  const toolBtn = (active: boolean) =>
     `no-drag w-7 h-7 flex items-center justify-center rounded-[6px] transition-colors ${
-      active ? COLOR_BTN[color].active : COLOR_BTN[color].base
+      active
+        ? 'bg-white/[0.08] text-text-primary'
+        : 'text-text-secondary hover:bg-white/[0.06] hover:text-text-primary'
     }`;
 
   return (
@@ -335,13 +319,13 @@ export function TitleBar() {
       <div className="flex items-stretch">
         <div className="flex items-center gap-0.5 pr-2 no-drag">
           <UpdatePill />
-          <button onClick={toggleChanges} className={colorBtn(changesOpen, 'emerald')} title="File Changes (F2)">
+          <button onClick={toggleChanges} className={toolBtn(changesOpen)} title="File Changes (F2)">
             <FileDiff size={15} strokeWidth={2} />
           </button>
-          <button onClick={toggleOrchestration} className={colorBtn(orchestrationOpen, 'violet')} title="Agent Teams (F4)">
+          <button onClick={toggleOrchestration} className={toolBtn(orchestrationOpen)} title="Agent Teams (F4)">
             <Users size={15} strokeWidth={2} />
           </button>
-          <button onClick={toggleHints} className={colorBtn(hintsOpen, 'amber')} title="Command Hints">
+          <button onClick={toggleHints} className={toolBtn(hintsOpen)} title="Command Hints">
             <Lightbulb size={15} strokeWidth={2} />
           </button>
 
@@ -352,7 +336,7 @@ export function TitleBar() {
 
           <div className="w-px h-4 bg-[var(--ij-divider-soft)] mx-1" />
 
-          <button onClick={openSettings} className={colorBtn(false, 'sky')} title="Settings (Ctrl+,)">
+          <button onClick={openSettings} className={toolBtn(false)} title="Settings (Ctrl+,)">
             <Settings size={15} strokeWidth={2} />
           </button>
         </div>

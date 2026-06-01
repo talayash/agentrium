@@ -68,7 +68,7 @@ export function RecentTerminalsMenu() {
         aria-label="Recent Terminals"
       >
         <span className="relative inline-flex">
-          <Layers size={13} strokeWidth={2} className="text-pink-400" />
+          <Layers size={13} strokeWidth={2} className="text-text-secondary" />
           {waitingCount > 0 && (
             <span
               className="absolute -top-1.5 -right-1.5 min-w-[14px] h-[14px] px-[3px] rounded-full bg-amber-400 text-black text-[9px] font-bold leading-[14px] text-center"

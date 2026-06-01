@@ -54,7 +54,7 @@ export function ToolsMenu() {
         title="Tools"
         aria-label="Tools"
       >
-        <Wrench size={13} strokeWidth={2} className="text-orange-400" />
+        <Wrench size={13} strokeWidth={2} className="text-text-secondary" />
         <ChevronDown size={10} strokeWidth={2} className="text-text-tertiary" />
       </button>
 
