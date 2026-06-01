@@ -10,6 +10,7 @@ mod claude_path;
 mod claude_session;
 mod pastes;
 mod changelists;
+mod otel_receiver;
 
 use tauri::Manager;
 use std::sync::Arc;
