@@ -221,7 +221,9 @@ export function TerminalTabs() {
               const liveBusy = lastOutputAt != null && now - lastOutputAt < 2000;
               // Prefer the poller's classified state; fall back to the live
               // activity timer so the dot lights up instantly on first output
-              // before the first poll tick lands.
+              // before the first poll tick lands. The 2000ms window here is
+              // intentionally wider than the poller's 600ms BUSY_WINDOW_MS to
+              // avoid flicker during the brief gap before the poller takes over.
               const sessionState: SessionState =
                 terminalStates.get(terminal.id) ?? (liveBusy ? 'busy' : 'idle');
               const isWorking = sessionState === 'busy';

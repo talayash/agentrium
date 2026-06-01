@@ -523,7 +523,9 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       nextTerminals.delete(childId);
       const nextChildren = new Map(state.scriptChildren);
       nextChildren.delete(parentId);
-      return { terminals: nextTerminals, scriptChildren: nextChildren };
+      const nextStates = new Map(state.terminalStates);
+      nextStates.delete(childId);
+      return { terminals: nextTerminals, scriptChildren: nextChildren, terminalStates: nextStates };
     });
   },
 
@@ -568,10 +570,13 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
           nextActive = nextIds[fallbackIdx];
         }
       }
+      const nextStates = new Map(state.terminalStates);
+      nextStates.delete(id);
       return {
         terminals: nextTerminals,
         bottomTerminalIds: nextIds,
         activeBottomTerminalId: nextActive,
+        terminalStates: nextStates,
       };
     });
   },

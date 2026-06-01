@@ -88,5 +88,8 @@ export function useSessionStateDetection(): void {
     }, POLL_INTERVAL_MS);
 
     return () => clearInterval(interval);
+    // windowFocused is read via focusedRef inside the interval, so it is
+    // intentionally omitted here — no need to recreate the interval on focus
+    // change. notify is stable (useCallback).
   }, [notify]);
 }
