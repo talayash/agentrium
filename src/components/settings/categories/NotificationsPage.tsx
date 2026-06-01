@@ -6,6 +6,8 @@ const cat = { group: 'appearance-behavior', page: 'notifications' } as const;
 registerSetting({ category: cat, id: 'notify-on-finish', label: 'Notify on terminal finish', keywords: ['notification', 'desktop'] });
 registerSetting({ category: cat, id: 'sound',            label: 'Notification sound',         keywords: ['audio', 'ding'] });
 registerSetting({ category: cat, id: 'dnd',              label: 'Do not disturb',             keywords: ['quiet', 'hours', 'mute'] });
+registerSetting({ category: cat, id: 'cost-tracking',    label: 'Track per-session cost',     keywords: ['cost', 'token', 'telemetry', 'otel', 'budget', 'tracking'] });
+registerSetting({ category: cat, id: 'session-budget',   label: 'Per-session budget cap',     keywords: ['cost', 'budget', 'cap', 'limit', 'usd'] });
 
 export default function NotificationsPage() {
   const notifyOnFinish = useAppStore((s) => s.notifyOnFinish);
@@ -13,9 +15,12 @@ export default function NotificationsPage() {
   const dndEnabled = useAppStore((s) => s.dndEnabled);
   const dndStart = useAppStore((s) => s.dndStart);
   const dndEnd = useAppStore((s) => s.dndEnd);
+  const costTrackingEnabled = useAppStore((s) => s.costTrackingEnabled);
+  const sessionBudgetUsd = useAppStore((s) => s.sessionBudgetUsd);
   const {
     setNotifyOnFinish, setNotificationSoundEnabled,
     setDndEnabled, setDndStart, setDndEnd,
+    setCostTrackingEnabled, setSessionBudgetUsd,
   } = useAppStore.getState();
 
   return (
@@ -28,6 +33,22 @@ export default function NotificationsPage() {
         </SettingRow>
         <SettingRow label="Play sound" description="Adds a short sound on notification.">
           <Toggle value={notificationSoundEnabled} onChange={setNotificationSoundEnabled} />
+        </SettingRow>
+      </PageSection>
+
+      <PageSection title="Cost tracking" description="Local OpenTelemetry metrics per terminal — no data leaves your machine.">
+        <SettingRow label="Track per-session cost" description="Live token & estimated-USD metrics per terminal tab.">
+          <Toggle value={costTrackingEnabled} onChange={setCostTrackingEnabled} />
+        </SettingRow>
+        <SettingRow label="Per-session budget cap (USD)" description="0 = no cap. Warns when a session's estimated cost exceeds this.">
+          <input
+            type="number"
+            min={0}
+            step={0.5}
+            value={sessionBudgetUsd}
+            onChange={(e) => setSessionBudgetUsd(parseFloat(e.target.value) || 0)}
+            className="w-20 bg-elevation-0 text-text-primary text-[12px] px-2 py-1 rounded ring-1 ring-border-light tabular-nums"
+          />
         </SettingRow>
       </PageSection>
 

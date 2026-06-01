@@ -132,6 +132,8 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
 
   createTerminal: async (label, workingDirectory, claudeArgs, envVars, colorTag, nickname, restoredOutput, resumeSessionId, continueRecent) => {
     try {
+      const { useAppStore } = await import('./appStore');
+      const costTracking = useAppStore.getState().costTrackingEnabled;
       const config = await invoke<TerminalConfig>('create_terminal', {
         request: {
           label,
@@ -142,6 +144,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
           nickname: nickname || null,
           resume_session_id: resumeSessionId || null,
           continue_recent: !!continueRecent,
+          cost_tracking: costTracking,
         },
       });
       // Parse model, effort, worktree from claude_args

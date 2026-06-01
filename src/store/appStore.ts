@@ -60,6 +60,13 @@ interface AppState {
   restoreSession: boolean;
   telemetryEnabled: boolean;
   errorReportingEnabled: boolean;
+  // Per-session OTel cost/token tracking (distinct from the analytics heartbeat
+  // `telemetryEnabled`, which reports to ct-analytics). This is local only.
+  costTrackingEnabled: boolean;
+  // Per-session budget ceiling in USD; 0 = no cap. Used by Task 11.
+  sessionBudgetUsd: number;
+  setCostTrackingEnabled: (v: boolean) => void;
+  setSessionBudgetUsd: (v: number) => void;
   showGitPanel: boolean;
   showFileTree: boolean;
 
@@ -401,6 +408,8 @@ export const useAppStore = create<AppState>()(
       restoreSession: true,
       telemetryEnabled: true,
       errorReportingEnabled: true,
+      costTrackingEnabled: true,
+      sessionBudgetUsd: 0,
       showGitPanel: true,
       showFileTree: true,
 
@@ -554,6 +563,8 @@ export const useAppStore = create<AppState>()(
       setRestoreSession: (enabled) => set({ restoreSession: enabled }),
       setTelemetryEnabled: (enabled) => set({ telemetryEnabled: enabled }),
       setErrorReportingEnabled: (enabled) => set({ errorReportingEnabled: enabled }),
+      setCostTrackingEnabled: (v) => set({ costTrackingEnabled: v }),
+      setSessionBudgetUsd: (v) => set({ sessionBudgetUsd: Math.max(0, v) }),
       setShowGitPanel: (enabled) => set({ showGitPanel: enabled }),
       setShowFileTree: (enabled) => set({ showFileTree: enabled }),
 
@@ -929,6 +940,8 @@ export const useAppStore = create<AppState>()(
         restoreSession: state.restoreSession,
         telemetryEnabled: state.telemetryEnabled,
         errorReportingEnabled: state.errorReportingEnabled,
+        costTrackingEnabled: state.costTrackingEnabled,
+        sessionBudgetUsd: state.sessionBudgetUsd,
         showGitPanel: state.showGitPanel,
         showFileTree: state.showFileTree,
         terminalFontFamily: state.terminalFontFamily,
