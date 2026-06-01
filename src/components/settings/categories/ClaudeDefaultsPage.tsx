@@ -1,18 +1,25 @@
 import { useState, useEffect } from 'react';
 import { useAppStore } from '../../../store/appStore';
-import { PageHeader, PageSection, SettingRow } from '../SettingRow';
+import { PageHeader, PageSection, SettingRow, Toggle } from '../SettingRow';
 import { registerSetting } from '../index';
 
 const cat = { group: 'claude', page: 'defaults' } as const;
 ['default-args', 'default-model', 'binary-path'].forEach((id) =>
   registerSetting({ category: cat, id, label: id.replace(/-/g, ' '), keywords: ['claude', 'args', id] })
 );
+registerSetting({ category: cat, id: 'cost-tracking',  label: 'Track per-session cost', keywords: ['cost', 'token', 'telemetry', 'otel', 'budget', 'tracking', 'usage'] });
+registerSetting({ category: cat, id: 'session-budget', label: 'Per-session budget cap', keywords: ['cost', 'budget', 'cap', 'limit', 'usd', 'spend'] });
 
 export default function ClaudeDefaultsPage() {
   const defaultClaudeArgs = useAppStore((s) => s.defaultClaudeArgs);
   const claudeDefaultModel = useAppStore((s) => s.claudeDefaultModel);
   const claudeBinaryPathOverride = useAppStore((s) => s.claudeBinaryPathOverride);
-  const { setDefaultClaudeArgs, setClaudeDefaultModel, setClaudeBinaryPathOverride } = useAppStore.getState();
+  const costTrackingEnabled = useAppStore((s) => s.costTrackingEnabled);
+  const sessionBudgetUsd = useAppStore((s) => s.sessionBudgetUsd);
+  const {
+    setDefaultClaudeArgs, setClaudeDefaultModel, setClaudeBinaryPathOverride,
+    setCostTrackingEnabled, setSessionBudgetUsd,
+  } = useAppStore.getState();
 
   const [argsText, setArgsText] = useState(defaultClaudeArgs.join('\n'));
   useEffect(() => { setArgsText(defaultClaudeArgs.join('\n')); }, [defaultClaudeArgs]);
@@ -63,6 +70,22 @@ export default function ClaudeDefaultsPage() {
             value={claudeBinaryPathOverride}
             onChange={(e) => setClaudeBinaryPathOverride(e.target.value)}
             className="w-80 bg-elevation-0 text-text-primary text-[12px] px-2 py-1 rounded ring-1 ring-border-light font-mono"
+          />
+        </SettingRow>
+      </PageSection>
+
+      <PageSection title="Cost tracking" description="Local OpenTelemetry metrics per terminal — no data leaves your machine.">
+        <SettingRow label="Track per-session cost" description="Live token & estimated-USD metrics per terminal tab.">
+          <Toggle value={costTrackingEnabled} onChange={setCostTrackingEnabled} />
+        </SettingRow>
+        <SettingRow label="Per-session budget cap (USD)" description="0 = no cap. Warns when a session's estimated cost exceeds this.">
+          <input
+            type="number"
+            min={0}
+            step={0.5}
+            value={sessionBudgetUsd}
+            onChange={(e) => setSessionBudgetUsd(parseFloat(e.target.value) || 0)}
+            className="w-20 bg-elevation-0 text-text-primary text-[12px] px-2 py-1 rounded ring-1 ring-border-light tabular-nums"
           />
         </SettingRow>
       </PageSection>
