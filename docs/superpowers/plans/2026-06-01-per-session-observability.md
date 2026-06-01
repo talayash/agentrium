@@ -110,7 +110,10 @@ use serde::Serialize;
 
 /// One terminal's metrics extracted from a single OTLP/JSON export.
 /// Fields are `Option` because a given export may carry only some metrics.
-/// Counters are cumulative (OTLP default temporality) — latest value wins.
+/// VERIFIED (Task 1, claude v2.1.159): counters arrive as DELTA increments
+/// (aggregationTemporality=1) — each export is the delta since the last, so the
+/// aggregator SUMS them. Token values are `asDouble` (JSON numbers), type key is
+/// `type` with camelCase values input/output/cacheRead/cacheCreation.
 #[derive(Debug, Clone, Serialize, Default, PartialEq)]
 pub struct SessionMetricUpdate {
     pub terminal_id: String,
@@ -353,7 +356,7 @@ Append to the `tests` module in `otel_receiver.rs`:
 
 ```rust
     #[test]
-    fn aggregator_merges_latest_cumulative_values() {
+    fn aggregator_sums_delta_exports() {
         let mut agg = MetricsAggregator::new();
         let first = SessionMetricUpdate {
             terminal_id: "A".into(),
@@ -363,9 +366,10 @@ Append to the `tests` module in `otel_receiver.rs`:
         };
         let merged1 = agg.apply(first);
         assert_eq!(merged1.cost_usd, Some(0.01));
+        assert_eq!(merged1.tokens_input, Some(100));
 
-        // Second export carries a higher cumulative cost + adds output tokens;
-        // input absent this time must NOT erase the prior input total.
+        // DELTA temporality: each export is an increment. The second export adds
+        // 0.05 cost + 40 output tokens; input is absent (delta 0) so it stays 100.
         let second = SessionMetricUpdate {
             terminal_id: "A".into(),
             cost_usd: Some(0.05),
@@ -373,8 +377,8 @@ Append to the `tests` module in `otel_receiver.rs`:
             ..Default::default()
         };
         let merged2 = agg.apply(second);
-        assert_eq!(merged2.cost_usd, Some(0.05));
-        assert_eq!(merged2.tokens_input, Some(100));
+        assert_eq!(merged2.cost_usd, Some(0.06)); // 0.01 + 0.05
+        assert_eq!(merged2.tokens_input, Some(100)); // unchanged (no delta)
         assert_eq!(merged2.tokens_output, Some(40));
     }
 ```
@@ -391,8 +395,9 @@ Add to `otel_receiver.rs` (above the `tests` module):
 ```rust
 use std::collections::HashMap;
 
-/// Holds the latest cumulative metrics per terminal so a partial export
-/// (e.g. cost-only) never clears previously-seen token totals.
+/// Holds the running per-terminal totals. Claude emits DELTA metrics
+/// (aggregationTemporality=1), so each export is an increment we ADD; a partial
+/// export (e.g. cost-only) leaves previously-accumulated token totals intact.
 pub struct MetricsAggregator {
     by_terminal: HashMap<String, SessionMetricUpdate>,
 }
@@ -402,7 +407,7 @@ impl MetricsAggregator {
         Self { by_terminal: HashMap::new() }
     }
 
-    /// Merge an update into the running total and return the full merged snapshot.
+    /// Add a delta export into the running total and return the full snapshot.
     pub fn apply(&mut self, u: SessionMetricUpdate) -> SessionMetricUpdate {
         let entry = self
             .by_terminal
@@ -411,14 +416,20 @@ impl MetricsAggregator {
                 terminal_id: u.terminal_id.clone(),
                 ..Default::default()
             });
-        // Cumulative counters: take the new value only when present.
-        if u.cost_usd.is_some() { entry.cost_usd = u.cost_usd; }
-        if u.tokens_input.is_some() { entry.tokens_input = u.tokens_input; }
-        if u.tokens_output.is_some() { entry.tokens_output = u.tokens_output; }
-        if u.tokens_cache_read.is_some() { entry.tokens_cache_read = u.tokens_cache_read; }
-        if u.tokens_cache_creation.is_some() { entry.tokens_cache_creation = u.tokens_cache_creation; }
-        if u.lines_added.is_some() { entry.lines_added = u.lines_added; }
-        if u.lines_removed.is_some() { entry.lines_removed = u.lines_removed; }
+        // DELTA temporality: accumulate increments; absent field => no change.
+        fn add_f(acc: &mut Option<f64>, d: Option<f64>) {
+            if let Some(x) = d { *acc = Some(acc.unwrap_or(0.0) + x); }
+        }
+        fn add_u(acc: &mut Option<u64>, d: Option<u64>) {
+            if let Some(x) = d { *acc = Some(acc.unwrap_or(0) + x); }
+        }
+        add_f(&mut entry.cost_usd, u.cost_usd);
+        add_u(&mut entry.tokens_input, u.tokens_input);
+        add_u(&mut entry.tokens_output, u.tokens_output);
+        add_u(&mut entry.tokens_cache_read, u.tokens_cache_read);
+        add_u(&mut entry.tokens_cache_creation, u.tokens_cache_creation);
+        add_u(&mut entry.lines_added, u.lines_added);
+        add_u(&mut entry.lines_removed, u.lines_removed);
         entry.clone()
     }
 
@@ -786,7 +797,9 @@ export function totalTokens(m: SessionMetrics): number {
   return m.tokensInput + m.tokensOutput + m.tokensCacheRead + m.tokensCacheCreation;
 }
 
-/** Apply an event payload over a prior snapshot (cumulative — latest wins). */
+/** Apply an event payload over a prior snapshot. The BACKEND already summed the
+ *  DELTA exports into a running total before emitting, so each payload is the
+ *  full cumulative snapshot — the frontend takes latest-value-wins, NOT summing. */
 export function mergeMetrics(prev: SessionMetrics, p: TerminalMetricsPayload): SessionMetrics {
   const pick = (v: number | null | undefined, fallback: number) =>
     typeof v === 'number' ? v : fallback;
