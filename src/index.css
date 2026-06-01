@@ -137,6 +137,13 @@
   --ij-divider: #181819;         /* Hard dividers between tool windows / editor */
   --ij-divider-soft: #393B40;    /* Soft dividers inside a panel */
 
+  /* Text tokens — stored as space-separated RGB channels so Tailwind's
+     /opacity modifiers resolve (rgb(var(--x) / <alpha-value>)) AND light mode
+     can override them in applyThemeMode(). These are the dark-theme values. */
+  --text-primary: 223 225 229;   /* #DFE1E5 */
+  --text-secondary: 157 160 168; /* #9DA0A8 */
+  --text-tertiary: 138 142 151;  /* #8A8E97 — WCAG AA (~5:1 on elevation-0) */
+
   /* Density tokens - driven by Appearance setting, default = comfortable */
   --ui-row-py: 6px;
   --ui-row-px: 8px;
@@ -209,7 +216,7 @@ body {
   font-feature-settings: 'cv02', 'cv03', 'cv04', 'ss03';
   letter-spacing: 0.005em;
   line-height: 1.45;
-  color: #DFE1E5;
+  color: rgb(var(--text-primary)); /* theme-aware base text (flips in light mode) */
   -webkit-font-smoothing: antialiased;
 }
 

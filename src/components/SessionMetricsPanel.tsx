@@ -15,7 +15,8 @@ function Row({
   tooltip?: string;
   /** Render as the reconciling total: separator above + emphasized text. */
   strong?: boolean;
-  /** Dim the row to group it visually (used for the cache sub-rows). */
+  /** Group the row as a sub-item (used for the cache sub-rows). Indents rather
+   *  than dimming, so the text stays at the accessible text-tertiary contrast. */
   muted?: boolean;
 }) {
   return (
@@ -25,7 +26,7 @@ function Row({
         strong ? 'mt-1 pt-1 border-t border-[var(--ij-divider)]' : ''
       }`}
     >
-      <span className={strong ? 'text-text-secondary font-medium' : muted ? 'text-text-tertiary/70' : 'text-text-tertiary'}>
+      <span className={`${strong ? 'text-text-secondary font-medium' : 'text-text-tertiary'} ${muted ? 'pl-2.5' : ''}`}>
         {label}
       </span>
       <span className={`tabular-nums ${strong ? 'text-text-primary font-medium' : 'text-text-secondary'}`}>
