@@ -2,26 +2,44 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { Layers, ChevronDown, GitBranch, GitFork } from 'lucide-react';
 import { useTerminalStore } from '../../store/terminalStore';
 import { useAppStore } from '../../store/appStore';
+import { StateDot } from '../StateDot';
+import type { SessionState } from '../../lib/terminalState';
 
-const STATUS_DOT: Record<string, string> = {
-  Running: 'bg-success',
-  Idle: 'bg-warning',
-  Error: 'bg-error',
-  Stopped: 'bg-text-tertiary',
+const STATE_ORDER: Record<SessionState, number> = { waiting: 0, busy: 1, idle: 2, stopped: 3 };
+const STATE_LABEL: Record<SessionState, string> = {
+  waiting: 'Waiting', busy: 'Working', idle: 'Idle', stopped: 'Stopped',
 };
 
 export function RecentTerminalsMenu() {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const { terminals, activeTerminalId, setActiveTerminal, gitInfoCache } = useTerminalStore();
+  const terminalStates = useTerminalStore((s) => s.terminalStates);
   const openCommandPalette = useAppStore((s) => s.openCommandPalette);
 
   const items = useMemo(() => {
-    return Array.from(terminals.values())
-      .filter((t) => !t.scriptParentId && !t.isShellTerminal)
-      .sort((a, b) => (a.config.created_at < b.config.created_at ? 1 : -1))
+    const list = Array.from(terminals.values())
+      .filter((t) => !t.scriptParentId && !t.isShellTerminal);
+    return list
+      .sort((a, b) => {
+        const sa = STATE_ORDER[terminalStates.get(a.config.id) ?? 'idle'];
+        const sb = STATE_ORDER[terminalStates.get(b.config.id) ?? 'idle'];
+        if (sa !== sb) return sa - sb;                       // waiting first
+        return a.config.created_at < b.config.created_at ? 1 : -1; // then recent
+      })
       .slice(0, 20);
-  }, [terminals]);
+  }, [terminals, terminalStates]);
+
+  const waitingCount = useMemo(
+    () =>
+      Array.from(terminals.values()).filter(
+        (t) =>
+          !t.scriptParentId &&
+          !t.isShellTerminal &&
+          terminalStates.get(t.config.id) === 'waiting',
+      ).length,
+    [terminals, terminalStates],
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -49,7 +67,17 @@ export function RecentTerminalsMenu() {
         title="Recent Terminals"
         aria-label="Recent Terminals"
       >
-        <Layers size={13} strokeWidth={2} className="text-pink-400" />
+        <span className="relative inline-flex">
+          <Layers size={13} strokeWidth={2} className="text-pink-400" />
+          {waitingCount > 0 && (
+            <span
+              className="absolute -top-1.5 -right-1.5 min-w-[14px] h-[14px] px-[3px] rounded-full bg-amber-400 text-black text-[9px] font-bold leading-[14px] text-center"
+              title={`${waitingCount} session(s) waiting for input`}
+            >
+              {waitingCount}
+            </span>
+          )}
+        </span>
         <ChevronDown size={10} strokeWidth={2} className="text-text-tertiary" />
       </button>
 
@@ -73,11 +101,16 @@ export function RecentTerminalsMenu() {
                     isActive ? 'bg-accent-primary/15 text-text-primary' : 'hover:bg-white/[0.05] text-text-secondary'
                   }`}
                 >
-                  <span className={`mt-1.5 w-1.5 h-1.5 rounded-full flex-shrink-0 ${STATUS_DOT[t.config.status]}`} />
+                  <span className="mt-1.5">
+                    <StateDot state={terminalStates.get(t.config.id) ?? 'idle'} size={6} />
+                  </span>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
                       <span className="text-[12px] font-medium truncate text-text-primary">
                         {t.config.nickname || t.config.label}
+                      </span>
+                      <span className="text-[9px] text-text-tertiary flex-shrink-0">
+                        {STATE_LABEL[terminalStates.get(t.config.id) ?? 'idle']}
                       </span>
                       {gitInfo?.is_git_repo && gitInfo.current_branch && (
                         <span className="flex items-center gap-0.5 text-[10px] font-mono text-text-tertiary flex-shrink-0">
