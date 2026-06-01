@@ -233,3 +233,29 @@ describe('terminalStore — writeToTerminal chunking', () => {
     expect(dataLengths.every((len) => len <= 60 * 1024)).toBe(true);
   });
 });
+
+describe('terminalStore session state', () => {
+  beforeEach(() => {
+    useTerminalStore.setState({ terminalStates: new Map() });
+  });
+
+  it('setTerminalState stores a state', () => {
+    useTerminalStore.getState().setTerminalState('a', 'waiting');
+    expect(useTerminalStore.getState().terminalStates.get('a')).toBe('waiting');
+  });
+
+  it('setTerminalState is a no-op (same map reference) when unchanged', () => {
+    useTerminalStore.getState().setTerminalState('a', 'busy');
+    const before = useTerminalStore.getState().terminalStates;
+    useTerminalStore.getState().setTerminalState('a', 'busy');
+    expect(useTerminalStore.getState().terminalStates).toBe(before);
+  });
+
+  it('setTerminalState replaces the map when the value changes', () => {
+    useTerminalStore.getState().setTerminalState('a', 'busy');
+    const before = useTerminalStore.getState().terminalStates;
+    useTerminalStore.getState().setTerminalState('a', 'idle');
+    expect(useTerminalStore.getState().terminalStates).not.toBe(before);
+    expect(useTerminalStore.getState().terminalStates.get('a')).toBe('idle');
+  });
+});

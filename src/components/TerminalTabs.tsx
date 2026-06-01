@@ -15,6 +15,8 @@ import { BottomTerminalPane } from './BottomTerminalPane';
 import { getDragData, isTerminalDrag } from '../utils/dragDrop';
 import { useNowTick } from '../hooks/useNowTick';
 import { getLastOutputAt } from '../lib/terminalActivity';
+import { StateDot } from './StateDot';
+import type { SessionState } from '../lib/terminalState';
 
 function fileBasename(p: string): string {
   const trimmed = p.replace(/[\\/]+$/, '');
@@ -28,6 +30,7 @@ export function TerminalTabs() {
   const { terminals, activeTerminalId, setActiveTerminal, closeTerminal, unreadTerminalIds, gitInfoCache, reorderTerminals, scriptChildren, closeScript } = useTerminalStore();
   const { openNewTerminalModal, gridMode, toggleGridMode, addToGrid, gridTerminalIds, splitMode, splitTerminalIds, splitOrientation, splitRatio, setSplitOrientation, setSplitRatio, clearSplit, setSplitTerminals, setSplitMode, openFiles, activeFilePath, setActiveFilePath, closeFileTab, showFileTree } = useAppStore();
   const now = useNowTick();
+  const terminalStates = useTerminalStore((s) => s.terminalStates);
 
   // Selecting a terminal clears the file-tab focus (so terminal view shows),
   // selecting a file clears the terminal focus-visual intent.
@@ -215,7 +218,15 @@ export function TerminalTabs() {
               const isWorktree = instance?.isWorktree;
               const loopInfo = instance?.loopInfo;
               const lastOutputAt = getLastOutputAt(terminal.id);
-              const isWorking = lastOutputAt != null && now - lastOutputAt < 2000;
+              const liveBusy = lastOutputAt != null && now - lastOutputAt < 2000;
+              // Prefer the poller's classified state; fall back to the live
+              // activity timer so the dot lights up instantly on first output
+              // before the first poll tick lands. The 2000ms window here is
+              // intentionally wider than the poller's 600ms BUSY_WINDOW_MS to
+              // avoid flicker during the brief gap before the poller takes over.
+              const sessionState: SessionState =
+                terminalStates.get(terminal.id) ?? (liveBusy ? 'busy' : 'idle');
+              const isWorking = sessionState === 'busy';
               const isActiveTab = activeTerminalId === terminal.id && !activeFilePath;
 
               return (
@@ -254,11 +265,8 @@ export function TerminalTabs() {
                   {unreadTerminalIds.has(terminal.id) && activeTerminalId !== terminal.id && (
                     <div className="w-1.5 h-1.5 rounded-full bg-accent-primary flex-shrink-0" />
                   )}
-                  {isWorking && (
-                    <div
-                      className="ct-working-dot w-2 h-2 rounded-full bg-success flex-shrink-0 text-success"
-                      title="Claude is working&hellip;"
-                    />
+                  {sessionState !== 'idle' && (
+                    <StateDot state={sessionState} />
                   )}
                   {terminal.color_tag && (
                     <div className={`w-2 h-2 rounded-full ${terminal.color_tag} flex-shrink-0`} />

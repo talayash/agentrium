@@ -457,7 +457,7 @@ export function FileChangesPanel() {
             <button
               onClick={handleQuickPull}
               disabled={pullingTop || !activeTerminalId || !result?.is_git_repo}
-              className="flex items-center gap-1 h-6 px-1.5 rounded text-[11px] text-accent-primary hover:bg-accent-primary/10 transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
+              className="flex items-center gap-1 h-6 px-1.5 rounded text-[11px] text-success hover:bg-success/10 transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
               title="Pull from upstream (or origin/<current branch>) into the current branch"
             >
               {pullingTop ? (
@@ -470,7 +470,7 @@ export function FileChangesPanel() {
             <button
               onClick={() => { if (activePath) useAppStore.getState().openPushModal(activePath); }}
               disabled={!activePath || !result?.is_git_repo}
-              className="flex items-center gap-1 h-6 px-1.5 rounded text-[11px] text-sky-400 hover:bg-sky-500/10 transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
+              className="flex items-center gap-1 h-6 px-1.5 rounded text-[11px] text-error hover:bg-error/10 transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
               title="Push commits to remote (Ctrl+Shift+K)"
             >
               <Upload size={12} strokeWidth={2} />

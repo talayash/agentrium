@@ -4,6 +4,7 @@ import { Terminal } from '@xterm/xterm';
 import type { WorktreeDetectResult } from '../types/git';
 import { markTerminalActive, clearTerminalActivity } from '../lib/terminalActivity';
 import { chunkUtf8Bytes } from '../lib/chunkUtf8';
+import type { SessionState } from '../lib/terminalState';
 
 // Stay safely under the backend's 64 KB per-write cap so very large pastes
 // (multi-hundred KB) don't hit "Write payload too large".
@@ -54,6 +55,10 @@ interface TerminalState {
   terminals: Map<string, TerminalInstance>;
   activeTerminalId: string | null;
   unreadTerminalIds: Set<string>;
+  // Inferred Claude session state per terminal (busy/waiting/idle/stopped).
+  // Written only on transitions by the detection poller — never on the
+  // streaming hot path — so subscribers re-render only when state changes.
+  terminalStates: Map<string, SessionState>;
   gitInfoCache: Map<string, WorktreeDetectResult>;
   // Parent terminal ID → script child terminal ID (one child per parent).
   scriptChildren: Map<string, string>;
@@ -92,6 +97,7 @@ interface TerminalState {
   getTerminalList: () => TerminalConfig[];
   clearUnread: (id: string) => void;
   hasUnread: (id: string) => boolean;
+  setTerminalState: (id: string, state: SessionState) => void;
   fetchGitInfo: (terminalId: string) => Promise<void>;
   reorderTerminals: (orderedIds: string[]) => void;
 
@@ -113,6 +119,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
   terminals: new Map(),
   activeTerminalId: null,
   unreadTerminalIds: new Set(),
+  terminalStates: new Map(),
   gitInfoCache: new Map(),
   scriptChildren: new Map(),
   bottomTerminalIds: [],
@@ -258,6 +265,10 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       const newGitCache = new Map(state.gitInfoCache);
       newGitCache.delete(id);
 
+      const newStates = new Map(state.terminalStates);
+      newStates.delete(id);
+      if (childId) newStates.delete(childId);
+
       const newChildren = new Map(state.scriptChildren);
       newChildren.delete(id);
 
@@ -271,6 +282,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
         terminals: newTerminals,
         unreadTerminalIds: newUnread,
         gitInfoCache: newGitCache,
+        terminalStates: newStates,
         scriptChildren: newChildren,
         activeTerminalId: state.activeTerminalId === id
           ? (remainingIds[0] || null)
@@ -418,6 +430,16 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
     return get().unreadTerminalIds.has(id);
   },
 
+  setTerminalState: (id, state) => {
+    // Short-circuit before set() so unchanged states cause zero re-renders.
+    if (get().terminalStates.get(id) === state) return;
+    set((s) => {
+      const next = new Map(s.terminalStates);
+      next.set(id, state);
+      return { terminalStates: next };
+    });
+  },
+
   fetchGitInfo: async (terminalId) => {
     const instance = get().terminals.get(terminalId);
     if (!instance) return;
@@ -501,7 +523,9 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       nextTerminals.delete(childId);
       const nextChildren = new Map(state.scriptChildren);
       nextChildren.delete(parentId);
-      return { terminals: nextTerminals, scriptChildren: nextChildren };
+      const nextStates = new Map(state.terminalStates);
+      nextStates.delete(childId);
+      return { terminals: nextTerminals, scriptChildren: nextChildren, terminalStates: nextStates };
     });
   },
 
@@ -546,10 +570,13 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
           nextActive = nextIds[fallbackIdx];
         }
       }
+      const nextStates = new Map(state.terminalStates);
+      nextStates.delete(id);
       return {
         terminals: nextTerminals,
         bottomTerminalIds: nextIds,
         activeBottomTerminalId: nextActive,
+        terminalStates: nextStates,
       };
     });
   },
