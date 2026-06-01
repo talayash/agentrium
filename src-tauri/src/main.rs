@@ -19,6 +19,10 @@ use tokio::sync::Mutex;
 pub struct AppState {
     pub terminals: Arc<Mutex<terminal::TerminalManager>>,
     pub db: Arc<Mutex<database::Database>>,
+    /// Localhost port of the embedded OTLP metrics receiver (0 if disabled/failed).
+    pub otel_port: u16,
+    /// Shared aggregator so close_terminal can forget a terminal's metrics.
+    pub otel_agg: std::sync::Arc<std::sync::Mutex<crate::otel_receiver::MetricsAggregator>>,
 }
 
 fn main() {
@@ -58,9 +62,22 @@ fn main() {
 
             let terminal_manager = terminal::TerminalManager::new();
 
+            let (otel_port, otel_agg) = match otel_receiver::start(app.handle().clone()) {
+                Ok((port, agg)) => {
+                    eprintln!("[otel] metrics receiver listening on 127.0.0.1:{}", port);
+                    (port, agg)
+                }
+                Err(e) => {
+                    eprintln!("[otel] failed to start metrics receiver: {} (cost tracking disabled)", e);
+                    (0, std::sync::Arc::new(std::sync::Mutex::new(otel_receiver::MetricsAggregator::new())))
+                }
+            };
+
             app.manage(AppState {
                 terminals: Arc::new(Mutex::new(terminal_manager)),
                 db: Arc::new(Mutex::new(db)),
+                otel_port,
+                otel_agg,
             });
 
             Ok(())
