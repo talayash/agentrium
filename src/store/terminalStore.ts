@@ -62,6 +62,9 @@ interface TerminalState {
   terminalStates: Map<string, SessionState>;
   // Live per-terminal cost/token metrics from the OTel receiver.
   terminalMetrics: Map<string, SessionMetrics>;
+  // Terminals already warned about exceeding the budget cap (fire-once).
+  budgetWarnedIds: Set<string>;
+  markBudgetWarned: (id: string) => void;
   gitInfoCache: Map<string, WorktreeDetectResult>;
   // Parent terminal ID → script child terminal ID (one child per parent).
   scriptChildren: Map<string, string>;
@@ -125,6 +128,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
   unreadTerminalIds: new Set(),
   terminalStates: new Map(),
   terminalMetrics: new Map(),
+  budgetWarnedIds: new Set(),
   gitInfoCache: new Map(),
   scriptChildren: new Map(),
   bottomTerminalIds: [],
@@ -284,6 +288,10 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       newMetrics.delete(id);
       if (childId) newMetrics.delete(childId);
 
+      const newBudgetWarned = new Set(state.budgetWarnedIds);
+      newBudgetWarned.delete(id);
+      if (childId) newBudgetWarned.delete(childId);
+
       // Only pick a fallback from terminals that actually appear in the main
       // tab bar — script children and bottom-pane shells must never become
       // the "active tab".
@@ -297,6 +305,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
         terminalStates: newStates,
         scriptChildren: newChildren,
         terminalMetrics: newMetrics,
+        budgetWarnedIds: newBudgetWarned,
         activeTerminalId: state.activeTerminalId === id
           ? (remainingIds[0] || null)
           : state.activeTerminalId,
@@ -463,6 +472,13 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       return { terminalMetrics: map };
     });
   },
+
+  markBudgetWarned: (id) => set((s) => {
+    if (s.budgetWarnedIds.has(id)) return {};
+    const next = new Set(s.budgetWarnedIds);
+    next.add(id);
+    return { budgetWarnedIds: next };
+  }),
 
   fetchGitInfo: async (terminalId) => {
     const instance = get().terminals.get(terminalId);

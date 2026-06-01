@@ -214,6 +214,26 @@ function App() {
     };
   }, [applyTerminalMetrics]);
 
+  const terminalMetrics = useTerminalStore((s) => s.terminalMetrics);
+  const budgetWarnedIds = useTerminalStore((s) => s.budgetWarnedIds);
+  const markBudgetWarned = useTerminalStore((s) => s.markBudgetWarned);
+  const sessionBudgetUsd = useAppStore((s) => s.sessionBudgetUsd);
+
+  useEffect(() => {
+    if (sessionBudgetUsd <= 0) return;
+    for (const [id, m] of terminalMetrics) {
+      if (m.costUsd >= sessionBudgetUsd && !budgetWarnedIds.has(id)) {
+        markBudgetWarned(id);
+        const inst = useTerminalStore.getState().terminals.get(id);
+        const name = inst?.config.nickname || inst?.config.label || id;
+        notify(
+          'Session over budget',
+          `"${name}" reached $${m.costUsd.toFixed(2)} (cap $${sessionBudgetUsd.toFixed(2)}).`,
+        );
+      }
+    }
+  }, [terminalMetrics, sessionBudgetUsd, budgetWarnedIds, markBudgetWarned, notify]);
+
   useEffect(() => {
     const unlisten = listen<{ id: string }>('terminal-finished', (event) => {
       const { id } = event.payload;

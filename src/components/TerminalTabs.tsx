@@ -8,6 +8,7 @@ import { TerminalView } from './TerminalView';
 import { TerminalGrid } from './TerminalGrid';
 import { SplitView } from './SplitView';
 import { SessionInsights } from './SessionInsights';
+import { SessionMetricsPanel } from './SessionMetricsPanel';
 import { FileEditorView } from './FileEditorView';
 import { ScriptsMenu } from './ScriptsMenu';
 import { ScriptChildPane } from './ScriptChildPane';
@@ -504,6 +505,13 @@ export function TerminalTabs() {
                 const inst = terminals.get(activeTerminalId);
                 if (inst?.config.status === 'Stopped' && inst?.sessionSummary) {
                   return <SessionInsights summary={inst.sessionSummary} />;
+                }
+                return null;
+              })()}
+              {(() => {
+                const inst = terminals.get(activeTerminalId);
+                if (inst && useTerminalStore.getState().terminalMetrics.get(activeTerminalId)) {
+                  return <SessionMetricsPanel terminalId={activeTerminalId} />;
                 }
                 return null;
               })()}
