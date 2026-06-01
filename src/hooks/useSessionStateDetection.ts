@@ -73,7 +73,7 @@ export function useSessionStateDetection(): void {
 
         if (state === 'waiting') {
           const lookingAtIt = id === store.activeTerminalId && focusedRef.current;
-          const dnd = isWithinDnd(app.dndStart, app.dndEnd, new Date());
+          const dnd = app.dndEnabled && isWithinDnd(app.dndStart, app.dndEnd, new Date());
           if (prev !== 'waiting' && !lookingAtIt && !dnd && !notifiedRef.current.has(id)) {
             const name = inst.config.nickname || inst.config.label;
             notify('Claude needs your input', `${name} is waiting for your response.`);
