@@ -24,6 +24,12 @@ function fileBasename(p: string): string {
   return idx === -1 ? trimmed : trimmed.slice(idx + 1);
 }
 
+function formatCost(usd: number): string {
+  if (usd <= 0) return '';
+  if (usd < 0.01) return '<$0.01';
+  return `$${usd.toFixed(2)}`;
+}
+
 const isMac = navigator.platform.toUpperCase().includes('MAC');
 
 export function TerminalTabs() {
@@ -31,6 +37,7 @@ export function TerminalTabs() {
   const { openNewTerminalModal, gridMode, toggleGridMode, addToGrid, gridTerminalIds, splitMode, splitTerminalIds, splitOrientation, splitRatio, setSplitOrientation, setSplitRatio, clearSplit, setSplitTerminals, setSplitMode, openFiles, activeFilePath, setActiveFilePath, closeFileTab, showFileTree } = useAppStore();
   const now = useNowTick();
   const terminalStates = useTerminalStore((s) => s.terminalStates);
+  const terminalMetrics = useTerminalStore((s) => s.terminalMetrics);
 
   // Selecting a terminal clears the file-tab focus (so terminal view shows),
   // selecting a file clears the terminal focus-visual intent.
@@ -282,6 +289,19 @@ export function TerminalTabs() {
                       {model}
                     </span>
                   )}
+                  {(() => {
+                    const cost = terminalMetrics.get(terminal.id)?.costUsd ?? 0;
+                    const label = formatCost(cost);
+                    if (!label) return null;
+                    return (
+                      <span
+                        className="text-[9px] px-1 rounded font-medium flex-shrink-0 bg-emerald-500/15 text-emerald-400 tabular-nums"
+                        title="Estimated session cost (live)"
+                      >
+                        {label}
+                      </span>
+                    );
+                  })()}
                   {isWorktree && (
                     <GitBranch size={10} className="text-cyan-400 flex-shrink-0" />
                   )}
