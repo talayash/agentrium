@@ -240,6 +240,9 @@ pub struct CreateTerminalRequest {
     /// the restore fallback for saves predating session-id capture.
     #[serde(default)]
     pub continue_recent: bool,
+    /// Whether to enable per-session OTel cost/token tracking for this terminal.
+    #[serde(default)]
+    pub cost_tracking: bool,
 }
 
 #[command]
@@ -275,6 +278,14 @@ pub async fn create_terminal(
         let continue_recent = request.continue_recent && resume_id.is_none();
         let working_directory = request.working_directory.clone();
 
+        // Build the OTLP endpoint only when the user enabled tracking AND the
+        // receiver actually started (port != 0).
+        let otel_endpoint = if request.cost_tracking && state.otel_port != 0 {
+            Some(format!("http://127.0.0.1:{}", state.otel_port))
+        } else {
+            None
+        };
+
         let config = {
             let mut terminals = state.terminals.lock().await;
             terminals.create_terminal(
@@ -288,6 +299,7 @@ pub async fn create_terminal(
                 Some(log_path.clone()),
                 request.resume_session_id,
                 continue_recent,
+                otel_endpoint,
             )?
         };
 
@@ -442,7 +454,12 @@ pub async fn resize_terminal(
 pub async fn close_terminal(state: State<'_, AppState>, id: String) -> Result<(), String> {
     wrap_cmd("close_terminal", async move {
         let mut terminals = state.terminals.lock().await;
-        terminals.close(&id)
+        terminals.close(&id)?;
+        // Drop accumulated telemetry so a reused id can't inherit stale totals.
+        if let Ok(mut agg) = state.otel_agg.lock() {
+            agg.forget(&id);
+        }
+        Ok(())
     })
     .await
 }
