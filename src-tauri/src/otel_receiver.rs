@@ -1,5 +1,7 @@
 use serde::Serialize;
 use serde_json::Value;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 /// One terminal's metrics extracted from a single OTLP/JSON export.
 /// Fields are `Option` because a given export may carry only some metrics.
@@ -149,6 +151,95 @@ pub fn parse_otlp_metrics(body: &str) -> Vec<SessionMetricUpdate> {
     out
 }
 
+/// Holds the running per-terminal totals. Claude emits DELTA metrics
+/// (aggregationTemporality=1), so each export is an increment we ADD; a partial
+/// export (e.g. cost-only) leaves previously-accumulated token totals intact.
+pub struct MetricsAggregator {
+    by_terminal: HashMap<String, SessionMetricUpdate>,
+}
+
+impl MetricsAggregator {
+    pub fn new() -> Self {
+        Self { by_terminal: HashMap::new() }
+    }
+
+    /// Add a delta export into the running total and return the full snapshot.
+    pub fn apply(&mut self, u: SessionMetricUpdate) -> SessionMetricUpdate {
+        let entry = self
+            .by_terminal
+            .entry(u.terminal_id.clone())
+            .or_insert_with(|| SessionMetricUpdate {
+                terminal_id: u.terminal_id.clone(),
+                ..Default::default()
+            });
+        // DELTA temporality: accumulate increments; absent field => no change.
+        fn add_f(acc: &mut Option<f64>, d: Option<f64>) {
+            if let Some(x) = d { *acc = Some(acc.unwrap_or(0.0) + x); }
+        }
+        fn add_u(acc: &mut Option<u64>, d: Option<u64>) {
+            if let Some(x) = d { *acc = Some(acc.unwrap_or(0) + x); }
+        }
+        add_f(&mut entry.cost_usd, u.cost_usd);
+        add_u(&mut entry.tokens_input, u.tokens_input);
+        add_u(&mut entry.tokens_output, u.tokens_output);
+        add_u(&mut entry.tokens_cache_read, u.tokens_cache_read);
+        add_u(&mut entry.tokens_cache_creation, u.tokens_cache_creation);
+        add_u(&mut entry.lines_added, u.lines_added);
+        add_u(&mut entry.lines_removed, u.lines_removed);
+        entry.clone()
+    }
+
+    /// Drop a terminal's accumulated metrics (called when a terminal closes).
+    pub fn forget(&mut self, terminal_id: &str) {
+        self.by_terminal.remove(terminal_id);
+    }
+}
+
+/// Start an OTLP/HTTP-JSON metrics receiver on an ephemeral localhost port.
+/// Returns the bound port. Spawns one accept thread; each POST /v1/metrics is
+/// parsed, merged, and emitted to the frontend as `terminal-metrics`.
+/// The returned `Arc<Mutex<MetricsAggregator>>` lets close_terminal forget state.
+pub fn start(app: tauri::AppHandle) -> std::io::Result<(u16, Arc<Mutex<MetricsAggregator>>)> {
+    let server = tiny_http::Server::http("127.0.0.1:0")
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+    let port = server.server_addr().to_ip().map(|a| a.port()).unwrap_or(0);
+    let agg = Arc::new(Mutex::new(MetricsAggregator::new()));
+    let agg_thread = agg.clone();
+
+    std::thread::spawn(move || {
+        for mut request in server.incoming_requests() {
+            // Only metrics POSTs carry a body we care about.
+            let mut body = String::new();
+            use std::io::Read;
+            let _ = request.as_reader().read_to_string(&mut body);
+
+            let updates = parse_otlp_metrics(&body);
+            {
+                let mut guard = match agg_thread.lock() {
+                    Ok(g) => g,
+                    Err(p) => p.into_inner(), // poisoned: recover, telemetry is non-critical
+                };
+                for u in updates {
+                    let merged = guard.apply(u);
+                    use tauri::Emitter;
+                    if let Err(e) = app.emit("terminal-metrics", &merged) {
+                        eprintln!("Failed to emit terminal-metrics: {}", e);
+                    }
+                }
+            }
+            // OTLP expects 200 with an (empty) JSON body.
+            let response = tiny_http::Response::from_string("{}")
+                .with_status_code(200)
+                .with_header(
+                    "Content-Type: application/json".parse::<tiny_http::Header>().unwrap(),
+                );
+            let _ = request.respond(response);
+        }
+    });
+
+    Ok((port, agg))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -178,6 +269,34 @@ mod tests {
     fn ignores_bodies_without_terminal_id() {
         let body = r#"{"resourceMetrics":[{"resource":{"attributes":[]},"scopeMetrics":[]}]}"#;
         assert!(parse_otlp_metrics(body).is_empty());
+    }
+
+    #[test]
+    fn aggregator_sums_delta_exports() {
+        let mut agg = MetricsAggregator::new();
+        let first = SessionMetricUpdate {
+            terminal_id: "A".into(),
+            cost_usd: Some(0.01),
+            tokens_input: Some(100),
+            ..Default::default()
+        };
+        let merged1 = agg.apply(first);
+        assert_eq!(merged1.cost_usd, Some(0.01));
+        assert_eq!(merged1.tokens_input, Some(100));
+
+        // DELTA temporality: each export is an increment. The second export adds
+        // 0.05 cost + 40 output tokens; input is absent (delta 0) so it stays 100.
+        let second = SessionMetricUpdate {
+            terminal_id: "A".into(),
+            cost_usd: Some(0.05),
+            tokens_output: Some(40),
+            ..Default::default()
+        };
+        let merged2 = agg.apply(second);
+        // Use epsilon comparison because 0.01 + 0.05 = 0.060000000000000005 in IEEE 754.
+        assert!((merged2.cost_usd.unwrap() - 0.06).abs() < 1e-10, "expected ~0.06, got {:?}", merged2.cost_usd); // 0.01 + 0.05
+        assert_eq!(merged2.tokens_input, Some(100)); // unchanged (no delta)
+        assert_eq!(merged2.tokens_output, Some(40));
     }
 
     #[test]
