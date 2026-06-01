@@ -2,6 +2,15 @@ import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
 import { totalTokens } from '../lib/sessionMetrics';
 
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between text-[11px] py-0.5">
+      <span className="text-text-tertiary">{label}</span>
+      <span className="text-text-secondary tabular-nums">{value}</span>
+    </div>
+  );
+}
+
 export function SessionMetricsPanel({ terminalId }: { terminalId: string }) {
   const metrics = useTerminalStore((s) => s.terminalMetrics.get(terminalId));
   const budget = useAppStore((s) => s.sessionBudgetUsd);
@@ -9,13 +18,6 @@ export function SessionMetricsPanel({ terminalId }: { terminalId: string }) {
 
   const pct = budget > 0 ? Math.min(100, (metrics.costUsd / budget) * 100) : 0;
   const over = budget > 0 && metrics.costUsd >= budget;
-
-  const Row = ({ label, value }: { label: string; value: string }) => (
-    <div className="flex items-center justify-between text-[11px] py-0.5">
-      <span className="text-text-tertiary">{label}</span>
-      <span className="text-text-secondary tabular-nums">{value}</span>
-    </div>
-  );
 
   return (
     <div className="px-3 py-2 border-t border-[var(--ij-divider)] bg-elevation-1">

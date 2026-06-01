@@ -510,7 +510,7 @@ export function TerminalTabs() {
               })()}
               {(() => {
                 const inst = terminals.get(activeTerminalId);
-                if (inst && useTerminalStore.getState().terminalMetrics.get(activeTerminalId)) {
+                if (inst && terminalMetrics.get(activeTerminalId)) {
                   return <SessionMetricsPanel terminalId={activeTerminalId} />;
                 }
                 return null;
