@@ -86,6 +86,9 @@ interface AppState {
   accentColorHex: string;
   uiFontScale: number;
   uiReduceMotion: boolean;
+  // True once the user has explicitly toggled "Reduce motion" in Settings. Until
+  // then we follow the OS prefers-reduced-motion setting (WCAG 2.2 SC 2.3.3).
+  uiReduceMotionUserSet: boolean;
   notificationSoundEnabled: boolean;
   dndEnabled: boolean;
   dndStart: string;
@@ -152,6 +155,11 @@ interface AppState {
 
   // Command Palette (F1)
   commandPaletteOpen: boolean;
+  // Frecency: per-action usage so the palette can surface a "Recent" group and
+  // rank matches by frequency + recency. Keyed by a stable string (e.g.
+  // "cmd:New Terminal", "snippet:<id>", "hint:<command>") - never terminal ids,
+  // which are ephemeral and would leak into persisted storage.
+  paletteUsage: Record<string, { count: number; lastUsedTs: number }>;
 
   // Session History (F2)
   sessionHistoryOpen: boolean;
@@ -238,6 +246,7 @@ interface AppState {
   setAccentColorHex: (hex: string) => void;
   setUiFontScale: (scale: number) => void;
   setUiReduceMotion: (enabled: boolean) => void;
+  recordPaletteUse: (key: string) => void;
   setNotificationSoundEnabled: (enabled: boolean) => void;
   setDndEnabled: (enabled: boolean) => void;
   setDndStart: (hhmm: string) => void;
@@ -430,6 +439,7 @@ export const useAppStore = create<AppState>()(
       accentColorHex: DEFAULT_ACCENT_COLOR,
       uiFontScale: DEFAULT_UI_FONT_SCALE,
       uiReduceMotion: false,
+      uiReduceMotionUserSet: false,
       notificationSoundEnabled: false,
       dndEnabled: false,
       dndStart: '22:00',
@@ -497,6 +507,7 @@ export const useAppStore = create<AppState>()(
 
       // Command Palette (F1)
       commandPaletteOpen: false,
+      paletteUsage: {},
 
       // Session History (F2)
       sessionHistoryOpen: false,
@@ -590,7 +601,7 @@ export const useAppStore = create<AppState>()(
       },
       setUiFontScale: (scale) =>
         set({ uiFontScale: Math.max(0.85, Math.min(1.25, Math.round(scale * 100) / 100)) }),
-      setUiReduceMotion: (enabled) => set({ uiReduceMotion: enabled }),
+      setUiReduceMotion: (enabled) => set({ uiReduceMotion: enabled, uiReduceMotionUserSet: true }),
       setNotificationSoundEnabled: (enabled) => set({ notificationSoundEnabled: enabled }),
       setDndEnabled: (enabled) => set({ dndEnabled: enabled }),
       setDndStart: (hhmm) => set({ dndStart: /^\d{2}:\d{2}$/.test(hhmm) ? hhmm : '22:00' }),
@@ -868,6 +879,13 @@ export const useAppStore = create<AppState>()(
       }),
 
       // Command Palette actions (F1)
+      recordPaletteUse: (key) =>
+        set((s) => ({
+          paletteUsage: {
+            ...s.paletteUsage,
+            [key]: { count: (s.paletteUsage[key]?.count ?? 0) + 1, lastUsedTs: Date.now() },
+          },
+        })),
       openCommandPalette: () => set({ commandPaletteOpen: true }),
       closeCommandPalette: () => set({ commandPaletteOpen: false }),
       toggleCommandPalette: () => set((state) => ({ commandPaletteOpen: !state.commandPaletteOpen })),
@@ -973,6 +991,8 @@ export const useAppStore = create<AppState>()(
         accentColorHex: state.accentColorHex,
         uiFontScale: state.uiFontScale,
         uiReduceMotion: state.uiReduceMotion,
+        uiReduceMotionUserSet: state.uiReduceMotionUserSet,
+        paletteUsage: state.paletteUsage,
         notificationSoundEnabled: state.notificationSoundEnabled,
         dndEnabled: state.dndEnabled,
         dndStart: state.dndStart,

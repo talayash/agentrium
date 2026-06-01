@@ -126,6 +126,22 @@ function App() {
     applyUiFontScale(uiFontScale);
   }, [themeMode, uiDensity, accentColorHex, uiReduceMotion, uiFontScale]);
 
+  // Follow the OS "reduce motion" setting (WCAG 2.2 SC 2.3.3) on startup and
+  // whenever it changes - but only until the user makes an explicit choice in
+  // Settings, after which uiReduceMotionUserSet pins their preference. Routed
+  // through setState (not setUiReduceMotion) so the auto-sync never marks the
+  // value as user-set. The effect above then applies it to the DOM.
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const sync = () => {
+      if (useAppStore.getState().uiReduceMotionUserSet) return;
+      useAppStore.setState({ uiReduceMotion: mq.matches });
+    };
+    sync();
+    mq.addEventListener('change', sync);
+    return () => mq.removeEventListener('change', sync);
+  }, []);
+
   useEffect(() => {
     // Check if Claude Code is installed on startup
     const checkSetup = async () => {

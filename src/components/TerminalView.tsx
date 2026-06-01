@@ -69,6 +69,7 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
   const cursorBlink = useAppStore((s) => s.terminalCursorBlink);
   const scrollback = useAppStore((s) => s.terminalScrollback);
   const themeName = useAppStore((s) => s.terminalTheme);
+  const accentColorHex = useAppStore((s) => s.accentColorHex);
   const bidi = useAppStore((s) => s.terminalBidi);
 
   const toggleSearch = useCallback(() => {
@@ -84,7 +85,10 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
     // Scrollback and BiDi DO require a recreate, so they appear in this
     // effect's deps.
     const terminal = new Terminal({
-      theme: resolveTerminalTheme(useAppStore.getState().terminalTheme),
+      theme: resolveTerminalTheme(
+        useAppStore.getState().terminalTheme,
+        useAppStore.getState().accentColorHex,
+      ),
       fontFamily: useAppStore.getState().terminalFontFamily,
       fontSize: useAppStore.getState().terminalFontSize,
       lineHeight: useAppStore.getState().terminalLineHeight,
@@ -326,12 +330,12 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
     terminal.options.lineHeight = lineHeight;
     terminal.options.cursorStyle = cursorStyle;
     terminal.options.cursorBlink = cursorBlink;
-    terminal.options.theme = resolveTerminalTheme(themeName);
+    terminal.options.theme = resolveTerminalTheme(themeName, accentColorHex);
     // Refit + push new dimensions to the PTY whenever cell metrics may have
     // changed. fit() is a no-op if cols/rows didn't actually shift.
     fitAddonRef.current?.fit();
     resizeTerminal(terminalId, terminal.cols, terminal.rows);
-  }, [fontFamily, fontSize, lineHeight, cursorStyle, cursorBlink, themeName, terminalId, resizeTerminal]);
+  }, [fontFamily, fontSize, lineHeight, cursorStyle, cursorBlink, themeName, accentColorHex, terminalId, resizeTerminal]);
 
   // OS → terminal file drag-drop. Tauri intercepts drag events at the window
   // level and delivers physical-pixel positions, so we hit-test against this

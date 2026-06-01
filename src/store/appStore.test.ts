@@ -370,6 +370,8 @@ describe('appStore - persist partialize', () => {
     'accentColorHex',
     'uiFontScale',
     'uiReduceMotion',
+    'uiReduceMotionUserSet',
+    'paletteUsage',
     'notificationSoundEnabled',
     'dndEnabled',
     'dndStart',
@@ -458,6 +460,21 @@ describe('appStore - appearance v1.22.0 setters', () => {
     expect(useAppStore.getState().uiDensity).toBe('compact');
     s.setUiReduceMotion(true);
     expect(useAppStore.getState().uiReduceMotion).toBe(true);
+  });
+
+  it('recordPaletteUse increments count and stamps lastUsedTs', () => {
+    const s = useAppStore.getState();
+    expect(useAppStore.getState().paletteUsage['cmd:New Terminal']).toBeUndefined();
+
+    s.recordPaletteUse('cmd:New Terminal');
+    const first = useAppStore.getState().paletteUsage['cmd:New Terminal'];
+    expect(first.count).toBe(1);
+    expect(typeof first.lastUsedTs).toBe('number');
+
+    s.recordPaletteUse('cmd:New Terminal');
+    const second = useAppStore.getState().paletteUsage['cmd:New Terminal'];
+    expect(second.count).toBe(2);
+    expect(second.lastUsedTs).toBeGreaterThanOrEqual(first.lastUsedTs);
   });
 });
 
