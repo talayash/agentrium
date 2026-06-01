@@ -5,6 +5,7 @@ import type { WorktreeDetectResult } from '../types/git';
 import { markTerminalActive, clearTerminalActivity } from '../lib/terminalActivity';
 import { chunkUtf8Bytes } from '../lib/chunkUtf8';
 import type { SessionState } from '../lib/terminalState';
+import { mergeMetrics, emptyMetrics, type SessionMetrics, type TerminalMetricsPayload } from '../lib/sessionMetrics';
 
 // Stay safely under the backend's 64 KB per-write cap so very large pastes
 // (multi-hundred KB) don't hit "Write payload too large".
@@ -59,6 +60,8 @@ interface TerminalState {
   // Written only on transitions by the detection poller — never on the
   // streaming hot path — so subscribers re-render only when state changes.
   terminalStates: Map<string, SessionState>;
+  // Live per-terminal cost/token metrics from the OTel receiver.
+  terminalMetrics: Map<string, SessionMetrics>;
   gitInfoCache: Map<string, WorktreeDetectResult>;
   // Parent terminal ID → script child terminal ID (one child per parent).
   scriptChildren: Map<string, string>;
@@ -98,6 +101,7 @@ interface TerminalState {
   clearUnread: (id: string) => void;
   hasUnread: (id: string) => boolean;
   setTerminalState: (id: string, state: SessionState) => void;
+  applyTerminalMetrics: (payload: TerminalMetricsPayload) => void;
   fetchGitInfo: (terminalId: string) => Promise<void>;
   reorderTerminals: (orderedIds: string[]) => void;
 
@@ -120,6 +124,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
   activeTerminalId: null,
   unreadTerminalIds: new Set(),
   terminalStates: new Map(),
+  terminalMetrics: new Map(),
   gitInfoCache: new Map(),
   scriptChildren: new Map(),
   bottomTerminalIds: [],
@@ -272,6 +277,10 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       const newChildren = new Map(state.scriptChildren);
       newChildren.delete(id);
 
+      const newMetrics = new Map(state.terminalMetrics);
+      newMetrics.delete(id);
+      if (childId) newMetrics.delete(childId);
+
       // Only pick a fallback from terminals that actually appear in the main
       // tab bar — script children and bottom-pane shells must never become
       // the "active tab".
@@ -284,6 +293,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
         gitInfoCache: newGitCache,
         terminalStates: newStates,
         scriptChildren: newChildren,
+        terminalMetrics: newMetrics,
         activeTerminalId: state.activeTerminalId === id
           ? (remainingIds[0] || null)
           : state.activeTerminalId,
@@ -437,6 +447,17 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       const next = new Map(s.terminalStates);
       next.set(id, state);
       return { terminalStates: next };
+    });
+  },
+
+  applyTerminalMetrics: (payload) => {
+    const id = payload.terminal_id;
+    set((s) => {
+      const prev = s.terminalMetrics.get(id) ?? emptyMetrics();
+      const next = mergeMetrics(prev, payload);
+      const map = new Map(s.terminalMetrics);
+      map.set(id, next);
+      return { terminalMetrics: map };
     });
   },
 
