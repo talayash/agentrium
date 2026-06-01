@@ -10,7 +10,7 @@ export const WAITING_PATTERNS: RegExp[] = [
   /Do you want to proceed\??/i,
   /Do you trust the files in this folder\??/i,
   /\(y\/n\)/i,
-  /\[y\/N\]/,
+  /\[y\/n\]/i,
 ];
 
 /**
@@ -47,9 +47,12 @@ export function classifySettled(lines: string[]): 'waiting' | 'idle' {
   //    numbered list left over from its last response.
   if (IDLE_MARKERS.some((re) => trimmed.some((l) => re.test(l)))) return 'idle';
 
-  // 3. Two or more option lines = a selection menu (AskUserQuestion / picker).
+  // 3. A selection menu: two or more option lines AND at least one carries the
+  //    `❯` cursor. The cursor distinguishes an interactive picker from a plain
+  //    numbered list left in a finished response.
   const optionLines = trimmed.filter((l) => OPTION_LINE.test(l));
-  if (optionLines.length >= 2) return 'waiting';
+  const hasCursor = trimmed.some((l) => /^❯\s*\d+\.\s+\S/.test(l));
+  if (optionLines.length >= 2 && hasCursor) return 'waiting';
 
   return 'idle';
 }

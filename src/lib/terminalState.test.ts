@@ -61,4 +61,21 @@ describe('classifySettled', () => {
     ];
     expect(classifySettled(lines)).toBe('idle');
   });
+
+  it('does not raise waiting on a numbered list with no cursor and no idle box', () => {
+    const lines = [
+      'Here are the steps I took:',
+      '1. Updated the parser',
+      '2. Added a test',
+    ];
+    expect(classifySettled(lines)).toBe('idle');
+  });
+
+  it('treats a single cursor option line as idle (below the menu threshold)', () => {
+    expect(classifySettled(['❯ 1. Yes'])).toBe('idle');
+  });
+
+  it('treats empty input as idle', () => {
+    expect(classifySettled([])).toBe('idle');
+  });
 });
