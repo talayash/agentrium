@@ -36,12 +36,38 @@ interface Snippet {
 
 interface PaletteItem {
   id: string;
+  // Stable key for frecency tracking. Empty string = not tracked (terminals,
+  // whose ids are ephemeral and must not leak into persisted usage).
+  frecencyKey: string;
   label: string;
   description: string;
   category: string;
   icon?: LucideIcon;
   shortcut?: string;
+  // Tailwind bg-* class for a presence dot (terminal status). Color is
+  // supplementary - the status is also spelled out in the description so we
+  // never convey it by color alone.
+  statusColor?: string;
   action: () => void;
+}
+
+// Terminal status → presence-dot color.
+const STATUS_DOT: Record<string, string> = {
+  Running: 'bg-success',
+  Idle: 'bg-warning',
+  Error: 'bg-error',
+  Stopped: 'bg-text-tertiary',
+};
+
+// Frecency = frequency + recency. A small recency bump keeps recently-used
+// items near the top without letting a one-off click outrank a daily habit.
+function frecencyScore(u?: { count: number; lastUsedTs: number }): number {
+  if (!u) return 0;
+  const age = Date.now() - u.lastUsedTs;
+  const HOUR = 3_600_000;
+  const DAY = 24 * HOUR;
+  const recency = age < HOUR ? 8 : age < DAY ? 4 : age < 7 * DAY ? 2 : 1;
+  return u.count + recency;
 }
 
 function fuzzyMatch(text: string, query: string): { matches: boolean; score: number } {
@@ -75,6 +101,8 @@ function fuzzyMatch(text: string, query: string): { matches: boolean; score: num
 
 export function CommandPalette() {
   const { closeCommandPalette } = useAppStore();
+  const paletteUsage = useAppStore((s) => s.paletteUsage);
+  const recordPaletteUse = useAppStore((s) => s.recordPaletteUse);
   const { terminals, activeTerminalId, setActiveTerminal, writeToTerminal } = useTerminalStore();
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -111,10 +139,12 @@ export function CommandPalette() {
         const config = instance.config;
         result.push({
           id: `terminal-${config.id}`,
+          frecencyKey: '',
           label: config.nickname || config.label,
           description: `${config.working_directory} (${config.status})`,
           category: 'Terminals',
           icon: Terminal,
+          statusColor: STATUS_DOT[config.status] ?? 'bg-text-tertiary',
           action: () => { setActiveTerminal(config.id); closeCommandPalette(); },
         });
       });
@@ -135,7 +165,7 @@ export function CommandPalette() {
         { label: 'Session History', description: 'View past terminal sessions', icon: History, action: () => { useAppStore.getState().openSessionHistory(); closeCommandPalette(); } },
       ];
       actions.forEach((a, i) => {
-        result.push({ id: `action-${i}`, label: a.label, description: a.description, category: 'Commands', icon: a.icon, shortcut: a.shortcut, action: a.action });
+        result.push({ id: `action-${i}`, frecencyKey: `cmd:${a.label}`, label: a.label, description: a.description, category: 'Commands', icon: a.icon, shortcut: a.shortcut, action: a.action });
       });
     }
 
@@ -145,6 +175,7 @@ export function CommandPalette() {
         cat.hints.forEach((hint, i) => {
           result.push({
             id: `hint-${cat.category}-${i}`,
+            frecencyKey: `hint:${hint.command}`,
             label: hint.command,
             description: hint.description,
             category: 'Hints',
@@ -160,6 +191,7 @@ export function CommandPalette() {
       snippets.forEach((snippet) => {
         result.push({
           id: `snippet-${snippet.id}`,
+          frecencyKey: `snippet:${snippet.id}`,
           label: snippet.title,
           description: `[${snippet.category}] ${snippet.content.slice(0, 60)}${snippet.content.length > 60 ? '...' : ''}`,
           category: 'Snippets',
@@ -182,18 +214,36 @@ export function CommandPalette() {
         const labelMatch = fuzzyMatch(item.label, effectiveQuery);
         const descMatch = fuzzyMatch(item.description, effectiveQuery);
         const bestScore = Math.max(labelMatch.score, descMatch.score);
-        return { item, matches: labelMatch.matches || descMatch.matches, score: bestScore };
+        // Nudge frequently/recently used matches up without overriding a strong
+        // textual match (fuzzy scores dominate; the boost only breaks ties).
+        const boost = item.frecencyKey ? frecencyScore(paletteUsage[item.frecencyKey]) * 1.5 : 0;
+        return { item, matches: labelMatch.matches || descMatch.matches, score: bestScore + boost };
       })
       .filter(r => r.matches)
       .sort((a, b) => b.score - a.score)
       .map(r => r.item);
-  }, [items, effectiveQuery]);
+  }, [items, effectiveQuery, paletteUsage]);
 
-  // Group by category
+  // Recent group (empty query only): tracked items ordered by last use.
+  const recentItems = useMemo(() => {
+    if (effectiveQuery) return [];
+    const byKey = new Map(items.filter(i => i.frecencyKey).map(i => [i.frecencyKey, i] as const));
+    return Object.entries(paletteUsage)
+      .sort((a, b) => b[1].lastUsedTs - a[1].lastUsedTs)
+      .map(([k]) => byKey.get(k))
+      .filter((i): i is PaletteItem => !!i)
+      .slice(0, 5);
+  }, [items, paletteUsage, effectiveQuery]);
+
+  // Group by category. With an empty query, surface "Recent" first and drop
+  // those items from their normal groups so each appears exactly once.
   const grouped = useMemo(() => {
     const groups: { category: string; items: PaletteItem[] }[] = [];
+    if (recentItems.length) groups.push({ category: 'Recent', items: recentItems });
+    const recentKeys = new Set(recentItems.map(i => i.frecencyKey));
     const catMap = new Map<string, PaletteItem[]>();
     for (const item of filtered) {
+      if (!effectiveQuery && item.frecencyKey && recentKeys.has(item.frecencyKey)) continue;
       const arr = catMap.get(item.category) || [];
       arr.push(item);
       catMap.set(item.category, arr);
@@ -202,7 +252,7 @@ export function CommandPalette() {
       groups.push({ category, items });
     }
     return groups;
-  }, [filtered]);
+  }, [filtered, recentItems, effectiveQuery]);
 
   // Flat list for keyboard navigation
   const flatItems = useMemo(() => grouped.flatMap(g => g.items), [grouped]);
@@ -210,6 +260,12 @@ export function CommandPalette() {
   useEffect(() => {
     setSelectedIndex(0);
   }, [query]);
+
+  // Record frecency before running, so the next open reflects this use.
+  const runItem = (item: PaletteItem) => {
+    if (item.frecencyKey) recordPaletteUse(item.frecencyKey);
+    item.action();
+  };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {
@@ -223,7 +279,7 @@ export function CommandPalette() {
     } else if (e.key === 'Enter') {
       e.preventDefault();
       if (flatItems[selectedIndex]) {
-        flatItems[selectedIndex].action();
+        runItem(flatItems[selectedIndex]);
       }
     }
   };
@@ -290,7 +346,7 @@ export function CommandPalette() {
                     <div
                       key={item.id}
                       data-index={idx}
-                      onClick={item.action}
+                      onClick={() => runItem(item)}
                       className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-colors ${
                         selectedIndex === idx
                           ? 'bg-accent-primary/12 text-text-primary'
@@ -298,14 +354,18 @@ export function CommandPalette() {
                       }`}
                     >
                       {Icon && (
-                        <Icon
-                          size={14}
-                          className={
-                            selectedIndex === idx
-                              ? 'text-accent-primary shrink-0'
-                              : 'text-text-tertiary shrink-0'
-                          }
-                        />
+                        <div className="relative shrink-0">
+                          <Icon
+                            size={14}
+                            className={selectedIndex === idx ? 'text-accent-primary' : 'text-text-tertiary'}
+                          />
+                          {item.statusColor && (
+                            <span
+                              className={`absolute -bottom-0.5 -right-0.5 w-1.5 h-1.5 rounded-full ring-1 ring-elevation-4 ${item.statusColor}`}
+                              title="Terminal status"
+                            />
+                          )}
+                        </div>
                       )}
                       <div className="flex-1 min-w-0">
                         <p className="text-[12px] font-medium truncate">{item.label}</p>

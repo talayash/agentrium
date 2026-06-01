@@ -12,7 +12,7 @@ Current version: **1.22.6**
 - **Backend**: Rust (edition 2021)
 - **Frontend**: React 18 + TypeScript + Vite
 - **Terminal emulation**: xterm.js (`@xterm/xterm`) with fit, search, and web-links addons
-- **Styling**: Tailwind CSS + Framer Motion (dark glassmorphic theme)
+- **Styling**: Tailwind CSS + Framer Motion. Flat IntelliJ IDEA 2026.1 "New UI"–style design: a 5-step elevation ramp (`--elevation-0..4` CSS vars), `#3574F0` accent, Inter (UI) + JetBrains Mono (code). Supports dark/light/auto theme, user-set accent color, compact/comfortable/spacious density, UI font scale, and a "reduce motion" toggle that follows the OS `prefers-reduced-motion` setting until explicitly overridden. Text tokens target WCAG AA contrast. (Not glassmorphic — translucency is limited to overlay scrims.)
 - **State management**: Zustand (persisted via `zustand/middleware/persist`)
 - **Database**: SQLite via `rusqlite` (bundled) — stores profiles, workspaces, session history
 - **PTY**: `portable-pty` crate for spawning Claude Code processes
