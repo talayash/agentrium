@@ -48,7 +48,7 @@ export function SessionMetricsPanel({ terminalId }: { terminalId: string }) {
       <div className="flex items-center justify-between mb-1.5">
         <span
           className="text-[11px] text-text-tertiary uppercase tracking-wide cursor-help"
-          title="Claude's own estimated cost for this session, from its telemetry — an estimate, not a billed amount."
+          title="Claude's own estimated cost for this session, from its telemetry - an estimate, not a billed amount."
         >
           Session cost (est.)
         </span>
@@ -68,21 +68,21 @@ export function SessionMetricsPanel({ terminalId }: { terminalId: string }) {
       <Row
         label="Input tokens"
         value={metrics.tokensInput.toLocaleString()}
-        tooltip="Fresh (uncached) prompt tokens the model read this session — system prompt, tool definitions, project context, and your messages. Not just what you typed: a one-word message still sends the model the full context."
+        tooltip="Fresh (uncached) prompt tokens the model read this session - system prompt, tool definitions, project context, and your messages. Not just what you typed: a one-word message still sends the model the full context."
       />
       <Row
         label="Output tokens"
         value={metrics.tokensOutput.toLocaleString()}
         tooltip="Tokens the model generated in its replies this session."
       />
-      {/* Cache traffic — re-reading the conversation context each turn. High
+      {/* Cache traffic - re-reading the conversation context each turn. High
           volume but billed at a steep discount, so it dominates token counts
           without dominating cost. */}
       <Row
         label="Cache read"
         value={metrics.tokensCacheRead.toLocaleString()}
         muted
-        tooltip="Context re-read from the prompt cache each turn (system prompt, tool defs, files). High volume across a session but billed at roughly 1/10th the price of fresh input — this is why the token count is large while the cost stays low."
+        tooltip="Context re-read from the prompt cache each turn (system prompt, tool defs, files). High volume across a session but billed at roughly 1/10th the price of fresh input - this is why the token count is large while the cost stays low."
       />
       <Row
         label="Cache write"

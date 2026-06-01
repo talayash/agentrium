@@ -11,7 +11,7 @@ const STATUS_DOT: Record<string, string> = {
 };
 
 /**
- * Bottom terminal pane — a tabbed area below the main terminal view that
+ * Bottom terminal pane - a tabbed area below the main terminal view that
  * hosts plain interactive shells (no claude). One tab per shell, drag-to-
  * resize handle on top, +/x to add and remove tabs. Mirrors the placement
  * of ScriptChildPane but is global (not scoped to a parent terminal) and
@@ -96,7 +96,7 @@ export function BottomTerminalPane() {
 
   return (
     <>
-      {/* Drag handle — same styling as the ScriptChildPane handle */}
+      {/* Drag handle - same styling as the ScriptChildPane handle */}
       <div
         role="separator"
         aria-orientation="horizontal"
@@ -177,7 +177,7 @@ export function BottomTerminalPane() {
           </button>
         </div>
 
-        {/* Active terminal view — only one is mounted at a time. Each tab has
+        {/* Active terminal view - only one is mounted at a time. Each tab has
             its own xterm instance via TerminalView, scrollback survives by
             being driven from the store buffers. */}
         {!collapsed && (

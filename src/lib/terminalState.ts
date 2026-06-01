@@ -14,7 +14,7 @@ export const WAITING_PATTERNS: RegExp[] = [
 ];
 
 /**
- * Markers that mean the plain input box is on screen — i.e. Claude is idle and
+ * Markers that mean the plain input box is on screen - i.e. Claude is idle and
  * ready for a new prompt, even if a numbered list from the last response is
  * still visible above the box.
  */
@@ -29,7 +29,7 @@ const OPTION_LINE = /^(?:❯\s*)?\d+\.\s+\S/;
 /**
  * Decide whether settled terminal output represents a blocking prompt
  * (`waiting`) or a ready input box (`idle`). Only called once output has gone
- * quiet — `busy` is handled by the caller via the activity timer.
+ * quiet - `busy` is handled by the caller via the activity timer.
  *
  * Bias: when uncertain, return `idle`. A missed prompt is a minor annoyance;
  * a false "needs attention" alarm erodes trust in the whole feature.

@@ -15,7 +15,7 @@ export default function TerminalBehaviorPage() {
 
   return (
     <div>
-      <PageHeader title="Terminal — Behavior" />
+      <PageHeader title="Terminal - Behavior" />
 
       <PageSection title="Shell">
         <SettingRow

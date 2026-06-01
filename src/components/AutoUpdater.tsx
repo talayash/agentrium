@@ -44,7 +44,7 @@ export function AutoUpdater() {
   useEffect(() => {
     const id = setInterval(() => {
       const last = useUpdaterStore.getState().lastCheckAt;
-      // Guard against drift on a sleeping/throttled timer — only fire if
+      // Guard against drift on a sleeping/throttled timer - only fire if
       // at least 4h of wall-clock time have actually elapsed.
       if (last !== null && Date.now() - last < FOUR_HOURS_MS) return;
       void checkForUpdates();
@@ -91,7 +91,7 @@ export function AutoUpdater() {
       title: 'ClaudeTerminal update available',
       body: `Version ${updateInfo.version} is ready to install. Open the app to update.`,
     }).catch((err) => {
-      // Notification failures are non-fatal — the in-app banner still shows.
+      // Notification failures are non-fatal - the in-app banner still shows.
       // We still report so we know if the OS notification path is broken.
       reportInvokeFailure('send_notification', err);
     });

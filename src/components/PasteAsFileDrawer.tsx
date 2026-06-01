@@ -66,7 +66,7 @@ export function PasteAsFileDrawer() {
   const [editingTemplate, setEditingTemplate] = useState(false);
   const [tplDraft, setTplDraft] = useState(promptTemplate);
 
-  // Track whether the user manually changed the extension dropdown — if so,
+  // Track whether the user manually changed the extension dropdown - if so,
   // we stop auto-flipping it as they type.
   const userTouchedExtRef = useRef(false);
 
@@ -168,7 +168,7 @@ export function PasteAsFileDrawer() {
     try {
       await navigator.clipboard.writeText(entry.relative_path);
     } catch {
-      // ignore — clipboard may be unavailable
+      // ignore - clipboard may be unavailable
     }
     toast.success('Saved · path copied', entry.relative_path);
     closeDrawer();

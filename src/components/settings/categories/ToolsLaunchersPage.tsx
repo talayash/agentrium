@@ -31,7 +31,7 @@ export default function ToolsLaunchersPage() {
   return (
     <div>
       <PageHeader
-        title="Tools — Launchers"
+        title="Tools - Launchers"
         description="Same items as the title-bar Tools dropdown. Opens the existing modal for each."
       />
 

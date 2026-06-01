@@ -226,7 +226,7 @@ mod panic_hook_tests {
 
     /// Smoke test: a panic inside `std::thread::spawn` is visible to the
     /// default panic hook (and therefore to our `set_hook` in `main`). We
-    /// don't install the real hook here — that would race with other tests
+    /// don't install the real hook here - that would race with other tests
     /// and need ErrorReporter init. Instead we set our own hook for the
     /// duration of the test, panic on a worker thread, and assert the hook
     /// fired.

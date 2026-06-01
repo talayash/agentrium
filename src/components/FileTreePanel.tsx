@@ -159,7 +159,7 @@ export function FileTreePanel() {
   const openContextMenu = useCallback((e: React.MouseEvent, path: string, isDir: boolean) => {
     e.preventDefault();
     e.stopPropagation();
-    // The menu's height varies with item count — overestimate so it never
+    // The menu's height varies with item count - overestimate so it never
     // clips off the bottom of the viewport.
     const margin = 4;
     const menuWidth = 240;
@@ -208,7 +208,7 @@ export function FileTreePanel() {
     } finally {
       setRootLoading(false);
     }
-    // rootChildren intentionally excluded — this would cause infinite reloads;
+    // rootChildren intentionally excluded - this would cause infinite reloads;
     // refreshRoot is called on explicit triggers only.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rootPath, loadChildren]);
@@ -269,7 +269,7 @@ export function FileTreePanel() {
         return walk(prev);
       });
       if (!touched) {
-        // Folder wasn't expanded yet — refresh from the top so the next
+        // Folder wasn't expanded yet - refresh from the top so the next
         // expansion sees fresh data.
         await refreshRoot();
       }
@@ -287,7 +287,7 @@ export function FileTreePanel() {
       updateNode(path, (n) => ({ ...n, expanded: false }));
       return;
     }
-    // Expand — if children already loaded, just flip the flag
+    // Expand - if children already loaded, just flip the flag
     if (node.children) {
       expandedPathsRef.current.add(path);
       updateNode(path, (n) => ({ ...n, expanded: true }));

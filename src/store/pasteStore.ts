@@ -64,7 +64,7 @@ export const usePasteStore = create<PasteState>((set, get) => ({
         return { byTerminal: next };
       });
     } catch {
-      // non-fatal — paste dir may not exist yet
+      // non-fatal - paste dir may not exist yet
     }
   },
 }));

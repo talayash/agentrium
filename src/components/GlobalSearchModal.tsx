@@ -146,7 +146,7 @@ export function GlobalSearchModal() {
         out.push({ fileIdx, matchIdx });
       });
       if (file.matches.length === 0) {
-        // File has only a name match — represent it as a single entry
+        // File has only a name match - represent it as a single entry
         out.push({ fileIdx, matchIdx: -1 });
       }
     });
@@ -287,7 +287,7 @@ export function GlobalSearchModal() {
                   in <span className="font-mono text-text-secondary">{searchRoot}</span>
                 </>
               ) : (
-                'No active workspace — open a terminal first'
+                'No active workspace - open a terminal first'
               )}
             </div>
             <div className="text-text-tertiary flex items-center gap-2">

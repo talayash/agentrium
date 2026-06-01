@@ -4,7 +4,7 @@
 // code carefully short-circuits Zustand set() calls. Recording a timestamp in
 // a plain Map avoids that re-render cost entirely.
 //
-// Consumers (useNowTick + TerminalTabs) read this map on a 500ms tick — no
+// Consumers (useNowTick + TerminalTabs) read this map on a 500ms tick - no
 // reactive subscription needed since the tick itself drives the re-render.
 
 const lastOutputAtByTerminal = new Map<string, number>();

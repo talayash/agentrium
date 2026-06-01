@@ -51,7 +51,7 @@ export function TerminalTabs() {
     setActiveFilePath(path);
   }, [setActiveFilePath]);
   // Script-child terminals are rendered below their parent and bottom-pane
-  // shells are rendered in BottomTerminalPane — neither belongs in the main
+  // shells are rendered in BottomTerminalPane - neither belongs in the main
   // tab bar.
   const terminalList = useMemo(
     () =>
@@ -202,7 +202,7 @@ export function TerminalTabs() {
 
   return (
     <div className="h-full flex flex-col">
-      {/* Tab Bar — IntelliJ editor tabs */}
+      {/* Tab Bar - IntelliJ editor tabs */}
       <div className="h-9 bg-elevation-1 border-b border-[var(--ij-divider)] flex items-center justify-between px-0.5">
         <div className="relative flex items-center flex-1 min-w-0">
           {canScrollLeft && (
@@ -246,7 +246,7 @@ export function TerminalTabs() {
                 <button
                   onClick={() => focusTerminal(terminal.id)}
                   onAuxClick={(e) => {
-                    // Middle-click (mouse wheel) closes the tab — same as VS Code.
+                    // Middle-click (mouse wheel) closes the tab - same as VS Code.
                     if (e.button === 1) {
                       e.preventDefault();
                       closeTerminal(terminal.id);
@@ -368,7 +368,7 @@ export function TerminalTabs() {
             })}
           </Reorder.Group>
 
-          {/* File tabs — rendered inline next to terminal tabs, VS Code style */}
+          {/* File tabs - rendered inline next to terminal tabs, VS Code style */}
           {openFiles.length > 0 && (
             <>
               {terminalList.length > 0 && (
@@ -485,7 +485,7 @@ export function TerminalTabs() {
         </div>
       </div>
 
-      {/* Content area — terminal stays mounted so scrollback survives the
+      {/* Content area - terminal stays mounted so scrollback survives the
           switch; the file editor overlays on top when a file tab is active. */}
       <div className="flex-1 relative">
         {activeTerminalId && (() => {

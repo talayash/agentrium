@@ -1,14 +1,14 @@
 //! Resolves the absolute path to the `claude` binary on macOS / Linux.
 //!
 //! Why this exists: when the app is launched from Finder/Spotlight on macOS,
-//! the spawned PTY's parent env is the launchd env — not the user's shell env.
+//! the spawned PTY's parent env is the launchd env - not the user's shell env.
 //! Running `$SHELL -lc 'claude …'` (login + non-interactive) sources `~/.zshenv`
 //! and `~/.zprofile` but NOT `~/.zshrc`, where most users actually export their
 //! PATH (npm-global prefix, `~/.local/bin`, nvm/fnm/volta init, asdf shims).
 //! Result: `claude` is "not found" even though it works fine in their terminal.
 //!
 //! Fix: resolve the absolute path once via `$SHELL -lic 'command -v claude'`
-//! (interactive — sources `.zshrc`), cache it, and use that path directly so
+//! (interactive - sources `.zshrc`), cache it, and use that path directly so
 //! later invocations don't depend on the spawned shell's PATH at all.
 
 #[cfg(not(target_os = "windows"))]
@@ -32,7 +32,7 @@ fn cache() -> &'static Mutex<Option<Option<String>>> {
 /// Returns the cached absolute path to `claude`, resolving on first call.
 /// Re-resolves if the cached path no longer exists on disk (user uninstalled
 /// and reinstalled in a different location). Returns `None` if claude can't
-/// be located — callers should fall back to a shell-PATH lookup.
+/// be located - callers should fall back to a shell-PATH lookup.
 ///
 /// On Windows this always returns `None` because `cmd /C claude` already
 /// resolves `claude.cmd`/`claude.ps1` correctly via PATHEXT.
@@ -51,7 +51,7 @@ pub fn cached() -> Option<String> {
                     return Some(path.clone());
                 }
                 None => return None,
-                // Cached path no longer on disk — fall through to re-resolve.
+                // Cached path no longer on disk - fall through to re-resolve.
                 Some(_) => {}
             }
         }
@@ -83,7 +83,7 @@ fn resolve() -> Option<String> {
     // -lic = login + interactive + run-command. The `-i` is what gets `.zshrc`
     // sourced. Redirect stderr to /dev/null so prompt-init complaints (e.g.
     // p10k "instant prompt configured for X user") don't pollute the output
-    // we're about to parse — `command -v` only writes to stdout.
+    // we're about to parse - `command -v` only writes to stdout.
     let output = std::process::Command::new(&shell)
         .arg("-lic")
         .arg("command -v claude 2>/dev/null")
@@ -167,7 +167,7 @@ mod tests {
 
     #[test]
     fn rejects_alias_output() {
-        // zsh prints `claude: aliased to …` for aliases — no leading slash.
+        // zsh prints `claude: aliased to …` for aliases - no leading slash.
         assert_eq!(
             parse_command_v_output("claude: aliased to /some/wrapper\n"),
             None

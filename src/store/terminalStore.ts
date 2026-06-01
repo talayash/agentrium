@@ -57,8 +57,8 @@ interface TerminalState {
   activeTerminalId: string | null;
   unreadTerminalIds: Set<string>;
   // Inferred Claude session state per terminal (busy/waiting/idle/stopped).
-  // Written only on transitions by the detection poller — never on the
-  // streaming hot path — so subscribers re-render only when state changes.
+  // Written only on transitions by the detection poller - never on the
+  // streaming hot path - so subscribers re-render only when state changes.
   terminalStates: Map<string, SessionState>;
   // Live per-terminal cost/token metrics from the OTel receiver.
   terminalMetrics: Map<string, SessionMetrics>;
@@ -111,7 +111,7 @@ interface TerminalState {
   // Run an npm script in a child terminal tied to the given parent. Returns
   // the new child's id. If the parent already has a script running, that
   // child is closed first so the new one replaces it. `cwdOverride` lets the
-  // caller run the script in a directory other than the parent's cwd — used
+  // caller run the script in a directory other than the parent's cwd - used
   // by the package.json CodeLens, where the script's cwd is the file's folder.
   runScript: (parentId: string, scriptName: string, cwdOverride?: string) => Promise<string>;
   closeScript: (parentId: string) => Promise<void>;
@@ -189,7 +189,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
         label,
         cwd: workingDirectory,
       });
-      // Apply nickname/color_tag the user picked in the modal — the backend
+      // Apply nickname/color_tag the user picked in the modal - the backend
       // command takes only label+cwd, so we patch the persisted record here.
       // (Falls back silently if either is empty to avoid a needless IPC.)
       if (nickname) {
@@ -203,7 +203,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
 
       set((state) => {
         const newTerminals = new Map(state.terminals);
-        // Intentionally NOT setting isShellTerminal — that flag is for bottom-
+        // Intentionally NOT setting isShellTerminal - that flag is for bottom-
         // pane shells. Main-tab shells appear in the sidebar and tab bar like
         // any other terminal; their plain-shell-ness is recorded durably in
         // the backend via claude_args=["__shell__"].
@@ -235,7 +235,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       try { await invoke('close_terminal', { id: childId }); } catch { /* already gone */ }
     }
 
-    // Best-effort paste cleanup BEFORE close_terminal — the backend resolves
+    // Best-effort paste cleanup BEFORE close_terminal - the backend resolves
     // terminal_id → cwd via the still-alive TerminalManager. Dynamic-import
     // to avoid an appStore↔terminalStore import cycle.
     try {
@@ -246,7 +246,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       }
       usePasteStore.getState().clearForTerminal(id);
     } catch {
-      // ignore — cleanup is best-effort
+      // ignore - cleanup is best-effort
     }
 
     await invoke('close_terminal', { id });
@@ -293,7 +293,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       if (childId) newBudgetWarned.delete(childId);
 
       // Only pick a fallback from terminals that actually appear in the main
-      // tab bar — script children and bottom-pane shells must never become
+      // tab bar - script children and bottom-pane shells must never become
       // the "active tab".
       const remainingIds = Array.from(newTerminals.values())
         .filter((t) => !t.scriptParentId && !t.isShellTerminal)
@@ -390,9 +390,9 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       instance.xterm.write(data);
     }
     // Active-work indicator: record the timestamp in a plain Map (no Zustand
-    // set() — that would defeat the streaming-rate optimization below).
+    // set() - that would defeat the streaming-rate optimization below).
     markTerminalActive(id);
-    // Short-circuit — if the terminal is already marked unread, skip the
+    // Short-circuit - if the terminal is already marked unread, skip the
     // Set clone + set() call. At streaming rates this used to fire thousands
     // of times per second and re-render every subscriber.
     if (id !== state.activeTerminalId && !state.unreadTerminalIds.has(id)) {
@@ -494,7 +494,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
         return { gitInfoCache: newCache };
       });
     } catch {
-      // Silently ignore — non-git dirs or git not installed
+      // Silently ignore - non-git dirs or git not installed
     }
   },
 
@@ -554,7 +554,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
     try {
       await invoke('close_terminal', { id: childId });
     } catch {
-      // Already closed — fall through to store cleanup.
+      // Already closed - fall through to store cleanup.
     }
     set((state) => {
       const nextTerminals = new Map(state.terminals);
@@ -592,7 +592,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
     try {
       await invoke('close_terminal', { id });
     } catch {
-      // Already gone — fall through to store cleanup.
+      // Already gone - fall through to store cleanup.
     }
     set((state) => {
       const nextTerminals = new Map(state.terminals);

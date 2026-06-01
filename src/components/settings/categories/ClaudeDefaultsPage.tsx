@@ -26,7 +26,7 @@ export default function ClaudeDefaultsPage() {
 
   return (
     <div>
-      <PageHeader title="Claude Code — Defaults" />
+      <PageHeader title="Claude Code - Defaults" />
 
       <PageSection title="Arguments">
         <SettingRow
@@ -74,7 +74,7 @@ export default function ClaudeDefaultsPage() {
         </SettingRow>
       </PageSection>
 
-      <PageSection title="Cost tracking" description="Local OpenTelemetry metrics per terminal — no data leaves your machine.">
+      <PageSection title="Cost tracking" description="Local OpenTelemetry metrics per terminal - no data leaves your machine.">
         <SettingRow label="Track per-session cost" description="Live token & estimated-USD metrics per terminal tab.">
           <Toggle value={costTrackingEnabled} onChange={setCostTrackingEnabled} />
         </SettingRow>

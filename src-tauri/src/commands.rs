@@ -252,7 +252,7 @@ pub async fn create_terminal(
     request: CreateTerminalRequest,
 ) -> Result<crate::terminal::TerminalConfig, String> {
     wrap_cmd("create_terminal", async move {
-        // Channel sized for burst output — Claude Code streaming can easily push
+        // Channel sized for burst output - Claude Code streaming can easily push
         // hundreds of chunks/sec per terminal. 100 caused backpressure into the
         // PTY reader thread under load.
         let (tx, mut rx) = mpsc::channel::<(String, Vec<u8>)>(1000);
@@ -272,7 +272,7 @@ pub async fn create_terminal(
 
         // Snapshot Claude's project dir *before* spawning so we can later
         // diff for the new session file. Cheap (a few dozen file paths) and
-        // synchronous — must happen before the PTY starts the claude process.
+        // synchronous - must happen before the PTY starts the claude process.
         let session_snapshot = crate::claude_session::snapshot_session_files();
         let resume_id = request.resume_session_id.clone();
         let continue_recent = request.continue_recent && resume_id.is_none();
@@ -329,7 +329,7 @@ pub async fn create_terminal(
                 let mut last_recorded: Option<String> = None;
                 loop {
                     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-                    // Stop watching once the terminal is gone — both saves
+                    // Stop watching once the terminal is gone - both saves
                     // CPU and avoids racing close_terminal.
                     {
                         let m = manager.lock().await;
@@ -385,7 +385,7 @@ pub async fn create_terminal(
                 }
             }
 
-            // Terminal process exited — update status, session history, and notify frontend
+            // Terminal process exited - update status, session history, and notify frontend
             // Note: the terminal may have already been removed by close_terminal(), so ignore errors
             {
                 if let Ok(mut manager) = tokio::time::timeout(
@@ -395,7 +395,7 @@ pub async fn create_terminal(
                     let _ = manager.update_status(&terminal_id, crate::terminal::TerminalStatus::Stopped);
                 }
             }
-            // Drop accumulated telemetry on the natural process-exit path too —
+            // Drop accumulated telemetry on the natural process-exit path too -
             // close_terminal() handles the user-close path, but a terminal that
             // exits on its own would otherwise leak its aggregator entry until
             // the tab is closed or the app restarts.
@@ -652,7 +652,7 @@ pub async fn update_claude_code() -> Result<String, String> {
 
         if output.status.success() {
             // npm may have moved the binary or the user may have switched
-            // node versions — drop the cache so the next call re-resolves.
+            // node versions - drop the cache so the next call re-resolves.
             crate::claude_path::invalidate();
             Ok("Claude Code updated successfully!".to_string())
         } else {
@@ -750,7 +750,7 @@ fn shell_command(program: &str, args: &[&str]) -> std::process::Command {
         // ~/.zshrc / ~/.bashrc sourced. Without it (plain -lc) only
         // ~/.zshenv and ~/.zprofile run, which means PATH additions for
         // tools installed via nvm / fnm / volta / `npm config prefix` /
-        // `~/.local/bin` are invisible — `claude --version`, `node`, `npm`
+        // `~/.local/bin` are invisible - `claude --version`, `node`, `npm`
         // all return "command not found" for users who only export those
         // dirs from their interactive rc file.
         cmd.arg("-lic").arg(&full_cmd);
@@ -789,7 +789,7 @@ fn has_semver_like(s: &str) -> bool {
                 if bytes[j] == b'.' { dots += 1; }
                 j += 1;
             }
-            // `1.2.3` style — at least two dots between numeric runs.
+            // `1.2.3` style - at least two dots between numeric runs.
             if dots >= 2 && j > i + 4 { return true; }
             i = j.max(i + 1);
         } else {
@@ -946,7 +946,7 @@ fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> std::io::
             #[cfg(windows)]
             {
                 // On Windows, symlinks need elevation. Fall back to copying
-                // the file the link points to — best-effort but safe.
+                // the file the link points to - best-effort but safe.
                 std::fs::copy(&child_src, &child_dst)?;
             }
         } else {
@@ -957,7 +957,7 @@ fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> std::io::
 }
 
 /// Rename a file or folder in place (parent stays the same). Refuses to
-/// overwrite an existing entry at the destination — UI should ask the user
+/// overwrite an existing entry at the destination - UI should ask the user
 /// first if they really want to replace it.
 #[command]
 pub async fn rename_path(from: String, to: String) -> Result<(), String> {
@@ -972,7 +972,7 @@ pub async fn rename_path(from: String, to: String) -> Result<(), String> {
         if to_p.exists() {
             return Err("A file with that name already exists".to_string());
         }
-        // Restrict rename to the same parent — moves use move_path instead.
+        // Restrict rename to the same parent - moves use move_path instead.
         if from_p.parent() != to_p.parent() {
             return Err("Rename target must be in the same folder".to_string());
         }
@@ -983,7 +983,7 @@ pub async fn rename_path(from: String, to: String) -> Result<(), String> {
 
 /// Send a file or folder to the OS trash/recycle bin. The `trash` crate
 /// handles Windows (SHFileOperation), macOS (NSFileManager trashItem), and
-/// Linux (XDG trash spec) — entries can be restored manually by the user.
+/// Linux (XDG trash spec) - entries can be restored manually by the user.
 #[command]
 pub async fn trash_path(path: String) -> Result<(), String> {
     wrap_cmd("trash_path", async move {
@@ -1103,7 +1103,7 @@ pub async fn reveal_in_file_manager(path: String) -> Result<(), String> {
         #[cfg(target_os = "windows")]
         {
             // `explorer /select,<path>` needs the path joined to the flag with a
-            // comma. Strip the verbatim `\\?\` prefix that `canonicalize` adds —
+            // comma. Strip the verbatim `\\?\` prefix that `canonicalize` adds -
             // explorer.exe doesn't understand it. spawn() (vs status()) avoids
             // blocking on explorer's own exit code, which is famously nonzero
             // even on success.
@@ -1124,7 +1124,7 @@ pub async fn reveal_in_file_manager(path: String) -> Result<(), String> {
         }
         #[cfg(not(any(target_os = "windows", target_os = "macos")))]
         {
-            // Linux fallback: no portable "reveal" — open the parent folder.
+            // Linux fallback: no portable "reveal" - open the parent folder.
             if let Some(parent) = canonical.parent() {
                 open::that(parent).map_err(|e| e.to_string())?;
             }
@@ -1325,7 +1325,7 @@ pub async fn get_terminal_changes(
             };
 
             if x == '?' && y == '?' {
-                // Untracked — always unstaged
+                // Untracked - always unstaged
                 changes.push(FileChange { path, status: "untracked".into(), staged: false });
                 continue;
             }
@@ -1336,7 +1336,7 @@ pub async fn get_terminal_changes(
                 'D' => "deleted",
                 'R' => "renamed",
                 'C' => "new",
-                'U' => "modified", // conflicted — treat as modified
+                'U' => "modified", // conflicted - treat as modified
                 'T' => "modified", // type change
                 _ => "",
             };
@@ -1553,7 +1553,7 @@ pub async fn get_worktree_info(
         // This is a "tell me about this path" lookup. If the path isn't a
         // tracked workspace (e.g. user navigated outside the file tree),
         // return the same empty shape we use for "not a git repo" instead of
-        // erroring — this isn't a bug worth reporting to telemetry.
+        // erroring - this isn't a bug worth reporting to telemetry.
         if validate_path_is_trusted(&state, &path).await.is_err() {
             return Ok(WorktreeDetectResult {
                 is_git_repo: false,
@@ -1837,7 +1837,7 @@ pub async fn git_unstage_files(
         let mut args: Vec<&str> = vec!["reset", "HEAD", "--"];
         for f in &files { args.push(f); }
         // `git reset` returns non-zero on no-op or initial-commit edge cases, but
-        // the files do end up unstaged — we tolerate non-fatal stderr.
+        // the files do end up unstaged - we tolerate non-fatal stderr.
         match run_git(&path, &args) {
             Ok(_) => Ok(()),
             Err(e) => {
@@ -1868,12 +1868,12 @@ pub async fn git_commit(
             return Err("Commit message cannot be empty".to_string());
         }
         // If the caller asks us to auto-stage, do so. Otherwise commit what's
-        // already staged — and if nothing is staged, return a clear error.
+        // already staged - and if nothing is staged, return a clear error.
         match auto_stage {
             AutoStageMode::None => {
                 let status = run_git(&path, &["diff", "--cached", "--name-only"])?;
                 if status.trim().is_empty() {
-                    return Err("Nothing is staged — stage files first or choose 'stage all'".to_string());
+                    return Err("Nothing is staged - stage files first or choose 'stage all'".to_string());
                 }
             }
             AutoStageMode::Tracked => { run_git(&path, &["add", "-u"])?; }
@@ -1934,7 +1934,7 @@ pub enum PushMode {
     ForceWithLease,
 }
 
-/// Reject inputs that could break the refspec or shell out — used for `remote`
+/// Reject inputs that could break the refspec or shell out - used for `remote`
 /// and `remote_branch` arguments coming from the frontend.
 fn validate_ref_token(value: &str, label: &str) -> Result<(), String> {
     let v = value.trim();
@@ -1963,7 +1963,7 @@ pub async fn get_push_preview(
     wrap_cmd("get_push_preview", async move {
         validate_path_is_trusted(&state, &path).await?;
 
-        // Local HEAD branch — refuse detached HEAD.
+        // Local HEAD branch - refuse detached HEAD.
         let local_branch = run_git(&path, &["rev-parse", "--abbrev-ref", "HEAD"])?
             .trim()
             .to_string();
@@ -1982,7 +1982,7 @@ pub async fn get_push_preview(
             return Err("Repository has no remotes configured".to_string());
         }
 
-        // Upstream lookup — non-fatal if missing.
+        // Upstream lookup - non-fatal if missing.
         let upstream = run_git(
             &path,
             &["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
@@ -2013,7 +2013,7 @@ pub async fn get_push_preview(
             }
         };
 
-        // Commit list — separator \x1f is safe against subjects with colons.
+        // Commit list - separator \x1f is safe against subjects with colons.
         let log_format = "--format=%H\x1f%h\x1f%s\x1f%an\x1f%aI";
         let commits_raw = if has_upstream {
             let range = format!("{}/{}..HEAD", default_remote, default_remote_branch);
@@ -2086,7 +2086,7 @@ pub async fn git_push(
         validate_ref_token(&remote, "Remote")?;
         validate_ref_token(&remote_branch, "Remote branch")?;
 
-        // Re-validate the remote against `git remote` — don't trust the frontend.
+        // Re-validate the remote against `git remote` - don't trust the frontend.
         let remotes_raw = run_git(&path, &["remote"])?;
         let known: Vec<&str> = remotes_raw.lines().map(|l| l.trim()).collect();
         if !known.iter().any(|r| *r == remote.as_str()) {
@@ -2145,9 +2145,9 @@ pub async fn git_list_stashes(
 ) -> Result<Vec<StashEntry>, String> {
     wrap_cmd("git_list_stashes", async move {
         validate_path_is_trusted(&state, &path).await?;
-        // Format: "<ref>\x1f<subject>" — \x1f (unit separator) is safe against
+        // Format: "<ref>\x1f<subject>" - \x1f (unit separator) is safe against
         // colons/spaces in the subject.
-        // A non-git terminal cwd is a valid state for the stash panel to query —
+        // A non-git terminal cwd is a valid state for the stash panel to query -
         // treat git's "not a git repository" as an empty list, same shape as
         // get_worktree_info uses for non-repo paths.
         let out = match run_git(&path, &["stash", "list", "--format=%gd\x1f%s"]) {
@@ -2224,7 +2224,7 @@ pub async fn checkout_branch(
 ) -> Result<(), String> {
     wrap_cmd("checkout_branch", async move {
         validate_path_is_trusted(&state, &path).await?;
-        // Defense against arg injection — branch names cannot start with '-' and
+        // Defense against arg injection - branch names cannot start with '-' and
         // cannot contain characters git disallows for refs anyway, but we're extra
         // strict with a conservative allowlist.
         if branch.is_empty() || branch.starts_with('-') {
@@ -2371,7 +2371,7 @@ pub async fn read_log_file(path: String) -> Result<String, String> {
         if !canonical_path.starts_with(&canonical_logs) {
             return Err("Access denied: path is not under logs directory".to_string());
         }
-        // Cap at 2 MB — prevents DoS via huge/symlinked logs and matches
+        // Cap at 2 MB - prevents DoS via huge/symlinked logs and matches
         // what the UI can reasonably render in a single read.
         const MAX_LOG_BYTES: usize = 2 * 1024 * 1024;
         let bytes = std::fs::read(&canonical_path).map_err(|e| format!("Failed to read log file: {}", e))?;
@@ -2525,7 +2525,7 @@ fn validate_filename(name: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Maximum size for ~/.claude/settings.json — 1 MB is generous for a JSON config
+/// Maximum size for ~/.claude/settings.json - 1 MB is generous for a JSON config
 /// and prevents a compromised renderer (or malformed file) from exhausting memory.
 const MAX_CLAUDE_SETTINGS_BYTES: u64 = 1024 * 1024;
 
@@ -2952,7 +2952,7 @@ fn validate_claude_path(path: &str) -> Result<(), String> {
         .canonicalize()
         .unwrap_or_else(|_| claude_dir.clone());
 
-    // If the target exists, canonicalize resolves symlinks — strongest check.
+    // If the target exists, canonicalize resolves symlinks - strongest check.
     // Otherwise fall back to canonicalizing the nearest existing ancestor and
     // re-appending the remaining components (prevents bypass when the file
     // is about to be created).
@@ -3318,7 +3318,7 @@ fn scan_for_repos(
             behind,
         });
         // Don't descend into a repo's own directory when looking for *nested*
-        // repos — a nested repo is one whose parent is not itself a repo root.
+        // repos - a nested repo is one whose parent is not itself a repo root.
         // Allow descent only for the root itself so we can find sub-repos
         // embedded as submodules or siblings.
         if !is_main { return; }
@@ -3637,7 +3637,7 @@ pub async fn get_upstream_branch(
         .output()
         .map_err(|e| format!("Failed to run git rev-parse: {}", e))?;
         if !output.status.success() {
-            // No upstream configured — not an error, just absent
+            // No upstream configured - not an error, just absent
             return Ok(None);
         }
         let s = String::from_utf8_lossy(&output.stdout).trim().to_string();
@@ -3686,7 +3686,7 @@ pub async fn git_pull_branch(
         let is_dirty = !dirty.trim().is_empty();
         if is_dirty && !auto_stash {
             return Err(error_reporter::user_err(
-                "Working tree has uncommitted changes — commit or stash first, then pull.",
+                "Working tree has uncommitted changes - commit or stash first, then pull.",
             ));
         }
 
@@ -3720,7 +3720,7 @@ pub async fn git_pull_branch(
             let pull_err = if !stderr.is_empty() { stderr } else { stdout };
             if stashed {
                 // Restore the auto-stash so the user isn't left with both a failed
-                // pull and an orphan stash. Best-effort — if pop conflicts, the
+                // pull and an orphan stash. Best-effort - if pop conflicts, the
                 // stash stays in the list and the user can recover manually.
                 let _ = run_git(&path, &["stash", "pop"]);
                 return Err(format!(
@@ -3751,7 +3751,7 @@ pub async fn git_pull_branch(
                 // and the stash entry remains in the list for safety. The user
                 // resolves conflicts in-tree and then `git stash drop` manually.
                 return Ok(format!(
-                    "{}\n\nPull succeeded, but restoring your stashed changes hit conflicts — resolve them in the working tree, then run `git stash drop` once you're done.\n\n{}",
+                    "{}\n\nPull succeeded, but restoring your stashed changes hit conflicts - resolve them in the working tree, then run `git stash drop` once you're done.\n\n{}",
                     pull_combined, pop_err
                 ));
             }
@@ -3858,7 +3858,7 @@ pub async fn create_script_terminal(
 }
 
 /// Spawn an interactive shell terminal at `cwd`. No claude. The terminal
-/// behaves like create_terminal otherwise — emits `terminal-output` /
+/// behaves like create_terminal otherwise - emits `terminal-output` /
 /// `terminal-finished` events and accepts input via `write_to_terminal`.
 #[command]
 pub async fn create_shell_terminal(
@@ -3930,7 +3930,7 @@ pub async fn get_git_head_content(
             .output()
             .map_err(|e| format!("Failed to run git show: {}", e))?;
         if !output.status.success() {
-            // File has no HEAD version — treat as empty (new/untracked file).
+            // File has no HEAD version - treat as empty (new/untracked file).
             return Ok(String::new());
         }
         Ok(String::from_utf8_lossy(&output.stdout).to_string())
@@ -3954,7 +3954,7 @@ pub async fn git_discard_file(
         }
 
         if untracked {
-            // Untracked files/directories aren't tracked by git — just remove from disk.
+            // Untracked files/directories aren't tracked by git - just remove from disk.
             // `file` is relative to `path`. Resolve and sanity-check it ends up inside
             // the repo to avoid `..` escapes.
             let joined = std::path::Path::new(&path).join(&file);
@@ -3982,7 +3982,7 @@ pub async fn git_discard_file(
             return Ok(());
         }
 
-        // Tracked file — reset index + worktree for just this file to HEAD.
+        // Tracked file - reset index + worktree for just this file to HEAD.
         let output = shell_command("git", &["checkout", "HEAD", "--", &file])
             .current_dir(&path)
             .output()
@@ -4010,7 +4010,7 @@ pub struct DirEntryInfo {
     pub size: u64,
 }
 
-/// List the immediate children of a directory. Does NOT recurse — the UI
+/// List the immediate children of a directory. Does NOT recurse - the UI
 /// requests children lazily when the user expands a folder.
 #[command]
 pub async fn list_directory(
@@ -4089,7 +4089,7 @@ pub async fn read_text_file(
     .await
 }
 
-/// Write UTF-8 text back to a file. Refuses to create new paths — the file must
+/// Write UTF-8 text back to a file. Refuses to create new paths - the file must
 /// already exist in a trusted location.
 #[command]
 pub async fn write_text_file(
@@ -4403,7 +4403,7 @@ mod version_extraction_tests {
     #[test]
     fn falls_back_to_full_output_when_no_semver() {
         // Don't silently lose unusual `--version` output (e.g. a prerelease
-        // tag without dotted numerics) — return what we got.
+        // tag without dotted numerics) - return what we got.
         assert_eq!(extract_version_line("nightly-build\n"), "nightly-build");
     }
 

@@ -67,7 +67,7 @@ export function NewTerminalModal() {
     loadDefaultDirectory();
   }, []);
 
-  // Reload profiles when the ProfileModal closes — picks up any add/edit/delete
+  // Reload profiles when the ProfileModal closes - picks up any add/edit/delete
   // the user just made without forcing them to reopen New Terminal.
   const prevProfileModalOpen = useRef(profileModalOpen);
   useEffect(() => {

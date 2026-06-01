@@ -11,7 +11,7 @@ export const TERMINAL_SCROLLBACK_PRESETS = [1000, 10000, 50000, 100000] as const
 export const DEFAULT_TERMINAL_FONT_FAMILY = '"JetBrains Mono", "Cascadia Code", "Cascadia Mono", Consolas, "Fira Code", monospace';
 export const DEFAULT_TERMINAL_FONT_SIZE = 14;
 
-// IntelliJ overhaul (v1.22.0) — appearance + behavior settings.
+// IntelliJ overhaul (v1.22.0) - appearance + behavior settings.
 export type UiDensity = 'compact' | 'comfortable' | 'spacious';
 export type ThemeMode = 'dark' | 'light' | 'auto';
 export type AutoStageMode = 'none' | 'tracked' | 'all';
@@ -93,7 +93,7 @@ interface AppState {
   sessionAutoSaveIntervalSec: number;
   confirmOnAppClose: boolean;
 
-  // Editor (NEW v1.22.0) — Monaco
+  // Editor (NEW v1.22.0) - Monaco
   editorTabSize: number;
   editorRenderWhitespace: boolean;
   editorWordWrap: boolean;
@@ -121,7 +121,7 @@ interface AppState {
   // Changes panel
   changesRefreshTrigger: number;
 
-  // Shared repo selection — file changes panel pins a repo, file tree follows it
+  // Shared repo selection - file changes panel pins a repo, file tree follows it
   pinnedRepoPath: string | null;
 
   // File tabs (Monaco editor tabs living next to terminal tabs)
@@ -130,7 +130,7 @@ interface AppState {
 
   // Sidebar layout
   explorerHeightRatio: number; // 0.15..0.85, portion of sidebar height reserved for Explorer
-  toolsCollapsed: boolean; // sidebar footer (Workspaces/Snippets/etc.) — collapsed gives Explorer more height
+  toolsCollapsed: boolean; // sidebar footer (Workspaces/Snippets/etc.) - collapsed gives Explorer more height
   // Persistent collapse state for the two stacked sidebar sections.
   sessionsCollapsed: boolean;
   explorerCollapsed: boolean;
@@ -474,7 +474,7 @@ export const useAppStore = create<AppState>()(
 
       // Sidebar explorer ratio (default: explorer takes 45% of sidebar height)
       explorerHeightRatio: 0.45,
-      // Tools footer collapsed by default — surfaces more explorer space; user
+      // Tools footer collapsed by default - surfaces more explorer space; user
       // can expand on demand to reach Workspaces / Snippets / Profiles / etc.
       toolsCollapsed: true,
       // Sessions section starts collapsed so the Explorer (the more frequent
@@ -712,7 +712,7 @@ export const useAppStore = create<AppState>()(
                 ),
               }));
             } catch {
-              // Non-fatal — leave headContent empty; diff will render against "".
+              // Non-fatal - leave headContent empty; diff will render against "".
             }
           }
           return;

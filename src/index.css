@@ -1,4 +1,4 @@
-/* Inter — local variable font (weights 300-700) */
+/* Inter - local variable font (weights 300-700) */
 /* cyrillic-ext */
 @font-face {
   font-family: 'Inter';
@@ -63,7 +63,7 @@
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
-/* JetBrains Mono — local variable font (weights 400-500) */
+/* JetBrains Mono - local variable font (weights 400-500) */
 /* cyrillic-ext */
 @font-face {
   font-family: 'JetBrains Mono';
@@ -123,7 +123,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Elevation system — IntelliJ IDEA 2026.1 "New UI" (Dark) */
+/* Elevation system - IntelliJ IDEA 2026.1 "New UI" (Dark) */
 :root {
   --elevation-0: #1E1F22;  /* Editor / app background */
   --elevation-1: #2B2D30;  /* Tool windows, sidebar, tab bar, status bar */
@@ -137,7 +137,7 @@
   --ij-divider: #181819;         /* Hard dividers between tool windows / editor */
   --ij-divider-soft: #393B40;    /* Soft dividers inside a panel */
 
-  /* Density tokens — driven by Appearance setting, default = comfortable */
+  /* Density tokens - driven by Appearance setting, default = comfortable */
   --ui-row-py: 6px;
   --ui-row-px: 8px;
 
@@ -149,7 +149,7 @@
 :root[data-density="comfortable"] { --ui-row-py: 6px; --ui-row-px: 8px; }
 :root[data-density="spacious"]    { --ui-row-py: 8px; --ui-row-px: 10px; }
 
-/* Reduce motion — neutralizes Framer + CSS transitions when opted in. */
+/* Reduce motion - neutralizes Framer + CSS transitions when opted in. */
 :root[data-reduce-motion="true"] *,
 :root[data-reduce-motion="true"] *::before,
 :root[data-reduce-motion="true"] *::after {
@@ -213,7 +213,7 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Custom scrollbar — IntelliJ New UI feel (thin, muted, visible on hover) */
+/* Custom scrollbar - IntelliJ New UI feel (thin, muted, visible on hover) */
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;

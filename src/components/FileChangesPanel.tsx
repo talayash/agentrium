@@ -124,7 +124,7 @@ export function FileChangesPanel() {
   useEffect(() => { setSelectedRepoPath(null); }, [activeTerminalId]);
 
   // Publish the explicit repo pin so other panels (file tree) can follow it.
-  // Only publish when the user has actually selected a nested repo — otherwise
+  // Only publish when the user has actually selected a nested repo - otherwise
   // other panels fall back to the active terminal's cwd.
   useEffect(() => {
     setPinnedRepoPath(selectedRepoPath);
@@ -140,7 +140,7 @@ export function FileChangesPanel() {
   const [stashes, setStashes] = useState<StashEntry[]>([]);
   const [stashesExpanded, setStashesExpanded] = useState(false);
   const [stashActing, setStashActing] = useState<string | null>(null);
-  // Files currently being staged/unstaged — keyed by "stage:path" or "unstage:path"
+  // Files currently being staged/unstaged - keyed by "stage:path" or "unstage:path"
   const [stagingPaths, setStagingPaths] = useState<Set<string>>(new Set());
   const triggerChangesRefreshAction = useAppStore.getState().triggerChangesRefresh;
 
@@ -274,7 +274,7 @@ export function FileChangesPanel() {
     }
   }, [activePath, triggerChangesRefreshAction]);
 
-  // Quick pull — pull from upstream (or origin/<current-branch>) into the
+  // Quick pull - pull from upstream (or origin/<current-branch>) into the
   // currently targeted repo's branch. Mirrors VS Code's "Pull" button.
   const handleQuickPull = useCallback(async () => {
     if (!activePath || !result?.is_git_repo) return;
@@ -349,7 +349,7 @@ export function FileChangesPanel() {
     setStashActing(`${op}:${reference}`);
     try {
       await invoke(op, { path: activePath, reference });
-      toast.success(label, `${reference} — done`);
+      toast.success(label, `${reference} - done`);
       triggerChangesRefreshAction();
     } catch (err) {
       toast.error(`${label} failed`, typeof err === 'string' ? err : 'Unknown error');
@@ -409,7 +409,7 @@ export function FileChangesPanel() {
   const hasStaged = stagedChanges.length > 0;
   const hasUnstaged = unstagedChanges.length > 0;
 
-  // Splitter between Repositories and Changes — mirrors the Sidebar/Explorer
+  // Splitter between Repositories and Changes - mirrors the Sidebar/Explorer
   // splitter so the user can give either section more room.
   const splitStackRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef(false);
@@ -507,7 +507,7 @@ export function FileChangesPanel() {
             <button
               onClick={() => setSelectedRepoPath(null)}
               className="flex items-center gap-0.5 text-[10.5px] text-text-secondary hover:text-text-primary transition-colors flex-shrink-0 ml-2"
-              title="Clear selection — use the active terminal's repo"
+              title="Clear selection - use the active terminal's repo"
             >
               <PinOff size={10} strokeWidth={2} />
               Clear
@@ -531,7 +531,7 @@ export function FileChangesPanel() {
 
       {/* Resizable stack: Repositories (top) ⇕ Changes (bottom) */}
       <div ref={splitStackRef} className="flex-1 min-h-0 flex flex-col">
-        {/* Repositories section — root repo + worktree + nested sub-repos */}
+        {/* Repositories section - root repo + worktree + nested sub-repos */}
         {showGitPanel && activeTerminalId && (
           <div
             className="border-b border-border flex flex-col min-h-0"
@@ -606,7 +606,7 @@ export function FileChangesPanel() {
           </div>
         )}
 
-        {/* Drag handle — only meaningful when both sections share the column */}
+        {/* Drag handle - only meaningful when both sections share the column */}
         {showResizable && (
           <div
             onMouseDown={onSplitterMouseDown}
@@ -693,7 +693,7 @@ export function FileChangesPanel() {
         </div>
       </div>
 
-      {/* Stashes — collapsible list, only when there are stashes */}
+      {/* Stashes - collapsible list, only when there are stashes */}
       {result?.is_git_repo && stashes.length > 0 && (
         <div className="border-t border-border">
           <button
@@ -909,7 +909,7 @@ function ChangeGroup({
         file: file.path,
         untracked: file.status === 'untracked',
       });
-      // If the file was open in the editor, close it — its contents no longer match disk.
+      // If the file was open in the editor, close it - its contents no longer match disk.
       const abs = joinRepoPath(repoRoot, file.path);
       closeFileTab(abs);
       toast.success('Discarded', label);
@@ -1255,7 +1255,7 @@ function RepoRow({ repo }: { repo: ScannedGitRepo }) {
         ? (repo.path.replace(/^.*[\\/]/, '') || 'repo')
         : (repo.relative_path || repo.path.replace(/^.*[\\/]/, ''));
       await useTerminalStore.getState().openShellTerminal(baseLabel, repo.path);
-      toast.success('Shell opened', `${baseLabel} — ${repo.path}`);
+      toast.success('Shell opened', `${baseLabel} - ${repo.path}`);
     } catch (err) {
       toast.error('Open terminal failed', typeof err === 'string' ? err : 'Unknown error');
     } finally {
@@ -1333,7 +1333,7 @@ function RepoRow({ repo }: { repo: ScannedGitRepo }) {
               ? 'text-accent-primary bg-accent-primary/15 hover:bg-accent-primary/25'
               : 'text-text-tertiary opacity-0 group-hover:opacity-100 hover:bg-white/[0.08] hover:text-text-secondary'
           }`}
-          title={isPinned ? 'Unpin — use active terminal repo' : 'Pin as commit target'}
+          title={isPinned ? 'Unpin - use active terminal repo' : 'Pin as commit target'}
         >
           {isPinned ? <Pin size={11} strokeWidth={2} /> : <Pin size={11} strokeWidth={1.75} />}
         </button>

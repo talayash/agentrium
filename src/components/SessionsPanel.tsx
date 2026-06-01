@@ -127,7 +127,7 @@ export function SessionsPanel() {
       await createTerminal(
         label,
         cwd,
-        [],          // no extra args — user can re-add flags via the New Terminal dialog
+        [],          // no extra args - user can re-add flags via the New Terminal dialog
         {},
         undefined,
         undefined,
@@ -229,7 +229,7 @@ export function SessionsPanel() {
         )}
       </div>
 
-      {/* Body — only when expanded */}
+      {/* Body - only when expanded */}
       {!collapsed && (
         <>
           {cwd ? (

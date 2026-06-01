@@ -36,7 +36,7 @@ describe('getFileIconUrl', () => {
   });
 
   it('handles multi-segment extensions (e.g. *.test.ts)', () => {
-    // We don't assert a specific icon — just that *some* segment was matched
+    // We don't assert a specific icon - just that *some* segment was matched
     // so a non-empty URL is returned, ruling out a path that drops out at the
     // multi-segment loop and falls all the way through to the default.
     const url = getFileIconUrl('foo.test.ts');

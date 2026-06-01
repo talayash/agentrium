@@ -20,7 +20,7 @@ export default function EditorGeneralPage() {
 
   return (
     <div>
-      <PageHeader title="Editor — General" description="Settings for the in-app file editor (Monaco)." />
+      <PageHeader title="Editor - General" description="Settings for the in-app file editor (Monaco)." />
       <PageSection title="Layout">
         <SettingRow label="Tab size">
           <input

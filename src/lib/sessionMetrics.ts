@@ -35,7 +35,7 @@ export function totalTokens(m: SessionMetrics): number {
 
 /** Apply an event payload over a prior snapshot. The BACKEND already summed the
  *  DELTA exports into a running total before emitting, so each payload is the
- *  full cumulative snapshot — the frontend takes latest-value-wins, NOT summing. */
+ *  full cumulative snapshot - the frontend takes latest-value-wins, NOT summing. */
 export function mergeMetrics(prev: SessionMetrics, p: TerminalMetricsPayload): SessionMetrics {
   const pick = (v: number | null | undefined, fallback: number) =>
     typeof v === 'number' ? v : fallback;

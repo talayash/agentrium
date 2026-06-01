@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 /// One terminal's metrics extracted from a single OTLP/JSON export.
 /// Fields are `Option` because a given export may carry only some metrics.
 /// VERIFIED (Task 1, claude v2.1.159): counters arrive as DELTA increments
-/// (aggregationTemporality=1) — each export is the delta since the last, so the
+/// (aggregationTemporality=1) - each export is the delta since the last, so the
 /// aggregator SUMS them. Token values are `asDouble` (JSON numbers), type key is
 /// `type` with camelCase values input/output/cacheRead/cacheCreation.
 #[derive(Debug, Clone, Serialize, Default, PartialEq)]
@@ -243,7 +243,7 @@ pub fn start(app: tauri::AppHandle) -> std::io::Result<(u16, Arc<Mutex<MetricsAg
                 );
             let _ = request.respond(response);
         }
-        eprintln!("[otel_receiver] accept loop exited — telemetry collection stopped");
+        eprintln!("[otel_receiver] accept loop exited - telemetry collection stopped");
     });
 
     Ok((port, agg))
@@ -310,7 +310,7 @@ mod tests {
 
     #[test]
     fn extracts_cost_and_token_types_from_illustrative_payload() {
-        // Illustrative OTLP/JSON shape — asInt is a STRING per protobuf-JSON,
+        // Illustrative OTLP/JSON shape - asInt is a STRING per protobuf-JSON,
         // asDouble is a number. Verify the real fixture matches this shape in Task 1.
         let body = r#"{
           "resourceMetrics":[{

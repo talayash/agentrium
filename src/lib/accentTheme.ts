@@ -1,5 +1,5 @@
 // Runtime CSS-variable manipulation for theme / density / accent / reduce-motion / font scale.
-// All callers go through these helpers — components never write to documentElement.style directly.
+// All callers go through these helpers - components never write to documentElement.style directly.
 
 import type { ThemeMode, UiDensity } from '../store/appStore';
 

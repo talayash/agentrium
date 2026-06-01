@@ -112,7 +112,7 @@ function App() {
   useKeyboardShortcuts();
   useSessionStateDetection();
 
-  // v1.22.0 — apply theme/density/accent/motion/scale on store change.
+  // v1.22.0 - apply theme/density/accent/motion/scale on store change.
   const themeMode = useAppStore((s) => s.themeMode);
   const uiDensity = useAppStore((s) => s.uiDensity);
   const accentColorHex = useAppStore((s) => s.accentColorHex);
@@ -139,7 +139,7 @@ function App() {
     checkSetup();
   }, []);
 
-  // What's New check — runs after setup is confirmed
+  // What's New check - runs after setup is confirmed
   useEffect(() => {
     if (showSetup !== false) return;
 
@@ -147,7 +147,7 @@ function App() {
       try {
         const currentVersion = await getVersion();
         if (!lastSeenVersion) {
-          // Fresh install — just record the current version, no popup
+          // Fresh install - just record the current version, no popup
           setLastSeenVersion(currentVersion);
         } else if (lastSeenVersion !== currentVersion) {
           openWhatsNew();
@@ -167,7 +167,7 @@ function App() {
     invoke('set_error_reporting_enabled', { enabled }).catch(() => {});
   }, []);
 
-  // Telemetry heartbeat — fire on startup then every 5 minutes
+  // Telemetry heartbeat - fire on startup then every 5 minutes
   useEffect(() => {
     if (showSetup !== false) return;
 
@@ -284,7 +284,7 @@ function App() {
     };
   }, [notifyOnFinish, notify, updateTerminalStatus, setSessionSummary]);
 
-  // Restore previous session on startup — show banner instead of silently restoring
+  // Restore previous session on startup - show banner instead of silently restoring
   useEffect(() => {
     if (showSetup !== false) return;
     if (!restoreSession) return;
@@ -335,7 +335,7 @@ function App() {
       const config = pendingRestoreConfigs[i];
       try {
         if (config.claude_args[0] === '__shell__') {
-          // Plain shell — re-spawn as a main-tab shell. We deliberately don't
+          // Plain shell - re-spawn as a main-tab shell. We deliberately don't
           // restore the script-runner sentinel '__script__' here; that's a
           // child terminal owned by its parent and gets recreated on demand.
           await createShellTerminalTab(
@@ -345,15 +345,15 @@ function App() {
             config.nickname ?? undefined,
           );
         } else if (config.claude_args[0] === '__script__') {
-          // Script runner — owned by parent terminal, skip on restore.
+          // Script runner - owned by parent terminal, skip on restore.
           continue;
         } else {
           // Restore semantics:
-          //   - If we captured a session id last run: `claude --resume <id>` —
+          //   - If we captured a session id last run: `claude --resume <id>` -
           //     exact attach. Claude redraws the conversation; we suppress the
           //     painted log so the transcript isn't doubled.
           //   - Otherwise (old save, or detection never fired): fall back to
-          //     `claude --continue` — attaches to the most recent session in
+          //     `claude --continue` - attaches to the most recent session in
           //     this cwd. Same suppression rule.
           const sessionId = config.claude_session_id ?? undefined;
           const willResume = sessionId !== undefined;

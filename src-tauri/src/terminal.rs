@@ -97,7 +97,7 @@ impl TerminalManager {
             }
         }
 
-        // Inject a resume flag for spawn-only — `claude_args` persisted on
+        // Inject a resume flag for spawn-only - `claude_args` persisted on
         // the config stays untouched so the next restore can re-decide which
         // flag to inject.
         // `--resume <id>` wins over `--continue` when we have an exact id;
@@ -138,7 +138,7 @@ impl TerminalManager {
             .collect();
 
         // Generate the id early so it can be injected as an OTel resource
-        // attribute (terminal.id) — the receiver routes metrics back by it.
+        // attribute (terminal.id) - the receiver routes metrics back by it.
         let id = Uuid::new_v4().to_string();
 
         let pty_system = native_pty_system();
@@ -262,7 +262,7 @@ impl TerminalManager {
         // Spawn reader thread
         let terminal_id = id.clone();
         let reader_handle = std::thread::spawn(move || {
-            // 32 KB buffer — amortizes syscall overhead for high-throughput output
+            // 32 KB buffer - amortizes syscall overhead for high-throughput output
             // and reduces the number of IPC messages emitted to the frontend.
             let mut buf = [0u8; 32 * 1024];
             // Wrap the log file in a BufWriter so fs writes batch instead of
@@ -401,7 +401,7 @@ impl TerminalManager {
             nickname: Some(format!("npm run {}", script_name)),
             profile_id: None,
             working_directory,
-            // Reuse claude_args to carry the script command — simplest fit for
+            // Reuse claude_args to carry the script command - simplest fit for
             // restore / session history without adding another schema field.
             claude_args: vec!["__script__".into(), script_name.clone()],
             env_vars: HashMap::new(),
@@ -451,7 +451,7 @@ impl TerminalManager {
     }
 
     /// Spawn an interactive shell at `working_directory`. No `claude`, no
-    /// `npm run` — just a plain shell the user can drive (run scripts, hit
+    /// `npm run` - just a plain shell the user can drive (run scripts, hit
     /// Ctrl+C to stop them, etc.). Reuses the same PTY/reader plumbing so
     /// `write_to_terminal` and `terminal-output` events Just Work.
     pub fn create_shell_terminal(
@@ -472,7 +472,7 @@ impl TerminalManager {
 
         #[cfg(target_os = "windows")]
         let cmd = {
-            // ComSpec is whatever the user has set as their shell — typically
+            // ComSpec is whatever the user has set as their shell - typically
             // cmd.exe but could be PowerShell. Without /C the shell stays
             // interactive.
             let exe = std::env::var("ComSpec").unwrap_or_else(|_| "cmd.exe".to_string());
@@ -511,7 +511,7 @@ impl TerminalManager {
             profile_id: None,
             working_directory,
             // Tag this terminal so persistence/restore can recognise it as a
-            // plain shell — same trick create_script_terminal uses.
+            // plain shell - same trick create_script_terminal uses.
             claude_args: vec!["__shell__".into()],
             env_vars: HashMap::new(),
             created_at: Utc::now(),
@@ -562,7 +562,7 @@ impl TerminalManager {
     /// Silent no-op when the id is no longer in the map. xterm.js can dispatch
     /// a final keystroke after `close_terminal` removes the entry, and surfacing
     /// that as `Err("Terminal not found")` produced a flood of telemetry events
-    /// plus a frontend UnhandledRejection from the resize observer's callback —
+    /// plus a frontend UnhandledRejection from the resize observer's callback -
     /// see error fingerprints 599c11f8 / 808a0ce1.
     pub fn write(&mut self, id: &str, data: &[u8]) -> Result<(), String> {
         let Some(terminal) = self.terminals.get_mut(id) else {
@@ -609,7 +609,7 @@ impl TerminalManager {
     }
 
     pub fn close_all(&mut self) {
-        // Clear all terminals at once — reader threads clean up asynchronously
+        // Clear all terminals at once - reader threads clean up asynchronously
         self.terminals.clear();
     }
 
@@ -645,7 +645,7 @@ impl TerminalManager {
     }
 
     /// Attach the detected Claude session id to a live terminal. Silent
-    /// no-op when the terminal has already been closed — detection races
+    /// no-op when the terminal has already been closed - detection races
     /// the user, and a stale write here shouldn't surface as an error.
     pub fn update_claude_session_id(&mut self, id: &str, session_id: String) {
         if let Some(terminal) = self.terminals.get_mut(id) {

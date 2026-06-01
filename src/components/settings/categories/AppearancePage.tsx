@@ -76,7 +76,7 @@ export default function AppearancePage() {
             </button>
           </div>
         </SettingRow>
-        <SettingRow label="UI font scale" description={`${uiFontScale.toFixed(2)}x — affects body text only.`}>
+        <SettingRow label="UI font scale" description={`${uiFontScale.toFixed(2)}x - affects body text only.`}>
           <input
             type="range"
             min="0.85"

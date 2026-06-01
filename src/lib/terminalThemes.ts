@@ -4,7 +4,7 @@ export type TerminalThemeName = 'dark' | 'light';
 
 // Dark palette is the existing hardcoded set from TerminalView. Light keeps the
 // same accent hues so dark/light feel like one app in two modes, not two
-// unrelated terminals — bg flips to near-white, fg flips to near-black, and the
+// unrelated terminals - bg flips to near-white, fg flips to near-black, and the
 // ANSI accents stay recognisable while being slightly desaturated where needed
 // for legibility on a light background.
 export const TERMINAL_THEMES: Record<TerminalThemeName, ITheme> = {
