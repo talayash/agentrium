@@ -338,6 +338,8 @@ describe('appStore — persist partialize', () => {
     'restoreSession',
     'telemetryEnabled',
     'errorReportingEnabled',
+    'costTrackingEnabled',
+    'sessionBudgetUsd',
     'showGitPanel',
     'showFileTree',
     'terminalFontFamily',
