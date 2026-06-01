@@ -1,4 +1,5 @@
 use serde::Serialize;
+use serde_json::Value;
 
 /// One terminal's metrics extracted from a single OTLP/JSON export.
 /// Fields are `Option` because a given export may carry only some metrics.
@@ -18,8 +19,6 @@ pub struct SessionMetricUpdate {
     pub lines_removed: Option<u64>,
 }
 
-use serde_json::Value;
-
 /// Read an OTLP numeric data-point value. `asInt` is a JSON string (protobuf
 /// int64-as-string), `asDouble` is a number; tolerate either encoding for both.
 fn point_u64(p: &Value) -> Option<u64> {
@@ -29,16 +28,25 @@ fn point_u64(p: &Value) -> Option<u64> {
     if let Some(n) = p.get("asInt").and_then(|v| v.as_u64()) {
         return Some(n);
     }
-    p.get("asDouble").and_then(|v| v.as_f64()).map(|f| f as u64)
+    // Guard the f64→u64 cast: Rust `as` saturates, so a negative/NaN/inf would
+    // silently become a bogus 0. Reject non-finite/negative instead.
+    p.get("asDouble")
+        .and_then(|v| v.as_f64())
+        .and_then(|f| if f.is_finite() && f >= 0.0 { Some(f as u64) } else { None })
 }
 
 fn point_f64(p: &Value) -> Option<f64> {
     if let Some(f) = p.get("asDouble").and_then(|v| v.as_f64()) {
-        return Some(f);
+        // Don't propagate NaN/inf as a cost value.
+        return if f.is_finite() { Some(f) } else { None };
+    }
+    if let Some(n) = p.get("asInt").and_then(|v| v.as_i64()) {
+        return Some(n as f64);
     }
     p.get("asInt")
         .and_then(|v| v.as_str())
         .and_then(|s| s.parse::<f64>().ok())
+        .filter(|f| f.is_finite())
 }
 
 /// Find the `type` attribute string on a data point (input/output/cacheRead/...).
@@ -75,10 +83,10 @@ pub fn parse_otlp_metrics(body: &str) -> Vec<SessionMetricUpdate> {
     let resource_metrics = root
         .get("resourceMetrics")
         .and_then(|v| v.as_array())
-        .cloned()
-        .unwrap_or_default();
+        .map(|v| v.as_slice())
+        .unwrap_or(&[]);
 
-    for rm in &resource_metrics {
+    for rm in resource_metrics {
         // Resolve terminal.id from resource attributes; skip if absent.
         let terminal_id = rm
             .get("resource")
@@ -153,12 +161,17 @@ mod tests {
             .iter()
             .find(|u| u.terminal_id == "TEST-TERMINAL-1")
             .expect("fixture must contain terminal.id=TEST-TERMINAL-1");
-        // At least cost OR tokens must be populated from a real session turn.
+        // Assert the exact values captured from the real session turn so a
+        // token-parsing regression (wrong field/type-key) is caught.
         assert!(
-            u.cost_usd.is_some() || u.tokens_input.is_some() || u.tokens_output.is_some(),
-            "expected cost or token data, got {:?}",
-            u
+            (u.cost_usd.expect("cost present") - 0.2390325).abs() < 1e-6,
+            "cost_usd was {:?}",
+            u.cost_usd
         );
+        assert_eq!(u.tokens_input, Some(10319));
+        assert_eq!(u.tokens_output, Some(95));
+        assert_eq!(u.tokens_cache_read, Some(0));
+        assert_eq!(u.tokens_cache_creation, Some(29610));
     }
 
     #[test]
