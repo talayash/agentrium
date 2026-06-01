@@ -202,7 +202,7 @@ impl MetricsAggregator {
 pub fn start(app: tauri::AppHandle) -> std::io::Result<(u16, Arc<Mutex<MetricsAggregator>>)> {
     let server = tiny_http::Server::http("127.0.0.1:0")
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
-    let port = server.server_addr().to_ip().map(|a| a.port()).unwrap_or(0);
+    let port = server.server_addr().to_ip().map(|a| a.port()).ok_or_else(|| std::io::Error::new(std::io::ErrorKind::Other, "OTLP receiver bound a non-IP address"))?;
     let agg = Arc::new(Mutex::new(MetricsAggregator::new()));
     let agg_thread = agg.clone();
 
@@ -210,7 +210,6 @@ pub fn start(app: tauri::AppHandle) -> std::io::Result<(u16, Arc<Mutex<MetricsAg
         for mut request in server.incoming_requests() {
             // Only metrics POSTs carry a body we care about.
             let mut body = String::new();
-            use std::io::Read;
             let _ = request.as_reader().read_to_string(&mut body);
 
             let updates = parse_otlp_metrics(&body);
@@ -235,6 +234,7 @@ pub fn start(app: tauri::AppHandle) -> std::io::Result<(u16, Arc<Mutex<MetricsAg
                 );
             let _ = request.respond(response);
         }
+        eprintln!("[otel_receiver] accept loop exited — telemetry collection stopped");
     });
 
     Ok((port, agg))
