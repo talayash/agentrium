@@ -35,7 +35,7 @@ const isMac = navigator.platform.toUpperCase().includes('MAC');
 
 export function TerminalTabs() {
   const { terminals, activeTerminalId, setActiveTerminal, closeTerminal, unreadTerminalIds, gitInfoCache, reorderTerminals, scriptChildren, closeScript } = useTerminalStore();
-  const { openNewTerminalModal, gridMode, toggleGridMode, addToGrid, gridTerminalIds, splitMode, splitTerminalIds, splitOrientation, splitRatio, setSplitOrientation, setSplitRatio, clearSplit, setSplitTerminals, setSplitMode, openFiles, activeFilePath, setActiveFilePath, closeFileTab, showFileTree } = useAppStore();
+  const { openNewTerminalModal, gridMode, toggleGridMode, addToGrid, gridTerminalIds, splitMode, splitTerminalIds, splitOrientation, splitRatio, setSplitOrientation, setSplitRatio, clearSplit, setSplitTerminals, setSplitMode, openFiles, activeFilePath, setActiveFilePath, closeFileTab, showFileTree, showTabActivity } = useAppStore();
   const now = useNowTick();
   const terminalStates = useTerminalStore((s) => s.terminalStates);
   const terminalMetrics = useTerminalStore((s) => s.terminalMetrics);
@@ -261,7 +261,7 @@ export function TerminalTabs() {
                       : activeTerminalId === terminal.id && !activeFilePath
                         ? 'bg-elevation-0 text-text-primary'
                         : 'hover:bg-white/[0.045] text-text-secondary'
-                  } ${isWorking && !isActiveTab ? 'ct-working-tab' : ''}`}
+                  } ${isWorking && !isActiveTab && showTabActivity ? 'ct-working-tab' : ''}`}
                 >
                   {/* IntelliJ-style bottom underline for active tab */}
                   {((activeTerminalId === terminal.id && !activeFilePath) || splitDropTargetId === terminal.id) && (
@@ -273,7 +273,7 @@ export function TerminalTabs() {
                   {unreadTerminalIds.has(terminal.id) && activeTerminalId !== terminal.id && (
                     <div className="w-1.5 h-1.5 rounded-full bg-accent-primary flex-shrink-0" />
                   )}
-                  {sessionState !== 'idle' && (
+                  {sessionState !== 'idle' && showTabActivity && (
                     <StateDot state={sessionState} />
                   )}
                   {terminal.color_tag && (

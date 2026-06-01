@@ -89,6 +89,10 @@ interface AppState {
   // True once the user has explicitly toggled "Reduce motion" in Settings. Until
   // then we follow the OS prefers-reduced-motion setting (WCAG 2.2 SC 2.3.3).
   uiReduceMotionUserSet: boolean;
+  // Minimal-UI / chrome toggles (P1-3) - let users strip non-essential chrome.
+  showStatusBar: boolean;
+  showTabActivity: boolean;
+  compactTitleBar: boolean;
   notificationSoundEnabled: boolean;
   dndEnabled: boolean;
   dndStart: string;
@@ -247,6 +251,9 @@ interface AppState {
   setUiFontScale: (scale: number) => void;
   setUiReduceMotion: (enabled: boolean) => void;
   recordPaletteUse: (key: string) => void;
+  setShowStatusBar: (v: boolean) => void;
+  setShowTabActivity: (v: boolean) => void;
+  setCompactTitleBar: (v: boolean) => void;
   setNotificationSoundEnabled: (enabled: boolean) => void;
   setDndEnabled: (enabled: boolean) => void;
   setDndStart: (hhmm: string) => void;
@@ -440,6 +447,9 @@ export const useAppStore = create<AppState>()(
       uiFontScale: DEFAULT_UI_FONT_SCALE,
       uiReduceMotion: false,
       uiReduceMotionUserSet: false,
+      showStatusBar: true,
+      showTabActivity: true,
+      compactTitleBar: false,
       notificationSoundEnabled: false,
       dndEnabled: false,
       dndStart: '22:00',
@@ -602,6 +612,9 @@ export const useAppStore = create<AppState>()(
       setUiFontScale: (scale) =>
         set({ uiFontScale: Math.max(0.85, Math.min(1.25, Math.round(scale * 100) / 100)) }),
       setUiReduceMotion: (enabled) => set({ uiReduceMotion: enabled, uiReduceMotionUserSet: true }),
+      setShowStatusBar: (v) => set({ showStatusBar: v }),
+      setShowTabActivity: (v) => set({ showTabActivity: v }),
+      setCompactTitleBar: (v) => set({ compactTitleBar: v }),
       setNotificationSoundEnabled: (enabled) => set({ notificationSoundEnabled: enabled }),
       setDndEnabled: (enabled) => set({ dndEnabled: enabled }),
       setDndStart: (hhmm) => set({ dndStart: /^\d{2}:\d{2}$/.test(hhmm) ? hhmm : '22:00' }),
@@ -993,6 +1006,9 @@ export const useAppStore = create<AppState>()(
         uiReduceMotion: state.uiReduceMotion,
         uiReduceMotionUserSet: state.uiReduceMotionUserSet,
         paletteUsage: state.paletteUsage,
+        showStatusBar: state.showStatusBar,
+        showTabActivity: state.showTabActivity,
+        compactTitleBar: state.compactTitleBar,
         notificationSoundEnabled: state.notificationSoundEnabled,
         dndEnabled: state.dndEnabled,
         dndStart: state.dndStart,

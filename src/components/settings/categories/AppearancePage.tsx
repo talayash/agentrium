@@ -8,6 +8,9 @@ registerSetting({ category: cat, id: 'density',     label: 'Density',        key
 registerSetting({ category: cat, id: 'accent',      label: 'Accent color',   keywords: ['hex', 'color', 'stripe'] });
 registerSetting({ category: cat, id: 'font-scale',  label: 'UI font scale',  keywords: ['zoom', 'size', 'font'] });
 registerSetting({ category: cat, id: 'reduce-motion', label: 'Reduce motion',keywords: ['animation', 'a11y', 'accessibility'] });
+registerSetting({ category: cat, id: 'status-bar',    label: 'Status bar',     keywords: ['minimal', 'chrome', 'bottom', 'hide'] });
+registerSetting({ category: cat, id: 'tab-activity',  label: 'Tab activity',   keywords: ['minimal', 'indicator', 'dot', 'busy', 'hide'] });
+registerSetting({ category: cat, id: 'compact-titlebar', label: 'Compact title bar', keywords: ['minimal', 'brand', 'chrome', 'hide'] });
 
 const ACCENT_PRESETS = ['#3574F0', '#5FB865', '#C678DD', '#E3B341', '#DB5C5C'];
 
@@ -17,8 +20,12 @@ export default function AppearancePage() {
   const accentColorHex = useAppStore((s) => s.accentColorHex);
   const uiFontScale = useAppStore((s) => s.uiFontScale);
   const uiReduceMotion = useAppStore((s) => s.uiReduceMotion);
+  const showStatusBar = useAppStore((s) => s.showStatusBar);
+  const showTabActivity = useAppStore((s) => s.showTabActivity);
+  const compactTitleBar = useAppStore((s) => s.compactTitleBar);
   const {
     setThemeMode, setUiDensity, setAccentColorHex, setUiFontScale, setUiReduceMotion,
+    setShowStatusBar, setShowTabActivity, setCompactTitleBar,
   } = useAppStore.getState();
 
   return (
@@ -92,6 +99,18 @@ export default function AppearancePage() {
       <PageSection title="Accessibility">
         <SettingRow label="Reduce motion" description="Disables tab-pulse, shimmer, and panel transitions.">
           <Toggle value={uiReduceMotion} onChange={setUiReduceMotion} label="Reduce motion" />
+        </SettingRow>
+      </PageSection>
+
+      <PageSection title="Interface">
+        <SettingRow label="Status bar" description="Show the bottom status bar (terminal counts, model, version).">
+          <Toggle value={showStatusBar} onChange={setShowStatusBar} label="Status bar" />
+        </SettingRow>
+        <SettingRow label="Tab activity indicators" description="Show the busy dot and working shimmer on tabs.">
+          <Toggle value={showTabActivity} onChange={setShowTabActivity} label="Tab activity indicators" />
+        </SettingRow>
+        <SettingRow label="Compact title bar" description="Hide the centered product name to free up the drag area.">
+          <Toggle value={compactTitleBar} onChange={setCompactTitleBar} label="Compact title bar" />
         </SettingRow>
       </PageSection>
     </div>

@@ -51,6 +51,7 @@ export function TitleBar() {
     changesOpen,
     orchestrationOpen,
     triggerChangesRefresh,
+    compactTitleBar,
   } = useAppStore();
   const { terminals, activeTerminalId, gitInfoCache } = useTerminalStore();
   const fetchGitInfo = useTerminalStore.getState().fetchGitInfo;
@@ -309,10 +310,12 @@ export function TitleBar() {
 
       {/* Center spacer + brand (small, right-aligned on the drag zone) */}
       <div className="flex-1 flex items-center justify-center min-w-0 px-3">
-        <span className="text-text-tertiary text-[11px] tracking-[0.02em] truncate">
-          ClaudeTerminal
-          {appVersion && <span className="text-text-tertiary/60 ml-1.5 font-mono">{appVersion}</span>}
-        </span>
+        {!compactTitleBar && (
+          <span className="text-text-tertiary text-[11px] tracking-[0.02em] truncate">
+            ClaudeTerminal
+            {appVersion && <span className="text-text-tertiary/60 ml-1.5 font-mono">{appVersion}</span>}
+          </span>
+        )}
       </div>
 
       {/* Right cluster - search, run, tool windows, settings, window controls */}
