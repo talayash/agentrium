@@ -22,7 +22,7 @@ export default function TerminalPastesPage() {
   return (
     <div>
       <PageHeader
-        title="Terminal — Pastes"
+        title="Terminal - Pastes"
         description="Capture large pastes into files under .claudeterminal/pastes/ for use as @mentions."
       />
 

@@ -78,7 +78,7 @@ export function InlineDiffView({ filePath, terminalId, pathOverride }: InlineDif
   if (isBinary) {
     return (
       <div className="px-3 py-2">
-        <p className="text-text-tertiary text-[11px] italic">Binary file — cannot display diff</p>
+        <p className="text-text-tertiary text-[11px] italic">Binary file - cannot display diff</p>
       </div>
     );
   }
@@ -174,7 +174,7 @@ export function InlineDiffView({ filePath, terminalId, pathOverride }: InlineDif
 
       {truncated && (
         <div className="px-3 py-1.5 border-t border-border/30">
-          <p className="text-yellow-400/70 text-[10px]">Diff truncated — file too large to display fully</p>
+          <p className="text-yellow-400/70 text-[10px]">Diff truncated - file too large to display fully</p>
         </div>
       )}
     </div>

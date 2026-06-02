@@ -16,7 +16,7 @@ export default function ChangelistsPage() {
   return (
     <div>
       <PageHeader
-        title="Version Control — Changelists"
+        title="Version Control - Changelists"
         description="IntelliJ-style local file grouping. New in v1.22.0."
       />
 

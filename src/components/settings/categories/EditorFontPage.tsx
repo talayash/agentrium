@@ -15,7 +15,7 @@ export default function EditorFontPage() {
 
   return (
     <div>
-      <PageHeader title="Editor — Font" />
+      <PageHeader title="Editor - Font" />
       <PageSection title="Font">
         <SettingRow label="Family">
           <input

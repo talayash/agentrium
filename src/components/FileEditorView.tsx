@@ -13,7 +13,7 @@ interface FileEditorViewProps {
 /**
  * Inline Monaco editor for a single open file tab. Uses `path` as Monaco's
  * model key so switching between file tabs preserves per-file cursor position,
- * selection, and undo history — same behavior as VS Code.
+ * selection, and undo history - same behavior as VS Code.
  */
 export function FileEditorView({ path }: FileEditorViewProps) {
   const tab = useAppStore((s) => s.openFiles.find((t) => t.path === path));

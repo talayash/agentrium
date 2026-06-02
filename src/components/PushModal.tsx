@@ -269,7 +269,7 @@ export function PushModal() {
                 <div className="flex items-start gap-2 px-3 py-2 rounded-md bg-sky-500/10 border border-sky-500/30 text-[12px] text-sky-200">
                   <Info size={13} className="mt-0.5 flex-shrink-0" />
                   <span>
-                    New branch — pushing will set upstream to{' '}
+                    New branch - pushing will set upstream to{' '}
                     <span className="font-mono">{remote}/{remoteBranch || preview.default_remote_branch}</span>.
                   </span>
                 </div>

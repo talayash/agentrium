@@ -5,14 +5,14 @@ import { toast } from '../store/toastStore';
 
 /**
  * Return true when the focused element is an editable surface that is NOT
- * inside an xterm terminal — i.e., a Settings/modal input, a Monaco editor,
+ * inside an xterm terminal - i.e., a Settings/modal input, a Monaco editor,
  * or the global search box. In those cases we must let key events pass
  * through to the native control instead of hijacking them for terminal zoom.
  */
 function isFocusInNonTerminalEditable(): boolean {
   const el = document.activeElement;
   if (!el || el === document.body) return false;
-  // xterm's hidden textarea always lives inside an .xterm container — let
+  // xterm's hidden textarea always lives inside an .xterm container - let
   // shortcuts through when the user is "in" a terminal.
   if (el.closest('.xterm')) return false;
   const tag = el.tagName;
@@ -262,7 +262,7 @@ export function useKeyboardShortcuts() {
         else setTerminalFontSize(DEFAULT_TERMINAL_FONT_SIZE);
         return;
       }
-      // Ctrl++ (with Shift) — same as Ctrl+= for users who reflexively press shift.
+      // Ctrl++ (with Shift) - same as Ctrl+= for users who reflexively press shift.
       if (ctrl && shift && e.key === '+') {
         if (isFocusInNonTerminalEditable()) return;
         e.preventDefault();

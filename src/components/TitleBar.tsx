@@ -51,6 +51,7 @@ export function TitleBar() {
     changesOpen,
     orchestrationOpen,
     triggerChangesRefresh,
+    compactTitleBar,
   } = useAppStore();
   const { terminals, activeTerminalId, gitInfoCache } = useTerminalStore();
   const fetchGitInfo = useTerminalStore.getState().fetchGitInfo;
@@ -159,7 +160,7 @@ export function TitleBar() {
       onMouseDown={(e) => { if (e.buttons === 1 && (e.target as HTMLElement).closest('.no-drag') === null) appWindow.startDragging(); }}
       className="h-9 bg-elevation-1 flex items-center justify-between pl-2 pr-0 border-b border-[var(--ij-divider)] drag-region select-none"
     >
-      {/* Left cluster — traffic lights (mac), sidebar toggle */}
+      {/* Left cluster - traffic lights (mac), sidebar toggle */}
       <div className="flex items-center gap-1 min-w-0">
         {isMac && (
           <div className="flex items-center gap-1.5 no-drag mr-1">
@@ -189,7 +190,7 @@ export function TitleBar() {
           <img src={appIcon} alt="ClaudeTerminal" className="w-[20px] h-[20px]" />
         </button>
 
-        {/* Project breadcrumb — IntelliJ main-toolbar project widget */}
+        {/* Project breadcrumb - IntelliJ main-toolbar project widget */}
         <button
           onClick={openCommandPalette}
           className="no-drag group flex items-center gap-1.5 h-7 ml-1 pl-2 pr-2 rounded-[6px] hover:bg-white/[0.06] transition-colors max-w-[360px]"
@@ -224,7 +225,7 @@ export function TitleBar() {
                 className={`flex items-center gap-1.5 h-7 px-2 rounded-[6px] transition-colors ${
                   branchMenuOpen ? 'bg-white/[0.08]' : 'hover:bg-white/[0.06]'
                 }`}
-                title={`Branch: ${gitInfo.current_branch} — click to switch`}
+                title={`Branch: ${gitInfo.current_branch} - click to switch`}
               >
                 <GitBranch size={12} strokeWidth={1.75} className="text-text-secondary" />
                 <span className="text-text-primary text-[12px] font-mono truncate max-w-[140px]">
@@ -309,13 +310,15 @@ export function TitleBar() {
 
       {/* Center spacer + brand (small, right-aligned on the drag zone) */}
       <div className="flex-1 flex items-center justify-center min-w-0 px-3">
-        <span className="text-text-tertiary text-[11px] tracking-[0.02em] truncate">
-          ClaudeTerminal
-          {appVersion && <span className="text-text-tertiary/60 ml-1.5 font-mono">{appVersion}</span>}
-        </span>
+        {!compactTitleBar && (
+          <span className="text-text-tertiary text-[11px] tracking-[0.02em] truncate">
+            ClaudeTerminal
+            {appVersion && <span className="text-text-tertiary/60 ml-1.5 font-mono">{appVersion}</span>}
+          </span>
+        )}
       </div>
 
-      {/* Right cluster — search, run, tool windows, settings, window controls */}
+      {/* Right cluster - search, run, tool windows, settings, window controls */}
       <div className="flex items-stretch">
         <div className="flex items-center gap-0.5 pr-2 no-drag">
           <UpdatePill />

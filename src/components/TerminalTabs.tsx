@@ -8,6 +8,7 @@ import { TerminalView } from './TerminalView';
 import { TerminalGrid } from './TerminalGrid';
 import { SplitView } from './SplitView';
 import { SessionInsights } from './SessionInsights';
+import { SessionMetricsPanel } from './SessionMetricsPanel';
 import { FileEditorView } from './FileEditorView';
 import { ScriptsMenu } from './ScriptsMenu';
 import { ScriptChildPane } from './ScriptChildPane';
@@ -24,13 +25,20 @@ function fileBasename(p: string): string {
   return idx === -1 ? trimmed : trimmed.slice(idx + 1);
 }
 
+function formatCost(usd: number): string {
+  if (usd <= 0) return '';
+  if (usd < 0.01) return '<$0.01';
+  return `$${usd.toFixed(2)}`;
+}
+
 const isMac = navigator.platform.toUpperCase().includes('MAC');
 
 export function TerminalTabs() {
   const { terminals, activeTerminalId, setActiveTerminal, closeTerminal, unreadTerminalIds, gitInfoCache, reorderTerminals, scriptChildren, closeScript } = useTerminalStore();
-  const { openNewTerminalModal, gridMode, toggleGridMode, addToGrid, gridTerminalIds, splitMode, splitTerminalIds, splitOrientation, splitRatio, setSplitOrientation, setSplitRatio, clearSplit, setSplitTerminals, setSplitMode, openFiles, activeFilePath, setActiveFilePath, closeFileTab, showFileTree } = useAppStore();
+  const { openNewTerminalModal, gridMode, toggleGridMode, addToGrid, gridTerminalIds, splitMode, splitTerminalIds, splitOrientation, splitRatio, setSplitOrientation, setSplitRatio, clearSplit, setSplitTerminals, setSplitMode, openFiles, activeFilePath, setActiveFilePath, closeFileTab, showFileTree, showTabActivity } = useAppStore();
   const now = useNowTick();
   const terminalStates = useTerminalStore((s) => s.terminalStates);
+  const terminalMetrics = useTerminalStore((s) => s.terminalMetrics);
 
   // Selecting a terminal clears the file-tab focus (so terminal view shows),
   // selecting a file clears the terminal focus-visual intent.
@@ -43,7 +51,7 @@ export function TerminalTabs() {
     setActiveFilePath(path);
   }, [setActiveFilePath]);
   // Script-child terminals are rendered below their parent and bottom-pane
-  // shells are rendered in BottomTerminalPane — neither belongs in the main
+  // shells are rendered in BottomTerminalPane - neither belongs in the main
   // tab bar.
   const terminalList = useMemo(
     () =>
@@ -194,7 +202,7 @@ export function TerminalTabs() {
 
   return (
     <div className="h-full flex flex-col">
-      {/* Tab Bar — IntelliJ editor tabs */}
+      {/* Tab Bar - IntelliJ editor tabs */}
       <div className="h-9 bg-elevation-1 border-b border-[var(--ij-divider)] flex items-center justify-between px-0.5">
         <div className="relative flex items-center flex-1 min-w-0">
           {canScrollLeft && (
@@ -238,7 +246,7 @@ export function TerminalTabs() {
                 <button
                   onClick={() => focusTerminal(terminal.id)}
                   onAuxClick={(e) => {
-                    // Middle-click (mouse wheel) closes the tab — same as VS Code.
+                    // Middle-click (mouse wheel) closes the tab - same as VS Code.
                     if (e.button === 1) {
                       e.preventDefault();
                       closeTerminal(terminal.id);
@@ -253,7 +261,7 @@ export function TerminalTabs() {
                       : activeTerminalId === terminal.id && !activeFilePath
                         ? 'bg-elevation-0 text-text-primary'
                         : 'hover:bg-white/[0.045] text-text-secondary'
-                  } ${isWorking && !isActiveTab ? 'ct-working-tab' : ''}`}
+                  } ${isWorking && !isActiveTab && showTabActivity ? 'ct-working-tab' : ''}`}
                 >
                   {/* IntelliJ-style bottom underline for active tab */}
                   {((activeTerminalId === terminal.id && !activeFilePath) || splitDropTargetId === terminal.id) && (
@@ -265,7 +273,7 @@ export function TerminalTabs() {
                   {unreadTerminalIds.has(terminal.id) && activeTerminalId !== terminal.id && (
                     <div className="w-1.5 h-1.5 rounded-full bg-accent-primary flex-shrink-0" />
                   )}
-                  {sessionState !== 'idle' && (
+                  {sessionState !== 'idle' && showTabActivity && (
                     <StateDot state={sessionState} />
                   )}
                   {terminal.color_tag && (
@@ -282,6 +290,19 @@ export function TerminalTabs() {
                       {model}
                     </span>
                   )}
+                  {(() => {
+                    const cost = terminalMetrics.get(terminal.id)?.costUsd ?? 0;
+                    const label = formatCost(cost);
+                    if (!label) return null;
+                    return (
+                      <span
+                        className="text-[9px] px-1 rounded font-medium flex-shrink-0 bg-emerald-500/15 text-emerald-400 tabular-nums"
+                        title="Estimated session cost (live)"
+                      >
+                        {label}
+                      </span>
+                    );
+                  })()}
                   {isWorktree && (
                     <GitBranch size={10} className="text-cyan-400 flex-shrink-0" />
                   )}
@@ -347,7 +368,7 @@ export function TerminalTabs() {
             })}
           </Reorder.Group>
 
-          {/* File tabs — rendered inline next to terminal tabs, VS Code style */}
+          {/* File tabs - rendered inline next to terminal tabs, VS Code style */}
           {openFiles.length > 0 && (
             <>
               {terminalList.length > 0 && (
@@ -464,7 +485,7 @@ export function TerminalTabs() {
         </div>
       </div>
 
-      {/* Content area — terminal stays mounted so scrollback survives the
+      {/* Content area - terminal stays mounted so scrollback survives the
           switch; the file editor overlays on top when a file tab is active. */}
       <div className="flex-1 relative">
         {activeTerminalId && (() => {
@@ -484,6 +505,13 @@ export function TerminalTabs() {
                 const inst = terminals.get(activeTerminalId);
                 if (inst?.config.status === 'Stopped' && inst?.sessionSummary) {
                   return <SessionInsights summary={inst.sessionSummary} />;
+                }
+                return null;
+              })()}
+              {(() => {
+                const inst = terminals.get(activeTerminalId);
+                if (inst && terminalMetrics.get(activeTerminalId)) {
+                  return <SessionMetricsPanel terminalId={activeTerminalId} />;
                 }
                 return null;
               })()}

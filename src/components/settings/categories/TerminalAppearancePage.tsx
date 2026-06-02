@@ -36,7 +36,7 @@ export default function TerminalAppearancePage() {
 
   return (
     <div>
-      <PageHeader title="Terminal — Appearance" />
+      <PageHeader title="Terminal - Appearance" />
       <PageSection title="Preview">
         <div className="py-2"><TerminalAppearancePreview /></div>
       </PageSection>

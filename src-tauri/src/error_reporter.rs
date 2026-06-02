@@ -253,7 +253,7 @@ pub fn report_blocking(
         return;
     }
 
-    // No runtime — build a one-shot single-threaded runtime and drive `fut` to
+    // No runtime - build a one-shot single-threaded runtime and drive `fut` to
     // completion (or our 5s timeout). Best-effort.
     let rt = match tokio::runtime::Builder::new_current_thread()
         .enable_all()

@@ -6,14 +6,14 @@
       { "title": "Push Commits popup (Ctrl+Shift+K)", "description": "IntelliJ-style push dialog showing the commits about to be pushed, with inline editing of the destination remote and branch. Split-button supports a guarded Force Push (with lease). Also accessible from a new Push button in the File Changes panel header and a Push to remote… entry in the title-bar branch dropdown." },
       { "title": "Colorful title-bar tool icons", "description": "File Changes, Agent Teams, Hints, Settings, Tools, and Recent Terminals each get a distinct accent color (emerald / violet / amber / sky / orange / pink) for at-a-glance scanability instead of the previous uniform gray." },
       { "title": "Settings window: clean defined border", "description": "Removed the backdrop blur halo and replaced the soft glow ring around the Settings modal with a defined 1px border so the dialog edge looks crisp on all backgrounds." },
-      { "title": "File Changes panel auto-refreshes", "description": "The panel now refreshes silently whenever the window regains focus, the tab becomes visible, and every 5 seconds while it's open — so the list reflects what Claude (or you) just wrote without clicking Refresh." }
+      { "title": "File Changes panel auto-refreshes", "description": "The panel now refreshes silently whenever the window regains focus, the tab becomes visible, and every 5 seconds while it's open - so the list reflects what Claude (or you) just wrote without clicking Refresh." }
     ]
   },
   {
     "version": "1.22.4",
     "date": "2026-05-18",
     "features": [
-      { "title": "Sessions panel — browse and resume past Claude conversations", "description": "A new collapsible Sessions section above the Explorer lists every Claude conversation stored for the active terminal's folder, newest-first, with a preview of the opening message. Click a row to open it in a new tab; right-click for \"Resume in current terminal\" (replaces the running Claude in place) or to reveal the .jsonl file. Sessions and Explorer share the sidebar via a drag-resize handle." },
+      { "title": "Sessions panel - browse and resume past Claude conversations", "description": "A new collapsible Sessions section above the Explorer lists every Claude conversation stored for the active terminal's folder, newest-first, with a preview of the opening message. Click a row to open it in a new tab; right-click for \"Resume in current terminal\" (replaces the running Claude in place) or to reveal the .jsonl file. Sessions and Explorer share the sidebar via a drag-resize handle." },
       { "title": "Fix: Restore didn't actually restore", "description": "When opening a session from the new panel, Claude was showing its first-run theme picker instead of resuming. The --resume <id> argument was being parsed by Commander.js as \"open picker\" plus a stray prompt; we now pass --resume=<id> (equals form) which Commander needs for optional-value flags. Conversations now actually re-attach." }
     ]
   },
@@ -21,7 +21,7 @@
     "version": "1.22.3",
     "date": "2026-05-18",
     "features": [
-      { "title": "Restore now actually resumes Claude conversations", "description": "Previously \"Restore last session\" reopened your terminals in the right folder but Claude itself started fresh — the painted transcript on screen had no relationship to the live Claude process. Now restore re-attaches Claude to your previous conversation: terminals saved by this build use `claude --resume <id>` for an exact match (the session id is captured automatically while you work), and older saves fall back to `claude --continue` to attach to the most recent session in that folder. /clear is handled too." }
+      { "title": "Restore now actually resumes Claude conversations", "description": "Previously \"Restore last session\" reopened your terminals in the right folder but Claude itself started fresh - the painted transcript on screen had no relationship to the live Claude process. Now restore re-attaches Claude to your previous conversation: terminals saved by this build use `claude --resume <id>` for an exact match (the session id is captured automatically while you work), and older saves fall back to `claude --continue` to attach to the most recent session in that folder. /clear is handled too." }
     ]
   },
   {
@@ -29,7 +29,7 @@
     "date": "2026-05-17",
     "features": [
       { "title": "Right-click context menu in the Explorer", "description": "Full IntelliJ/VSCode-style menu on files and folders: Open, Refresh, Show in File Explorer (Reveal in Finder on macOS), Cut/Copy/Paste, Copy Path / Copy Relative Path, inline Rename, and Delete (moves to Recycle Bin / Trash so you can recover). Cut items dim until pasted; the root row blocks Cut/Rename/Delete to prevent accidents." },
-      { "title": "Stash & Pull when your tree is dirty", "description": "When you click Pull on a repo with uncommitted changes, the File Changes panel now offers Stash & Pull instead of failing — your local edits are auto-stashed, the pull runs, and the stash is popped back so you keep working without losing changes." }
+      { "title": "Stash & Pull when your tree is dirty", "description": "When you click Pull on a repo with uncommitted changes, the File Changes panel now offers Stash & Pull instead of failing - your local edits are auto-stashed, the pull runs, and the stash is popped back so you keep working without losing changes." }
     ]
   },
   {
@@ -45,12 +45,12 @@
     "date": "2026-05-15",
     "features": [
       { "title": "New Settings panel (Ctrl+,)", "description": "Replaced the narrow modal with a categorized window: Appearance & Behavior, Editor, Terminal, Version Control, Claude Code, Tools, Privacy & About. Live search filters across all settings. New keys: theme mode (dark/light/auto), UI density (compact/comfortable/spacious), accent color picker, UI font scale, reduce motion, notification sound + DND hours, session auto-save interval, confirm-on-close, Monaco editor prefs (tab size / word wrap / minimap / font), terminal shell override + copy-on-select + paste binding, git commit-message template + default auto-stage + default merge strategy, Claude default model + binary path override." },
-      { "title": "Changelists in File Changes", "description": "IntelliJ-style local file grouping. Create / rename / delete named changelists per repo, move files via right-click, and Stage all from a list with one click. Mappings persist across commits (sticky). Backed by two new SQLite tables — additive, no migration required." },
-      { "title": "Streamlined sidebar — Explorer only", "description": "Removed the terminal list and Tools footer from the sidebar; the file tree now owns the full height. Terminals are still managed via the tab strip and the new title-bar Recent Terminals dropdown (Layers icon)." },
-      { "title": "Tools moved to title bar", "description": "Workspaces, Snippets, Session History, Session Timeline, Claude Config, Memory Editor, and Manage Profiles are now in a single Tools dropdown (wrench icon) in the title bar. Same modals — fewer clicks." },
-      { "title": "Live working indicator on tabs", "description": "A pulsing dot and a shimmering underline tell you which tab is actively producing output. Output-activity based — language-agnostic and version-proof. Respects Reduce motion in Settings." },
+      { "title": "Changelists in File Changes", "description": "IntelliJ-style local file grouping. Create / rename / delete named changelists per repo, move files via right-click, and Stage all from a list with one click. Mappings persist across commits (sticky). Backed by two new SQLite tables - additive, no migration required." },
+      { "title": "Streamlined sidebar - Explorer only", "description": "Removed the terminal list and Tools footer from the sidebar; the file tree now owns the full height. Terminals are still managed via the tab strip and the new title-bar Recent Terminals dropdown (Layers icon)." },
+      { "title": "Tools moved to title bar", "description": "Workspaces, Snippets, Session History, Session Timeline, Claude Config, Memory Editor, and Manage Profiles are now in a single Tools dropdown (wrench icon) in the title bar. Same modals - fewer clicks." },
+      { "title": "Live working indicator on tabs", "description": "A pulsing dot and a shimmering underline tell you which tab is actively producing output. Output-activity based - language-agnostic and version-proof. Respects Reduce motion in Settings." },
       { "title": "Updates ask before installing", "description": "When a new version is detected, ClaudeTerminal now shows a banner with Update Now / Remind in 4h / Later, plus a desktop notification so you don't miss it. No more silent auto-downloads that interrupt your work mid-session." },
-      { "title": "Large pastes into the terminal now work", "description": "Pasting more than 64 KB into a terminal used to fail silently with 'Write payload too large'. The frontend now splits big pastes into chunks automatically — multi-hundred-KB pastes go straight through." }
+      { "title": "Large pastes into the terminal now work", "description": "Pasting more than 64 KB into a terminal used to fail silently with 'Write payload too large'. The frontend now splits big pastes into chunks automatically - multi-hundred-KB pastes go straight through." }
     ]
   },
   {
@@ -59,7 +59,7 @@
     "features": [
       { "title": "Paste as File (Ctrl+Shift+V)", "description": "New right-side drawer captures large pastes (logs, JSON, stack traces) into a file under .claudeterminal/pastes/ and types a Claude Code @mention so the file is auto-attached to your next prompt. Auto-creates a .gitignore so paste artifacts never leak into your repo." },
       { "title": "Auto-detect large pastes", "description": "When you paste something big straight into a terminal, a non-blocking toast offers Save & Reference / Paste anyway / Don't ask again. Threshold and prompt template are configurable in Settings → Pastes." },
-      { "title": "Recent pastes per terminal", "description": "The drawer shows the last pastes for the active terminal — re-open them in the editor or re-send to the terminal with one click. Pastes auto-clean when the terminal closes (configurable retention)." }
+      { "title": "Recent pastes per terminal", "description": "The drawer shows the last pastes for the active terminal - re-open them in the editor or re-send to the terminal with one click. Pastes auto-clean when the terminal closes (configurable retention)." }
     ]
   },
   {
@@ -67,9 +67,9 @@
     "date": "2026-05-08",
     "features": [
       { "title": "Customizable terminal appearance", "description": "New Appearance tab in Settings: font family/size/line-height, cursor style and blink, color theme, opt-in BiDi rendering. Scrollback default raised to 50,000 lines (configurable up to 1M). Most options apply live; scrollback and BiDi take effect on the next new terminal." },
-      { "title": "Plain shell mode", "description": "New 'Plain shell (no Claude)' toggle in the New Terminal modal — runs a regular cmd.exe/$SHELL so you can launch wrappers like `ollama launch claude …`, scripts, or anything else. Survives crash recovery." },
+      { "title": "Plain shell mode", "description": "New 'Plain shell (no Claude)' toggle in the New Terminal modal - runs a regular cmd.exe/$SHELL so you can launch wrappers like `ollama launch claude …`, scripts, or anything else. Survives crash recovery." },
       { "title": "Zoom keyboard shortcuts", "description": "Ctrl+= / Ctrl++ to grow the terminal font, Ctrl+- to shrink, Ctrl+0 to reset to default. Skipped automatically while typing in Settings or other text fields." },
-      { "title": "Title-bar update pill", "description": "When an update is downloaded and ready, a 'Relaunch update' pill now appears in the title bar — no more relying on the Settings tab. The updater also re-checks every 4 hours and on window focus after 30 minutes idle, and downloads in the background." },
+      { "title": "Title-bar update pill", "description": "When an update is downloaded and ready, a 'Relaunch update' pill now appears in the title bar - no more relying on the Settings tab. The updater also re-checks every 4 hours and on window focus after 30 minutes idle, and downloads in the background." },
       { "title": "Less telemetry noise", "description": "Silenced ~94% of recent false-positive error reports (path-validation outside workspaces, first-run 'no rows' lookups, ResizeObserver loop warnings)." }
     ]
   },
@@ -86,9 +86,9 @@
     "date": "2026-05-04",
     "features": [
       { "title": "Unbounded terminal history", "description": "xterm scrollback raised to 100,000 lines so long Claude sessions stay fully scrollable like a regular CMD/PowerShell window." },
-      { "title": "Material Icon Theme in file panels", "description": "Explorer and File Changes lists now render per-extension and per-filename icons from the Material Icon Theme (TypeScript, Rust, package.json, Dockerfile, folders, etc.) — keeps git-status colors in the changes list." },
+      { "title": "Material Icon Theme in file panels", "description": "Explorer and File Changes lists now render per-extension and per-filename icons from the Material Icon Theme (TypeScript, Rust, package.json, Dockerfile, folders, etc.) - keeps git-status colors in the changes list." },
       { "title": "Cleaner terminal tabs", "description": "Removed the Teleport-to-Web and Remote-Control buttons from running tabs to reduce clutter." },
-      { "title": "Collapsible sidebar Tools section", "description": "Footer links (Workspaces, Session History, Snippets, Session Timeline, Claude Config, Memory Editor, Manage Profiles) collapse to a single TOOLS header by default — Explorer claims the freed vertical space. State persists across restarts." }
+      { "title": "Collapsible sidebar Tools section", "description": "Footer links (Workspaces, Session History, Snippets, Session Timeline, Claude Config, Memory Editor, Manage Profiles) collapse to a single TOOLS header by default - Explorer claims the freed vertical space. State persists across restarts." }
     ]
   },
   {
@@ -104,9 +104,9 @@
     "features": [
       { "title": "Global file & content search (Ctrl+Shift+F)", "description": "VS Code–style search modal that scans filenames and file contents across the workspace, skips .git / node_modules / target / dist / etc., binary-sniffs files, debounces input, and groups matches by file with line/column previews. Arrow keys navigate, Enter opens the file. Terminal-internal search moved to Ctrl+F so the two no longer collide." },
       { "title": "One-click pull from origin", "description": "New Pull button in the File Changes header pulls the upstream branch (or origin/<current-branch> as fallback) into the current branch with merge strategy." },
-      { "title": "Resizable Repositories ⇕ Changes split", "description": "Drag the splitter between the Repositories list and the Changes content inside the File Changes panel — ratio persists across restarts." },
+      { "title": "Resizable Repositories ⇕ Changes split", "description": "Drag the splitter between the Repositories list and the Changes content inside the File Changes panel - ratio persists across restarts." },
       { "title": "Open a plain shell at any pinned repo", "description": "Each scanned/pinned repo row gets a terminal-icon button that opens an interactive shell (no Claude) at that repo's path. Shells live in a new tabbed BottomTerminalPane with drag-to-resize handle, +/x per tab, and a collapse toggle. Backed by a new create_shell_terminal Rust command (cmd.exe on Windows, $SHELL -li on Unix)." },
-      { "title": "Focus routing fix for stacked terminals", "description": "Clicking a script-child or bottom-pane terminal no longer bounces focus back to the parent — keystrokes (Ctrl+C included) reach the focused pane reliably." }
+      { "title": "Focus routing fix for stacked terminals", "description": "Clicking a script-child or bottom-pane terminal no longer bounces focus back to the parent - keystrokes (Ctrl+C included) reach the focused pane reliably." }
     ]
   },
   {
@@ -126,7 +126,7 @@
     "version": "1.20.3",
     "date": "2026-04-20",
     "features": [
-      { "title": "Operate on nested repos from File Changes", "description": "Pin any repo row (root, nested, worktree) to re-target the panel's commit bar, stage/unstage, stash, and inline diffs to that repo — works even when the active terminal's cwd is not a git repo" },
+      { "title": "Operate on nested repos from File Changes", "description": "Pin any repo row (root, nested, worktree) to re-target the panel's commit bar, stage/unstage, stash, and inline diffs to that repo - works even when the active terminal's cwd is not a git repo" },
       { "title": "Create new branch from the repo dropdown", "description": "New 'Create new branch…' action opens a form with a base-branch select that defaults to master / main / develop when present" },
       { "title": "Pull a remote branch into current", "description": "New 'Pull into <current>…' action pre-fills the upstream tracking branch and offers merge / rebase / ff-only strategies; refuses to pull when the working tree is dirty" },
       { "title": "Grid Add All button", "description": "Replaced the grid 'Auto' button with 'Add All' so every active terminal can be loaded into the grid in one click" }
@@ -136,7 +136,7 @@
     "version": "1.20.2",
     "date": "2026-04-20",
     "features": [
-      { "title": "Branch switcher for nested repos", "description": "Each row in the File Changes > Repositories section now opens an inline branch picker — filter, click a branch, one-click checkout against that specific repo (root, nested sub-repo, or linked worktree)" }
+      { "title": "Branch switcher for nested repos", "description": "Each row in the File Changes > Repositories section now opens an inline branch picker - filter, click a branch, one-click checkout against that specific repo (root, nested sub-repo, or linked worktree)" }
     ]
   },
   {
@@ -150,13 +150,13 @@
     "version": "1.20.0",
     "date": "2026-04-20",
     "features": [
-      { "title": "Drag-and-drop files into terminal", "description": "Drop files or folders from Explorer onto any terminal (tabbed or grid) — paths are quoted and pasted at the cursor" },
+      { "title": "Drag-and-drop files into terminal", "description": "Drop files or folders from Explorer onto any terminal (tabbed or grid) - paths are quoted and pasted at the cursor" },
       { "title": "Git panel in File Changes", "description": "Repositories section lists the root repo, linked worktrees, and nested sub-repos (with branch, dirty flag, ahead/behind counts)" },
-      { "title": "Branch switcher in the titlebar", "description": "The branch pill is now an interactive dropdown — filter, pick a branch, one-click checkout with error toasts on dirty trees" },
+      { "title": "Branch switcher in the titlebar", "description": "The branch pill is now an interactive dropdown - filter, pick a branch, one-click checkout with error toasts on dirty trees" },
       { "title": "Per-file stage, unstage, and commit", "description": "Separate Staged / Changes sections with per-file + and − buttons, bulk Stage all / Unstage all, and stage-aware Commit / Commit & Push" },
       { "title": "Stash, pop, and apply from the UI", "description": "Stash working changes, and manage existing stashes with Apply (keep) / Pop / Drop actions" },
-      { "title": "Reorder terminal tabs by drag", "description": "Drag tabs in the tab bar to change their order — reorder persists in the terminal store" },
-      { "title": "Readable toasts", "description": "Fixed transparent toast background — cards are now fully opaque with a coloured status ring, left accent bar, and top-most z-index" }
+      { "title": "Reorder terminal tabs by drag", "description": "Drag tabs in the tab bar to change their order - reorder persists in the terminal store" },
+      { "title": "Readable toasts", "description": "Fixed transparent toast background - cards are now fully opaque with a coloured status ring, left accent bar, and top-most z-index" }
     ]
   },
   {
@@ -243,7 +243,7 @@
     "version": "1.17.5",
     "date": "2026-03-30",
     "features": [
-      { "title": "Fix Terminal Keyboard Input", "description": "Terminals now auto-focus on creation so keyboard input works immediately — fixes issue where Enter, Esc, arrow keys, and number keys were unresponsive on first-time trust prompts" }
+      { "title": "Fix Terminal Keyboard Input", "description": "Terminals now auto-focus on creation so keyboard input works immediately - fixes issue where Enter, Esc, arrow keys, and number keys were unresponsive on first-time trust prompts" }
     ]
   },
   {
@@ -323,7 +323,7 @@
     "version": "1.14.0",
     "date": "2026-03-07",
     "features": [
-      { "title": "Claude Config Manager (F6)", "description": "Manage global Claude Code configuration from within the app — edit settings.json, create/edit/delete agents and custom commands" },
+      { "title": "Claude Config Manager (F6)", "description": "Manage global Claude Code configuration from within the app - edit settings.json, create/edit/delete agents and custom commands" },
       { "title": "Settings tab", "description": "JSON editor for ~/.claude/settings.json with syntax highlighting" },
       { "title": "Agents tab", "description": "Create, edit, and delete agent files in ~/.claude/agents/" },
       { "title": "Commands tab", "description": "Create, edit, and delete custom command files in ~/.claude/commands/" }

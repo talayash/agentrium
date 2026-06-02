@@ -2,13 +2,13 @@ import type { Transition, Variants } from 'framer-motion';
 
 // ─── Spring presets ───
 
-/** Fast snap — toggles, switches, small UI elements */
+/** Fast snap - toggles, switches, small UI elements */
 export const springSnap: Transition = { type: 'spring', stiffness: 500, damping: 30 };
 
-/** Smooth — panels, sidebars, layout changes */
+/** Smooth - panels, sidebars, layout changes */
 export const springSmooth: Transition = { type: 'spring', stiffness: 300, damping: 25 };
 
-/** Gentle — modals, overlays, command palette */
+/** Gentle - modals, overlays, command palette */
 export const springGentle: Transition = { type: 'spring', stiffness: 200, damping: 20 };
 
 // ─── Modal animation variants ───

@@ -88,7 +88,7 @@ export function WhatsNewModal() {
                     <div>
                       <span className="text-text-primary font-medium">{feature.title}</span>
                       {feature.description && (
-                        <span className="text-text-secondary"> — {feature.description}</span>
+                        <span className="text-text-secondary"> - {feature.description}</span>
                       )}
                     </div>
                   </li>

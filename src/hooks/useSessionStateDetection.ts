@@ -47,7 +47,7 @@ export function useSessionStateDetection(): void {
       const now = Date.now();
 
       for (const [id, inst] of store.terminals) {
-        // Claude terminals only — skip plain shells and script children.
+        // Claude terminals only - skip plain shells and script children.
         if (inst.scriptParentId || inst.isShellTerminal) continue;
 
         // Exited process: pin to stopped and re-arm notifications.
@@ -64,7 +64,7 @@ export function useSessionStateDetection(): void {
         } else if (inst.xterm) {
           state = classifySettled(readBufferTail(inst.xterm, BUFFER_TAIL_ROWS));
         } else {
-          // No mounted buffer to read — keep the last known state.
+          // No mounted buffer to read - keep the last known state.
           state = store.terminalStates.get(id) ?? 'idle';
         }
 
@@ -81,7 +81,7 @@ export function useSessionStateDetection(): void {
             notifiedRef.current.add(id);
           }
         } else {
-          // Left the waiting episode — re-arm for the next prompt.
+          // Left the waiting episode - re-arm for the next prompt.
           notifiedRef.current.delete(id);
         }
       }
@@ -89,7 +89,7 @@ export function useSessionStateDetection(): void {
 
     return () => clearInterval(interval);
     // windowFocused is read via focusedRef inside the interval, so it is
-    // intentionally omitted here — no need to recreate the interval on focus
+    // intentionally omitted here - no need to recreate the interval on focus
     // change. notify is stable (useCallback).
   }, [notify]);
 }

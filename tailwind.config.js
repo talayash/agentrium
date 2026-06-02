@@ -24,9 +24,14 @@ export default {
         'border-light': '#393B40',
         'border-focus': 'rgba(53, 116, 240, 0.55)',
         // Text (IntelliJ New UI tokens)
-        'text-primary': '#DFE1E5',
-        'text-secondary': '#9DA0A8',
-        'text-tertiary': '#6F737A',
+        // Text tokens are theme-aware: dark channels live in index.css :root,
+        // light channels are swapped in by applyThemeMode(). Channel-triplet
+        // form keeps Tailwind's /opacity modifiers working. text-tertiary was
+        // lifted to #8A8E97 (dark) for WCAG AA — the old #6F737A measured ~3.46:1
+        // on elevation-0 / ~2.90:1 on elevation-1, below the 4.5:1 floor.
+        'text-primary': 'rgb(var(--text-primary) / <alpha-value>)',
+        'text-secondary': 'rgb(var(--text-secondary) / <alpha-value>)',
+        'text-tertiary': 'rgb(var(--text-tertiary) / <alpha-value>)',
         // Semantic — IntelliJ palette
         'success': '#5FB865',
         'warning': '#E3B341',

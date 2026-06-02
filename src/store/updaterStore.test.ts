@@ -109,7 +109,7 @@ describe('updaterStore', () => {
       useUpdaterStore.getState().snoozeBanner(60_000);
       useUpdaterStore.getState().markNotified('1.23.0');
 
-      // A newer version arrives — the user should be re-prompted.
+      // A newer version arrives - the user should be re-prompted.
       checkMock.mockResolvedValueOnce(fakeUpdate('1.24.0'));
       useUpdaterStore.setState({ status: 'idle' });
       await useUpdaterStore.getState().checkForUpdates();

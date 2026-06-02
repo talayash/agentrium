@@ -1,5 +1,5 @@
 // One-time Monaco runtime setup. Imported for side effects by any component
-// that renders a Monaco editor. Repeat imports are harmless — the body runs
+// that renders a Monaco editor. Repeat imports are harmless - the body runs
 // once thanks to the module cache.
 import { loader } from '@monaco-editor/react';
 import * as monaco from 'monaco-editor';
@@ -136,7 +136,7 @@ if (typeof window !== 'undefined' && !window.__monacoReady) {
 
   monaco.languages.registerCodeLensProvider('json', {
     // Monaco's type says this should be IEvent<CodeLensProvider> but at runtime
-    // any event that fires triggers a lens refresh — `void` payload is fine.
+    // any event that fires triggers a lens refresh - `void` payload is fine.
     onDidChange: onDidChange.event as unknown as monaco.IEvent<monaco.languages.CodeLensProvider>,
     provideCodeLenses(model) {
       // Gate on the Project Tools setting so the lens can be hidden globally.

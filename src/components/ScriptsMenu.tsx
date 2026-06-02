@@ -17,7 +17,7 @@ interface ScriptsMenuProps {
 /**
  * Dropdown that lists scripts from package.json in the terminal's cwd and
  * spawns them as child terminals (visible split-below in the same tab).
- * Auto-hides when there are no scripts — users see nothing for non-JS dirs.
+ * Auto-hides when there are no scripts - users see nothing for non-JS dirs.
  */
 export function ScriptsMenu({ terminalId, cwd }: ScriptsMenuProps) {
   const [scripts, setScripts] = useState<PackageScript[]>([]);
@@ -82,7 +82,7 @@ export function ScriptsMenu({ terminalId, cwd }: ScriptsMenuProps) {
     }
   };
 
-  // Silently hide when there are no scripts — don't pollute the UI for
+  // Silently hide when there are no scripts - don't pollute the UI for
   // terminals that aren't in a Node project.
   if (!loading && scripts.length === 0) return null;
 

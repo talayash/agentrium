@@ -8,7 +8,7 @@ import { reportInvokeFailure } from '../lib/errorReporter';
 // Reqwest / Tauri updater surface a handful of message shapes when the network
 // is flaky, the GitHub edge is briefly unreachable, or the latest.json hasn't
 // been published yet. None of them are actionable bugs, so we keep the UI
-// status='error' but skip telemetry — otherwise a single user behind a hotel
+// status='error' but skip telemetry - otherwise a single user behind a hotel
 // wifi can dominate the error report (see fingerprint 6d37063a).
 const TRANSIENT_NETWORK_PATTERNS: readonly RegExp[] = [
   /error sending request/i,
@@ -42,9 +42,9 @@ interface UpdaterState {
   downloadProgress: number;
   error: string | null;
   lastCheckAt: number | null;
-  // Banner gating — keep the user in control of when they're prompted.
-  bannerDismissedVersion: string | null;  // "Later" — suppress banner for this version until next launch
-  bannerSnoozedUntil: number | null;       // "Remind in 4h" — epoch ms after which the banner may show again
+  // Banner gating - keep the user in control of when they're prompted.
+  bannerDismissedVersion: string | null;  // "Later" - suppress banner for this version until next launch
+  bannerSnoozedUntil: number | null;       // "Remind in 4h" - epoch ms after which the banner may show again
   notifiedVersion: string | null;          // version we've already sent a desktop toast for (avoid duplicate toasts)
 
   checkForUpdates: () => Promise<{ available: boolean }>;
@@ -87,7 +87,7 @@ export const useUpdaterStore = create<UpdaterState>((set, get) => ({
           'X-OS': navigator.platform,
         };
       } catch {
-        // Analytics headers are optional — continue without them
+        // Analytics headers are optional - continue without them
       }
 
       const update = await check({ headers });

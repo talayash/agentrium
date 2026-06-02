@@ -16,7 +16,7 @@ import { TerminalStatusBar } from './TerminalStatusBar';
 import '@xterm/xterm/css/xterm.css';
 
 function formatDroppedPath(path: string): string {
-  // Strip control characters — macOS/Linux filenames can legally contain
+  // Strip control characters - macOS/Linux filenames can legally contain
   // newlines, which would otherwise auto-execute whatever follows in the PTY
   // without the user pressing Enter.
   const sanitized = path.replace(/[\x00-\x1f\x7f]/g, '');
@@ -48,7 +48,7 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
   const fitAddonRef = useRef<FitAddon | null>(null);
   const [searchVisible, setSearchVisible] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
-  // Narrow selector — only re-render when THIS terminal's instance changes,
+  // Narrow selector - only re-render when THIS terminal's instance changes,
   // not on every output-unread-set update for other terminals.
   const instance = useTerminalStore((s) => s.terminals.get(terminalId));
   // Stable action refs: these are static on the store so pulling them via
@@ -69,6 +69,7 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
   const cursorBlink = useAppStore((s) => s.terminalCursorBlink);
   const scrollback = useAppStore((s) => s.terminalScrollback);
   const themeName = useAppStore((s) => s.terminalTheme);
+  const accentColorHex = useAppStore((s) => s.accentColorHex);
   const bidi = useAppStore((s) => s.terminalBidi);
 
   const toggleSearch = useCallback(() => {
@@ -84,7 +85,10 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
     // Scrollback and BiDi DO require a recreate, so they appear in this
     // effect's deps.
     const terminal = new Terminal({
-      theme: resolveTerminalTheme(useAppStore.getState().terminalTheme),
+      theme: resolveTerminalTheme(
+        useAppStore.getState().terminalTheme,
+        useAppStore.getState().accentColorHex,
+      ),
       fontFamily: useAppStore.getState().terminalFontFamily,
       fontSize: useAppStore.getState().terminalFontSize,
       lineHeight: useAppStore.getState().terminalLineHeight,
@@ -145,10 +149,10 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
     terminal.focus();
 
     // Re-focus xterm if its textarea loses focus to nothing (body) or to its
-    // OWN canvas — that combo happens in WebView2 after PTY output triggers
+    // OWN canvas - that combo happens in WebView2 after PTY output triggers
     // React re-renders or when the user clicks the terminal canvas directly.
     // We must NOT refocus if focus moved to a sibling terminal's canvas (e.g.
-    // the script-child pane), or to any input/textarea elsewhere — otherwise
+    // the script-child pane), or to any input/textarea elsewhere - otherwise
     // the user can't type into the other terminal.
     const container = containerRef.current;
     const handleBlur = () => {
@@ -170,7 +174,7 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
       const isCtrl = e.ctrlKey || e.metaKey;
 
       // Ctrl+F: Toggle in-terminal search (Ctrl+Shift+F is reserved for the
-      // global file/content search — see useKeyboardShortcuts).
+      // global file/content search - see useKeyboardShortcuts).
       if (isCtrl && !e.shiftKey && e.key === 'f' && e.type === 'keydown') {
         e.preventDefault();
         toggleSearch();
@@ -183,11 +187,11 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
           terminal.clearSelection();
           return false; // Prevent xterm from sending \x03
         }
-        // No selection — let xterm send interrupt signal (Ctrl+C)
+        // No selection - let xterm send interrupt signal (Ctrl+C)
         return true;
       }
 
-      // Ctrl+V: Let browser handle paste natively — fires paste event
+      // Ctrl+V: Let browser handle paste natively - fires paste event
       // on xterm's internal textarea, which xterm processes via onData.
       // This is more reliable than the async Clipboard API which can fail
       // silently due to focus/permission issues.
@@ -225,7 +229,7 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
         return;
       }
 
-      // Pull the latest settings each call — these change in Settings without
+      // Pull the latest settings each call - these change in Settings without
       // re-rendering this terminal.
       const app = useAppStore.getState();
       if (!isLikelyPaste || !app.pasteAutoDetectEnabled) {
@@ -245,11 +249,11 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
       }
 
       // Suppress forwarding to PTY; offer the choice via a toast with actions.
-      // `warning` (amber) reads as "attention needed" — louder than info blue,
+      // `warning` (amber) reads as "attention needed" - louder than info blue,
       // which the user said felt easy to miss.
       toast.warning(
         'Large paste detected',
-        `${(bytes / 1024).toFixed(1)} KB · ${lines} lines — pasting this directly into Claude Code can hang the terminal. Save it as a file and reference it instead?`,
+        `${(bytes / 1024).toFixed(1)} KB · ${lines} lines - pasting this directly into Claude Code can hang the terminal. Save it as a file and reference it instead?`,
         {
           duration: 15000,
           actions: [
@@ -306,18 +310,18 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
       webglAddon?.dispose();
       terminal.dispose();
     };
-    // Intentionally omit store action refs from deps — they are stable via
+    // Intentionally omit store action refs from deps - they are stable via
     // getState() and including them caused the xterm instance to be recreated
     // on every unrelated store update. `scrollback` and `bidi` ARE in the dep
     // list because xterm caches the buffer at construction and the Unicode11
-    // addon attaches once — flipping either has to recreate the instance.
+    // addon attaches once - flipping either has to recreate the instance.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [terminalId, !!instance, toggleSearch, scrollback, bidi]);
 
   // Live-apply the six options that don't require recreate (issue #21).
   // After font/size/line-height change, xterm cell metrics shift, so we
   // re-fit and push the new size to the PTY so it knows about the new
-  // cols/rows. Cursor + theme are pure visual changes — no resize needed.
+  // cols/rows. Cursor + theme are pure visual changes - no resize needed.
   useEffect(() => {
     const terminal = terminalRef.current;
     if (!terminal) return;
@@ -326,12 +330,12 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
     terminal.options.lineHeight = lineHeight;
     terminal.options.cursorStyle = cursorStyle;
     terminal.options.cursorBlink = cursorBlink;
-    terminal.options.theme = resolveTerminalTheme(themeName);
+    terminal.options.theme = resolveTerminalTheme(themeName, accentColorHex);
     // Refit + push new dimensions to the PTY whenever cell metrics may have
     // changed. fit() is a no-op if cols/rows didn't actually shift.
     fitAddonRef.current?.fit();
     resizeTerminal(terminalId, terminal.cols, terminal.rows);
-  }, [fontFamily, fontSize, lineHeight, cursorStyle, cursorBlink, themeName, terminalId, resizeTerminal]);
+  }, [fontFamily, fontSize, lineHeight, cursorStyle, cursorBlink, themeName, accentColorHex, terminalId, resizeTerminal]);
 
   // OS → terminal file drag-drop. Tauri intercepts drag events at the window
   // level and delivers physical-pixel positions, so we hit-test against this

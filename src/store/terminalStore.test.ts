@@ -48,7 +48,7 @@ function seed(ids: string[], activeId: string | null = null) {
   });
 }
 
-describe('terminalStore — unread set', () => {
+describe('terminalStore - unread set', () => {
   beforeEach(() => {
     seed([]);
   });
@@ -78,7 +78,7 @@ describe('terminalStore — unread set', () => {
     useTerminalStore.getState().handleTerminalOutput('b', new Uint8Array([0x69]));
 
     // The hot path skips set() entirely, so the Set reference must be identical
-    // — that's the whole point of the short-circuit added for streaming perf.
+    // - that's the whole point of the short-circuit added for streaming perf.
     expect(useTerminalStore.getState().unreadTerminalIds).toBe(before);
   });
 
@@ -120,7 +120,7 @@ describe('terminalStore — unread set', () => {
   });
 });
 
-describe('terminalStore — reorderTerminals', () => {
+describe('terminalStore - reorderTerminals', () => {
   it('reorders known ids in the requested order', () => {
     seed(['a', 'b', 'c']);
 
@@ -161,7 +161,7 @@ describe('terminalStore — reorderTerminals', () => {
   });
 });
 
-describe('terminalStore — per-terminal mutators', () => {
+describe('terminalStore - per-terminal mutators', () => {
   beforeEach(() => seed(['a', 'b']));
 
   it('updateTerminalStatus mutates only the targeted instance', () => {
@@ -204,7 +204,7 @@ describe('terminalStore — per-terminal mutators', () => {
   });
 });
 
-describe('terminalStore — writeToTerminal chunking', () => {
+describe('terminalStore - writeToTerminal chunking', () => {
   beforeEach(() => {
     seed(['a']);
     invokeMock.mockClear();
