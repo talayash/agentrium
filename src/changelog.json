@@ -1,5 +1,17 @@
 [
   {
+    "version": "1.23.0",
+    "date": "2026-06-02",
+    "features": [
+      { "title": "Per-session cost & token metrics", "description": "Each Claude terminal now shows live token usage and estimated USD cost - a per-tab cost chip plus a metrics panel breaking down input / output / cache-read / cache-write, with an optional per-session budget cap that warns when a session goes over. Everything is computed locally from Claude Code's own telemetry; nothing leaves your machine." },
+      { "title": "Command palette: Recent group, frecency ranking & terminal status dots", "description": "The palette (Ctrl+P) now surfaces your recently-used commands at the top and ranks matches by how often and recently you use them. Terminal results show a colored status dot (running / idle / stopped / error) next to the name." },
+      { "title": "Grid view: keyboard pane navigation", "description": "In grid mode, Alt+Arrow moves focus between panes spatially and Alt+1-8 jumps straight to a pane - and plain arrow keys now pass through to the focused terminal (shell history, vim, cursor) instead of being captured by the grid. Navigating also focuses that pane's terminal so you can type right away." },
+      { "title": "Accessibility: WCAG AA contrast, OS reduce-motion, and light-mode fixes", "description": "Dimmer UI text was lightened to meet WCAG AA contrast, the app now follows your OS \"reduce motion\" setting until you override it, and light-theme text is correctly dark-on-light (previously some text was nearly invisible on light surfaces)." },
+      { "title": "Terminal blends with the app theme", "description": "The terminal canvas background now matches the app surface instead of a darker rectangle, and text selection uses your chosen accent color." },
+      { "title": "Minimal-UI toggles", "description": "New Appearance > Interface settings let you hide the status bar, hide tab activity indicators, and switch to a compact title bar to strip non-essential chrome." }
+    ]
+  },
+  {
     "version": "1.22.6",
     "date": "2026-05-21",
     "features": [
