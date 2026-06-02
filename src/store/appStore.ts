@@ -424,7 +424,7 @@ export const useAppStore = create<AppState>()(
       restoreSession: true,
       telemetryEnabled: true,
       errorReportingEnabled: true,
-      costTrackingEnabled: true,
+      costTrackingEnabled: false,
       sessionBudgetUsd: 0,
       showGitPanel: true,
       showFileTree: true,
@@ -961,6 +961,16 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: 'claude-terminal-app',
+      version: 1,
+      migrate: (persistedState, version) => {
+        const s = (persistedState as Partial<AppState>) ?? {};
+        if (version < 1) {
+          // Force cost tracking OFF for users who upgraded from a build where
+          // it defaulted to true. New default is false; opt-in only.
+          s.costTrackingEnabled = false;
+        }
+        return s as AppState;
+      },
       partialize: (state) => ({
         sidebarOpen: state.sidebarOpen,
         sidebarCollapsed: state.sidebarCollapsed,
