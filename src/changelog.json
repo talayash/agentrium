@@ -1,5 +1,12 @@
 [
   {
+    "version": "1.23.1",
+    "date": "2026-06-02",
+    "features": [
+      { "title": "Per-session cost tracking is now opt-in", "description": "The new cost & token metrics introduced in 1.23.0 default to OFF. Existing installs are migrated to off on upgrade. Enable it any time from Settings > Claude Defaults > Cost tracking." }
+    ]
+  },
+  {
     "version": "1.23.0",
     "date": "2026-06-02",
     "features": [
