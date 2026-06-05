@@ -272,6 +272,7 @@ export function TerminalGrid() {
     setGridLayout,
     setGridMode,
     setGridTerminals,
+    openNewTerminalModal,
   } = useAppStore();
   const { terminals, setActiveTerminal } = useTerminalStore();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -362,6 +363,16 @@ export function TerminalGrid() {
               </button>
             ))}
           </div>
+
+          {/* New Terminal Button */}
+          <button
+            onClick={openNewTerminalModal}
+            className="flex items-center gap-1 px-2 py-1 text-[11px] text-text-secondary hover:text-text-primary hover:bg-white/[0.04] rounded transition-colors"
+            title="Create a new terminal in the grid"
+          >
+            <Plus size={12} />
+            New Terminal
+          </button>
 
           {/* Add All Terminals Button */}
           <button

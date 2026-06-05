@@ -31,7 +31,7 @@ const TAG_COLORS = [
 ];
 
 export function NewTerminalModal() {
-  const { closeNewTerminalModal, defaultClaudeArgs, openProfileModal, profileModalOpen } = useAppStore();
+  const { closeNewTerminalModal, defaultClaudeArgs, openProfileModal, profileModalOpen, gridMode, addToGrid } = useAppStore();
   const { terminals, createTerminal, createShellTerminalTab } = useTerminalStore();
 
   const [profiles, setProfiles] = useState<ConfigProfile[]>([]);
@@ -244,8 +244,9 @@ export function NewTerminalModal() {
       const label = `${baseName} ${terminals.size + 1}`;
       const colorTag = TAG_COLORS[terminals.size % TAG_COLORS.length];
 
+      let newTerminalId: string;
       if (plainShell) {
-        await createShellTerminalTab(
+        newTerminalId = await createShellTerminalTab(
           label,
           workingDirectory,
           colorTag,
@@ -272,7 +273,7 @@ export function NewTerminalModal() {
           finalArgs.unshift('--worktree');
         }
 
-        await createTerminal(
+        newTerminalId = await createTerminal(
           label,
           workingDirectory,
           finalArgs,
@@ -280,6 +281,13 @@ export function NewTerminalModal() {
           colorTag,
           nickname || undefined,
         );
+      }
+
+      // Created from grid view → place the new terminal in the grid so it's
+      // visible immediately. addToGrid dedupes and caps at 8, so a full grid
+      // gracefully no-ops on placement (the terminal is still created/active).
+      if (gridMode) {
+        addToGrid(newTerminalId);
       }
 
       closeNewTerminalModal();
