@@ -48,7 +48,7 @@ export function UpdatePill() {
             void downloadAndInstall();
           }}
           title={`Update available - v${version}. Click to download & install.`}
-          className="no-drag flex items-center gap-1.5 h-6 px-2 rounded-full bg-accent-primary/15 text-accent-primary ring-1 ring-inset ring-accent-primary/30 hover:bg-accent-primary/25 transition-colors text-[11px] font-medium max-w-[180px]"
+          className="no-drag flex items-center gap-1.5 h-6 px-2 rounded-full bg-success/15 text-success ring-1 ring-inset ring-success/30 hover:bg-success/25 transition-colors text-[11px] font-medium max-w-[180px]"
         >
           <Download size={11} strokeWidth={2} className="flex-shrink-0" />
           <span className="truncate">
