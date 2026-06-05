@@ -1,5 +1,13 @@
 [
   {
+    "version": "1.24.0",
+    "date": "2026-06-05",
+    "features": [
+      { "title": "New Terminal button in the grid toolbar", "description": "The grid view toolbar now has a New Terminal button that spins up a fresh Claude terminal and drops it straight into the grid in one click." },
+      { "title": "Update button stands out", "description": "When an update is available, the in-app update pill now uses the green accent color so it's easier to spot." }
+    ]
+  },
+  {
     "version": "1.23.1",
     "date": "2026-06-02",
     "features": [
