@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { Copy, ClipboardPaste } from 'lucide-react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
@@ -11,6 +12,7 @@ import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
 import { toast } from '../store/toastStore';
 import { resolveTerminalTheme } from '../lib/terminalThemes';
+import { copyText } from '../lib/clipboard';
 import { TerminalSearch } from './TerminalSearch';
 import { TerminalStatusBar } from './TerminalStatusBar';
 import '@xterm/xterm/css/xterm.css';
@@ -48,6 +50,9 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
   const fitAddonRef = useRef<FitAddon | null>(null);
   const [searchVisible, setSearchVisible] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
+  // Right-click context menu (copy / paste). null when closed; otherwise the
+  // viewport coordinates to anchor the menu at and whether a selection exists.
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; hasSelection: boolean } | null>(null);
   // Narrow selector - only re-render when THIS terminal's instance changes,
   // not on every output-unread-set update for other terminals.
   const instance = useTerminalStore((s) => s.terminals.get(terminalId));
@@ -75,6 +80,44 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
   const toggleSearch = useCallback(() => {
     setSearchVisible(prev => !prev);
   }, []);
+
+  const openContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const term = terminalRef.current;
+    setContextMenu({ x: e.clientX, y: e.clientY, hasSelection: !!term?.hasSelection() });
+  }, []);
+
+  const handleMenuCopy = useCallback(() => {
+    const term = terminalRef.current;
+    if (term?.hasSelection()) copyText(term.getSelection());
+    setContextMenu(null);
+  }, []);
+
+  const handleMenuPaste = useCallback(async () => {
+    setContextMenu(null);
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) await writeToTerminal(terminalId, text);
+      terminalRef.current?.focus();
+    } catch {
+      toast.error('Paste failed', 'Could not read the clipboard.');
+    }
+  }, [terminalId, writeToTerminal]);
+
+  // Close the context menu on any outside mousedown or Escape.
+  useEffect(() => {
+    if (!contextMenu) return;
+    const close = () => setContextMenu(null);
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setContextMenu(null); };
+    // Bubble-phase mousedown; the menu stops propagation on its own mousedown
+    // so clicking a menu item doesn't dismiss before its onClick fires.
+    document.addEventListener('mousedown', close);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', close);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [contextMenu]);
 
   useEffect(() => {
     if (!containerRef.current || !instance) return;
@@ -169,6 +212,20 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
     };
     terminal.textarea?.addEventListener('blur', handleBlur);
 
+    // Copy-on-select: when the user finishes a mouse drag selection and the
+    // "Copy on select" setting is on, copy it to the clipboard. We fire on
+    // mouseup (drag complete) rather than onSelectionChange so the hidden-
+    // textarea fallback in copyText() can't steal focus mid-drag. The setting
+    // is read live via getState() so toggling it takes effect without a
+    // recreate. Selection is intentionally left intact so the user sees what
+    // was copied.
+    const handleMouseUp = () => {
+      if (useAppStore.getState().terminalCopyOnSelect && terminal.hasSelection()) {
+        copyText(terminal.getSelection());
+      }
+    };
+    container.addEventListener('mouseup', handleMouseUp);
+
     // Handle Ctrl+C (copy) and Ctrl+V (paste) keyboard shortcuts
     terminal.attachCustomKeyEventHandler((e: KeyboardEvent) => {
       const isCtrl = e.ctrlKey || e.metaKey;
@@ -183,7 +240,10 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
 
       if (isCtrl && e.key === 'c' && e.type === 'keydown') {
         if (terminal.hasSelection()) {
-          navigator.clipboard.writeText(terminal.getSelection());
+          // copyText() falls back to execCommand when navigator.clipboard
+          // rejects with "Document is not focused" - which happens in this
+          // WebView2 window right after a canvas drag-select.
+          copyText(terminal.getSelection());
           terminal.clearSelection();
           return false; // Prevent xterm from sending \x03
         }
@@ -191,19 +251,35 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
         return true;
       }
 
-      // Ctrl+V: Let browser handle paste natively - fires paste event
-      // on xterm's internal textarea, which xterm processes via onData.
-      // This is more reliable than the async Clipboard API which can fail
-      // silently due to focus/permission issues.
-      if (isCtrl && e.key === 'v') {
+      // Ctrl+V (no Shift): behavior depends on the "Paste shortcut" setting.
+      //  - 'ctrl+v'       → let the browser paste natively (fires a paste event
+      //                     on xterm's textarea, processed via onData). More
+      //                     reliable than the async Clipboard API.
+      //  - 'ctrl+shift+v' → plain Ctrl+V should NOT paste; forward the raw
+      //                     Ctrl+V control byte (0x16) to the program. Pasting
+      //                     is then done via right-click or Ctrl+Shift+V
+      //                     ("Paste as file"), which is unaffected here.
+      // Ctrl+Shift+V (e.key === 'V') is intentionally not matched - it's
+      // handled by the global shortcut handler.
+      if (isCtrl && !e.shiftKey && e.key === 'v') {
+        if (useAppStore.getState().terminalPasteShortcut === 'ctrl+v') {
+          return false;
+        }
+        if (e.type === 'keydown') {
+          e.preventDefault();
+          writeToTerminal(terminalId, '\x16');
+        }
         return false;
       }
 
-      // Ctrl+Z: Send suspend/EOF signal to terminal (prevent browser undo)
+      // Ctrl+Z: map the familiar desktop "undo" gesture onto Claude Code's
+      // actual undo binding. Claude Code binds undo to Ctrl+_ (byte 0x1f), NOT
+      // Ctrl+Z - a raw 0x1a is SIGTSTP/suspend and does nothing useful in the
+      // prompt. So we send 0x1f. (Also prevents any browser-level undo.)
       if (isCtrl && !e.shiftKey && e.key === 'z') {
         if (e.type === 'keydown') {
           e.preventDefault();
-          writeToTerminal(terminalId, '\x1a');
+          writeToTerminal(terminalId, '\x1f');
         }
         return false;
       }
@@ -304,6 +380,7 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
     return () => {
       resizeObserver.disconnect();
       terminal.textarea?.removeEventListener('blur', handleBlur);
+      container.removeEventListener('mouseup', handleMouseUp);
       searchAddonRef.current = null;
       fitAddonRef.current = null;
       terminalRef.current = null;
@@ -403,6 +480,7 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
         ref={containerRef}
         className="flex-1 min-h-0 w-full relative"
         onMouseDown={() => terminalRef.current?.focus()}
+        onContextMenu={openContextMenu}
       >
         {isDragOver && (
           <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-accent-primary/10 ring-2 ring-accent-primary/60 ring-inset">
@@ -412,6 +490,43 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
           </div>
         )}
       </div>
+      {contextMenu && (
+        <div
+          role="menu"
+          data-context-menu="terminal"
+          className="fixed z-[80] min-w-[160px] bg-bg-elevated ring-1 ring-white/[0.08] rounded-md shadow-elevation-4 py-1 select-none"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            disabled={!contextMenu.hasSelection}
+            onClick={handleMenuCopy}
+            className={`w-full flex items-center gap-2.5 px-3 py-1.5 text-left text-[12px] transition-colors ${
+              contextMenu.hasSelection
+                ? 'text-text-primary hover:bg-white/[0.06]'
+                : 'text-text-tertiary/50 cursor-not-allowed'
+            }`}
+          >
+            <span className={contextMenu.hasSelection ? 'text-text-tertiary' : 'opacity-50'}>
+              <Copy size={13} strokeWidth={1.75} />
+            </span>
+            <span className="flex-1">Copy</span>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={handleMenuPaste}
+            className="w-full flex items-center gap-2.5 px-3 py-1.5 text-left text-[12px] text-text-primary hover:bg-white/[0.06] transition-colors"
+          >
+            <span className="text-text-tertiary">
+              <ClipboardPaste size={13} strokeWidth={1.75} />
+            </span>
+            <span className="flex-1">Paste</span>
+          </button>
+        </div>
+      )}
       <TerminalStatusBar terminalId={terminalId} />
     </div>
   );
