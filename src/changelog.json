@@ -1,5 +1,12 @@
 [
   {
+    "version": "1.25.0",
+    "date": "2026-06-06",
+    "features": [
+      { "title": "Refreshed dialogs and modals", "description": "Every dialog - New Terminal, Profiles, Snippets, Workspaces, Worktrees, Push, Setup, Settings, What's New and more - has been rebuilt on a shared set of UI primitives for a cleaner, more consistent flat IntelliJ-style look, with unified buttons, keyboard-hint chips, and smoother, motion-aware transitions." }
+    ]
+  },
+  {
     "version": "1.24.0",
     "date": "2026-06-05",
     "features": [
