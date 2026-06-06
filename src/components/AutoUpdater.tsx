@@ -5,6 +5,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useUpdaterStore } from '../store/updaterStore';
 import { reportInvokeFailure } from '../lib/errorReporter';
+import { Button } from './ui/Button';
 
 const FOUR_HOURS_MS = 4 * 60 * 60 * 1000;
 const THIRTY_MINUTES_MS = 30 * 60 * 1000;
@@ -151,26 +152,24 @@ export function AutoUpdater() {
                   </p>
                 )}
                 <div className="flex flex-wrap gap-2">
-                  <button
+                  <Button
+                    variant="primary"
+                    icon={<Download size={14} />}
                     onClick={() => downloadAndInstall()}
-                    className="flex-1 min-w-[140px] flex items-center justify-center gap-2 bg-accent-primary hover:bg-accent-secondary text-white h-9 px-4 rounded-md text-[12px] font-medium transition-colors"
+                    className="flex-1 min-w-[140px]"
                   >
-                    <Download size={14} />
                     Update Now
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    icon={<Clock size={12} />}
                     onClick={() => snoozeBanner(FOUR_HOURS_MS)}
-                    className="flex items-center justify-center gap-1.5 px-3 h-9 text-text-secondary hover:text-text-primary hover:bg-white/[0.04] rounded-md text-[12px] transition-colors"
                   >
-                    <Clock size={12} />
                     Remind in 4h
-                  </button>
-                  <button
-                    onClick={dismissBanner}
-                    className="px-3 h-9 text-text-secondary hover:text-text-primary hover:bg-white/[0.04] rounded-md text-[12px] transition-colors"
-                  >
+                  </Button>
+                  <Button variant="ghost" onClick={dismissBanner}>
                     Later
-                  </button>
+                  </Button>
                 </div>
               </div>
             )}
@@ -203,12 +202,9 @@ export function AutoUpdater() {
                     <Rocket size={14} />
                     Restart Now
                   </button>
-                  <button
-                    onClick={dismissBanner}
-                    className="px-4 h-9 text-text-secondary hover:text-text-primary hover:bg-white/[0.04] rounded-md text-[12px] transition-colors"
-                  >
+                  <Button variant="ghost" onClick={dismissBanner}>
                     Later
-                  </button>
+                  </Button>
                 </div>
               </div>
             )}

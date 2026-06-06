@@ -3,6 +3,8 @@ import type { ErrorInfo, ReactNode } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { reportError } from './lib/errorReporter';
 import { TitleBar } from './components/TitleBar';
+import { Button } from './components/ui/Button';
+import { ToolStripe } from './components/ToolStripe';
 import { Sidebar } from './components/Sidebar';
 import { TerminalTabs } from './components/TerminalTabs';
 import { HintsPanel } from './components/HintsPanel';
@@ -436,18 +438,12 @@ function App() {
                     Restore {pendingRestoreConfigs.length} terminal{pendingRestoreConfigs.length !== 1 ? 's' : ''} from your previous session?
                   </p>
                   <div className="flex items-center gap-2">
-                    <button
-                      onClick={handleRestore}
-                      className="bg-accent-primary hover:bg-accent-secondary text-white px-3 py-1 rounded-md text-[12px] font-medium transition-colors"
-                    >
+                    <Button variant="primary" size="sm" onClick={handleRestore}>
                       Restore
-                    </button>
-                    <button
-                      onClick={handleDismissRestore}
-                      className="text-text-secondary hover:text-text-primary px-3 py-1 rounded-md text-[12px] transition-colors"
-                    >
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={handleDismissRestore}>
                       Dismiss
-                    </button>
+                    </Button>
                   </div>
                 </div>
               </motion.div>
@@ -457,6 +453,8 @@ function App() {
           <TitleBar />
 
           <div className="flex-1 flex overflow-hidden">
+            <ToolStripe side="left" />
+
             <AnimatePresence mode="wait">
               {sidebarOpen && (
                 <div
@@ -504,6 +502,8 @@ function App() {
                 </div>
               )}
             </AnimatePresence>
+
+            <ToolStripe side="right" />
           </div>
 
           {showStatusBar && <StatusBar />}

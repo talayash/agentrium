@@ -150,6 +150,52 @@
 
   /* UI font scale (default 1.0, range 0.85..1.25). */
   --ui-font-scale: 1;
+
+  /* --- Phase 1 design tokens ------------------------------------------ */
+  /* Motion — calm, fast IntelliJ feel. Mirrored in lib/motionTokens.ts for
+     Framer Motion. reduce-motion neutralizes these via the cascade below. */
+  --ease-out: cubic-bezier(0.25, 0.1, 0.25, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --dur-fast: 120ms;
+  --dur-base: 160ms;
+  --dur-slow: 220ms;
+
+  /* Spacing scale (4px base) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  /* Type scale (px) — caption/meta/body/title */
+  --text-caption: 11px;
+  --text-meta: 12px;
+  --text-body: 13px;
+  --text-title: 14px;
+
+  /* Focus ring. --border-focus is normally (re)set by applyAccentColor();
+     this default keeps focus-visible visible on first paint before that runs. */
+  --focus-ring-width: 2px;
+  --border-focus: rgba(53, 116, 240, 0.55);
+}
+
+/* Standardized keyboard-focus ring (IntelliJ-style ~2px rectangle).
+   Uses `outline` so it never affects layout and never collides with the
+   Tailwind `ring-` (box-shadow) utilities used for selection/hover. Elements
+   that define their own focus style via `focus:outline-none focus:ring-*`
+   (inputs, etc.) keep it — their higher-specificity rule wins. This is the
+   fallback for everything else (buttons, toggles, list rows). */
+:focus-visible {
+  outline: var(--focus-ring-width) solid var(--border-focus);
+  outline-offset: 1px;
+  border-radius: 4px;
+}
+
+/* The xterm input proxy manages its own cursor/focus — never ring it. */
+.xterm textarea:focus-visible,
+.xterm-helper-textarea:focus-visible {
+  outline: none;
 }
 
 :root[data-density="compact"]     { --ui-row-py: 4px; --ui-row-px: 6px; }

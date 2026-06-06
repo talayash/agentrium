@@ -4,6 +4,7 @@ import { X, Plus, Grid3X3, SplitSquareHorizontal, RotateCw, GitBranch, ChevronLe
 import appIconUrl from '../assets/app-icon.png';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
+import { Button } from './ui/Button';
 import { TerminalView } from './TerminalView';
 import { TerminalGrid } from './TerminalGrid';
 import { SplitView } from './SplitView';
@@ -558,21 +559,21 @@ export function TerminalTabs() {
                 <span className="ml-2">to start one</span>
               </p>
               <div className="flex gap-2">
-                <button
+                <Button
+                  variant="primary"
                   onClick={handleNewTab}
-                  className="flex items-center gap-2 bg-accent-primary hover:bg-accent-secondary text-white h-8 px-4 rounded-[6px] text-[12.5px] font-medium transition-colors shadow-[0_1px_0_rgba(255,255,255,0.08)_inset]"
+                  icon={<Plus size={14} strokeWidth={2.25} />}
                 >
-                  <Plus size={14} strokeWidth={2.25} />
                   New Terminal
-                </button>
+                </Button>
                 {terminalList.length > 0 && (
-                  <button
+                  <Button
+                    variant="secondary"
                     onClick={toggleGridMode}
-                    className="flex items-center gap-2 ring-1 ring-inset ring-[var(--ij-divider)] hover:bg-white/[0.05] text-text-primary h-8 px-4 rounded-[6px] text-[12.5px] font-medium transition-colors"
+                    icon={<Grid3X3 size={14} strokeWidth={1.75} />}
                   >
-                    <Grid3X3 size={14} strokeWidth={1.75} />
                     Grid View
-                  </button>
+                  </Button>
                 )}
               </div>
             </div>

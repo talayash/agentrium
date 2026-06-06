@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, GitBranch, GitFork, Plus, Trash2, Terminal, Loader2, ChevronDown, AlertTriangle } from 'lucide-react';
+import { GitBranch, GitFork, Plus, Trash2, Terminal, Loader2, ChevronDown, AlertTriangle } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
 import type { WorktreeInfo } from '../types/git';
+import { Modal } from './ui/Modal';
+import { Button } from './ui/Button';
 
 export function WorktreeModal() {
   const { closeWorktreeModal, worktreeModalRepoPath, defaultClaudeArgs } = useAppStore();
@@ -155,39 +157,20 @@ export function WorktreeModal() {
   const selectedWorktree = worktrees.find(w => w.path === selectedPath);
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.15 }}
-      className="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
-      onDoubleClick={closeWorktreeModal}
+    <Modal
+      onClose={closeWorktreeModal}
+      closeOn="doubleClick"
+      panelClassName="w-full max-w-3xl"
+      scrimClassName="bg-black/60 z-50"
+      showHeader
+      icon={<GitFork size={16} className="text-purple-400" />}
+      title={
+        <>
+          Worktrees
+          {repoName && <span className="text-text-tertiary font-normal"> - {repoName}</span>}
+        </>
+      }
     >
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        transition={{ duration: 0.15 }}
-        onDoubleClick={(e) => e.stopPropagation()}
-        className="bg-bg-elevated ring-1 ring-white/[0.08] rounded-lg shadow-2xl w-full max-w-3xl overflow-hidden"
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-border">
-          <div className="flex items-center gap-2">
-            <GitFork size={16} className="text-purple-400" />
-            <h2 className="text-text-primary text-[14px] font-semibold">
-              Worktrees
-              {repoName && <span className="text-text-tertiary font-normal"> - {repoName}</span>}
-            </h2>
-          </div>
-          <button
-            onClick={closeWorktreeModal}
-            className="p-1 rounded hover:bg-white/[0.06] text-text-tertiary transition-colors"
-          >
-            <X size={16} />
-          </button>
-        </div>
-
         {/* Content */}
         <div className="flex h-[400px]">
           {/* Left: Worktree List */}
@@ -302,23 +285,24 @@ export function WorktreeModal() {
                     )}
                   </div>
                   <div className="flex gap-2 pt-4 border-t border-border">
-                    <button
+                    <Button
+                      variant="primary"
                       onClick={handleCreateWorktree}
-                      disabled={creating || !newBranchName.trim()}
-                      className="flex items-center gap-2 bg-accent-primary hover:bg-accent-secondary disabled:opacity-50 text-white h-9 px-4 rounded-md text-[13px] font-medium transition-colors"
+                      disabled={!newBranchName.trim()}
+                      loading={creating}
+                      icon={<Plus size={14} />}
                     >
-                      <Plus size={14} />
                       {creating ? 'Creating...' : 'Create Worktree'}
-                    </button>
-                    <button
+                    </Button>
+                    <Button
+                      variant="ghost"
                       onClick={() => {
                         setShowNewForm(false);
                         setCreateError(null);
                       }}
-                      className="h-9 px-4 text-text-secondary hover:text-text-primary text-[13px] rounded-md transition-colors"
                     >
                       Cancel
-                    </button>
+                    </Button>
                   </div>
                 </motion.div>
               ) : selectedWorktree ? (
@@ -366,37 +350,39 @@ export function WorktreeModal() {
                       <div className="p-2.5 rounded-md bg-error/5 ring-1 ring-error/20">
                         <p className="text-error text-[12px]">{removeError}</p>
                         {confirmRemove && (
-                          <button
+                          <Button
+                            variant="danger"
+                            size="sm"
+                            className="mt-2"
                             onClick={() => handleRemoveWorktree(true)}
-                            disabled={removing}
-                            className="mt-2 flex items-center gap-1.5 text-red-400 hover:bg-red-500/10 px-3 py-1.5 rounded text-[12px] font-medium transition-colors"
+                            loading={removing}
+                            icon={<AlertTriangle size={12} />}
                           >
-                            <AlertTriangle size={12} />
                             {removing ? 'Removing...' : 'Force Remove'}
-                          </button>
+                          </Button>
                         )}
                       </div>
                     )}
                   </div>
 
                   <div className="flex gap-2 pt-4 border-t border-border">
-                    <button
+                    <Button
+                      variant="primary"
                       onClick={handleOpenTerminal}
-                      disabled={openingTerminal}
-                      className="flex items-center gap-2 bg-accent-primary hover:bg-accent-secondary disabled:opacity-50 text-white h-9 px-4 rounded-md text-[13px] font-medium transition-colors"
+                      loading={openingTerminal}
+                      icon={<Terminal size={14} />}
                     >
-                      <Terminal size={14} />
                       {openingTerminal ? 'Opening...' : 'Open Terminal'}
-                    </button>
+                    </Button>
                     {!selectedWorktree.is_main && (
-                      <button
+                      <Button
+                        variant="danger"
                         onClick={() => handleRemoveWorktree(false)}
-                        disabled={removing}
-                        className="flex items-center gap-2 text-red-400 hover:bg-red-500/10 h-9 px-4 rounded-md text-[13px] font-medium transition-colors"
+                        loading={removing}
+                        icon={<Trash2 size={14} />}
                       >
-                        <Trash2 size={14} />
                         {removing ? 'Removing...' : 'Remove'}
-                      </button>
+                      </Button>
                     )}
                   </div>
                 </motion.div>
@@ -413,7 +399,6 @@ export function WorktreeModal() {
             </AnimatePresence>
           </div>
         </div>
-      </motion.div>
-    </motion.div>
+    </Modal>
   );
 }

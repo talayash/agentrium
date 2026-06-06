@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import { X, Plus, Trash2, Play, Save, FileText } from 'lucide-react';
+import { Plus, Trash2, Play, Save, FileText } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
 import { toast } from '../store/toastStore';
+import { Modal } from './ui/Modal';
+import { Button } from './ui/Button';
 
 interface Snippet {
   id: string;
@@ -117,36 +118,15 @@ export function SnippetsModal() {
   };
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.15 }}
-      className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50"
-      onDoubleClick={closeSnippetsModal}
+    <Modal
+      onClose={closeSnippetsModal}
+      closeOn="doubleClick"
+      scrimClassName="bg-black/50 backdrop-blur-sm z-50"
+      panelClassName="w-full max-w-3xl"
+      showHeader
+      title="Snippets"
+      icon={<FileText size={16} className="text-text-secondary" />}
     >
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        transition={{ duration: 0.15 }}
-        onDoubleClick={(e) => e.stopPropagation()}
-        className="bg-bg-elevated ring-1 ring-white/[0.08] rounded-lg shadow-2xl w-full max-w-3xl overflow-hidden"
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-border">
-          <div className="flex items-center gap-2">
-            <FileText size={16} className="text-text-secondary" />
-            <h2 className="text-text-primary text-[14px] font-semibold">Snippets</h2>
-          </div>
-          <button
-            onClick={closeSnippetsModal}
-            className="p-1 rounded hover:bg-white/[0.06] text-text-tertiary transition-colors"
-          >
-            <X size={16} />
-          </button>
-        </div>
-
         {/* Content */}
         <div className="flex h-[450px]">
           {/* Left: Snippet List */}
@@ -170,13 +150,15 @@ export function SnippetsModal() {
 
             {/* New Button */}
             <div className="p-2 border-b border-border">
-              <button
+              <Button
+                variant="primary"
+                size="sm"
                 onClick={handleNew}
-                className="w-full flex items-center justify-center gap-1.5 bg-accent-primary hover:bg-accent-secondary text-white py-1.5 rounded-md text-[12px] font-medium transition-colors"
+                icon={<Plus size={14} />}
+                className="w-full"
               >
-                <Plus size={14} />
                 New Snippet
-              </button>
+              </Button>
             </div>
 
             {/* Snippet List */}
@@ -248,14 +230,16 @@ export function SnippetsModal() {
                   />
                 </div>
                 <div className="flex gap-2 p-3 border-t border-border">
-                  <button
+                  <Button
+                    variant="primary"
+                    size="sm"
                     onClick={handleSave}
                     disabled={!editTitle.trim() || !editContent.trim()}
-                    className="flex items-center gap-2 bg-accent-primary hover:bg-accent-secondary disabled:opacity-50 text-white h-8 px-4 rounded-md text-[12px] font-medium transition-colors"
+                    icon={<Save size={14} />}
+                    className="h-8"
                   >
-                    <Save size={14} />
                     Save
-                  </button>
+                  </Button>
                   {activeTerminalId && (
                     <button
                       onClick={handleInsert}
@@ -266,12 +250,14 @@ export function SnippetsModal() {
                       Insert into Terminal
                     </button>
                   )}
-                  <button
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={() => { setEditing(false); if (!selectedSnippet) { setEditTitle(''); setEditContent(''); } }}
-                    className="text-text-secondary hover:text-text-primary h-8 px-3 rounded-md text-[12px] transition-colors"
+                    className="h-8"
                   >
                     Cancel
-                  </button>
+                  </Button>
                 </div>
               </>
             ) : selectedSnippet ? (
@@ -286,12 +272,14 @@ export function SnippetsModal() {
                   </pre>
                 </div>
                 <div className="flex gap-2 p-3 border-t border-border">
-                  <button
+                  <Button
+                    variant="secondary"
+                    size="sm"
                     onClick={handleEdit}
-                    className="flex items-center gap-2 bg-bg-secondary ring-1 ring-border-light hover:bg-white/[0.04] text-text-primary h-8 px-4 rounded-md text-[12px] font-medium transition-colors"
+                    className="h-8"
                   >
                     Edit
-                  </button>
+                  </Button>
                   {activeTerminalId && (
                     <button
                       onClick={handleInsert}
@@ -310,7 +298,6 @@ export function SnippetsModal() {
             )}
           </div>
         </div>
-      </motion.div>
-    </motion.div>
+    </Modal>
   );
 }

@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { motion } from 'framer-motion';
 import {
   X,
   ArrowRight,
@@ -15,6 +14,8 @@ import { useAppStore } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
 import { toast } from '../store/toastStore';
 import type { PushPreview, PushMode } from '../types/git';
+import { Modal } from './ui/Modal';
+import { Button } from './ui/Button';
 
 function basename(p: string): string {
   const clean = p.replace(/[\\/]+$/, '');
@@ -80,15 +81,6 @@ export function PushModal() {
     if (repoPath) void loadPreview();
   }, [repoPath, loadPreview]);
 
-  // Escape closes (unless busy)
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !busy) closePushModal();
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [closePushModal, busy]);
-
   // Close popovers on outside click
   useEffect(() => {
     if (!remoteMenuOpen && !pushMenuOpen) return;
@@ -148,23 +140,18 @@ export function PushModal() {
     remoteBranch.trim().length > 0 &&
     !busy;
 
+  // Backdrop click and Escape are handled by <Modal>; ignore them while a push
+  // is in flight so the dialog can't be dismissed mid-operation.
+  const handleClose = useCallback(() => {
+    if (!busy) closePushModal();
+  }, [busy, closePushModal]);
+
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.15 }}
-      className="fixed inset-0 bg-black/55 flex items-center justify-center z-50"
-      onClick={(e) => { if (!busy && e.target === e.currentTarget) closePushModal(); }}
+    <Modal
+      onClose={handleClose}
+      closeOn="click"
+      panelClassName="w-[92vw] max-w-[840px] h-[72vh] max-h-[620px] grid grid-rows-[44px_40px_1fr_auto_56px]"
     >
-      <motion.div
-        initial={{ opacity: 0, scale: 0.98 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.98 }}
-        transition={{ duration: 0.15 }}
-        onClick={(e) => e.stopPropagation()}
-        className="bg-elevation-0 border border-[var(--ij-divider-soft)] rounded-lg w-[92vw] max-w-[840px] h-[72vh] max-h-[620px] grid grid-rows-[44px_40px_1fr_auto_56px] overflow-hidden"
-      >
         {/* Header */}
         <div className="flex items-center justify-between px-3 bg-elevation-1 border-b border-[var(--ij-divider-soft)]">
           <span className="text-text-primary text-[13px] font-semibold truncate">
@@ -254,12 +241,9 @@ export function PushModal() {
               <AlertTriangle size={24} className="text-error" />
               <div className="text-text-primary text-[13px] font-medium">Can't push</div>
               <div className="text-text-tertiary text-[12px] max-w-[440px]">{loadError}</div>
-              <button
-                onClick={() => void loadPreview()}
-                className="mt-1 h-7 px-3 rounded-md text-[12px] bg-elevation-2 hover:bg-elevation-3 text-text-primary transition-colors"
-              >
+              <Button variant="secondary" size="sm" className="mt-1" onClick={() => void loadPreview()}>
                 Retry
-              </button>
+              </Button>
             </div>
           )}
 
@@ -352,12 +336,9 @@ export function PushModal() {
                 </div>
               </div>
               <div className="flex justify-end gap-2 mt-4">
-                <button
-                  onClick={() => setForceConfirmOpen(false)}
-                  className="h-7 px-3 rounded-md text-[12px] bg-elevation-2 hover:bg-elevation-3 text-text-primary transition-colors"
-                >
+                <Button variant="secondary" size="sm" onClick={() => setForceConfirmOpen(false)}>
                   Cancel
-                </button>
+                </Button>
                 <button
                   onClick={() => { setForceConfirmOpen(false); void runPush('force_with_lease'); }}
                   className="h-7 px-3 rounded-md text-[12px] font-medium bg-amber-500/90 hover:bg-amber-500 text-black transition-colors"
@@ -415,16 +396,15 @@ export function PushModal() {
               )}
             </div>
 
-            <button
+            <Button
+              variant="secondary"
               onClick={() => { if (!busy) closePushModal(); }}
               disabled={busy}
-              className="h-8 px-3 rounded-md text-[12.5px] bg-elevation-2 hover:bg-elevation-3 text-text-primary transition-colors disabled:opacity-40"
             >
               Cancel
-            </button>
+            </Button>
           </div>
         </div>
-      </motion.div>
-    </motion.div>
+    </Modal>
   );
 }

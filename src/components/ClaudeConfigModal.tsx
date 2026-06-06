@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
-import { motion } from 'framer-motion';
 import { X, Plus, Trash2, Save, FileText, Settings, Terminal, AlertCircle, Check } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from '../store/appStore';
+import { Modal } from './ui/Modal';
+import { Button } from './ui/Button';
 
 type Tab = 'settings' | 'agents' | 'commands';
 
@@ -11,22 +12,12 @@ export function ClaudeConfigModal() {
   const [activeTab, setActiveTab] = useState<Tab>('settings');
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.15 }}
-      className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50"
-      onDoubleClick={closeClaudeConfig}
+    <Modal
+      onClose={closeClaudeConfig}
+      closeOn="doubleClick"
+      scrimClassName="bg-black/50 backdrop-blur-sm z-50"
+      panelClassName="w-full max-w-4xl"
     >
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        transition={{ duration: 0.15 }}
-        onDoubleClick={(e) => e.stopPropagation()}
-        className="bg-bg-elevated ring-1 ring-white/[0.08] rounded-lg shadow-2xl w-full max-w-4xl overflow-hidden"
-      >
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-border">
           <div className="flex items-center gap-4">
@@ -66,8 +57,7 @@ export function ClaudeConfigModal() {
           {activeTab === 'agents' && <FileListTab type="agents" />}
           {activeTab === 'commands' && <FileListTab type="commands" />}
         </div>
-      </motion.div>
-    </motion.div>
+    </Modal>
   );
 }
 
@@ -154,14 +144,17 @@ function SettingsTab() {
               Saved
             </div>
           )}
-          <button
+          <Button
+            variant="primary"
+            size="sm"
             onClick={handleSave}
             disabled={!hasChanges || status === 'saving'}
-            className="flex items-center gap-1.5 bg-accent-primary hover:bg-accent-secondary disabled:opacity-40 text-white h-7 px-3 rounded-md text-[12px] font-medium transition-colors"
+            loading={status === 'saving'}
+            icon={<Save size={12} />}
+            className="px-3"
           >
-            <Save size={12} />
             Save
-          </button>
+          </Button>
         </div>
       </div>
       <div className="flex-1 p-4 overflow-hidden">
@@ -291,13 +284,15 @@ function FileListTab({ type }: { type: 'agents' | 'commands' }) {
     <div className="h-full flex">
       {/* File List */}
       <div className="w-56 border-r border-border p-3 flex flex-col">
-        <button
+        <Button
+          variant="primary"
+          size="sm"
           onClick={handleCreate}
-          className="flex items-center gap-2 w-full bg-accent-primary hover:bg-accent-secondary text-white py-2 px-3 rounded-md text-[12px] font-medium mb-3 transition-colors"
+          icon={<Plus size={14} />}
+          className="w-full h-auto py-2 mb-3"
         >
-          <Plus size={14} />
           New {label}
-        </button>
+        </Button>
 
         <p className="text-text-tertiary text-[10px] mb-2 px-1">{dirPath}</p>
 
@@ -371,14 +366,17 @@ function FileListTab({ type }: { type: 'agents' | 'commands' }) {
                     Saved
                   </div>
                 )}
-                <button
+                <Button
+                  variant="primary"
+                  size="sm"
                   onClick={handleSave}
                   disabled={(!hasChanges && !isCreating) || status === 'saving'}
-                  className="flex items-center gap-1.5 bg-accent-primary hover:bg-accent-secondary disabled:opacity-40 text-white h-7 px-3 rounded-md text-[12px] font-medium transition-colors"
+                  loading={status === 'saving'}
+                  icon={<Save size={12} />}
+                  className="px-3"
                 >
-                  <Save size={12} />
                   Save
-                </button>
+                </Button>
               </div>
             </div>
             <div className="flex-1 p-4 overflow-hidden">

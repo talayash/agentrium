@@ -1,9 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import appIcon from '../assets/app-icon.png';
 import {
-  Lightbulb,
-  FileDiff,
-  Users,
   Settings,
   Minus,
   Square,
@@ -42,14 +39,8 @@ function pickBreadcrumb(path: string | undefined): { project: string; sub: strin
 export function TitleBar() {
   const {
     toggleSidebar,
-    toggleHints,
-    toggleChanges,
-    toggleOrchestration,
     openSettings,
     openCommandPalette,
-    hintsOpen,
-    changesOpen,
-    orchestrationOpen,
     triggerChangesRefresh,
     compactTitleBar,
   } = useAppStore();
@@ -294,7 +285,7 @@ export function TitleBar() {
                           useAppStore.getState().openPushModal(path);
                         }
                       }}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-sky-400 hover:bg-sky-500/10 transition-colors"
+                      className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-accent-primary hover:bg-accent-primary/10 transition-colors"
                       title="Push commits to remote (Ctrl+Shift+K)"
                     >
                       <Upload size={12} strokeWidth={2} />
@@ -322,18 +313,6 @@ export function TitleBar() {
       <div className="flex items-stretch">
         <div className="flex items-center gap-0.5 pr-2 no-drag">
           <UpdatePill />
-          <button onClick={toggleChanges} className={toolBtn(changesOpen)} title="File Changes (F2)">
-            <FileDiff size={15} strokeWidth={2} />
-          </button>
-          <button onClick={toggleOrchestration} className={toolBtn(orchestrationOpen)} title="Agent Teams (F4)">
-            <Users size={15} strokeWidth={2} />
-          </button>
-          <button onClick={toggleHints} className={toolBtn(hintsOpen)} title="Command Hints">
-            <Lightbulb size={15} strokeWidth={2} />
-          </button>
-
-          <div className="w-px h-4 bg-[var(--ij-divider-soft)] mx-1" />
-
           <RecentTerminalsMenu />
           <ToolsMenu />
 

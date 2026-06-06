@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { AnimatePresence } from 'framer-motion';
 import { CheckCircle, XCircle, Download, ExternalLink, Loader2, Terminal, Box, RefreshCw } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
+import { Modal } from './ui/Modal';
+import { Button } from './ui/Button';
 
 interface SystemStatus {
   node_installed: boolean;
@@ -94,13 +96,14 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
   const allInstalled = status?.node_installed && status?.npm_installed && status?.claude_installed;
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-bg-primary flex items-center justify-center z-50"
+    <Modal
+      onClose={onComplete}
+      closeOn="none"
+      closeOnEscape={false}
+      scrimClassName="bg-bg-primary z-50"
+      panelClassName="w-full max-w-2xl"
     >
-      <div className="bg-bg-elevated ring-1 ring-white/[0.08] rounded-lg shadow-2xl w-full max-w-2xl overflow-hidden">
+      <>
         {/* Header */}
         <div className="p-6 border-b border-border text-center">
           <div className="w-12 h-12 mx-auto mb-4 rounded-lg bg-bg-surface flex items-center justify-center">
@@ -155,26 +158,22 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                       {!step.installed && (
                         <div className="flex gap-2">
                           {step.canAutoInstall && (
-                            <button
+                            <Button
+                              variant="primary"
                               onClick={handleInstallClaude}
-                              disabled={isInstalling}
-                              className="flex items-center gap-2 bg-accent-primary hover:bg-accent-secondary text-white h-9 px-4 rounded-md text-[12px] font-medium disabled:opacity-50 transition-colors"
+                              loading={isInstalling}
+                              icon={<Download size={14} />}
                             >
-                              {isInstalling ? (
-                                <Loader2 size={14} className="animate-spin" />
-                              ) : (
-                                <Download size={14} />
-                              )}
                               {isInstalling ? 'Installing...' : 'Install'}
-                            </button>
+                            </Button>
                           )}
-                          <button
+                          <Button
+                            variant="secondary"
                             onClick={() => openUrl(step.downloadUrl)}
-                            className="flex items-center gap-2 bg-bg-secondary ring-1 ring-border-light hover:bg-white/[0.04] text-text-primary h-9 px-4 rounded-md text-[12px] font-medium transition-colors"
+                            icon={<ExternalLink size={14} />}
                           >
-                            <ExternalLink size={14} />
                             Download
-                          </button>
+                          </Button>
                         </div>
                       )}
                     </div>
@@ -198,24 +197,25 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
 
         {/* Footer */}
         <div className="p-4 border-t border-border flex justify-between items-center">
-          <button
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={() => checkRequirements()}
             disabled={isChecking}
-            className="flex items-center gap-2 text-text-secondary hover:text-text-primary text-[12px] transition-colors"
+            icon={<RefreshCw size={14} className={isChecking ? 'animate-spin' : ''} />}
           >
-            <RefreshCw size={14} className={isChecking ? 'animate-spin' : ''} />
             Recheck
-          </button>
+          </Button>
 
           <AnimatePresence mode="wait">
             {allInstalled ? (
-              <button
+              <Button
+                variant="success"
                 onClick={onComplete}
-                className="flex items-center gap-2 bg-success hover:bg-success/90 text-white h-9 px-5 rounded-md text-[13px] font-medium transition-colors"
+                icon={<CheckCircle size={16} />}
               >
-                <CheckCircle size={16} />
                 Get Started
-              </button>
+              </Button>
             ) : (
               <span className="text-text-tertiary text-[12px]">
                 Install missing requirements to continue
@@ -223,7 +223,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
             )}
           </AnimatePresence>
         </div>
-      </div>
-    </motion.div>
+      </>
+    </Modal>
   );
 }

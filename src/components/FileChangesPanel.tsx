@@ -4,6 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
 import { toast } from '../store/toastStore';
+import { Button } from './ui/Button';
 import { InlineDiffView } from './InlineDiffView';
 import { ChangelistSection } from './ChangelistSection';
 import type { WorktreeInfo, PushPreview } from '../types/git';
@@ -804,15 +805,16 @@ export function FileChangesPanel() {
               </button>
               {hasStaged ? (
                 <>
-                  <button
+                  <Button
+                    variant="primary"
+                    size="sm"
                     onClick={() => handleCommit(false, 'none')}
                     disabled={committing || pushing || stashing || !commitMessage.trim()}
-                    className="flex items-center gap-1 h-7 px-2.5 rounded-md text-[11.5px] font-medium bg-accent-primary hover:bg-accent-secondary text-white transition-colors disabled:opacity-40 disabled:hover:bg-accent-primary"
+                    loading={committing && !pushing}
                     title="Commit staged files only"
                   >
-                    {committing && !pushing ? <Loader2 size={12} className="animate-spin" /> : null}
                     Commit
-                  </button>
+                  </Button>
                   <button
                     onClick={() => handleCommit(true, 'none')}
                     disabled={committing || pushing || stashing || !commitMessage.trim()}
@@ -824,15 +826,16 @@ export function FileChangesPanel() {
                   </button>
                 </>
               ) : (
-                <button
+                <Button
+                  variant="primary"
+                  size="sm"
                   onClick={() => handleCommit(false, 'all')}
                   disabled={committing || pushing || stashing || !commitMessage.trim() || result.changes.length === 0}
-                  className="flex items-center gap-1 h-7 px-2.5 rounded-md text-[11.5px] font-medium bg-accent-primary hover:bg-accent-secondary text-white transition-colors disabled:opacity-40 disabled:hover:bg-accent-primary"
+                  loading={committing}
                   title="Stage all changes and commit"
                 >
-                  {committing ? <Loader2 size={12} className="animate-spin" /> : null}
                   Commit all
-                </button>
+                </Button>
               )}
             </div>
           </div>
@@ -1379,21 +1382,23 @@ function RepoRow({ repo }: { repo: ScannedGitRepo }) {
                 </select>
               </div>
               <div className="flex items-center justify-end gap-1">
-                <button
+                <Button
+                  variant="ghost"
+                  size="sm"
                   onClick={() => { setCreateOpen(false); setNewBranchName(''); }}
                   disabled={creating}
-                  className="h-7 px-2 rounded-[4px] text-[11.5px] text-text-secondary hover:bg-white/[0.06] transition-colors disabled:opacity-40"
                 >
                   Cancel
-                </button>
-                <button
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
                   onClick={handleCreateBranch}
                   disabled={creating || !newBranchName.trim() || !newBranchBase}
-                  className="flex items-center gap-1 h-7 px-2.5 rounded-[4px] text-[11.5px] font-medium bg-accent-primary hover:bg-accent-secondary text-white transition-colors disabled:opacity-40 disabled:hover:bg-accent-primary"
+                  loading={creating}
                 >
-                  {creating && <Loader2 size={11} className="animate-spin" />}
                   Create
-                </button>
+                </Button>
               </div>
             </div>
           )}
@@ -1435,21 +1440,23 @@ function RepoRow({ repo }: { repo: ScannedGitRepo }) {
                   into <span className="font-mono text-text-secondary">{repo.branch ?? '(detached)'}</span>
                 </span>
                 <div className="flex items-center gap-1">
-                  <button
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={() => setPullOpen(false)}
                     disabled={pulling}
-                    className="h-7 px-2 rounded-[4px] text-[11.5px] text-text-secondary hover:bg-white/[0.06] transition-colors disabled:opacity-40"
                   >
                     Cancel
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    variant="primary"
+                    size="sm"
                     onClick={handlePull}
                     disabled={pulling || !pullRef}
-                    className="flex items-center gap-1 h-7 px-2.5 rounded-[4px] text-[11.5px] font-medium bg-accent-primary hover:bg-accent-secondary text-white transition-colors disabled:opacity-40 disabled:hover:bg-accent-primary"
+                    loading={pulling}
                   >
-                    {pulling && <Loader2 size={11} className="animate-spin" />}
                     Pull
-                  </button>
+                  </Button>
                 </div>
               </div>
             </div>
