@@ -155,7 +155,7 @@
     "features": [
       { "title": "Global file & content search (Ctrl+Shift+F)", "description": "VS Code–style search modal that scans filenames and file contents across the workspace, skips .git / node_modules / target / dist / etc., binary-sniffs files, debounces input, and groups matches by file with line/column previews. Arrow keys navigate, Enter opens the file. Terminal-internal search moved to Ctrl+F so the two no longer collide." },
       { "title": "One-click pull from origin", "description": "New Pull button in the File Changes header pulls the upstream branch (or origin/<current-branch> as fallback) into the current branch with merge strategy." },
-      { "title": "Resizable Repositories ⇕ Changes split", "description": "Drag the splitter between the Repositories list and the Changes content inside the File Changes panel - ratio persists across restarts." },
+      { "title": "Resizable Repositories ↕ Changes split", "description": "Drag the splitter between the Repositories list and the Changes content inside the File Changes panel - ratio persists across restarts." },
       { "title": "Open a plain shell at any pinned repo", "description": "Each scanned/pinned repo row gets a terminal-icon button that opens an interactive shell (no Claude) at that repo's path. Shells live in a new tabbed BottomTerminalPane with drag-to-resize handle, +/x per tab, and a collapse toggle. Backed by a new create_shell_terminal Rust command (cmd.exe on Windows, $SHELL -li on Unix)." },
       { "title": "Focus routing fix for stacked terminals", "description": "Clicking a script-child or bottom-pane terminal no longer bounces focus back to the parent - keystrokes (Ctrl+C included) reach the focused pane reliably." }
     ]
