@@ -1,5 +1,14 @@
 [
   {
+    "version": "1.26.0",
+    "date": "2026-06-07",
+    "features": [
+      { "title": "Tear off tabs into new windows", "description": "Drag a terminal tab out of the window to pop it into its own standalone window, Chrome-style. Detached windows are full duplicates with their own tab strip, and your multi-window layout is restored on the next launch." },
+      { "title": "Premium tab drag animations", "description": "Dragging a tab now lifts a ghost preview, slides the other tabs aside to open a gap, and settles into place with a smooth FLIP animation and a sliding drop indicator." },
+      { "title": "Closing the main window quits the app", "description": "Closing the primary window now cleanly shuts down the app and any detached windows, instead of leaving stray windows behind." }
+    ]
+  },
+  {
     "version": "1.25.0",
     "date": "2026-06-06",
     "features": [
