@@ -3,6 +3,8 @@ import type { ErrorInfo, ReactNode } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { reportError } from './lib/errorReporter';
 import { TitleBar } from './components/TitleBar';
+import { Button } from './components/ui/Button';
+import { ToolStripe } from './components/ToolStripe';
 import { Sidebar } from './components/Sidebar';
 import { TerminalTabs } from './components/TerminalTabs';
 import { HintsPanel } from './components/HintsPanel';
@@ -12,6 +14,7 @@ import { ProfileModal } from './components/ProfileModal';
 import { NewTerminalModal } from './components/NewTerminalModal';
 import { WorkspaceModal } from './components/WorkspaceModal';
 import { WorktreeModal } from './components/WorktreeModal';
+import { PushModal } from './components/PushModal';
 import { SessionHistory } from './components/SessionHistory';
 import { SnippetsModal } from './components/SnippetsModal';
 import { PasteAsFileDrawer } from './components/PasteAsFileDrawer';
@@ -38,6 +41,7 @@ import { useTerminalStore } from './store/terminalStore';
 import { toast } from './store/toastStore';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useNotification } from './hooks/useNotification';
+import { useSessionStateDetection } from './hooks/useSessionStateDetection';
 import {
   applyAccentColor,
   applyThemeMode,
@@ -46,6 +50,7 @@ import {
   applyUiFontScale,
 } from './lib/accentTheme';
 import { listen } from '@tauri-apps/api/event';
+import type { TerminalMetricsPayload } from './lib/sessionMetrics';
 import { invoke } from '@tauri-apps/api/core';
 import { getVersion } from '@tauri-apps/api/app';
 
@@ -108,8 +113,8 @@ interface SavedTerminalConfig {
 }
 
 function App() {
-  const { sidebarOpen, sidebarCollapsed, hintsOpen, changesOpen, orchestrationOpen, settingsOpen, profileModalOpen, newTerminalModalOpen, workspaceModalOpen, worktreeModalOpen, sessionHistoryOpen, snippetsModalOpen, commandPaletteOpen, globalSearchOpen, whatsNewOpen, claudeConfigOpen, sessionTimelineOpen, memoryEditorOpen, notifyOnFinish, restoreSession, triggerChangesRefresh, showRestoreBanner, pendingRestoreConfigs, setShowRestoreBanner, setPendingRestoreConfigs, lastSeenVersion, setLastSeenVersion, openWhatsNew } = useAppStore();
-  const { handleTerminalOutput, updateTerminalStatus, setLoopMode, setSessionSummary, createTerminal, createShellTerminalTab, adoptTerminal, detachTerminals, closeTerminal, terminals } = useTerminalStore();
+  const { sidebarOpen, sidebarCollapsed, hintsOpen, changesOpen, orchestrationOpen, settingsOpen, profileModalOpen, newTerminalModalOpen, workspaceModalOpen, worktreeModalOpen, pushModalOpen, sessionHistoryOpen, snippetsModalOpen, commandPaletteOpen, globalSearchOpen, whatsNewOpen, claudeConfigOpen, sessionTimelineOpen, memoryEditorOpen, showStatusBar, notifyOnFinish, restoreSession, triggerChangesRefresh, showRestoreBanner, pendingRestoreConfigs, setShowRestoreBanner, setPendingRestoreConfigs, lastSeenVersion, setLastSeenVersion, openWhatsNew } = useAppStore();
+  const { handleTerminalOutput, updateTerminalStatus, setLoopMode, setSessionSummary, createTerminal, createShellTerminalTab, applyTerminalMetrics, adoptTerminal, detachTerminals, closeTerminal, terminals } = useTerminalStore();
 
   // Window identity. A torn-off ("detached") window renders the SAME full
   // layout as main (titlebar, sidebar with Sessions/Explorer, tabs, panels) but
@@ -128,8 +133,9 @@ function App() {
   const hasAdoptedRef = useRef(false);
 
   useKeyboardShortcuts();
+  useSessionStateDetection();
 
-  // v1.22.0 — apply theme/density/accent/motion/scale on store change.
+  // v1.22.0 - apply theme/density/accent/motion/scale on store change.
   const themeMode = useAppStore((s) => s.themeMode);
   const uiDensity = useAppStore((s) => s.uiDensity);
   const accentColorHex = useAppStore((s) => s.accentColorHex);
@@ -142,6 +148,22 @@ function App() {
     applyReduceMotion(uiReduceMotion);
     applyUiFontScale(uiFontScale);
   }, [themeMode, uiDensity, accentColorHex, uiReduceMotion, uiFontScale]);
+
+  // Follow the OS "reduce motion" setting (WCAG 2.2 SC 2.3.3) on startup and
+  // whenever it changes - but only until the user makes an explicit choice in
+  // Settings, after which uiReduceMotionUserSet pins their preference. Routed
+  // through setState (not setUiReduceMotion) so the auto-sync never marks the
+  // value as user-set. The effect above then applies it to the DOM.
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const sync = () => {
+      if (useAppStore.getState().uiReduceMotionUserSet) return;
+      useAppStore.setState({ uiReduceMotion: mq.matches });
+    };
+    sync();
+    mq.addEventListener('change', sync);
+    return () => mq.removeEventListener('change', sync);
+  }, []);
 
   useEffect(() => {
     if (isDetached) return; // no setup wizard in torn-off windows
@@ -157,7 +179,7 @@ function App() {
     checkSetup();
   }, [isDetached]);
 
-  // What's New check — runs after setup is confirmed
+  // What's New check - runs after setup is confirmed
   useEffect(() => {
     if (isDetached) return;
     if (showSetup !== false) return;
@@ -166,7 +188,7 @@ function App() {
       try {
         const currentVersion = await getVersion();
         if (!lastSeenVersion) {
-          // Fresh install — just record the current version, no popup
+          // Fresh install - just record the current version, no popup
           setLastSeenVersion(currentVersion);
         } else if (lastSeenVersion !== currentVersion) {
           openWhatsNew();
@@ -186,7 +208,7 @@ function App() {
     invoke('set_error_reporting_enabled', { enabled }).catch(() => {});
   }, []);
 
-  // Telemetry heartbeat — fire on startup then every 5 minutes
+  // Telemetry heartbeat - fire on startup then every 5 minutes
   useEffect(() => {
     if (isDetached) return;
     if (showSetup !== false) return;
@@ -404,6 +426,35 @@ function App() {
   }, [handleTerminalOutput, setLoopMode]);
 
   useEffect(() => {
+    const unlisten = listen<TerminalMetricsPayload>('terminal-metrics', (event) => {
+      applyTerminalMetrics(event.payload);
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [applyTerminalMetrics]);
+
+  const terminalMetrics = useTerminalStore((s) => s.terminalMetrics);
+  const budgetWarnedIds = useTerminalStore((s) => s.budgetWarnedIds);
+  const markBudgetWarned = useTerminalStore((s) => s.markBudgetWarned);
+  const sessionBudgetUsd = useAppStore((s) => s.sessionBudgetUsd);
+
+  useEffect(() => {
+    if (sessionBudgetUsd <= 0) return;
+    for (const [id, m] of terminalMetrics) {
+      if (m.costUsd >= sessionBudgetUsd && !budgetWarnedIds.has(id)) {
+        markBudgetWarned(id);
+        const inst = useTerminalStore.getState().terminals.get(id);
+        const name = inst?.config.nickname || inst?.config.label || id;
+        notify(
+          'Session over budget',
+          `"${name}" reached $${m.costUsd.toFixed(2)} (cap $${sessionBudgetUsd.toFixed(2)}).`,
+        );
+      }
+    }
+  }, [terminalMetrics, sessionBudgetUsd, budgetWarnedIds, markBudgetWarned, notify]);
+
+  useEffect(() => {
     const unlisten = listen<{ id: string }>('terminal-finished', (event) => {
       const { id } = event.payload;
 
@@ -457,7 +508,7 @@ function App() {
     };
   }, [notifyOnFinish, notify, updateTerminalStatus, setSessionSummary, isDetached]);
 
-  // Restore previous session on startup — show banner instead of silently restoring
+  // Restore previous session on startup - show banner instead of silently restoring
   useEffect(() => {
     if (isDetached) return; // detached windows adopt specific tabs, never restore all
     if (showSetup !== false) return;
@@ -518,7 +569,7 @@ function App() {
       });
       try {
         if (config.claude_args[0] === '__shell__') {
-          // Plain shell — re-spawn as a main-tab shell. We deliberately don't
+          // Plain shell - re-spawn as a main-tab shell. We deliberately don't
           // restore the script-runner sentinel '__script__' here; that's a
           // child terminal owned by its parent and gets recreated on demand.
           const newId = await createShellTerminalTab(
@@ -529,15 +580,15 @@ function App() {
           );
           keyToNewId[stableKey] = newId;
         } else if (config.claude_args[0] === '__script__') {
-          // Script runner — owned by parent terminal, skip on restore.
+          // Script runner - owned by parent terminal, skip on restore.
           continue;
         } else {
           // Restore semantics:
-          //   - If we captured a session id last run: `claude --resume <id>` —
+          //   - If we captured a session id last run: `claude --resume <id>` -
           //     exact attach. Claude redraws the conversation; we suppress the
           //     painted log so the transcript isn't doubled.
           //   - Otherwise (old save, or detection never fired): fall back to
-          //     `claude --continue` — attaches to the most recent session in
+          //     `claude --continue` - attaches to the most recent session in
           //     this cwd. Same suppression rule.
           const sessionId = config.claude_session_id ?? undefined;
           const willResume = sessionId !== undefined;
@@ -625,18 +676,12 @@ function App() {
                     Restore {pendingRestoreConfigs.length} terminal{pendingRestoreConfigs.length !== 1 ? 's' : ''} from your previous session?
                   </p>
                   <div className="flex items-center gap-2">
-                    <button
-                      onClick={handleRestore}
-                      className="bg-accent-primary hover:bg-accent-secondary text-white px-3 py-1 rounded-md text-[12px] font-medium transition-colors"
-                    >
+                    <Button variant="primary" size="sm" onClick={handleRestore}>
                       Restore
-                    </button>
-                    <button
-                      onClick={handleDismissRestore}
-                      className="text-text-secondary hover:text-text-primary px-3 py-1 rounded-md text-[12px] transition-colors"
-                    >
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={handleDismissRestore}>
                       Dismiss
-                    </button>
+                    </Button>
                   </div>
                 </div>
               </motion.div>
@@ -646,6 +691,8 @@ function App() {
           <TitleBar />
 
           <div className="flex-1 flex overflow-hidden">
+            <ToolStripe side="left" />
+
             <AnimatePresence mode="wait">
               {sidebarOpen && (
                 <div
@@ -693,9 +740,11 @@ function App() {
                 </div>
               )}
             </AnimatePresence>
+
+            <ToolStripe side="right" />
           </div>
 
-          <StatusBar />
+          {showStatusBar && <StatusBar />}
 
           <AnimatePresence>
             {settingsOpen && <SettingsWindow />}
@@ -703,6 +752,7 @@ function App() {
             {newTerminalModalOpen && <NewTerminalModal />}
             {workspaceModalOpen && <WorkspaceModal />}
             {worktreeModalOpen && <WorktreeModal />}
+            {pushModalOpen && <PushModal />}
             {sessionHistoryOpen && <SessionHistory />}
             {snippetsModalOpen && <SnippetsModal />}
             {!isDetached && whatsNewOpen && <WhatsNewModal />}

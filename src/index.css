@@ -1,4 +1,4 @@
-/* Inter — local variable font (weights 300-700) */
+/* Inter - local variable font (weights 300-700) */
 /* cyrillic-ext */
 @font-face {
   font-family: 'Inter';
@@ -63,7 +63,7 @@
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
-/* JetBrains Mono — local variable font (weights 400-500) */
+/* JetBrains Mono - local variable font (weights 400-500) */
 /* cyrillic-ext */
 @font-face {
   font-family: 'JetBrains Mono';
@@ -123,7 +123,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Elevation system — IntelliJ IDEA 2026.1 "New UI" (Dark) */
+/* Elevation system - IntelliJ IDEA 2026.1 "New UI" (Dark) */
 :root {
   --elevation-0: #1E1F22;  /* Editor / app background */
   --elevation-1: #2B2D30;  /* Tool windows, sidebar, tab bar, status bar */
@@ -137,19 +137,72 @@
   --ij-divider: #181819;         /* Hard dividers between tool windows / editor */
   --ij-divider-soft: #393B40;    /* Soft dividers inside a panel */
 
-  /* Density tokens — driven by Appearance setting, default = comfortable */
+  /* Text tokens — stored as space-separated RGB channels so Tailwind's
+     /opacity modifiers resolve (rgb(var(--x) / <alpha-value>)) AND light mode
+     can override them in applyThemeMode(). These are the dark-theme values. */
+  --text-primary: 223 225 229;   /* #DFE1E5 */
+  --text-secondary: 157 160 168; /* #9DA0A8 */
+  --text-tertiary: 138 142 151;  /* #8A8E97 — WCAG AA (~5:1 on elevation-0) */
+
+  /* Density tokens - driven by Appearance setting, default = comfortable */
   --ui-row-py: 6px;
   --ui-row-px: 8px;
 
   /* UI font scale (default 1.0, range 0.85..1.25). */
   --ui-font-scale: 1;
+
+  /* --- Phase 1 design tokens ------------------------------------------ */
+  /* Motion — calm, fast IntelliJ feel. Mirrored in lib/motionTokens.ts for
+     Framer Motion. reduce-motion neutralizes these via the cascade below. */
+  --ease-out: cubic-bezier(0.25, 0.1, 0.25, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --dur-fast: 120ms;
+  --dur-base: 160ms;
+  --dur-slow: 220ms;
+
+  /* Spacing scale (4px base) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  /* Type scale (px) — caption/meta/body/title */
+  --text-caption: 11px;
+  --text-meta: 12px;
+  --text-body: 13px;
+  --text-title: 14px;
+
+  /* Focus ring. --border-focus is normally (re)set by applyAccentColor();
+     this default keeps focus-visible visible on first paint before that runs. */
+  --focus-ring-width: 2px;
+  --border-focus: rgba(53, 116, 240, 0.55);
+}
+
+/* Standardized keyboard-focus ring (IntelliJ-style ~2px rectangle).
+   Uses `outline` so it never affects layout and never collides with the
+   Tailwind `ring-` (box-shadow) utilities used for selection/hover. Elements
+   that define their own focus style via `focus:outline-none focus:ring-*`
+   (inputs, etc.) keep it — their higher-specificity rule wins. This is the
+   fallback for everything else (buttons, toggles, list rows). */
+:focus-visible {
+  outline: var(--focus-ring-width) solid var(--border-focus);
+  outline-offset: 1px;
+  border-radius: 4px;
+}
+
+/* The xterm input proxy manages its own cursor/focus — never ring it. */
+.xterm textarea:focus-visible,
+.xterm-helper-textarea:focus-visible {
+  outline: none;
 }
 
 :root[data-density="compact"]     { --ui-row-py: 4px; --ui-row-px: 6px; }
 :root[data-density="comfortable"] { --ui-row-py: 6px; --ui-row-px: 8px; }
 :root[data-density="spacious"]    { --ui-row-py: 8px; --ui-row-px: 10px; }
 
-/* Reduce motion — neutralizes Framer + CSS transitions when opted in. */
+/* Reduce motion - neutralizes Framer + CSS transitions when opted in. */
 :root[data-reduce-motion="true"] *,
 :root[data-reduce-motion="true"] *::before,
 :root[data-reduce-motion="true"] *::after {
@@ -220,11 +273,11 @@ body {
   font-feature-settings: 'cv02', 'cv03', 'cv04', 'ss03';
   letter-spacing: 0.005em;
   line-height: 1.45;
-  color: #DFE1E5;
+  color: rgb(var(--text-primary)); /* theme-aware base text (flips in light mode) */
   -webkit-font-smoothing: antialiased;
 }
 
-/* Custom scrollbar — IntelliJ New UI feel (thin, muted, visible on hover) */
+/* Custom scrollbar - IntelliJ New UI feel (thin, muted, visible on hover) */
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;

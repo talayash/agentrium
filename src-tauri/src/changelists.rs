@@ -1,7 +1,7 @@
 // Pure DB helpers for the Changelists Lite feature.
 // "Default" is implicit: any file without a row in changelist_files belongs
 // to Default. So Default is always present, never created, never deletable.
-// Mappings persist across commits ("sticky" — IntelliJ behaviour).
+// Mappings persist across commits ("sticky" - IntelliJ behaviour).
 
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};

@@ -7,7 +7,7 @@
 //! `claude --resume <id>` next time the terminal is restored.
 //!
 //! Snapshotting globally (across all project dirs) rather than just our cwd
-//! dir means we still work the first time Claude is run in a new project —
+//! dir means we still work the first time Claude is run in a new project -
 //! the encoded dir may not exist yet when we take the snapshot.
 
 use serde::Serialize;
@@ -19,7 +19,7 @@ fn claude_projects_dir() -> Option<PathBuf> {
     directories::BaseDirs::new().map(|d| d.home_dir().join(".claude").join("projects"))
 }
 
-/// Summary of one session for the sidebar list. We keep this small —
+/// Summary of one session for the sidebar list. We keep this small -
 /// timestamps and a preview are enough for the user to pick the right
 /// conversation. Full content is loaded on demand when the user resumes.
 #[derive(Debug, Clone, Serialize)]
@@ -139,7 +139,7 @@ fn read_first_user_preview(path: &std::path::Path, max_lines: usize, max_chars: 
 
 /// List every `.jsonl` session file Claude has stored for the given cwd,
 /// sorted newest-first. Returns an empty list when the project dir doesn't
-/// exist yet — first-run in a new folder is a normal state.
+/// exist yet - first-run in a new folder is a normal state.
 pub fn list_sessions_for_cwd(cwd: &str) -> Vec<ClaudeSessionInfo> {
     let mut out: Vec<(ClaudeSessionInfo, std::time::SystemTime)> = Vec::new();
     let Some(root) = claude_projects_dir() else { return Vec::new() };

@@ -6,6 +6,7 @@ use std::thread::JoinHandle;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
+use crate::error_reporter::{self, ErrorSource};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TerminalConfig {
@@ -82,6 +83,9 @@ impl TerminalManager {
         log_file_path: Option<String>,
         resume_session_id: Option<String>,
         continue_recent: bool,
+        // `http://127.0.0.1:<port>` base of the embedded OTLP receiver, or
+        // None when cost tracking is disabled / the receiver failed to start.
+        otel_endpoint: Option<String>,
     ) -> Result<TerminalConfig, String> {
         // Validate claude_args: reject any argument containing shell metacharacters
         for arg in &claude_args {
@@ -93,7 +97,7 @@ impl TerminalManager {
             }
         }
 
-        // Inject a resume flag for spawn-only — `claude_args` persisted on
+        // Inject a resume flag for spawn-only - `claude_args` persisted on
         // the config stays untouched so the next restore can re-decide which
         // flag to inject.
         // `--resume <id>` wins over `--continue` when we have an exact id;
@@ -132,6 +136,10 @@ impl TerminalManager {
                 !Self::BLOCKED_ENV_VARS.iter().any(|blocked| blocked.eq_ignore_ascii_case(&upper))
             })
             .collect();
+
+        // Generate the id early so it can be injected as an OTel resource
+        // attribute (terminal.id) - the receiver routes metrics back by it.
+        let id = Uuid::new_v4().to_string();
 
         let pty_system = native_pty_system();
 
@@ -206,11 +214,26 @@ impl TerminalManager {
             cmd.env(key, value);
         }
 
+        // Inject Claude Code OpenTelemetry config LAST so it wins over any
+        // user-profile env, pointing the CLI's OTLP metrics exporter at our
+        // embedded localhost receiver and tagging the resource with our id.
+        if let Some(endpoint) = otel_endpoint.as_deref() {
+            cmd.env("CLAUDE_CODE_ENABLE_TELEMETRY", "1");
+            cmd.env("OTEL_METRICS_EXPORTER", "otlp");
+            cmd.env("OTEL_EXPORTER_OTLP_PROTOCOL", "http/json");
+            cmd.env("OTEL_EXPORTER_OTLP_METRICS_PROTOCOL", "http/json");
+            cmd.env("OTEL_EXPORTER_OTLP_ENDPOINT", endpoint);
+            cmd.env("OTEL_EXPORTER_OTLP_COMPRESSION", "none");
+            // 3s export interval ≈ near-real-time without hammering (default 60s).
+            cmd.env("OTEL_METRIC_EXPORT_INTERVAL", "3000");
+            cmd.env("OTEL_METRICS_INCLUDE_SESSION_ID", "true");
+            cmd.env("OTEL_RESOURCE_ATTRIBUTES", format!("terminal.id={}", id));
+        }
+
         // Spawn the command
         let _child = pty_pair.slave.spawn_command(cmd)
             .map_err(|e| format!("Failed to spawn command: {}", e))?;
 
-        let id = Uuid::new_v4().to_string();
         let config = TerminalConfig {
             id: id.clone(),
             label,
@@ -239,7 +262,7 @@ impl TerminalManager {
         // Spawn reader thread
         let terminal_id = id.clone();
         let reader_handle = std::thread::spawn(move || {
-            // 32 KB buffer — amortizes syscall overhead for high-throughput output
+            // 32 KB buffer - amortizes syscall overhead for high-throughput output
             // and reduces the number of IPC messages emitted to the frontend.
             let mut buf = [0u8; 32 * 1024];
             // Wrap the log file in a BufWriter so fs writes batch instead of
@@ -266,6 +289,18 @@ impl TerminalManager {
                     }
                     Err(e) => {
                         eprintln!("Error reading from pty: {}", e);
+                        // Capture so we hear about broken-mid-session terminals.
+                        // RustCommand (not RustPanic) because the PTY is a
+                        // command-owned resource; we don't want to pollute the
+                        // panic stream with background-thread I/O. The 60s
+                        // dedup window in the reporter collapses repeated
+                        // identical errors.
+                        error_reporter::report_blocking(
+                            ErrorSource::RustCommand,
+                            Some("pty_reader_error".to_string()),
+                            e.to_string(),
+                            None,
+                        );
                         let _ = tx.blocking_send((
                             terminal_id.clone(),
                             format!("\r\n[Error reading from terminal: {}]\r\n", e).into_bytes(),
@@ -366,7 +401,7 @@ impl TerminalManager {
             nickname: Some(format!("npm run {}", script_name)),
             profile_id: None,
             working_directory,
-            // Reuse claude_args to carry the script command — simplest fit for
+            // Reuse claude_args to carry the script command - simplest fit for
             // restore / session history without adding another schema field.
             claude_args: vec!["__script__".into(), script_name.clone()],
             env_vars: HashMap::new(),
@@ -416,7 +451,7 @@ impl TerminalManager {
     }
 
     /// Spawn an interactive shell at `working_directory`. No `claude`, no
-    /// `npm run` — just a plain shell the user can drive (run scripts, hit
+    /// `npm run` - just a plain shell the user can drive (run scripts, hit
     /// Ctrl+C to stop them, etc.). Reuses the same PTY/reader plumbing so
     /// `write_to_terminal` and `terminal-output` events Just Work.
     pub fn create_shell_terminal(
@@ -437,7 +472,7 @@ impl TerminalManager {
 
         #[cfg(target_os = "windows")]
         let cmd = {
-            // ComSpec is whatever the user has set as their shell — typically
+            // ComSpec is whatever the user has set as their shell - typically
             // cmd.exe but could be PowerShell. Without /C the shell stays
             // interactive.
             let exe = std::env::var("ComSpec").unwrap_or_else(|_| "cmd.exe".to_string());
@@ -476,7 +511,7 @@ impl TerminalManager {
             profile_id: None,
             working_directory,
             // Tag this terminal so persistence/restore can recognise it as a
-            // plain shell — same trick create_script_terminal uses.
+            // plain shell - same trick create_script_terminal uses.
             claude_args: vec!["__shell__".into()],
             env_vars: HashMap::new(),
             created_at: Utc::now(),
@@ -524,35 +559,41 @@ impl TerminalManager {
         Ok(config)
     }
 
+    /// Silent no-op when the id is no longer in the map. xterm.js can dispatch
+    /// a final keystroke after `close_terminal` removes the entry, and surfacing
+    /// that as `Err("Terminal not found")` produced a flood of telemetry events
+    /// plus a frontend UnhandledRejection from the resize observer's callback -
+    /// see error fingerprints 599c11f8 / 808a0ce1.
     pub fn write(&mut self, id: &str, data: &[u8]) -> Result<(), String> {
-        if let Some(terminal) = self.terminals.get_mut(id) {
-            terminal
-                .writer
-                .write_all(data)
-                .map_err(|e| format!("Failed to write: {}", e))?;
-            terminal.writer.flush().map_err(|e| format!("Failed to flush: {}", e))?;
-            Ok(())
-        } else {
-            Err("Terminal not found".to_string())
-        }
+        let Some(terminal) = self.terminals.get_mut(id) else {
+            return Ok(());
+        };
+        terminal
+            .writer
+            .write_all(data)
+            .map_err(|e| format!("Failed to write: {}", e))?;
+        terminal.writer.flush().map_err(|e| format!("Failed to flush: {}", e))?;
+        Ok(())
     }
 
+    /// Silent no-op when the id is no longer in the map. The ResizeObserver in
+    /// TerminalView fires once more after the close_terminal call removes the
+    /// entry; we don't want that race to produce an error report.
     pub fn resize(&mut self, id: &str, cols: u16, rows: u16) -> Result<(), String> {
-        if let Some(terminal) = self.terminals.get_mut(id) {
-            terminal
-                .pty_pair
-                .master
-                .resize(PtySize {
-                    rows,
-                    cols,
-                    pixel_width: 0,
-                    pixel_height: 0,
-                })
-                .map_err(|e| format!("Failed to resize: {}", e))?;
-            Ok(())
-        } else {
-            Err("Terminal not found".to_string())
-        }
+        let Some(terminal) = self.terminals.get_mut(id) else {
+            return Ok(());
+        };
+        terminal
+            .pty_pair
+            .master
+            .resize(PtySize {
+                rows,
+                cols,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .map_err(|e| format!("Failed to resize: {}", e))?;
+        Ok(())
     }
 
     pub fn close(&mut self, id: &str) -> Result<(), String> {
@@ -568,7 +609,7 @@ impl TerminalManager {
     }
 
     pub fn close_all(&mut self) {
-        // Clear all terminals at once — reader threads clean up asynchronously
+        // Clear all terminals at once - reader threads clean up asynchronously
         self.terminals.clear();
     }
 
@@ -604,11 +645,37 @@ impl TerminalManager {
     }
 
     /// Attach the detected Claude session id to a live terminal. Silent
-    /// no-op when the terminal has already been closed — detection races
+    /// no-op when the terminal has already been closed - detection races
     /// the user, and a stale write here shouldn't surface as an error.
     pub fn update_claude_session_id(&mut self, id: &str, session_id: String) {
         if let Some(terminal) = self.terminals.get_mut(id) {
             terminal.config.claude_session_id = Some(session_id);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn write_returns_ok_when_terminal_missing() {
+        let mut mgr = TerminalManager::new();
+        assert_eq!(mgr.write("does-not-exist", b"hello"), Ok(()));
+    }
+
+    #[test]
+    fn resize_returns_ok_when_terminal_missing() {
+        let mut mgr = TerminalManager::new();
+        assert_eq!(mgr.resize("does-not-exist", 120, 30), Ok(()));
+    }
+
+    #[test]
+    fn label_and_nickname_updates_still_error_when_missing() {
+        // These commands aren't on the close-race path; we want them to keep
+        // surfacing real bugs.
+        let mut mgr = TerminalManager::new();
+        assert!(mgr.update_label("nope", "x".to_string()).is_err());
+        assert!(mgr.update_nickname("nope", "x".to_string()).is_err());
     }
 }

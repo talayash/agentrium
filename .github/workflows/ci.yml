@@ -15,10 +15,10 @@ jobs:
     name: Frontend (typecheck + vitest)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Setup Node
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: 20
           cache: 'npm'
@@ -35,8 +35,15 @@ jobs:
   backend:
     name: Backend (cargo test)
     runs-on: ubuntu-latest
+    env:
+      # crates.io intermittently returns "Error in the HTTP2 framing layer"
+      # on the GitHub Actions runners (last seen 2026-05-29 run 71338258625).
+      # Disabling HTTP/2 multiplexing and bumping the retry count is the
+      # documented mitigation — cargo falls back to HTTP/1.1 for the fetch.
+      CARGO_HTTP_MULTIPLEXING: 'false'
+      CARGO_NET_RETRY: '10'
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9 # master
@@ -44,7 +51,7 @@ jobs:
           toolchain: stable
 
       - name: Rust cache
-        uses: swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2.8.2
+        uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           workspaces: './src-tauri -> target'
           # Keep the test profile separate from the release profile cached by
@@ -66,6 +73,25 @@ jobs:
             pkg-config \
             build-essential
 
+      - name: Fetch dependencies
+        # Separating fetch from test means a transient registry blip only
+        # retries the (cheap, fast) fetch step instead of restarting the
+        # 5+ minute compile. The shell `for` loop adds a job-level retry
+        # on top of CARGO_NET_RETRY, which only retries individual files.
+        working-directory: src-tauri
+        run: |
+          for attempt in 1 2 3; do
+            if cargo fetch --locked; then
+              exit 0
+            fi
+            echo "cargo fetch failed (attempt $attempt) — retrying in 15s"
+            sleep 15
+          done
+          echo "cargo fetch failed after 3 attempts"
+          exit 1
+
       - name: Run cargo test
         working-directory: src-tauri
-        run: cargo test --locked
+        # --offline forces use of the cache populated by the fetch step;
+        # any remaining network errors here would be a real bug.
+        run: cargo test --locked --offline

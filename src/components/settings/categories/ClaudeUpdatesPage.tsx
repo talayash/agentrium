@@ -5,6 +5,7 @@ import { getVersion } from '@tauri-apps/api/app';
 import { useUpdaterStore } from '../../../store/updaterStore';
 import { toast } from '../../../store/toastStore';
 import { PageHeader, PageSection } from '../SettingRow';
+import { Button } from '../../ui/Button';
 import { registerSetting } from '../index';
 
 registerSetting({
@@ -87,21 +88,26 @@ export default function ClaudeUpdatesPage() {
                 <Check size={14} /> Up to date
               </div>
             ) : appUpdater.status === 'ready' ? (
-              <button onClick={appUpdater.restart} className="flex items-center gap-2 bg-success hover:bg-success/90 text-white h-9 px-4 rounded-md text-[12px] font-medium">
-                <Rocket size={14} /> Restart to Update
-              </button>
+              <Button variant="success" onClick={appUpdater.restart} icon={<Rocket size={14} />}>
+                Restart to Update
+              </Button>
             ) : appUpdater.status === 'downloading' ? (
               <div className="flex items-center gap-2 bg-elevation-1 text-text-primary h-9 px-4 rounded-md text-[12px] font-medium">
                 <RefreshCw size={14} className="animate-spin" /> {appUpdater.downloadProgress}%
               </div>
             ) : appUpdater.status === 'available' ? (
-              <button onClick={() => appUpdater.downloadAndInstall()} className="flex items-center gap-2 bg-accent-primary hover:bg-accent-secondary text-white h-9 px-4 rounded-md text-[12px] font-medium">
-                <Download size={14} /> Download Update
-              </button>
+              <Button variant="primary" onClick={() => appUpdater.downloadAndInstall()} icon={<Download size={14} />}>
+                Download Update
+              </Button>
             ) : (
-              <button onClick={appUpdater.checkForUpdates} disabled={appUpdater.status === 'checking'} className="flex items-center gap-2 bg-elevation-1 ring-1 ring-border-light hover:bg-white/[0.04] text-text-primary h-9 px-4 rounded-md text-[12px] font-medium disabled:opacity-50">
-                <RefreshCw size={14} className={appUpdater.status === 'checking' ? 'animate-spin' : ''} /> Check for Updates
-              </button>
+              <Button
+                variant="secondary"
+                onClick={appUpdater.checkForUpdates}
+                disabled={appUpdater.status === 'checking'}
+                icon={<RefreshCw size={14} className={appUpdater.status === 'checking' ? 'animate-spin' : ''} />}
+              >
+                Check for Updates
+              </Button>
             )}
           </div>
         </div>
@@ -127,32 +133,27 @@ export default function ClaudeUpdatesPage() {
             )}
           </div>
           <div className="flex gap-2">
-            <button
+            <Button
+              variant="secondary"
               onClick={() => invoke('open_external_url', { url: 'https://docs.anthropic.com/en/docs/claude-code' })}
-              className="flex items-center gap-2 bg-elevation-1 ring-1 ring-border-light hover:bg-white/[0.04] text-text-primary h-9 px-3 rounded-md text-[12px] font-medium"
+              icon={<ExternalLink size={12} />}
             >
-              <ExternalLink size={12} /> Docs
-            </button>
+              Docs
+            </Button>
             {updateAvailable === false ? (
               <div className="flex items-center gap-2 bg-success/10 text-success h-9 px-4 rounded-md text-[12px] font-medium">
                 <Check size={14} /> Up to date
               </div>
             ) : (
-              <button
+              <Button
+                variant={updateAvailable ? 'primary' : 'secondary'}
                 onClick={updateClaude}
                 disabled={isUpdating || isChecking}
-                className={`flex items-center gap-2 h-9 px-4 rounded-md text-[12px] font-medium disabled:opacity-50 ${
-                  updateAvailable
-                    ? 'bg-accent-primary hover:bg-accent-secondary text-white'
-                    : 'bg-elevation-1 ring-1 ring-border-light hover:bg-white/[0.04] text-text-primary'
-                }`}
+                loading={isUpdating || isChecking}
+                icon={updateAvailable === null ? <AlertCircle size={14} /> : <Download size={14} />}
               >
-                {isUpdating ? <RefreshCw size={14} className="animate-spin" />
-                  : isChecking ? <RefreshCw size={14} className="animate-spin" />
-                  : updateAvailable === null ? <AlertCircle size={14} />
-                  : <Download size={14} />}
                 {isUpdating ? 'Updating…' : 'Update'}
-              </button>
+              </Button>
             )}
           </div>
         </div>

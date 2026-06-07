@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const checkMock = vi.fn();
 const downloadAndInstallMock = vi.fn();
+const reportInvokeFailureMock = vi.fn();
 
 vi.mock('@tauri-apps/plugin-updater', () => ({
   check: (...args: unknown[]) => checkMock(...args),
@@ -19,7 +20,11 @@ vi.mock('@tauri-apps/api/app', () => ({
   getVersion: vi.fn(async () => '1.22.0'),
 }));
 
-import { useUpdaterStore } from './updaterStore';
+vi.mock('../lib/errorReporter', () => ({
+  reportInvokeFailure: (...args: unknown[]) => reportInvokeFailureMock(...args),
+}));
+
+import { isTransientNetworkError, useUpdaterStore } from './updaterStore';
 
 function resetStore() {
   useUpdaterStore.setState({
@@ -48,6 +53,7 @@ describe('updaterStore', () => {
     resetStore();
     checkMock.mockReset();
     downloadAndInstallMock.mockReset();
+    reportInvokeFailureMock.mockReset();
   });
 
   afterEach(() => {
@@ -103,7 +109,7 @@ describe('updaterStore', () => {
       useUpdaterStore.getState().snoozeBanner(60_000);
       useUpdaterStore.getState().markNotified('1.23.0');
 
-      // A newer version arrives — the user should be re-prompted.
+      // A newer version arrives - the user should be re-prompted.
       checkMock.mockResolvedValueOnce(fakeUpdate('1.24.0'));
       useUpdaterStore.setState({ status: 'idle' });
       await useUpdaterStore.getState().checkForUpdates();
@@ -123,6 +129,32 @@ describe('updaterStore', () => {
       expect(result).toEqual({ available: false });
       expect(useUpdaterStore.getState().status).toBe('error');
       expect(useUpdaterStore.getState().error).toBe('network down');
+    });
+
+    it('skips telemetry for transient reqwest network errors', async () => {
+      // The exact shape that produced fingerprint 6d37063a in production.
+      checkMock.mockRejectedValueOnce(
+        new Error(
+          'error sending request for url (https://github.com/talayash/claude-terminal/releases/latest/download/latest.json)'
+        )
+      );
+
+      await useUpdaterStore.getState().checkForUpdates();
+
+      expect(useUpdaterStore.getState().status).toBe('error');
+      expect(reportInvokeFailureMock).not.toHaveBeenCalled();
+    });
+
+    it('still reports non-network errors to telemetry', async () => {
+      checkMock.mockRejectedValueOnce(new Error('signature verification failed'));
+
+      await useUpdaterStore.getState().checkForUpdates();
+
+      expect(reportInvokeFailureMock).toHaveBeenCalledTimes(1);
+      expect(reportInvokeFailureMock).toHaveBeenCalledWith(
+        'updater_check',
+        expect.any(Error),
+      );
     });
 
     it('short-circuits when already downloading or ready', async () => {
@@ -175,6 +207,30 @@ describe('updaterStore', () => {
     it('records the version that has been toasted', () => {
       useUpdaterStore.getState().markNotified('1.23.0');
       expect(useUpdaterStore.getState().notifiedVersion).toBe('1.23.0');
+    });
+  });
+
+  describe('isTransientNetworkError', () => {
+    it.each([
+      ['error sending request for url (https://github.com/...)', true],
+      ['Could not fetch a valid release JSON from the remote', true],
+      ['connection refused', true],
+      ['connection reset by peer', true],
+      ['DNS error: no such host', true],
+      ['failed to lookup address information', true],
+      ['operation timed out', true],
+      ['request timeout', true],
+      ['signature verification failed', false],
+      ['Invalid manifest', false],
+      ['', false],
+    ])('classifies %j → %s', (message, expected) => {
+      expect(isTransientNetworkError(new Error(message))).toBe(expected);
+    });
+
+    it('handles string and unknown inputs without throwing', () => {
+      expect(isTransientNetworkError('error sending request')).toBe(true);
+      expect(isTransientNetworkError(undefined)).toBe(false);
+      expect(isTransientNetworkError({})).toBe(false);
     });
   });
 });

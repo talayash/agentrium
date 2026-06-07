@@ -11,7 +11,7 @@ export const TERMINAL_SCROLLBACK_PRESETS = [1000, 10000, 50000, 100000] as const
 export const DEFAULT_TERMINAL_FONT_FAMILY = '"JetBrains Mono", "Cascadia Code", "Cascadia Mono", Consolas, "Fira Code", monospace';
 export const DEFAULT_TERMINAL_FONT_SIZE = 14;
 
-// IntelliJ overhaul (v1.22.0) — appearance + behavior settings.
+// IntelliJ overhaul (v1.22.0) - appearance + behavior settings.
 export type UiDensity = 'compact' | 'comfortable' | 'spacious';
 export type ThemeMode = 'dark' | 'light' | 'auto';
 export type AutoStageMode = 'none' | 'tracked' | 'all';
@@ -53,11 +53,20 @@ interface AppState {
   workspaceModalOpen: boolean;
   worktreeModalOpen: boolean;
   worktreeModalRepoPath: string | null;
+  pushModalOpen: boolean;
+  pushModalRepoPath: string | null;
   defaultClaudeArgs: string[];
   notifyOnFinish: boolean;
   restoreSession: boolean;
   telemetryEnabled: boolean;
   errorReportingEnabled: boolean;
+  // Per-session OTel cost/token tracking (distinct from the analytics heartbeat
+  // `telemetryEnabled`, which reports to ct-analytics). This is local only.
+  costTrackingEnabled: boolean;
+  // Per-session budget ceiling in USD; 0 = no cap. Used by Task 11.
+  sessionBudgetUsd: number;
+  setCostTrackingEnabled: (v: boolean) => void;
+  setSessionBudgetUsd: (v: number) => void;
   showGitPanel: boolean;
   showFileTree: boolean;
 
@@ -77,6 +86,13 @@ interface AppState {
   accentColorHex: string;
   uiFontScale: number;
   uiReduceMotion: boolean;
+  // True once the user has explicitly toggled "Reduce motion" in Settings. Until
+  // then we follow the OS prefers-reduced-motion setting (WCAG 2.2 SC 2.3.3).
+  uiReduceMotionUserSet: boolean;
+  // Minimal-UI / chrome toggles (P1-3) - let users strip non-essential chrome.
+  showStatusBar: boolean;
+  showTabActivity: boolean;
+  compactTitleBar: boolean;
   notificationSoundEnabled: boolean;
   dndEnabled: boolean;
   dndStart: string;
@@ -84,7 +100,7 @@ interface AppState {
   sessionAutoSaveIntervalSec: number;
   confirmOnAppClose: boolean;
 
-  // Editor (NEW v1.22.0) — Monaco
+  // Editor (NEW v1.22.0) - Monaco
   editorTabSize: number;
   editorRenderWhitespace: boolean;
   editorWordWrap: boolean;
@@ -112,7 +128,7 @@ interface AppState {
   // Changes panel
   changesRefreshTrigger: number;
 
-  // Shared repo selection — file changes panel pins a repo, file tree follows it
+  // Shared repo selection - file changes panel pins a repo, file tree follows it
   pinnedRepoPath: string | null;
 
   // File tabs (Monaco editor tabs living next to terminal tabs)
@@ -121,7 +137,7 @@ interface AppState {
 
   // Sidebar layout
   explorerHeightRatio: number; // 0.15..0.85, portion of sidebar height reserved for Explorer
-  toolsCollapsed: boolean; // sidebar footer (Workspaces/Snippets/etc.) — collapsed gives Explorer more height
+  toolsCollapsed: boolean; // sidebar footer (Workspaces/Snippets/etc.) - collapsed gives Explorer more height
   // Persistent collapse state for the two stacked sidebar sections.
   sessionsCollapsed: boolean;
   explorerCollapsed: boolean;
@@ -143,6 +159,11 @@ interface AppState {
 
   // Command Palette (F1)
   commandPaletteOpen: boolean;
+  // Frecency: per-action usage so the palette can surface a "Recent" group and
+  // rank matches by frequency + recency. Keyed by a stable string (e.g.
+  // "cmd:New Terminal", "snippet:<id>", "hint:<command>") - never terminal ids,
+  // which are ephemeral and would leak into persisted storage.
+  paletteUsage: Record<string, { count: number; lastUsedTs: number }>;
 
   // Session History (F2)
   sessionHistoryOpen: boolean;
@@ -203,6 +224,8 @@ interface AppState {
   closeWorkspaceModal: () => void;
   openWorktreeModal: (repoPath: string) => void;
   closeWorktreeModal: () => void;
+  openPushModal: (repoPath: string) => void;
+  closePushModal: () => void;
   setDefaultClaudeArgs: (args: string[]) => void;
   setNotifyOnFinish: (enabled: boolean) => void;
   setRestoreSession: (enabled: boolean) => void;
@@ -227,6 +250,10 @@ interface AppState {
   setAccentColorHex: (hex: string) => void;
   setUiFontScale: (scale: number) => void;
   setUiReduceMotion: (enabled: boolean) => void;
+  recordPaletteUse: (key: string) => void;
+  setShowStatusBar: (v: boolean) => void;
+  setShowTabActivity: (v: boolean) => void;
+  setCompactTitleBar: (v: boolean) => void;
   setNotificationSoundEnabled: (enabled: boolean) => void;
   setDndEnabled: (enabled: boolean) => void;
   setDndStart: (hhmm: string) => void;
@@ -390,11 +417,15 @@ export const useAppStore = create<AppState>()(
       workspaceModalOpen: false,
       worktreeModalOpen: false,
       worktreeModalRepoPath: null,
+      pushModalOpen: false,
+      pushModalRepoPath: null,
       defaultClaudeArgs: [],
       notifyOnFinish: true,
       restoreSession: true,
       telemetryEnabled: true,
       errorReportingEnabled: true,
+      costTrackingEnabled: false,
+      sessionBudgetUsd: 0,
       showGitPanel: true,
       showFileTree: true,
 
@@ -415,6 +446,10 @@ export const useAppStore = create<AppState>()(
       accentColorHex: DEFAULT_ACCENT_COLOR,
       uiFontScale: DEFAULT_UI_FONT_SCALE,
       uiReduceMotion: false,
+      uiReduceMotionUserSet: false,
+      showStatusBar: true,
+      showTabActivity: true,
+      compactTitleBar: false,
       notificationSoundEnabled: false,
       dndEnabled: false,
       dndStart: '22:00',
@@ -459,7 +494,7 @@ export const useAppStore = create<AppState>()(
 
       // Sidebar explorer ratio (default: explorer takes 45% of sidebar height)
       explorerHeightRatio: 0.45,
-      // Tools footer collapsed by default — surfaces more explorer space; user
+      // Tools footer collapsed by default - surfaces more explorer space; user
       // can expand on demand to reach Workspaces / Snippets / Profiles / etc.
       toolsCollapsed: true,
       // Sessions section starts collapsed so the Explorer (the more frequent
@@ -482,6 +517,7 @@ export const useAppStore = create<AppState>()(
 
       // Command Palette (F1)
       commandPaletteOpen: false,
+      paletteUsage: {},
 
       // Session History (F2)
       sessionHistoryOpen: false,
@@ -541,11 +577,15 @@ export const useAppStore = create<AppState>()(
       closeWorkspaceModal: () => set({ workspaceModalOpen: false }),
       openWorktreeModal: (repoPath) => set({ worktreeModalOpen: true, worktreeModalRepoPath: repoPath }),
       closeWorktreeModal: () => set({ worktreeModalOpen: false, worktreeModalRepoPath: null }),
+      openPushModal: (repoPath) => set({ pushModalOpen: true, pushModalRepoPath: repoPath }),
+      closePushModal: () => set({ pushModalOpen: false, pushModalRepoPath: null }),
       setDefaultClaudeArgs: (args) => set({ defaultClaudeArgs: args }),
       setNotifyOnFinish: (enabled) => set({ notifyOnFinish: enabled }),
       setRestoreSession: (enabled) => set({ restoreSession: enabled }),
       setTelemetryEnabled: (enabled) => set({ telemetryEnabled: enabled }),
       setErrorReportingEnabled: (enabled) => set({ errorReportingEnabled: enabled }),
+      setCostTrackingEnabled: (v) => set({ costTrackingEnabled: v }),
+      setSessionBudgetUsd: (v) => set({ sessionBudgetUsd: Math.max(0, v) }),
       setShowGitPanel: (enabled) => set({ showGitPanel: enabled }),
       setShowFileTree: (enabled) => set({ showFileTree: enabled }),
 
@@ -571,7 +611,10 @@ export const useAppStore = create<AppState>()(
       },
       setUiFontScale: (scale) =>
         set({ uiFontScale: Math.max(0.85, Math.min(1.25, Math.round(scale * 100) / 100)) }),
-      setUiReduceMotion: (enabled) => set({ uiReduceMotion: enabled }),
+      setUiReduceMotion: (enabled) => set({ uiReduceMotion: enabled, uiReduceMotionUserSet: true }),
+      setShowStatusBar: (v) => set({ showStatusBar: v }),
+      setShowTabActivity: (v) => set({ showTabActivity: v }),
+      setCompactTitleBar: (v) => set({ compactTitleBar: v }),
       setNotificationSoundEnabled: (enabled) => set({ notificationSoundEnabled: enabled }),
       setDndEnabled: (enabled) => set({ dndEnabled: enabled }),
       setDndStart: (hhmm) => set({ dndStart: /^\d{2}:\d{2}$/.test(hhmm) ? hhmm : '22:00' }),
@@ -693,7 +736,7 @@ export const useAppStore = create<AppState>()(
                 ),
               }));
             } catch {
-              // Non-fatal — leave headContent empty; diff will render against "".
+              // Non-fatal - leave headContent empty; diff will render against "".
             }
           }
           return;
@@ -849,6 +892,13 @@ export const useAppStore = create<AppState>()(
       }),
 
       // Command Palette actions (F1)
+      recordPaletteUse: (key) =>
+        set((s) => ({
+          paletteUsage: {
+            ...s.paletteUsage,
+            [key]: { count: (s.paletteUsage[key]?.count ?? 0) + 1, lastUsedTs: Date.now() },
+          },
+        })),
       openCommandPalette: () => set({ commandPaletteOpen: true }),
       closeCommandPalette: () => set({ commandPaletteOpen: false }),
       toggleCommandPalette: () => set((state) => ({ commandPaletteOpen: !state.commandPaletteOpen })),
@@ -911,6 +961,16 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: 'claude-terminal-app',
+      version: 1,
+      migrate: (persistedState, version) => {
+        const s = (persistedState as Partial<AppState>) ?? {};
+        if (version < 1) {
+          // Force cost tracking OFF for users who upgraded from a build where
+          // it defaulted to true. New default is false; opt-in only.
+          s.costTrackingEnabled = false;
+        }
+        return s as AppState;
+      },
       partialize: (state) => ({
         sidebarOpen: state.sidebarOpen,
         sidebarCollapsed: state.sidebarCollapsed,
@@ -921,6 +981,8 @@ export const useAppStore = create<AppState>()(
         restoreSession: state.restoreSession,
         telemetryEnabled: state.telemetryEnabled,
         errorReportingEnabled: state.errorReportingEnabled,
+        costTrackingEnabled: state.costTrackingEnabled,
+        sessionBudgetUsd: state.sessionBudgetUsd,
         showGitPanel: state.showGitPanel,
         showFileTree: state.showFileTree,
         terminalFontFamily: state.terminalFontFamily,
@@ -952,6 +1014,11 @@ export const useAppStore = create<AppState>()(
         accentColorHex: state.accentColorHex,
         uiFontScale: state.uiFontScale,
         uiReduceMotion: state.uiReduceMotion,
+        uiReduceMotionUserSet: state.uiReduceMotionUserSet,
+        paletteUsage: state.paletteUsage,
+        showStatusBar: state.showStatusBar,
+        showTabActivity: state.showTabActivity,
+        compactTitleBar: state.compactTitleBar,
         notificationSoundEnabled: state.notificationSoundEnabled,
         dndEnabled: state.dndEnabled,
         dndStart: state.dndStart,

@@ -15,7 +15,7 @@ export default function GitPage() {
 
   return (
     <div>
-      <PageHeader title="Version Control — Git" />
+      <PageHeader title="Version Control - Git" />
 
       <PageSection title="Commits">
         <SettingRow

@@ -1,9 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import appIcon from '../assets/app-icon.png';
 import {
-  Lightbulb,
-  FileDiff,
-  Users,
   Settings,
   Minus,
   Square,
@@ -13,6 +10,7 @@ import {
   Check,
   Loader2,
   Search as SearchIcon,
+  Upload,
 } from 'lucide-react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { getVersion } from '@tauri-apps/api/app';
@@ -41,15 +39,10 @@ function pickBreadcrumb(path: string | undefined): { project: string; sub: strin
 export function TitleBar() {
   const {
     toggleSidebar,
-    toggleHints,
-    toggleChanges,
-    toggleOrchestration,
     openSettings,
     openCommandPalette,
-    hintsOpen,
-    changesOpen,
-    orchestrationOpen,
     triggerChangesRefresh,
+    compactTitleBar,
   } = useAppStore();
   const { terminals, activeTerminalId, gitInfoCache } = useTerminalStore();
   const fetchGitInfo = useTerminalStore.getState().fetchGitInfo;
@@ -145,10 +138,11 @@ export function TitleBar() {
     ? 'bg-error'
     : 'bg-text-tertiary';
 
-  const iconBtn = (active: boolean) =>
+  // Neutral monochrome styling for the right-side tool cluster.
+  const toolBtn = (active: boolean) =>
     `no-drag w-7 h-7 flex items-center justify-center rounded-[6px] transition-colors ${
       active
-        ? 'bg-accent-primary/18 text-accent-primary ring-1 ring-inset ring-accent-primary/35'
+        ? 'bg-white/[0.08] text-text-primary'
         : 'text-text-secondary hover:bg-white/[0.06] hover:text-text-primary'
     }`;
 
@@ -157,7 +151,7 @@ export function TitleBar() {
       onMouseDown={(e) => { if (e.buttons === 1 && (e.target as HTMLElement).closest('.no-drag') === null) appWindow.startDragging(); }}
       className="h-9 bg-elevation-1 flex items-center justify-between pl-2 pr-0 border-b border-[var(--ij-divider)] drag-region select-none"
     >
-      {/* Left cluster — traffic lights (mac), sidebar toggle */}
+      {/* Left cluster - traffic lights (mac), sidebar toggle */}
       <div className="flex items-center gap-1 min-w-0">
         {isMac && (
           <div className="flex items-center gap-1.5 no-drag mr-1">
@@ -187,7 +181,7 @@ export function TitleBar() {
           <img src={appIcon} alt="ClaudeTerminal" className="w-[20px] h-[20px]" />
         </button>
 
-        {/* Project breadcrumb — IntelliJ main-toolbar project widget */}
+        {/* Project breadcrumb - IntelliJ main-toolbar project widget */}
         <button
           onClick={openCommandPalette}
           className="no-drag group flex items-center gap-1.5 h-7 ml-1 pl-2 pr-2 rounded-[6px] hover:bg-white/[0.06] transition-colors max-w-[360px]"
@@ -222,7 +216,7 @@ export function TitleBar() {
                 className={`flex items-center gap-1.5 h-7 px-2 rounded-[6px] transition-colors ${
                   branchMenuOpen ? 'bg-white/[0.08]' : 'hover:bg-white/[0.06]'
                 }`}
-                title={`Branch: ${gitInfo.current_branch} — click to switch`}
+                title={`Branch: ${gitInfo.current_branch} - click to switch`}
               >
                 <GitBranch size={12} strokeWidth={1.75} className="text-text-secondary" />
                 <span className="text-text-primary text-[12px] font-mono truncate max-w-[140px]">
@@ -282,6 +276,22 @@ export function TitleBar() {
                       );
                     })}
                   </div>
+                  <div className="border-t border-[var(--ij-divider-soft)]">
+                    <button
+                      onClick={() => {
+                        const path = active?.config.working_directory;
+                        if (path) {
+                          setBranchMenuOpen(false);
+                          useAppStore.getState().openPushModal(path);
+                        }
+                      }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-accent-primary hover:bg-accent-primary/10 transition-colors"
+                      title="Push commits to remote (Ctrl+Shift+K)"
+                    >
+                      <Upload size={12} strokeWidth={2} />
+                      Push to remote…
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -291,35 +301,25 @@ export function TitleBar() {
 
       {/* Center spacer + brand (small, right-aligned on the drag zone) */}
       <div className="flex-1 flex items-center justify-center min-w-0 px-3">
-        <span className="text-text-tertiary text-[11px] tracking-[0.02em] truncate">
-          ClaudeTerminal
-          {appVersion && <span className="text-text-tertiary/60 ml-1.5 font-mono">{appVersion}</span>}
-        </span>
+        {!compactTitleBar && (
+          <span className="text-text-tertiary text-[11px] tracking-[0.02em] truncate">
+            ClaudeTerminal
+            {appVersion && <span className="text-text-tertiary/60 ml-1.5 font-mono">{appVersion}</span>}
+          </span>
+        )}
       </div>
 
-      {/* Right cluster — search, run, tool windows, settings, window controls */}
+      {/* Right cluster - search, run, tool windows, settings, window controls */}
       <div className="flex items-stretch">
         <div className="flex items-center gap-0.5 pr-2 no-drag">
           <UpdatePill />
-          <button onClick={toggleChanges} className={iconBtn(changesOpen)} title="File Changes (F2)">
-            <FileDiff size={15} strokeWidth={1.75} />
-          </button>
-          <button onClick={toggleOrchestration} className={iconBtn(orchestrationOpen)} title="Agent Teams (F4)">
-            <Users size={15} strokeWidth={1.75} />
-          </button>
-          <button onClick={toggleHints} className={iconBtn(hintsOpen)} title="Command Hints">
-            <Lightbulb size={15} strokeWidth={1.75} />
-          </button>
-
-          <div className="w-px h-4 bg-[var(--ij-divider-soft)] mx-1" />
-
           <RecentTerminalsMenu />
           <ToolsMenu />
 
           <div className="w-px h-4 bg-[var(--ij-divider-soft)] mx-1" />
 
-          <button onClick={openSettings} className={iconBtn(false)} title="Settings (Ctrl+,)">
-            <Settings size={15} strokeWidth={1.75} />
+          <button onClick={openSettings} className={toolBtn(false)} title="Settings (Ctrl+,)">
+            <Settings size={15} strokeWidth={2} />
           </button>
         </div>
 

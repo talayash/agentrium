@@ -86,9 +86,9 @@ function ToastItem({ id, type, title, message, duration, actions }: {
         hasActions ? 'w-[420px]' : 'w-[320px]'
       }`}
     >
-      {/* Colored tint layer — sits above the opaque base so the card stays opaque */}
+      {/* Colored tint layer - sits above the opaque base so the card stays opaque */}
       <div className={`absolute inset-0 pointer-events-none ${colors.tint}`} />
-      {/* Left status accent bar — thicker when the toast has actions so it
+      {/* Left status accent bar - thicker when the toast has actions so it
           reads as a decision card, not a passing notification */}
       <div className={`absolute left-0 top-0 bottom-0 ${hasActions ? 'w-[5px]' : 'w-[3px]'} ${colors.bar}`} />
 

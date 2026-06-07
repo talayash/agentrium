@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import { X, Save, Trash2, FolderOpen, Play } from 'lucide-react';
+import { Save, Trash2, FolderOpen, Play } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
 import { toast } from '../store/toastStore';
+import { Modal } from './ui/Modal';
+import { Button } from './ui/Button';
 
 interface WorkspaceInfo {
   name: string;
@@ -113,36 +114,15 @@ export function WorkspaceModal() {
   };
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.15 }}
-      className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50"
-      onDoubleClick={closeWorkspaceModal}
+    <Modal
+      onClose={closeWorkspaceModal}
+      closeOn="doubleClick"
+      scrimClassName="bg-black/50 backdrop-blur-sm z-50"
+      panelClassName="w-full max-w-3xl"
+      showHeader
+      title="Workspaces"
+      icon={<FolderOpen size={16} className="text-text-secondary" />}
     >
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        transition={{ duration: 0.15 }}
-        onDoubleClick={(e) => e.stopPropagation()}
-        className="bg-bg-elevated ring-1 ring-white/[0.08] rounded-lg shadow-2xl w-full max-w-3xl overflow-hidden"
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-border">
-          <div className="flex items-center gap-2">
-            <FolderOpen size={16} className="text-text-secondary" />
-            <h2 className="text-text-primary text-[14px] font-semibold">Workspaces</h2>
-          </div>
-          <button
-            onClick={closeWorkspaceModal}
-            className="p-1 rounded hover:bg-white/[0.06] text-text-tertiary transition-colors"
-          >
-            <X size={16} />
-          </button>
-        </div>
-
         {/* Content */}
         <div className="flex h-[400px]">
           {/* Left: Workspace List + Save */}
@@ -157,14 +137,17 @@ export function WorkspaceModal() {
                 placeholder="Workspace name..."
                 className="flex-1 bg-bg-primary ring-1 ring-border-light rounded-md h-8 px-2 text-text-primary text-[12px] focus:outline-none focus:ring-accent-primary transition-colors"
               />
-              <button
+              <Button
+                variant="primary"
+                size="sm"
                 onClick={handleSaveWorkspace}
                 disabled={!newName.trim() || saving || terminals.size === 0}
-                className="flex items-center gap-1 bg-accent-primary hover:bg-accent-secondary disabled:opacity-50 disabled:cursor-not-allowed text-white h-8 px-2.5 rounded-md text-[11px] font-medium transition-colors flex-shrink-0"
+                loading={saving}
+                icon={<Save size={12} />}
+                className="h-8 flex-shrink-0"
               >
-                <Save size={12} />
                 Save
-              </button>
+              </Button>
             </div>
 
             {/* Workspace List */}
@@ -216,21 +199,22 @@ export function WorkspaceModal() {
                 </div>
 
                 <div className="flex gap-2 pt-4 border-t border-border">
-                  <button
+                  <Button
+                    variant="primary"
                     onClick={handleLoadWorkspace}
                     disabled={loading}
-                    className="flex items-center gap-2 bg-accent-primary hover:bg-accent-secondary disabled:opacity-50 text-white h-9 px-4 rounded-md text-[13px] font-medium transition-colors"
+                    loading={loading}
+                    icon={<Play size={14} />}
                   >
-                    <Play size={14} />
                     {loading ? 'Loading...' : 'Load Workspace'}
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    variant="danger"
                     onClick={handleDeleteWorkspace}
-                    className="flex items-center gap-2 text-red-400 hover:bg-red-500/10 h-9 px-4 rounded-md text-[13px] font-medium transition-colors"
+                    icon={<Trash2 size={14} />}
                   >
-                    <Trash2 size={14} />
                     Delete
-                  </button>
+                  </Button>
                 </div>
               </>
             ) : (
@@ -240,7 +224,6 @@ export function WorkspaceModal() {
             )}
           </div>
         </div>
-      </motion.div>
-    </motion.div>
+    </Modal>
   );
 }

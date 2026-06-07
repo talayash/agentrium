@@ -139,7 +139,7 @@ describe('getOptimalLayout', () => {
   });
 });
 
-describe('appStore — terminal appearance clamping', () => {
+describe('appStore - terminal appearance clamping', () => {
   it('setTerminalFontSize clamps to 8..32 and rounds', () => {
     const { setTerminalFontSize } = useAppStore.getState();
 
@@ -214,7 +214,7 @@ describe('appStore — terminal appearance clamping', () => {
   });
 });
 
-describe('appStore — grid actions', () => {
+describe('appStore - grid actions', () => {
   it('addToGrid dedupes and caps at 8', () => {
     const { addToGrid } = useAppStore.getState();
     for (let i = 0; i < 10; i++) addToGrid(`t${i}`);
@@ -279,7 +279,7 @@ describe('appStore — grid actions', () => {
   });
 });
 
-describe('appStore — closeFileTab focus rules', () => {
+describe('appStore - closeFileTab focus rules', () => {
   function seedFiles(paths: string[], active: string | null) {
     useAppStore.setState({
       openFiles: paths.map((p) => ({
@@ -323,7 +323,7 @@ describe('appStore — closeFileTab focus rules', () => {
   });
 });
 
-describe('appStore — persist partialize', () => {
+describe('appStore - persist partialize', () => {
   // Regression guard: every key in this allow-list belongs in the persisted
   // shape. Adding a new persisted key requires updating both this list and
   // partialize() in appStore.ts. Adding a non-persisted key here without
@@ -338,6 +338,8 @@ describe('appStore — persist partialize', () => {
     'restoreSession',
     'telemetryEnabled',
     'errorReportingEnabled',
+    'costTrackingEnabled',
+    'sessionBudgetUsd',
     'showGitPanel',
     'showFileTree',
     'terminalFontFamily',
@@ -368,6 +370,11 @@ describe('appStore — persist partialize', () => {
     'accentColorHex',
     'uiFontScale',
     'uiReduceMotion',
+    'uiReduceMotionUserSet',
+    'paletteUsage',
+    'showStatusBar',
+    'showTabActivity',
+    'compactTitleBar',
     'notificationSoundEnabled',
     'dndEnabled',
     'dndStart',
@@ -427,7 +434,7 @@ describe('appStore — persist partialize', () => {
   });
 });
 
-describe('appStore — appearance v1.22.0 setters', () => {
+describe('appStore - appearance v1.22.0 setters', () => {
   it('setUiFontScale clamps to 0.85..1.25 with 2-decimal rounding', () => {
     const { setUiFontScale } = useAppStore.getState();
     setUiFontScale(0.5);
@@ -457,9 +464,38 @@ describe('appStore — appearance v1.22.0 setters', () => {
     s.setUiReduceMotion(true);
     expect(useAppStore.getState().uiReduceMotion).toBe(true);
   });
+
+  it('recordPaletteUse increments count and stamps lastUsedTs', () => {
+    const s = useAppStore.getState();
+    expect(useAppStore.getState().paletteUsage['cmd:New Terminal']).toBeUndefined();
+
+    s.recordPaletteUse('cmd:New Terminal');
+    const first = useAppStore.getState().paletteUsage['cmd:New Terminal'];
+    expect(first.count).toBe(1);
+    expect(typeof first.lastUsedTs).toBe('number');
+
+    s.recordPaletteUse('cmd:New Terminal');
+    const second = useAppStore.getState().paletteUsage['cmd:New Terminal'];
+    expect(second.count).toBe(2);
+    expect(second.lastUsedTs).toBeGreaterThanOrEqual(first.lastUsedTs);
+  });
+
+  it('minimal-UI toggle setters flip status bar / tab activity / compact title bar', () => {
+    const s = useAppStore.getState();
+    s.setShowStatusBar(false);
+    expect(useAppStore.getState().showStatusBar).toBe(false);
+    s.setShowStatusBar(true);
+    expect(useAppStore.getState().showStatusBar).toBe(true);
+
+    s.setShowTabActivity(false);
+    expect(useAppStore.getState().showTabActivity).toBe(false);
+
+    s.setCompactTitleBar(true);
+    expect(useAppStore.getState().compactTitleBar).toBe(true);
+  });
 });
 
-describe('appStore — notifications + session v1.22.0 setters', () => {
+describe('appStore - notifications + session v1.22.0 setters', () => {
   it('setDndStart / setDndEnd validate HH:mm shape', () => {
     const s = useAppStore.getState();
     s.setDndStart('23:30');
@@ -481,7 +517,7 @@ describe('appStore — notifications + session v1.22.0 setters', () => {
   });
 });
 
-describe('appStore — editor v1.22.0 setters', () => {
+describe('appStore - editor v1.22.0 setters', () => {
   it('setEditorTabSize clamps to 1..8 and rounds', () => {
     const { setEditorTabSize } = useAppStore.getState();
     setEditorTabSize(0);

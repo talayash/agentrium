@@ -4,10 +4,12 @@ import { X, Plus, Grid3X3, SplitSquareHorizontal, RotateCw, GitBranch, ChevronLe
 import appIconUrl from '../assets/app-icon.png';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
+import { Button } from './ui/Button';
 import { TerminalView } from './TerminalView';
 import { TerminalGrid } from './TerminalGrid';
 import { SplitView } from './SplitView';
 import { SessionInsights } from './SessionInsights';
+import { SessionMetricsPanel } from './SessionMetricsPanel';
 import { FileEditorView } from './FileEditorView';
 import { ScriptsMenu } from './ScriptsMenu';
 import { ScriptChildPane } from './ScriptChildPane';
@@ -16,6 +18,8 @@ import { useNowTick } from '../hooks/useNowTick';
 import { useTabDrag } from '../hooks/useTabDrag';
 import { getWindowMode } from '../lib/windowMode';
 import { getLastOutputAt } from '../lib/terminalActivity';
+import { StateDot } from './StateDot';
+import type { SessionState } from '../lib/terminalState';
 
 function fileBasename(p: string): string {
   const trimmed = p.replace(/[\\/]+$/, '');
@@ -23,12 +27,20 @@ function fileBasename(p: string): string {
   return idx === -1 ? trimmed : trimmed.slice(idx + 1);
 }
 
+function formatCost(usd: number): string {
+  if (usd <= 0) return '';
+  if (usd < 0.01) return '<$0.01';
+  return `$${usd.toFixed(2)}`;
+}
+
 const isMac = navigator.platform.toUpperCase().includes('MAC');
 
 export function TerminalTabs() {
   const { terminals, activeTerminalId, closeTerminal, unreadTerminalIds, gitInfoCache, scriptChildren, closeScript } = useTerminalStore();
-  const { openNewTerminalModal, gridMode, toggleGridMode, addToGrid, gridTerminalIds, splitMode, splitTerminalIds, splitOrientation, splitRatio, setSplitOrientation, setSplitRatio, clearSplit, setSplitTerminals, setSplitMode, openFiles, activeFilePath, setActiveFilePath, closeFileTab, showFileTree } = useAppStore();
+  const { openNewTerminalModal, gridMode, toggleGridMode, addToGrid, gridTerminalIds, splitMode, splitTerminalIds, splitOrientation, splitRatio, setSplitOrientation, setSplitRatio, clearSplit, setSplitTerminals, setSplitMode, openFiles, activeFilePath, setActiveFilePath, closeFileTab, showFileTree, showTabActivity } = useAppStore();
   const now = useNowTick();
+  const terminalStates = useTerminalStore((s) => s.terminalStates);
+  const terminalMetrics = useTerminalStore((s) => s.terminalMetrics);
 
   // Tab drag/drop + multi-select + tear-off. Keyed on this window's label so a
   // detached window routes transfers from its own identity.
@@ -38,7 +50,7 @@ export function TerminalTabs() {
     setActiveFilePath(path);
   }, [setActiveFilePath]);
   // Script-child terminals are rendered below their parent and bottom-pane
-  // shells are rendered in BottomTerminalPane — neither belongs in the main
+  // shells are rendered in BottomTerminalPane - neither belongs in the main
   // tab bar.
   const terminalList = useMemo(
     () =>
@@ -182,7 +194,7 @@ export function TerminalTabs() {
 
   return (
     <div className="h-full flex flex-col">
-      {/* Tab Bar — IntelliJ editor tabs */}
+      {/* Tab Bar - IntelliJ editor tabs */}
       <div className="h-9 bg-elevation-1 border-b border-[var(--ij-divider)] flex items-center justify-between px-0.5">
         <div className="relative flex items-center flex-1 min-w-0">
           {canScrollLeft && (
@@ -205,7 +217,15 @@ export function TerminalTabs() {
               const isWorktree = instance?.isWorktree;
               const loopInfo = instance?.loopInfo;
               const lastOutputAt = getLastOutputAt(terminal.id);
-              const isWorking = lastOutputAt != null && now - lastOutputAt < 2000;
+              const liveBusy = lastOutputAt != null && now - lastOutputAt < 2000;
+              // Prefer the poller's classified state; fall back to the live
+              // activity timer so the dot lights up instantly on first output
+              // before the first poll tick lands. The 2000ms window here is
+              // intentionally wider than the poller's 600ms BUSY_WINDOW_MS to
+              // avoid flicker during the brief gap before the poller takes over.
+              const sessionState: SessionState =
+                terminalStates.get(terminal.id) ?? (liveBusy ? 'busy' : 'idle');
+              const isWorking = sessionState === 'busy';
               const isActiveTab = activeTerminalId === terminal.id && !activeFilePath;
               const selected = isSelected(terminal.id);
               const dragged = isDragging(terminal.id);
@@ -227,7 +247,7 @@ export function TerminalTabs() {
                   data-dragging={dragged ? '' : undefined}
                   {...tabHandlers(terminal.id, index)}
                   onAuxClick={(e) => {
-                    // Middle-click (mouse wheel) closes the tab — same as VS Code.
+                    // Middle-click (mouse wheel) closes the tab - same as VS Code.
                     if (e.button === 1) {
                       e.preventDefault();
                       closeTerminal(terminal.id);
@@ -239,7 +259,7 @@ export function TerminalTabs() {
                       : isActiveTab
                         ? 'bg-elevation-0 text-text-primary'
                         : 'hover:bg-white/[0.045] text-text-secondary'
-                  } ${selected && !isActiveTab ? 'ring-1 ring-inset ring-accent-primary/40' : ''} ${dragged ? 'opacity-20' : ''} ${isWorking && !isActiveTab ? 'ct-working-tab' : ''}`}
+                  } ${selected && !isActiveTab ? 'ring-1 ring-inset ring-accent-primary/40' : ''} ${dragged ? 'opacity-20' : ''} ${isWorking && !isActiveTab && showTabActivity ? 'ct-working-tab' : ''}`}
                 >
                   {/* IntelliJ-style bottom underline for active tab */}
                   {(isActiveTab || splitDropTargetId === terminal.id) && (
@@ -251,11 +271,8 @@ export function TerminalTabs() {
                   {unreadTerminalIds.has(terminal.id) && activeTerminalId !== terminal.id && (
                     <div className="w-1.5 h-1.5 rounded-full bg-accent-primary flex-shrink-0" />
                   )}
-                  {isWorking && (
-                    <div
-                      className="ct-working-dot w-2 h-2 rounded-full bg-success flex-shrink-0 text-success"
-                      title="Claude is working&hellip;"
-                    />
+                  {sessionState !== 'idle' && showTabActivity && (
+                    <StateDot state={sessionState} />
                   )}
                   {terminal.color_tag && (
                     <div className={`w-2 h-2 rounded-full ${terminal.color_tag} flex-shrink-0`} />
@@ -271,6 +288,19 @@ export function TerminalTabs() {
                       {model}
                     </span>
                   )}
+                  {(() => {
+                    const cost = terminalMetrics.get(terminal.id)?.costUsd ?? 0;
+                    const label = formatCost(cost);
+                    if (!label) return null;
+                    return (
+                      <span
+                        className="text-[9px] px-1 rounded font-medium flex-shrink-0 bg-emerald-500/15 text-emerald-400 tabular-nums"
+                        title="Estimated session cost (live)"
+                      >
+                        {label}
+                      </span>
+                    );
+                  })()}
                   {isWorktree && (
                     <GitBranch size={10} className="text-cyan-400 flex-shrink-0" />
                   )}
@@ -337,7 +367,7 @@ export function TerminalTabs() {
             </AnimatePresence>
           </ul>
 
-          {/* File tabs — rendered inline next to terminal tabs, VS Code style */}
+          {/* File tabs - rendered inline next to terminal tabs, VS Code style */}
           {openFiles.length > 0 && (
             <>
               {terminalList.length > 0 && (
@@ -454,7 +484,7 @@ export function TerminalTabs() {
         </div>
       </div>
 
-      {/* Content area — terminal stays mounted so scrollback survives the
+      {/* Content area - terminal stays mounted so scrollback survives the
           switch; the file editor overlays on top when a file tab is active. */}
       <div className="flex-1 relative">
         {activeTerminalId && (() => {
@@ -474,6 +504,13 @@ export function TerminalTabs() {
                 const inst = terminals.get(activeTerminalId);
                 if (inst?.config.status === 'Stopped' && inst?.sessionSummary) {
                   return <SessionInsights summary={inst.sessionSummary} />;
+                }
+                return null;
+              })()}
+              {(() => {
+                const inst = terminals.get(activeTerminalId);
+                if (inst && terminalMetrics.get(activeTerminalId)) {
+                  return <SessionMetricsPanel terminalId={activeTerminalId} />;
                 }
                 return null;
               })()}
@@ -520,21 +557,21 @@ export function TerminalTabs() {
                 <span className="ml-2">to start one</span>
               </p>
               <div className="flex gap-2">
-                <button
+                <Button
+                  variant="primary"
                   onClick={handleNewTab}
-                  className="flex items-center gap-2 bg-accent-primary hover:bg-accent-secondary text-white h-8 px-4 rounded-[6px] text-[12.5px] font-medium transition-colors shadow-[0_1px_0_rgba(255,255,255,0.08)_inset]"
+                  icon={<Plus size={14} strokeWidth={2.25} />}
                 >
-                  <Plus size={14} strokeWidth={2.25} />
                   New Terminal
-                </button>
+                </Button>
                 {terminalList.length > 0 && (
-                  <button
+                  <Button
+                    variant="secondary"
                     onClick={toggleGridMode}
-                    className="flex items-center gap-2 ring-1 ring-inset ring-[var(--ij-divider)] hover:bg-white/[0.05] text-text-primary h-8 px-4 rounded-[6px] text-[12.5px] font-medium transition-colors"
+                    icon={<Grid3X3 size={14} strokeWidth={1.75} />}
                   >
-                    <Grid3X3 size={14} strokeWidth={1.75} />
                     Grid View
-                  </button>
+                  </Button>
                 )}
               </div>
             </div>

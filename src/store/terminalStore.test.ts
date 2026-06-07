@@ -48,7 +48,7 @@ function seed(ids: string[], activeId: string | null = null) {
   });
 }
 
-describe('terminalStore — unread set', () => {
+describe('terminalStore - unread set', () => {
   beforeEach(() => {
     seed([]);
   });
@@ -78,7 +78,7 @@ describe('terminalStore — unread set', () => {
     useTerminalStore.getState().handleTerminalOutput('b', new Uint8Array([0x69]));
 
     // The hot path skips set() entirely, so the Set reference must be identical
-    // — that's the whole point of the short-circuit added for streaming perf.
+    // - that's the whole point of the short-circuit added for streaming perf.
     expect(useTerminalStore.getState().unreadTerminalIds).toBe(before);
   });
 
@@ -120,7 +120,7 @@ describe('terminalStore — unread set', () => {
   });
 });
 
-describe('terminalStore — reorderTerminals', () => {
+describe('terminalStore - reorderTerminals', () => {
   it('reorders known ids in the requested order', () => {
     seed(['a', 'b', 'c']);
 
@@ -161,7 +161,7 @@ describe('terminalStore — reorderTerminals', () => {
   });
 });
 
-describe('terminalStore — per-terminal mutators', () => {
+describe('terminalStore - per-terminal mutators', () => {
   beforeEach(() => seed(['a', 'b']));
 
   it('updateTerminalStatus mutates only the targeted instance', () => {
@@ -204,7 +204,7 @@ describe('terminalStore — per-terminal mutators', () => {
   });
 });
 
-describe('terminalStore — writeToTerminal chunking', () => {
+describe('terminalStore - writeToTerminal chunking', () => {
   beforeEach(() => {
     seed(['a']);
     invokeMock.mockClear();
@@ -231,5 +231,31 @@ describe('terminalStore — writeToTerminal chunking', () => {
     );
     expect(dataLengths.reduce((n, len) => n + len, 0)).toBe(big.length);
     expect(dataLengths.every((len) => len <= 60 * 1024)).toBe(true);
+  });
+});
+
+describe('terminalStore session state', () => {
+  beforeEach(() => {
+    useTerminalStore.setState({ terminalStates: new Map() });
+  });
+
+  it('setTerminalState stores a state', () => {
+    useTerminalStore.getState().setTerminalState('a', 'waiting');
+    expect(useTerminalStore.getState().terminalStates.get('a')).toBe('waiting');
+  });
+
+  it('setTerminalState is a no-op (same map reference) when unchanged', () => {
+    useTerminalStore.getState().setTerminalState('a', 'busy');
+    const before = useTerminalStore.getState().terminalStates;
+    useTerminalStore.getState().setTerminalState('a', 'busy');
+    expect(useTerminalStore.getState().terminalStates).toBe(before);
+  });
+
+  it('setTerminalState replaces the map when the value changes', () => {
+    useTerminalStore.getState().setTerminalState('a', 'busy');
+    const before = useTerminalStore.getState().terminalStates;
+    useTerminalStore.getState().setTerminalState('a', 'idle');
+    expect(useTerminalStore.getState().terminalStates).not.toBe(before);
+    expect(useTerminalStore.getState().terminalStates.get('a')).toBe('idle');
   });
 });

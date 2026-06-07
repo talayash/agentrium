@@ -4,6 +4,8 @@ import { Terminal } from '@xterm/xterm';
 import type { WorktreeDetectResult } from '../types/git';
 import { markTerminalActive, clearTerminalActivity } from '../lib/terminalActivity';
 import { chunkUtf8Bytes } from '../lib/chunkUtf8';
+import type { SessionState } from '../lib/terminalState';
+import { mergeMetrics, emptyMetrics, type SessionMetrics, type TerminalMetricsPayload } from '../lib/sessionMetrics';
 
 // Stay safely under the backend's 64 KB per-write cap so very large pastes
 // (multi-hundred KB) don't hit "Write payload too large".
@@ -54,6 +56,15 @@ interface TerminalState {
   terminals: Map<string, TerminalInstance>;
   activeTerminalId: string | null;
   unreadTerminalIds: Set<string>;
+  // Inferred Claude session state per terminal (busy/waiting/idle/stopped).
+  // Written only on transitions by the detection poller - never on the
+  // streaming hot path - so subscribers re-render only when state changes.
+  terminalStates: Map<string, SessionState>;
+  // Live per-terminal cost/token metrics from the OTel receiver.
+  terminalMetrics: Map<string, SessionMetrics>;
+  // Terminals already warned about exceeding the budget cap (fire-once).
+  budgetWarnedIds: Set<string>;
+  markBudgetWarned: (id: string) => void;
   gitInfoCache: Map<string, WorktreeDetectResult>;
   // Parent terminal ID → script child terminal ID (one child per parent).
   scriptChildren: Map<string, string>;
@@ -92,6 +103,8 @@ interface TerminalState {
   getTerminalList: () => TerminalConfig[];
   clearUnread: (id: string) => void;
   hasUnread: (id: string) => boolean;
+  setTerminalState: (id: string, state: SessionState) => void;
+  applyTerminalMetrics: (payload: TerminalMetricsPayload) => void;
   fetchGitInfo: (terminalId: string) => Promise<void>;
   reorderTerminals: (orderedIds: string[]) => void;
 
@@ -110,7 +123,7 @@ interface TerminalState {
   // Run an npm script in a child terminal tied to the given parent. Returns
   // the new child's id. If the parent already has a script running, that
   // child is closed first so the new one replaces it. `cwdOverride` lets the
-  // caller run the script in a directory other than the parent's cwd — used
+  // caller run the script in a directory other than the parent's cwd - used
   // by the package.json CodeLens, where the script's cwd is the file's folder.
   runScript: (parentId: string, scriptName: string, cwdOverride?: string) => Promise<string>;
   closeScript: (parentId: string) => Promise<void>;
@@ -125,6 +138,9 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
   terminals: new Map(),
   activeTerminalId: null,
   unreadTerminalIds: new Set(),
+  terminalStates: new Map(),
+  terminalMetrics: new Map(),
+  budgetWarnedIds: new Set(),
   gitInfoCache: new Map(),
   scriptChildren: new Map(),
   bottomTerminalIds: [],
@@ -132,6 +148,8 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
 
   createTerminal: async (label, workingDirectory, claudeArgs, envVars, colorTag, nickname, restoredOutput, resumeSessionId, continueRecent) => {
     try {
+      const { useAppStore } = await import('./appStore');
+      const costTracking = useAppStore.getState().costTrackingEnabled;
       const config = await invoke<TerminalConfig>('create_terminal', {
         request: {
           label,
@@ -142,6 +160,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
           nickname: nickname || null,
           resume_session_id: resumeSessionId || null,
           continue_recent: !!continueRecent,
+          cost_tracking: costTracking,
         },
       });
       // Parse model, effort, worktree from claude_args
@@ -182,7 +201,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
         label,
         cwd: workingDirectory,
       });
-      // Apply nickname/color_tag the user picked in the modal — the backend
+      // Apply nickname/color_tag the user picked in the modal - the backend
       // command takes only label+cwd, so we patch the persisted record here.
       // (Falls back silently if either is empty to avoid a needless IPC.)
       if (nickname) {
@@ -196,7 +215,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
 
       set((state) => {
         const newTerminals = new Map(state.terminals);
-        // Intentionally NOT setting isShellTerminal — that flag is for bottom-
+        // Intentionally NOT setting isShellTerminal - that flag is for bottom-
         // pane shells. Main-tab shells appear in the sidebar and tab bar like
         // any other terminal; their plain-shell-ness is recorded durably in
         // the backend via claude_args=["__shell__"].
@@ -228,7 +247,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       try { await invoke('close_terminal', { id: childId }); } catch { /* already gone */ }
     }
 
-    // Best-effort paste cleanup BEFORE close_terminal — the backend resolves
+    // Best-effort paste cleanup BEFORE close_terminal - the backend resolves
     // terminal_id → cwd via the still-alive TerminalManager. Dynamic-import
     // to avoid an appStore↔terminalStore import cycle.
     try {
@@ -239,7 +258,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       }
       usePasteStore.getState().clearForTerminal(id);
     } catch {
-      // ignore — cleanup is best-effort
+      // ignore - cleanup is best-effort
     }
 
     await invoke('close_terminal', { id });
@@ -270,11 +289,23 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       const newGitCache = new Map(state.gitInfoCache);
       newGitCache.delete(id);
 
+      const newStates = new Map(state.terminalStates);
+      newStates.delete(id);
+      if (childId) newStates.delete(childId);
+
       const newChildren = new Map(state.scriptChildren);
       newChildren.delete(id);
 
+      const newMetrics = new Map(state.terminalMetrics);
+      newMetrics.delete(id);
+      if (childId) newMetrics.delete(childId);
+
+      const newBudgetWarned = new Set(state.budgetWarnedIds);
+      newBudgetWarned.delete(id);
+      if (childId) newBudgetWarned.delete(childId);
+
       // Only pick a fallback from terminals that actually appear in the main
-      // tab bar — script children and bottom-pane shells must never become
+      // tab bar - script children and bottom-pane shells must never become
       // the "active tab".
       const remainingIds = Array.from(newTerminals.values())
         .filter((t) => !t.scriptParentId && !t.isShellTerminal)
@@ -283,7 +314,10 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
         terminals: newTerminals,
         unreadTerminalIds: newUnread,
         gitInfoCache: newGitCache,
+        terminalStates: newStates,
         scriptChildren: newChildren,
+        terminalMetrics: newMetrics,
+        budgetWarnedIds: newBudgetWarned,
         activeTerminalId: state.activeTerminalId === id
           ? (remainingIds[0] || null)
           : state.activeTerminalId,
@@ -368,9 +402,9 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       instance.xterm.write(data);
     }
     // Active-work indicator: record the timestamp in a plain Map (no Zustand
-    // set() — that would defeat the streaming-rate optimization below).
+    // set() - that would defeat the streaming-rate optimization below).
     markTerminalActive(id);
-    // Short-circuit — if the terminal is already marked unread, skip the
+    // Short-circuit - if the terminal is already marked unread, skip the
     // Set clone + set() call. At streaming rates this used to fire thousands
     // of times per second and re-render every subscriber.
     if (id !== state.activeTerminalId && !state.unreadTerminalIds.has(id)) {
@@ -430,6 +464,34 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
     return get().unreadTerminalIds.has(id);
   },
 
+  setTerminalState: (id, state) => {
+    // Short-circuit before set() so unchanged states cause zero re-renders.
+    if (get().terminalStates.get(id) === state) return;
+    set((s) => {
+      const next = new Map(s.terminalStates);
+      next.set(id, state);
+      return { terminalStates: next };
+    });
+  },
+
+  applyTerminalMetrics: (payload) => {
+    const id = payload.terminal_id;
+    set((s) => {
+      const prev = s.terminalMetrics.get(id) ?? emptyMetrics();
+      const next = mergeMetrics(prev, payload);
+      const map = new Map(s.terminalMetrics);
+      map.set(id, next);
+      return { terminalMetrics: map };
+    });
+  },
+
+  markBudgetWarned: (id) => set((s) => {
+    if (s.budgetWarnedIds.has(id)) return {};
+    const next = new Set(s.budgetWarnedIds);
+    next.add(id);
+    return { budgetWarnedIds: next };
+  }),
+
   fetchGitInfo: async (terminalId) => {
     const instance = get().terminals.get(terminalId);
     if (!instance) return;
@@ -444,7 +506,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
         return { gitInfoCache: newCache };
       });
     } catch {
-      // Silently ignore — non-git dirs or git not installed
+      // Silently ignore - non-git dirs or git not installed
     }
   },
 
@@ -577,7 +639,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
     try {
       await invoke('close_terminal', { id: childId });
     } catch {
-      // Already closed — fall through to store cleanup.
+      // Already closed - fall through to store cleanup.
     }
     set((state) => {
       const nextTerminals = new Map(state.terminals);
@@ -586,7 +648,9 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       nextTerminals.delete(childId);
       const nextChildren = new Map(state.scriptChildren);
       nextChildren.delete(parentId);
-      return { terminals: nextTerminals, scriptChildren: nextChildren };
+      const nextStates = new Map(state.terminalStates);
+      nextStates.delete(childId);
+      return { terminals: nextTerminals, scriptChildren: nextChildren, terminalStates: nextStates };
     });
   },
 
@@ -613,7 +677,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
     try {
       await invoke('close_terminal', { id });
     } catch {
-      // Already gone — fall through to store cleanup.
+      // Already gone - fall through to store cleanup.
     }
     set((state) => {
       const nextTerminals = new Map(state.terminals);
@@ -631,10 +695,13 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
           nextActive = nextIds[fallbackIdx];
         }
       }
+      const nextStates = new Map(state.terminalStates);
+      nextStates.delete(id);
       return {
         terminals: nextTerminals,
         bottomTerminalIds: nextIds,
         activeBottomTerminalId: nextActive,
+        terminalStates: nextStates,
       };
     });
   },

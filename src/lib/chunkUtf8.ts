@@ -16,7 +16,7 @@ export function chunkUtf8Bytes(bytes: Uint8Array, max: number): Uint8Array[] {
   let start = 0;
   while (start < bytes.length) {
     let end = Math.min(start + max, bytes.length);
-    // If `end` points to a continuation byte (10xxxxxx), it's mid-sequence —
+    // If `end` points to a continuation byte (10xxxxxx), it's mid-sequence -
     // walk back to the start of that sequence so the chunk ends cleanly.
     if (end < bytes.length) {
       let probe = end;

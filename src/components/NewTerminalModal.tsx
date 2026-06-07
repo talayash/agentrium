@@ -1,12 +1,14 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, FolderOpen, Terminal, Zap, GitBranch, GitFork, Plus, Loader2, ChevronDown, Pencil } from 'lucide-react';
+import { FolderOpen, Terminal, Zap, GitBranch, GitFork, Plus, Loader2, ChevronDown, Pencil } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
 import { homeDir } from '@tauri-apps/api/path';
 import { open } from '@tauri-apps/plugin-dialog';
 import type { WorktreeInfo, WorktreeDetectResult } from '../types/git';
+import { Button } from './ui/Button';
+import { Modal } from './ui/Modal';
 
 const isMac = navigator.platform.toUpperCase().includes('MAC');
 
@@ -31,7 +33,7 @@ const TAG_COLORS = [
 ];
 
 export function NewTerminalModal() {
-  const { closeNewTerminalModal, defaultClaudeArgs, openProfileModal, profileModalOpen } = useAppStore();
+  const { closeNewTerminalModal, defaultClaudeArgs, openProfileModal, profileModalOpen, gridMode, addToGrid } = useAppStore();
   const { terminals, createTerminal, createShellTerminalTab } = useTerminalStore();
 
   const [profiles, setProfiles] = useState<ConfigProfile[]>([]);
@@ -67,7 +69,7 @@ export function NewTerminalModal() {
     loadDefaultDirectory();
   }, []);
 
-  // Reload profiles when the ProfileModal closes — picks up any add/edit/delete
+  // Reload profiles when the ProfileModal closes - picks up any add/edit/delete
   // the user just made without forcing them to reopen New Terminal.
   const prevProfileModalOpen = useRef(profileModalOpen);
   useEffect(() => {
@@ -244,8 +246,9 @@ export function NewTerminalModal() {
       const label = `${baseName} ${terminals.size + 1}`;
       const colorTag = TAG_COLORS[terminals.size % TAG_COLORS.length];
 
+      let newTerminalId: string;
       if (plainShell) {
-        await createShellTerminalTab(
+        newTerminalId = await createShellTerminalTab(
           label,
           workingDirectory,
           colorTag,
@@ -272,7 +275,7 @@ export function NewTerminalModal() {
           finalArgs.unshift('--worktree');
         }
 
-        await createTerminal(
+        newTerminalId = await createTerminal(
           label,
           workingDirectory,
           finalArgs,
@@ -280,6 +283,13 @@ export function NewTerminalModal() {
           colorTag,
           nickname || undefined,
         );
+      }
+
+      // Created from grid view → place the new terminal in the grid so it's
+      // visible immediately. addToGrid dedupes and caps at 8, so a full grid
+      // gracefully no-ops on placement (the terminal is still created/active).
+      if (gridMode) {
+        addToGrid(newTerminalId);
       }
 
       closeNewTerminalModal();
@@ -292,36 +302,15 @@ export function NewTerminalModal() {
   };
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.15 }}
-      className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50"
-      onDoubleClick={closeNewTerminalModal}
+    <Modal
+      onClose={closeNewTerminalModal}
+      closeOn="doubleClick"
+      scrimClassName="bg-black/50 backdrop-blur-sm z-50"
+      panelClassName="w-full max-w-lg max-h-[90vh] flex flex-col"
+      showHeader
+      title="New Terminal"
+      icon={<Terminal size={16} className="text-text-secondary" />}
     >
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        transition={{ duration: 0.15 }}
-        onDoubleClick={(e) => e.stopPropagation()}
-        className="bg-bg-elevated ring-1 ring-white/[0.08] rounded-lg shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden"
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-border">
-          <div className="flex items-center gap-2">
-            <Terminal size={16} className="text-text-secondary" />
-            <h2 className="text-text-primary text-[14px] font-semibold">New Terminal</h2>
-          </div>
-          <button
-            onClick={closeNewTerminalModal}
-            className="p-1 rounded hover:bg-white/[0.06] text-text-tertiary transition-colors"
-          >
-            <X size={16} />
-          </button>
-        </div>
-
         {/* Content */}
         <div className="p-4 space-y-4 overflow-y-auto flex-1 min-h-0">
           {/* Nickname */}
@@ -557,22 +546,25 @@ export function NewTerminalModal() {
                         <p className="text-error text-[11px]">{worktreeError}</p>
                       )}
                       <div className="flex justify-end gap-2">
-                        <button
+                        <Button
+                          variant="ghost"
+                          size="sm"
                           onClick={() => {
                             setShowNewWorktreeForm(false);
                             setWorktreeError(null);
                           }}
-                          className="px-3 h-7 text-text-secondary hover:text-text-primary text-[12px] rounded transition-colors"
                         >
                           Cancel
-                        </button>
-                        <button
+                        </Button>
+                        <Button
+                          variant="primary"
+                          size="sm"
                           onClick={handleCreateWorktree}
-                          disabled={creatingWorktree || !newBranchName.trim()}
-                          className="px-3 h-7 bg-accent-primary hover:bg-accent-secondary disabled:opacity-50 text-white text-[12px] rounded font-medium transition-colors"
+                          disabled={!newBranchName.trim()}
+                          loading={creatingWorktree}
                         >
                           {creatingWorktree ? 'Creating...' : 'Create'}
-                        </button>
+                        </Button>
                       </div>
                     </motion.div>
                   )}
@@ -676,22 +668,19 @@ export function NewTerminalModal() {
 
         {/* Footer */}
         <div className="flex justify-end gap-2 p-3 border-t border-border">
-          <button
-            onClick={closeNewTerminalModal}
-            className="px-4 h-9 text-text-secondary hover:text-text-primary hover:bg-white/[0.04] rounded-md text-[13px] transition-colors"
-          >
+          <Button variant="ghost" onClick={closeNewTerminalModal}>
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="primary"
             onClick={handleCreateTerminal}
-            disabled={isCreating || !workingDirectory}
-            className="flex items-center gap-2 bg-accent-primary hover:bg-accent-secondary disabled:opacity-50 disabled:cursor-not-allowed text-white h-9 px-4 rounded-md text-[13px] font-medium transition-colors"
+            disabled={!workingDirectory}
+            loading={isCreating}
+            icon={<Zap size={14} />}
           >
-            <Zap size={14} />
             {isCreating ? 'Creating...' : (plainShell ? 'Start Shell' : 'Start Terminal')}
-          </button>
+          </Button>
         </div>
-      </motion.div>
-    </motion.div>
+    </Modal>
   );
 }

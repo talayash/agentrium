@@ -7,7 +7,7 @@ import { resolveTerminalTheme } from '../lib/terminalThemes';
 import '@xterm/xterm/css/xterm.css';
 
 // Sample content shown in the preview. The arrows on the last line make the
-// BiDi toggle visible — Unicode11 + RTL rendering reorders them.
+// BiDi toggle visible - Unicode11 + RTL rendering reorders them.
 const SAMPLE_LINES = [
   '\x1b[38;5;39m$\x1b[0m npm run dev',
   '\x1b[38;5;46m[INFO]\x1b[0m vite ready in 921 ms',
@@ -71,7 +71,7 @@ export function TerminalAppearancePreview() {
       terminalRef.current = null;
       fitRef.current = null;
     };
-    // Recreate only on bidi flip — everything else is live-applied below.
+    // Recreate only on bidi flip - everything else is live-applied below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bidi]);
 

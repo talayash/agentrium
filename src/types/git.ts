@@ -14,3 +14,24 @@ export interface WorktreeDetectResult {
   current_branch: string | null;
   worktree_root: string | null;
 }
+
+export interface PushCommit {
+  sha: string;
+  short_sha: string;
+  subject: string;
+  author: string;
+  time_iso: string;
+}
+
+export interface PushPreview {
+  local_branch: string;
+  remotes: string[];
+  default_remote: string;
+  default_remote_branch: string;
+  has_upstream: boolean;
+  commits: PushCommit[];
+  ahead: number;
+  behind: number;
+}
+
+export type PushMode = 'normal' | 'force_with_lease';

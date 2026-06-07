@@ -64,7 +64,7 @@ export function parseDiff(diffText: string): DiffHunk[] {
         newLineNumber: null,
       });
     } else if (line.startsWith('\\')) {
-      // "\ No newline at end of file" — skip
+      // "\ No newline at end of file" - skip
       continue;
     } else {
       // Context line (starts with space or is empty)

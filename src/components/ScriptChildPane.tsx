@@ -61,7 +61,7 @@ export function ScriptChildPane({ parentId: _parentId, childId, scriptName, stat
 
   return (
     <>
-      {/* Drag handle — same styling as the Sidebar splitter for consistency */}
+      {/* Drag handle - same styling as the Sidebar splitter for consistency */}
       <div
         role="separator"
         aria-orientation="horizontal"

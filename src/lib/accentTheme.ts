@@ -1,5 +1,5 @@
 // Runtime CSS-variable manipulation for theme / density / accent / reduce-motion / font scale.
-// All callers go through these helpers — components never write to documentElement.style directly.
+// All callers go through these helpers - components never write to documentElement.style directly.
 
 import type { ThemeMode, UiDensity } from '../store/appStore';
 
@@ -36,6 +36,13 @@ export function applyThemeMode(mode: ThemeMode): void {
     root.style.setProperty('--ij-divider', '#C9CCD0');
     root.style.setProperty('--ij-divider-soft', '#E0E2E6');
     root.style.setProperty('color', '#27282E');
+    // Flip the text tokens to dark-on-light. Without this the tokens stay at
+    // their near-white dark-theme channels and become invisible on light
+    // surfaces. Values chosen for WCAG AA on the light elevation ramp:
+    // primary ~13:1, secondary ~6:1, tertiary ~4.8:1 (all on elevation-0).
+    root.style.setProperty('--text-primary', '39 40 46');     // #27282E
+    root.style.setProperty('--text-secondary', '92 96 107');  // #5C606B
+    root.style.setProperty('--text-tertiary', '107 111 121'); // #6B6F79
   } else {
     root.style.removeProperty('--elevation-0');
     root.style.removeProperty('--elevation-1');
@@ -45,6 +52,10 @@ export function applyThemeMode(mode: ThemeMode): void {
     root.style.removeProperty('--ij-divider');
     root.style.removeProperty('--ij-divider-soft');
     root.style.removeProperty('color');
+    // Revert to the dark channel triplets defined in index.css :root.
+    root.style.removeProperty('--text-primary');
+    root.style.removeProperty('--text-secondary');
+    root.style.removeProperty('--text-tertiary');
   }
 }
 

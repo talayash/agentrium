@@ -3,6 +3,30 @@ import { check, type Update } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { invoke } from '@tauri-apps/api/core';
 import { getVersion } from '@tauri-apps/api/app';
+import { reportInvokeFailure } from '../lib/errorReporter';
+
+// Reqwest / Tauri updater surface a handful of message shapes when the network
+// is flaky, the GitHub edge is briefly unreachable, or the latest.json hasn't
+// been published yet. None of them are actionable bugs, so we keep the UI
+// status='error' but skip telemetry - otherwise a single user behind a hotel
+// wifi can dominate the error report (see fingerprint 6d37063a).
+const TRANSIENT_NETWORK_PATTERNS: readonly RegExp[] = [
+  /error sending request/i,
+  /could not fetch a valid release json/i,
+  /connection (?:refused|reset|closed|aborted)/i,
+  /dns (?:error|lookup)/i,
+  /failed to lookup address/i,
+  /timed? ?out/i,
+  /network is unreachable/i,
+  /no such host/i,
+  /unable to (?:resolve|connect)/i,
+];
+
+export function isTransientNetworkError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : '';
+  if (!msg) return false;
+  return TRANSIENT_NETWORK_PATTERNS.some((re) => re.test(msg));
+}
 
 interface UpdateInfo {
   version: string;
@@ -18,9 +42,9 @@ interface UpdaterState {
   downloadProgress: number;
   error: string | null;
   lastCheckAt: number | null;
-  // Banner gating — keep the user in control of when they're prompted.
-  bannerDismissedVersion: string | null;  // "Later" — suppress banner for this version until next launch
-  bannerSnoozedUntil: number | null;       // "Remind in 4h" — epoch ms after which the banner may show again
+  // Banner gating - keep the user in control of when they're prompted.
+  bannerDismissedVersion: string | null;  // "Later" - suppress banner for this version until next launch
+  bannerSnoozedUntil: number | null;       // "Remind in 4h" - epoch ms after which the banner may show again
   notifiedVersion: string | null;          // version we've already sent a desktop toast for (avoid duplicate toasts)
 
   checkForUpdates: () => Promise<{ available: boolean }>;
@@ -63,7 +87,7 @@ export const useUpdaterStore = create<UpdaterState>((set, get) => ({
           'X-OS': navigator.platform,
         };
       } catch {
-        // Analytics headers are optional — continue without them
+        // Analytics headers are optional - continue without them
       }
 
       const update = await check({ headers });
@@ -91,6 +115,9 @@ export const useUpdaterStore = create<UpdaterState>((set, get) => ({
       }
     } catch (err) {
       console.error('Update check failed:', err);
+      if (!isTransientNetworkError(err)) {
+        reportInvokeFailure('updater_check', err);
+      }
       set({
         status: 'error',
         error: err instanceof Error ? err.message : 'Failed to check for updates',
@@ -132,6 +159,9 @@ export const useUpdaterStore = create<UpdaterState>((set, get) => ({
       return true;
     } catch (err) {
       console.error('Update download failed:', err);
+      if (!isTransientNetworkError(err)) {
+        reportInvokeFailure('updater_download_install', err);
+      }
       const msg = err instanceof Error ? err.message : String(err);
       set({ status: 'error', error: `Failed to auto-update: ${msg}. Please download manually.` });
       return false;
@@ -143,11 +173,13 @@ export const useUpdaterStore = create<UpdaterState>((set, get) => ({
       await invoke('save_session_for_restore');
     } catch (err) {
       console.error('Failed to save session before restart:', err);
+      reportInvokeFailure('save_session_for_restore', err);
     }
     try {
       await relaunch();
     } catch (err) {
       console.error('Failed to restart:', err);
+      reportInvokeFailure('updater_restart', err);
       set({ error: 'Failed to restart. Please restart manually.' });
     }
   },

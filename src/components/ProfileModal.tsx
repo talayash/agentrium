@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
 import { X, Plus, Trash2, Save, FolderOpen } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { useAppStore } from '../store/appStore';
 import { toast } from '../store/toastStore';
 import { v4 as uuidv4 } from 'uuid';
+import { Button } from './ui/Button';
+import { Modal } from './ui/Modal';
 
 interface ConfigProfile {
   id: string;
@@ -107,22 +108,12 @@ export function ProfileModal() {
   };
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.15 }}
-      className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[60]"
-      onDoubleClick={closeProfileModal}
+    <Modal
+      onClose={closeProfileModal}
+      closeOn="doubleClick"
+      scrimClassName="bg-black/50 backdrop-blur-sm z-[60]"
+      panelClassName="w-full max-w-3xl"
     >
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        transition={{ duration: 0.15 }}
-        onDoubleClick={(e) => e.stopPropagation()}
-        className="bg-bg-elevated ring-1 ring-white/[0.08] rounded-lg shadow-2xl w-full max-w-3xl overflow-hidden"
-      >
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-border">
           <h2 className="text-text-primary text-[14px] font-semibold">Configuration Profiles</h2>
@@ -138,13 +129,15 @@ export function ProfileModal() {
         <div className="flex h-[500px]">
           {/* Profile List */}
           <div className="w-64 border-r border-border p-3 flex flex-col">
-            <button
+            <Button
+              variant="primary"
+              size="sm"
               onClick={handleCreateProfile}
-              className="flex items-center gap-2 w-full bg-accent-primary hover:bg-accent-secondary text-white py-2 px-3 rounded-md text-[12px] font-medium mb-3 transition-colors"
+              icon={<Plus size={14} />}
+              className="w-full mb-3"
             >
-              <Plus size={14} />
               New Profile
-            </button>
+            </Button>
 
             <div className="flex-1 overflow-y-auto space-y-0.5">
               {profiles.map((profile) => (
@@ -296,22 +289,22 @@ export function ProfileModal() {
                 )}
 
                 <div className="flex gap-2 pt-4 border-t border-border">
-                  <button
+                  <Button
+                    variant="primary"
                     onClick={handleSaveProfile}
-                    className="flex items-center gap-2 bg-accent-primary hover:bg-accent-secondary text-white h-9 px-4 rounded-md text-[13px] font-medium transition-colors"
+                    icon={<Save size={14} />}
                   >
-                    <Save size={14} />
                     Save Profile
-                  </button>
+                  </Button>
 
                   {!isCreating && (
-                    <button
+                    <Button
+                      variant="danger"
                       onClick={() => handleDeleteProfile(selectedProfile.id)}
-                      className="flex items-center gap-2 text-red-400 hover:bg-red-500/10 h-9 px-4 rounded-md text-[13px] font-medium transition-colors"
+                      icon={<Trash2 size={14} />}
                     >
-                      <Trash2 size={14} />
                       Delete
-                    </button>
+                    </Button>
                   )}
                 </div>
               </div>
@@ -322,7 +315,6 @@ export function ProfileModal() {
             )}
           </div>
         </div>
-      </motion.div>
-    </motion.div>
+    </Modal>
   );
 }

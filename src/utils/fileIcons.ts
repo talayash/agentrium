@@ -1,4 +1,4 @@
-// Material Icon Theme bridge — resolves filenames and folder names to the SVG
+// Material Icon Theme bridge - resolves filenames and folder names to the SVG
 // asset URLs shipped by the `material-icon-theme` npm package.
 //
 // `generateManifest()` returns the same maps the VS Code extension consumes

@@ -17,7 +17,7 @@ interface SessionHistoryEntry {
 function formatDuration(start: string, end: string | null): string {
   if (!end) return 'running';
   const ms = new Date(end).getTime() - new Date(start).getTime();
-  if (ms < 0) return '—';
+  if (ms < 0) return '-';
   const seconds = Math.floor(ms / 1000);
   if (seconds < 60) return `${seconds}s`;
   const minutes = Math.floor(seconds / 60);

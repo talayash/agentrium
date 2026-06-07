@@ -1,17 +1,18 @@
 import { useEffect, useRef } from 'react';
 import { useAppStore, DEFAULT_TERMINAL_FONT_SIZE } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
+import { toast } from '../store/toastStore';
 
 /**
  * Return true when the focused element is an editable surface that is NOT
- * inside an xterm terminal — i.e., a Settings/modal input, a Monaco editor,
+ * inside an xterm terminal - i.e., a Settings/modal input, a Monaco editor,
  * or the global search box. In those cases we must let key events pass
  * through to the native control instead of hijacking them for terminal zoom.
  */
 function isFocusInNonTerminalEditable(): boolean {
   const el = document.activeElement;
   if (!el || el === document.body) return false;
-  // xterm's hidden textarea always lives inside an .xterm container — let
+  // xterm's hidden textarea always lives inside an .xterm container - let
   // shortcuts through when the user is "in" a terminal.
   if (el.closest('.xterm')) return false;
   const tag = el.tagName;
@@ -187,6 +188,28 @@ export function useKeyboardShortcuts() {
         useAppStore.getState().toggleGridMode();
       }
 
+      // Push modal: Ctrl+Shift+K (IntelliJ parity)
+      if (ctrl && shift && e.key === 'K') {
+        e.preventDefault();
+        const activeId = activeIdRef.current;
+        if (!activeId) {
+          toast.info('Push', 'No active terminal');
+          return;
+        }
+        const gitInfo = useTerminalStore.getState().gitInfoCache.get(activeId);
+        if (!gitInfo?.is_git_repo) {
+          toast.info('Push', 'Not in a git repository');
+          return;
+        }
+        const terminal = terminalsRef.current.get(activeId);
+        const path = terminal?.config.working_directory;
+        if (!path) {
+          toast.info('Push', 'No working directory');
+          return;
+        }
+        useAppStore.getState().openPushModal(path);
+      }
+
       // Worktree Modal: Ctrl+Shift+W
       if (ctrl && shift && e.key === 'W') {
         e.preventDefault();
@@ -239,7 +262,7 @@ export function useKeyboardShortcuts() {
         else setTerminalFontSize(DEFAULT_TERMINAL_FONT_SIZE);
         return;
       }
-      // Ctrl++ (with Shift) — same as Ctrl+= for users who reflexively press shift.
+      // Ctrl++ (with Shift) - same as Ctrl+= for users who reflexively press shift.
       if (ctrl && shift && e.key === '+') {
         if (isFocusInNonTerminalEditable()) return;
         e.preventDefault();

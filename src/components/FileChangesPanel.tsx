@@ -4,9 +4,10 @@ import { invoke } from '@tauri-apps/api/core';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
 import { toast } from '../store/toastStore';
+import { Button } from './ui/Button';
 import { InlineDiffView } from './InlineDiffView';
 import { ChangelistSection } from './ChangelistSection';
-import type { WorktreeInfo } from '../types/git';
+import type { WorktreeInfo, PushPreview } from '../types/git';
 import { getFileIconUrl } from '../utils/fileIcons';
 
 function pathBasename(p: string): string {
@@ -124,7 +125,7 @@ export function FileChangesPanel() {
   useEffect(() => { setSelectedRepoPath(null); }, [activeTerminalId]);
 
   // Publish the explicit repo pin so other panels (file tree) can follow it.
-  // Only publish when the user has actually selected a nested repo — otherwise
+  // Only publish when the user has actually selected a nested repo - otherwise
   // other panels fall back to the active terminal's cwd.
   useEffect(() => {
     setPinnedRepoPath(selectedRepoPath);
@@ -140,7 +141,7 @@ export function FileChangesPanel() {
   const [stashes, setStashes] = useState<StashEntry[]>([]);
   const [stashesExpanded, setStashesExpanded] = useState(false);
   const [stashActing, setStashActing] = useState<string | null>(null);
-  // Files currently being staged/unstaged — keyed by "stage:path" or "unstage:path"
+  // Files currently being staged/unstaged - keyed by "stage:path" or "unstage:path"
   const [stagingPaths, setStagingPaths] = useState<Set<string>>(new Set());
   const triggerChangesRefreshAction = useAppStore.getState().triggerChangesRefresh;
 
@@ -208,8 +209,16 @@ export function FileChangesPanel() {
       if (thenPush) {
         setPushing(true);
         try {
-          await invoke('git_push', { path: activePath });
-          toast.success('Pushed', 'Changes pushed to remote');
+          const preview = await invoke<PushPreview>('get_push_preview', { path: activePath });
+          await invoke('git_push', {
+            path: activePath,
+            remote: preview.default_remote,
+            remoteBranch: preview.default_remote_branch,
+            mode: 'normal',
+            pushTags: false,
+            setUpstream: !preview.has_upstream,
+          });
+          toast.success('Pushed', `Pushed to ${preview.default_remote}/${preview.default_remote_branch}`);
         } catch (err) {
           toast.error('Push failed', typeof err === 'string' ? err : 'Unknown error');
         } finally {
@@ -266,7 +275,7 @@ export function FileChangesPanel() {
     }
   }, [activePath, triggerChangesRefreshAction]);
 
-  // Quick pull — pull from upstream (or origin/<current-branch>) into the
+  // Quick pull - pull from upstream (or origin/<current-branch>) into the
   // currently targeted repo's branch. Mirrors VS Code's "Pull" button.
   const handleQuickPull = useCallback(async () => {
     if (!activePath || !result?.is_git_repo) return;
@@ -341,7 +350,7 @@ export function FileChangesPanel() {
     setStashActing(`${op}:${reference}`);
     try {
       await invoke(op, { path: activePath, reference });
-      toast.success(label, `${reference} — done`);
+      toast.success(label, `${reference} - done`);
       triggerChangesRefreshAction();
     } catch (err) {
       toast.error(`${label} failed`, typeof err === 'string' ? err : 'Unknown error');
@@ -356,9 +365,9 @@ export function FileChangesPanel() {
     [worktrees]
   );
 
-  const fetchChanges = useCallback(async () => {
+  const fetchChanges = useCallback(async (silent = false) => {
     if (!activeTerminalId) return;
-    setLoading(true);
+    if (!silent) setLoading(true);
     setError(null);
     try {
       const data = usingSelectedRepo && selectedRepoPath
@@ -368,7 +377,7 @@ export function FileChangesPanel() {
     } catch (err) {
       setError(String(err));
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [activeTerminalId, selectedRepoPath, usingSelectedRepo]);
 
@@ -377,13 +386,31 @@ export function FileChangesPanel() {
     setExpandedFile(null);
   }, [activeTerminalId, changesRefreshTrigger, selectedRepoPath, fetchChanges]);
 
+  // Auto-refresh: window focus + tab visibility + slow interval while panel is mounted.
+  // Silent so the spinner doesn't flash on every tick. Manual refresh button stays loud.
+  const fetchRef = useRef(fetchChanges);
+  useEffect(() => { fetchRef.current = fetchChanges; }, [fetchChanges]);
+  useEffect(() => {
+    const tick = () => {
+      if (document.visibilityState === 'visible') void fetchRef.current(true);
+    };
+    const interval = window.setInterval(tick, 5000);
+    window.addEventListener('focus', tick);
+    document.addEventListener('visibilitychange', tick);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', tick);
+      document.removeEventListener('visibilitychange', tick);
+    };
+  }, []);
+
   // Group changes by status
   const stagedChanges = result?.changes.filter((c) => c.staged) ?? [];
   const unstagedChanges = result?.changes.filter((c) => !c.staged) ?? [];
   const hasStaged = stagedChanges.length > 0;
   const hasUnstaged = unstagedChanges.length > 0;
 
-  // Splitter between Repositories and Changes — mirrors the Sidebar/Explorer
+  // Splitter between Repositories and Changes - mirrors the Sidebar/Explorer
   // splitter so the user can give either section more room.
   const splitStackRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef(false);
@@ -431,7 +458,7 @@ export function FileChangesPanel() {
             <button
               onClick={handleQuickPull}
               disabled={pullingTop || !activeTerminalId || !result?.is_git_repo}
-              className="flex items-center gap-1 h-6 px-1.5 rounded text-[11px] text-accent-primary hover:bg-accent-primary/10 transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
+              className="flex items-center gap-1 h-6 px-1.5 rounded text-[11px] text-success hover:bg-success/10 transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
               title="Pull from upstream (or origin/<current branch>) into the current branch"
             >
               {pullingTop ? (
@@ -442,7 +469,16 @@ export function FileChangesPanel() {
               <span>Pull</span>
             </button>
             <button
-              onClick={fetchChanges}
+              onClick={() => { if (activePath) useAppStore.getState().openPushModal(activePath); }}
+              disabled={!activePath || !result?.is_git_repo}
+              className="flex items-center gap-1 h-6 px-1.5 rounded text-[11px] text-error hover:bg-error/10 transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
+              title="Push commits to remote (Ctrl+Shift+K)"
+            >
+              <Upload size={12} strokeWidth={2} />
+              <span>Push</span>
+            </button>
+            <button
+              onClick={() => fetchChanges()}
               disabled={loading || !activeTerminalId}
               className="p-1 rounded hover:bg-white/[0.04] text-text-secondary transition-colors disabled:opacity-40"
               title="Refresh"
@@ -472,7 +508,7 @@ export function FileChangesPanel() {
             <button
               onClick={() => setSelectedRepoPath(null)}
               className="flex items-center gap-0.5 text-[10.5px] text-text-secondary hover:text-text-primary transition-colors flex-shrink-0 ml-2"
-              title="Clear selection — use the active terminal's repo"
+              title="Clear selection - use the active terminal's repo"
             >
               <PinOff size={10} strokeWidth={2} />
               Clear
@@ -496,7 +532,7 @@ export function FileChangesPanel() {
 
       {/* Resizable stack: Repositories (top) ⇕ Changes (bottom) */}
       <div ref={splitStackRef} className="flex-1 min-h-0 flex flex-col">
-        {/* Repositories section — root repo + worktree + nested sub-repos */}
+        {/* Repositories section - root repo + worktree + nested sub-repos */}
         {showGitPanel && activeTerminalId && (
           <div
             className="border-b border-border flex flex-col min-h-0"
@@ -571,7 +607,7 @@ export function FileChangesPanel() {
           </div>
         )}
 
-        {/* Drag handle — only meaningful when both sections share the column */}
+        {/* Drag handle - only meaningful when both sections share the column */}
         {showResizable && (
           <div
             onMouseDown={onSplitterMouseDown}
@@ -658,7 +694,7 @@ export function FileChangesPanel() {
         </div>
       </div>
 
-      {/* Stashes — collapsible list, only when there are stashes */}
+      {/* Stashes - collapsible list, only when there are stashes */}
       {result?.is_git_repo && stashes.length > 0 && (
         <div className="border-t border-border">
           <button
@@ -769,15 +805,16 @@ export function FileChangesPanel() {
               </button>
               {hasStaged ? (
                 <>
-                  <button
+                  <Button
+                    variant="primary"
+                    size="sm"
                     onClick={() => handleCommit(false, 'none')}
                     disabled={committing || pushing || stashing || !commitMessage.trim()}
-                    className="flex items-center gap-1 h-7 px-2.5 rounded-md text-[11.5px] font-medium bg-accent-primary hover:bg-accent-secondary text-white transition-colors disabled:opacity-40 disabled:hover:bg-accent-primary"
+                    loading={committing && !pushing}
                     title="Commit staged files only"
                   >
-                    {committing && !pushing ? <Loader2 size={12} className="animate-spin" /> : null}
                     Commit
-                  </button>
+                  </Button>
                   <button
                     onClick={() => handleCommit(true, 'none')}
                     disabled={committing || pushing || stashing || !commitMessage.trim()}
@@ -789,15 +826,16 @@ export function FileChangesPanel() {
                   </button>
                 </>
               ) : (
-                <button
+                <Button
+                  variant="primary"
+                  size="sm"
                   onClick={() => handleCommit(false, 'all')}
                   disabled={committing || pushing || stashing || !commitMessage.trim() || result.changes.length === 0}
-                  className="flex items-center gap-1 h-7 px-2.5 rounded-md text-[11.5px] font-medium bg-accent-primary hover:bg-accent-secondary text-white transition-colors disabled:opacity-40 disabled:hover:bg-accent-primary"
+                  loading={committing}
                   title="Stage all changes and commit"
                 >
-                  {committing ? <Loader2 size={12} className="animate-spin" /> : null}
                   Commit all
-                </button>
+                </Button>
               )}
             </div>
           </div>
@@ -874,7 +912,7 @@ function ChangeGroup({
         file: file.path,
         untracked: file.status === 'untracked',
       });
-      // If the file was open in the editor, close it — its contents no longer match disk.
+      // If the file was open in the editor, close it - its contents no longer match disk.
       const abs = joinRepoPath(repoRoot, file.path);
       closeFileTab(abs);
       toast.success('Discarded', label);
@@ -1220,7 +1258,7 @@ function RepoRow({ repo }: { repo: ScannedGitRepo }) {
         ? (repo.path.replace(/^.*[\\/]/, '') || 'repo')
         : (repo.relative_path || repo.path.replace(/^.*[\\/]/, ''));
       await useTerminalStore.getState().openShellTerminal(baseLabel, repo.path);
-      toast.success('Shell opened', `${baseLabel} — ${repo.path}`);
+      toast.success('Shell opened', `${baseLabel} - ${repo.path}`);
     } catch (err) {
       toast.error('Open terminal failed', typeof err === 'string' ? err : 'Unknown error');
     } finally {
@@ -1298,7 +1336,7 @@ function RepoRow({ repo }: { repo: ScannedGitRepo }) {
               ? 'text-accent-primary bg-accent-primary/15 hover:bg-accent-primary/25'
               : 'text-text-tertiary opacity-0 group-hover:opacity-100 hover:bg-white/[0.08] hover:text-text-secondary'
           }`}
-          title={isPinned ? 'Unpin — use active terminal repo' : 'Pin as commit target'}
+          title={isPinned ? 'Unpin - use active terminal repo' : 'Pin as commit target'}
         >
           {isPinned ? <Pin size={11} strokeWidth={2} /> : <Pin size={11} strokeWidth={1.75} />}
         </button>
@@ -1344,21 +1382,23 @@ function RepoRow({ repo }: { repo: ScannedGitRepo }) {
                 </select>
               </div>
               <div className="flex items-center justify-end gap-1">
-                <button
+                <Button
+                  variant="ghost"
+                  size="sm"
                   onClick={() => { setCreateOpen(false); setNewBranchName(''); }}
                   disabled={creating}
-                  className="h-7 px-2 rounded-[4px] text-[11.5px] text-text-secondary hover:bg-white/[0.06] transition-colors disabled:opacity-40"
                 >
                   Cancel
-                </button>
-                <button
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
                   onClick={handleCreateBranch}
                   disabled={creating || !newBranchName.trim() || !newBranchBase}
-                  className="flex items-center gap-1 h-7 px-2.5 rounded-[4px] text-[11.5px] font-medium bg-accent-primary hover:bg-accent-secondary text-white transition-colors disabled:opacity-40 disabled:hover:bg-accent-primary"
+                  loading={creating}
                 >
-                  {creating && <Loader2 size={11} className="animate-spin" />}
                   Create
-                </button>
+                </Button>
               </div>
             </div>
           )}
@@ -1400,21 +1440,23 @@ function RepoRow({ repo }: { repo: ScannedGitRepo }) {
                   into <span className="font-mono text-text-secondary">{repo.branch ?? '(detached)'}</span>
                 </span>
                 <div className="flex items-center gap-1">
-                  <button
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={() => setPullOpen(false)}
                     disabled={pulling}
-                    className="h-7 px-2 rounded-[4px] text-[11.5px] text-text-secondary hover:bg-white/[0.06] transition-colors disabled:opacity-40"
                   >
                     Cancel
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    variant="primary"
+                    size="sm"
                     onClick={handlePull}
                     disabled={pulling || !pullRef}
-                    className="flex items-center gap-1 h-7 px-2.5 rounded-[4px] text-[11.5px] font-medium bg-accent-primary hover:bg-accent-secondary text-white transition-colors disabled:opacity-40 disabled:hover:bg-accent-primary"
+                    loading={pulling}
                   >
-                    {pulling && <Loader2 size={11} className="animate-spin" />}
                     Pull
-                  </button>
+                  </Button>
                 </div>
               </div>
             </div>

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { Copy, ClipboardPaste } from 'lucide-react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
@@ -11,12 +12,13 @@ import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
 import { toast } from '../store/toastStore';
 import { resolveTerminalTheme } from '../lib/terminalThemes';
+import { copyText } from '../lib/clipboard';
 import { TerminalSearch } from './TerminalSearch';
 import { TerminalStatusBar } from './TerminalStatusBar';
 import '@xterm/xterm/css/xterm.css';
 
 function formatDroppedPath(path: string): string {
-  // Strip control characters — macOS/Linux filenames can legally contain
+  // Strip control characters - macOS/Linux filenames can legally contain
   // newlines, which would otherwise auto-execute whatever follows in the PTY
   // without the user pressing Enter.
   const sanitized = path.replace(/[\x00-\x1f\x7f]/g, '');
@@ -48,7 +50,10 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
   const fitAddonRef = useRef<FitAddon | null>(null);
   const [searchVisible, setSearchVisible] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
-  // Narrow selector — only re-render when THIS terminal's instance changes,
+  // Right-click context menu (copy / paste). null when closed; otherwise the
+  // viewport coordinates to anchor the menu at and whether a selection exists.
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; hasSelection: boolean } | null>(null);
+  // Narrow selector - only re-render when THIS terminal's instance changes,
   // not on every output-unread-set update for other terminals.
   const instance = useTerminalStore((s) => s.terminals.get(terminalId));
   // Stable action refs: these are static on the store so pulling them via
@@ -69,11 +74,50 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
   const cursorBlink = useAppStore((s) => s.terminalCursorBlink);
   const scrollback = useAppStore((s) => s.terminalScrollback);
   const themeName = useAppStore((s) => s.terminalTheme);
+  const accentColorHex = useAppStore((s) => s.accentColorHex);
   const bidi = useAppStore((s) => s.terminalBidi);
 
   const toggleSearch = useCallback(() => {
     setSearchVisible(prev => !prev);
   }, []);
+
+  const openContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const term = terminalRef.current;
+    setContextMenu({ x: e.clientX, y: e.clientY, hasSelection: !!term?.hasSelection() });
+  }, []);
+
+  const handleMenuCopy = useCallback(() => {
+    const term = terminalRef.current;
+    if (term?.hasSelection()) copyText(term.getSelection());
+    setContextMenu(null);
+  }, []);
+
+  const handleMenuPaste = useCallback(async () => {
+    setContextMenu(null);
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) await writeToTerminal(terminalId, text);
+      terminalRef.current?.focus();
+    } catch {
+      toast.error('Paste failed', 'Could not read the clipboard.');
+    }
+  }, [terminalId, writeToTerminal]);
+
+  // Close the context menu on any outside mousedown or Escape.
+  useEffect(() => {
+    if (!contextMenu) return;
+    const close = () => setContextMenu(null);
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setContextMenu(null); };
+    // Bubble-phase mousedown; the menu stops propagation on its own mousedown
+    // so clicking a menu item doesn't dismiss before its onClick fires.
+    document.addEventListener('mousedown', close);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', close);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [contextMenu]);
 
   useEffect(() => {
     if (!containerRef.current || !instance) return;
@@ -84,7 +128,10 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
     // Scrollback and BiDi DO require a recreate, so they appear in this
     // effect's deps.
     const terminal = new Terminal({
-      theme: resolveTerminalTheme(useAppStore.getState().terminalTheme),
+      theme: resolveTerminalTheme(
+        useAppStore.getState().terminalTheme,
+        useAppStore.getState().accentColorHex,
+      ),
       fontFamily: useAppStore.getState().terminalFontFamily,
       fontSize: useAppStore.getState().terminalFontSize,
       lineHeight: useAppStore.getState().terminalLineHeight,
@@ -145,10 +192,10 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
     terminal.focus();
 
     // Re-focus xterm if its textarea loses focus to nothing (body) or to its
-    // OWN canvas — that combo happens in WebView2 after PTY output triggers
+    // OWN canvas - that combo happens in WebView2 after PTY output triggers
     // React re-renders or when the user clicks the terminal canvas directly.
     // We must NOT refocus if focus moved to a sibling terminal's canvas (e.g.
-    // the script-child pane), or to any input/textarea elsewhere — otherwise
+    // the script-child pane), or to any input/textarea elsewhere - otherwise
     // the user can't type into the other terminal.
     const container = containerRef.current;
     const handleBlur = () => {
@@ -165,12 +212,26 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
     };
     terminal.textarea?.addEventListener('blur', handleBlur);
 
+    // Copy-on-select: when the user finishes a mouse drag selection and the
+    // "Copy on select" setting is on, copy it to the clipboard. We fire on
+    // mouseup (drag complete) rather than onSelectionChange so the hidden-
+    // textarea fallback in copyText() can't steal focus mid-drag. The setting
+    // is read live via getState() so toggling it takes effect without a
+    // recreate. Selection is intentionally left intact so the user sees what
+    // was copied.
+    const handleMouseUp = () => {
+      if (useAppStore.getState().terminalCopyOnSelect && terminal.hasSelection()) {
+        copyText(terminal.getSelection());
+      }
+    };
+    container.addEventListener('mouseup', handleMouseUp);
+
     // Handle Ctrl+C (copy) and Ctrl+V (paste) keyboard shortcuts
     terminal.attachCustomKeyEventHandler((e: KeyboardEvent) => {
       const isCtrl = e.ctrlKey || e.metaKey;
 
       // Ctrl+F: Toggle in-terminal search (Ctrl+Shift+F is reserved for the
-      // global file/content search — see useKeyboardShortcuts).
+      // global file/content search - see useKeyboardShortcuts).
       if (isCtrl && !e.shiftKey && e.key === 'f' && e.type === 'keydown') {
         e.preventDefault();
         toggleSearch();
@@ -179,27 +240,46 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
 
       if (isCtrl && e.key === 'c' && e.type === 'keydown') {
         if (terminal.hasSelection()) {
-          navigator.clipboard.writeText(terminal.getSelection());
+          // copyText() falls back to execCommand when navigator.clipboard
+          // rejects with "Document is not focused" - which happens in this
+          // WebView2 window right after a canvas drag-select.
+          copyText(terminal.getSelection());
           terminal.clearSelection();
           return false; // Prevent xterm from sending \x03
         }
-        // No selection — let xterm send interrupt signal (Ctrl+C)
+        // No selection - let xterm send interrupt signal (Ctrl+C)
         return true;
       }
 
-      // Ctrl+V: Let browser handle paste natively — fires paste event
-      // on xterm's internal textarea, which xterm processes via onData.
-      // This is more reliable than the async Clipboard API which can fail
-      // silently due to focus/permission issues.
-      if (isCtrl && e.key === 'v') {
+      // Ctrl+V (no Shift): behavior depends on the "Paste shortcut" setting.
+      //  - 'ctrl+v'       → let the browser paste natively (fires a paste event
+      //                     on xterm's textarea, processed via onData). More
+      //                     reliable than the async Clipboard API.
+      //  - 'ctrl+shift+v' → plain Ctrl+V should NOT paste; forward the raw
+      //                     Ctrl+V control byte (0x16) to the program. Pasting
+      //                     is then done via right-click or Ctrl+Shift+V
+      //                     ("Paste as file"), which is unaffected here.
+      // Ctrl+Shift+V (e.key === 'V') is intentionally not matched - it's
+      // handled by the global shortcut handler.
+      if (isCtrl && !e.shiftKey && e.key === 'v') {
+        if (useAppStore.getState().terminalPasteShortcut === 'ctrl+v') {
+          return false;
+        }
+        if (e.type === 'keydown') {
+          e.preventDefault();
+          writeToTerminal(terminalId, '\x16');
+        }
         return false;
       }
 
-      // Ctrl+Z: Send suspend/EOF signal to terminal (prevent browser undo)
+      // Ctrl+Z: map the familiar desktop "undo" gesture onto Claude Code's
+      // actual undo binding. Claude Code binds undo to Ctrl+_ (byte 0x1f), NOT
+      // Ctrl+Z - a raw 0x1a is SIGTSTP/suspend and does nothing useful in the
+      // prompt. So we send 0x1f. (Also prevents any browser-level undo.)
       if (isCtrl && !e.shiftKey && e.key === 'z') {
         if (e.type === 'keydown') {
           e.preventDefault();
-          writeToTerminal(terminalId, '\x1a');
+          writeToTerminal(terminalId, '\x1f');
         }
         return false;
       }
@@ -225,7 +305,7 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
         return;
       }
 
-      // Pull the latest settings each call — these change in Settings without
+      // Pull the latest settings each call - these change in Settings without
       // re-rendering this terminal.
       const app = useAppStore.getState();
       if (!isLikelyPaste || !app.pasteAutoDetectEnabled) {
@@ -245,11 +325,11 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
       }
 
       // Suppress forwarding to PTY; offer the choice via a toast with actions.
-      // `warning` (amber) reads as "attention needed" — louder than info blue,
+      // `warning` (amber) reads as "attention needed" - louder than info blue,
       // which the user said felt easy to miss.
       toast.warning(
         'Large paste detected',
-        `${(bytes / 1024).toFixed(1)} KB · ${lines} lines — pasting this directly into Claude Code can hang the terminal. Save it as a file and reference it instead?`,
+        `${(bytes / 1024).toFixed(1)} KB · ${lines} lines - pasting this directly into Claude Code can hang the terminal. Save it as a file and reference it instead?`,
         {
           duration: 15000,
           actions: [
@@ -300,24 +380,25 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
     return () => {
       resizeObserver.disconnect();
       terminal.textarea?.removeEventListener('blur', handleBlur);
+      container.removeEventListener('mouseup', handleMouseUp);
       searchAddonRef.current = null;
       fitAddonRef.current = null;
       terminalRef.current = null;
       webglAddon?.dispose();
       terminal.dispose();
     };
-    // Intentionally omit store action refs from deps — they are stable via
+    // Intentionally omit store action refs from deps - they are stable via
     // getState() and including them caused the xterm instance to be recreated
     // on every unrelated store update. `scrollback` and `bidi` ARE in the dep
     // list because xterm caches the buffer at construction and the Unicode11
-    // addon attaches once — flipping either has to recreate the instance.
+    // addon attaches once - flipping either has to recreate the instance.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [terminalId, !!instance, toggleSearch, scrollback, bidi]);
 
   // Live-apply the six options that don't require recreate (issue #21).
   // After font/size/line-height change, xterm cell metrics shift, so we
   // re-fit and push the new size to the PTY so it knows about the new
-  // cols/rows. Cursor + theme are pure visual changes — no resize needed.
+  // cols/rows. Cursor + theme are pure visual changes - no resize needed.
   useEffect(() => {
     const terminal = terminalRef.current;
     if (!terminal) return;
@@ -326,12 +407,12 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
     terminal.options.lineHeight = lineHeight;
     terminal.options.cursorStyle = cursorStyle;
     terminal.options.cursorBlink = cursorBlink;
-    terminal.options.theme = resolveTerminalTheme(themeName);
+    terminal.options.theme = resolveTerminalTheme(themeName, accentColorHex);
     // Refit + push new dimensions to the PTY whenever cell metrics may have
     // changed. fit() is a no-op if cols/rows didn't actually shift.
     fitAddonRef.current?.fit();
     resizeTerminal(terminalId, terminal.cols, terminal.rows);
-  }, [fontFamily, fontSize, lineHeight, cursorStyle, cursorBlink, themeName, terminalId, resizeTerminal]);
+  }, [fontFamily, fontSize, lineHeight, cursorStyle, cursorBlink, themeName, accentColorHex, terminalId, resizeTerminal]);
 
   // OS → terminal file drag-drop. Tauri intercepts drag events at the window
   // level and delivers physical-pixel positions, so we hit-test against this
@@ -399,6 +480,7 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
         ref={containerRef}
         className="flex-1 min-h-0 w-full relative"
         onMouseDown={() => terminalRef.current?.focus()}
+        onContextMenu={openContextMenu}
       >
         {isDragOver && (
           <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-accent-primary/10 ring-2 ring-accent-primary/60 ring-inset">
@@ -408,6 +490,43 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
           </div>
         )}
       </div>
+      {contextMenu && (
+        <div
+          role="menu"
+          data-context-menu="terminal"
+          className="fixed z-[80] min-w-[160px] bg-bg-elevated ring-1 ring-white/[0.08] rounded-md shadow-elevation-4 py-1 select-none"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            disabled={!contextMenu.hasSelection}
+            onClick={handleMenuCopy}
+            className={`w-full flex items-center gap-2.5 px-3 py-1.5 text-left text-[12px] transition-colors ${
+              contextMenu.hasSelection
+                ? 'text-text-primary hover:bg-white/[0.06]'
+                : 'text-text-tertiary/50 cursor-not-allowed'
+            }`}
+          >
+            <span className={contextMenu.hasSelection ? 'text-text-tertiary' : 'opacity-50'}>
+              <Copy size={13} strokeWidth={1.75} />
+            </span>
+            <span className="flex-1">Copy</span>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={handleMenuPaste}
+            className="w-full flex items-center gap-2.5 px-3 py-1.5 text-left text-[12px] text-text-primary hover:bg-white/[0.06] transition-colors"
+          >
+            <span className="text-text-tertiary">
+              <ClipboardPaste size={13} strokeWidth={1.75} />
+            </span>
+            <span className="flex-1">Paste</span>
+          </button>
+        </div>
+      )}
       <TerminalStatusBar terminalId={terminalId} />
     </div>
   );

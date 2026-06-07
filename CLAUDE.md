@@ -4,7 +4,7 @@
 
 **ClaudeTerminal** is a cross-platform desktop application (Windows and macOS) for managing multiple Claude Code CLI terminal instances from a unified interface. Built with Tauri 2.x (Rust backend) and React 18 (TypeScript frontend), it provides tabbed and grid views of parallel Claude Code sessions with PTY-based terminal emulation. The release workflow produces NSIS/MSI installers for Windows and `.dmg`/`.app` bundles for both Apple Silicon and Intel Macs.
 
-Current version: **1.22.5**
+Current version: **1.25.0**
 
 ## Tech Stack
 
@@ -12,7 +12,7 @@ Current version: **1.22.5**
 - **Backend**: Rust (edition 2021)
 - **Frontend**: React 18 + TypeScript + Vite
 - **Terminal emulation**: xterm.js (`@xterm/xterm`) with fit, search, and web-links addons
-- **Styling**: Tailwind CSS + Framer Motion (dark glassmorphic theme)
+- **Styling**: Tailwind CSS + Framer Motion. Flat IntelliJ IDEA 2026.1 "New UI"–style design: a 5-step elevation ramp (`--elevation-0..4` CSS vars), `#3574F0` accent, Inter (UI) + JetBrains Mono (code). Supports dark/light/auto theme, user-set accent color, compact/comfortable/spacious density, UI font scale, and a "reduce motion" toggle that follows the OS `prefers-reduced-motion` setting until explicitly overridden. Text tokens target WCAG AA contrast. (Not glassmorphic — translucency is limited to overlay scrims.)
 - **State management**: Zustand (persisted via `zustand/middleware/persist`)
 - **Database**: SQLite via `rusqlite` (bundled) — stores profiles, workspaces, session history
 - **PTY**: `portable-pty` crate for spawning Claude Code processes
