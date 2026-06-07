@@ -229,16 +229,22 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
     // Handle Ctrl+C (copy) and Ctrl+V (paste) keyboard shortcuts
     terminal.attachCustomKeyEventHandler((e: KeyboardEvent) => {
       const isCtrl = e.ctrlKey || e.metaKey;
+      // Normalize the key so CapsLock doesn't break these shortcuts: with
+      // CapsLock on, an unshifted letter arrives as uppercase (e.g. 'V'), which
+      // would otherwise miss the lowercase comparisons below and fall through to
+      // xterm's raw control byte (no paste/copy). Shift is still distinguished
+      // via e.shiftKey, so Ctrl+Shift+V stays handled by the global handler.
+      const key = e.key.toLowerCase();
 
       // Ctrl+F: Toggle in-terminal search (Ctrl+Shift+F is reserved for the
       // global file/content search - see useKeyboardShortcuts).
-      if (isCtrl && !e.shiftKey && e.key === 'f' && e.type === 'keydown') {
+      if (isCtrl && !e.shiftKey && key === 'f' && e.type === 'keydown') {
         e.preventDefault();
         toggleSearch();
         return false;
       }
 
-      if (isCtrl && e.key === 'c' && e.type === 'keydown') {
+      if (isCtrl && !e.shiftKey && key === 'c' && e.type === 'keydown') {
         if (terminal.hasSelection()) {
           // copyText() falls back to execCommand when navigator.clipboard
           // rejects with "Document is not focused" - which happens in this
@@ -261,7 +267,7 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
       //                     ("Paste as file"), which is unaffected here.
       // Ctrl+Shift+V (e.key === 'V') is intentionally not matched - it's
       // handled by the global shortcut handler.
-      if (isCtrl && !e.shiftKey && e.key === 'v') {
+      if (isCtrl && !e.shiftKey && key === 'v') {
         if (useAppStore.getState().terminalPasteShortcut === 'ctrl+v') {
           return false;
         }
@@ -276,7 +282,7 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
       // actual undo binding. Claude Code binds undo to Ctrl+_ (byte 0x1f), NOT
       // Ctrl+Z - a raw 0x1a is SIGTSTP/suspend and does nothing useful in the
       // prompt. So we send 0x1f. (Also prevents any browser-level undo.)
-      if (isCtrl && !e.shiftKey && e.key === 'z') {
+      if (isCtrl && !e.shiftKey && key === 'z') {
         if (e.type === 'keydown') {
           e.preventDefault();
           writeToTerminal(terminalId, '\x1f');

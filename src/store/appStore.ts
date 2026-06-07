@@ -470,7 +470,7 @@ export const useAppStore = create<AppState>()(
       // Terminal behavior defaults (NEW v1.22.0)
       terminalShellPathOverride: '',
       terminalCopyOnSelect: false,
-      terminalPasteShortcut: 'ctrl+shift+v' as 'ctrl+v' | 'ctrl+shift+v',
+      terminalPasteShortcut: 'ctrl+v' as 'ctrl+v' | 'ctrl+shift+v',
 
       // VCS defaults (NEW v1.22.0)
       vcsCommitMessageTemplate: '',
@@ -961,13 +961,21 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: 'claude-terminal-app',
-      version: 1,
+      version: 2,
       migrate: (persistedState, version) => {
         const s = (persistedState as Partial<AppState>) ?? {};
         if (version < 1) {
           // Force cost tracking OFF for users who upgraded from a build where
           // it defaulted to true. New default is false; opt-in only.
           s.costTrackingEnabled = false;
+        }
+        if (version < 2) {
+          // v1.26.1: restore native Ctrl+V paste. The 'ctrl+shift+v' default
+          // was persisted since v1.22 but dormant (ignored by the Ctrl+V
+          // handler) until v1.25 started honoring it - which silently turned
+          // plain Ctrl+V into a raw ^V byte instead of a paste for everyone who
+          // never explicitly chose 'ctrl+v'. Reset it so paste works again.
+          s.terminalPasteShortcut = 'ctrl+v';
         }
         return s as AppState;
       },
