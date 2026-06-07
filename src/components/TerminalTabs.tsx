@@ -1,5 +1,5 @@
 import { useMemo, useState, useCallback, useRef, useEffect } from 'react';
-import { Reorder } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { X, Plus, Grid3X3, SplitSquareHorizontal, RotateCw, GitBranch, ChevronLeft, ChevronRight, Copy, File as FileIcon } from 'lucide-react';
 import appIconUrl from '../assets/app-icon.png';
 import { useTerminalStore } from '../store/terminalStore';
@@ -14,8 +14,9 @@ import { FileEditorView } from './FileEditorView';
 import { ScriptsMenu } from './ScriptsMenu';
 import { ScriptChildPane } from './ScriptChildPane';
 import { BottomTerminalPane } from './BottomTerminalPane';
-import { getDragData, isTerminalDrag } from '../utils/dragDrop';
 import { useNowTick } from '../hooks/useNowTick';
+import { useTabDrag } from '../hooks/useTabDrag';
+import { getWindowMode } from '../lib/windowMode';
 import { getLastOutputAt } from '../lib/terminalActivity';
 import { StateDot } from './StateDot';
 import type { SessionState } from '../lib/terminalState';
@@ -35,18 +36,15 @@ function formatCost(usd: number): string {
 const isMac = navigator.platform.toUpperCase().includes('MAC');
 
 export function TerminalTabs() {
-  const { terminals, activeTerminalId, setActiveTerminal, closeTerminal, unreadTerminalIds, gitInfoCache, reorderTerminals, scriptChildren, closeScript } = useTerminalStore();
+  const { terminals, activeTerminalId, closeTerminal, unreadTerminalIds, gitInfoCache, scriptChildren, closeScript } = useTerminalStore();
   const { openNewTerminalModal, gridMode, toggleGridMode, addToGrid, gridTerminalIds, splitMode, splitTerminalIds, splitOrientation, splitRatio, setSplitOrientation, setSplitRatio, clearSplit, setSplitTerminals, setSplitMode, openFiles, activeFilePath, setActiveFilePath, closeFileTab, showFileTree, showTabActivity } = useAppStore();
   const now = useNowTick();
   const terminalStates = useTerminalStore((s) => s.terminalStates);
   const terminalMetrics = useTerminalStore((s) => s.terminalMetrics);
 
-  // Selecting a terminal clears the file-tab focus (so terminal view shows),
-  // selecting a file clears the terminal focus-visual intent.
-  const focusTerminal = useCallback((id: string) => {
-    setActiveFilePath(null);
-    setActiveTerminal(id);
-  }, [setActiveFilePath, setActiveTerminal]);
+  // Tab drag/drop + multi-select + tear-off. Keyed on this window's label so a
+  // detached window routes transfers from its own identity.
+  const { isSelected, isDragging, dragIds, dropIndex, splitDropTargetId, tabHandlers } = useTabDrag(getWindowMode().label, 'main');
 
   const focusFile = useCallback((path: string) => {
     setActiveFilePath(path);
@@ -62,6 +60,24 @@ export function TerminalTabs() {
     [terminals]
   );
 
+  // Slide-aside preview order: while dragging, the dragged tab(s) are pulled out
+  // and re-inserted at the drop slot, so the other tabs (motion.li `layout`)
+  // physically part to open a gap where the tab will land. The dragged tab(s)
+  // render as a faded placeholder = the gap. When the cursor leaves the strip
+  // (dropIndex null), the gap stays at its original slot. Commit uses the same
+  // index, so dropping produces no jump.
+  const renderList = useMemo(() => {
+    if (dragIds.length === 0) return terminalList;
+    const draggedSet = new Set(dragIds);
+    const nonDragged = terminalList.filter((t) => !draggedSet.has(t.id));
+    const draggedTabs = terminalList.filter((t) => draggedSet.has(t.id));
+    if (draggedTabs.length === 0) return terminalList;
+    const firstIdx = terminalList.findIndex((t) => draggedSet.has(t.id));
+    const origAt = terminalList.slice(0, firstIdx).filter((t) => !draggedSet.has(t.id)).length;
+    const at = dropIndex != null ? Math.max(0, Math.min(dropIndex, nonDragged.length)) : origAt;
+    return [...nonDragged.slice(0, at), ...draggedTabs, ...nonDragged.slice(at)];
+  }, [terminalList, dragIds, dropIndex]);
+
   const handleNewTab = () => {
     openNewTerminalModal();
   };
@@ -72,8 +88,6 @@ export function TerminalTabs() {
       toggleGridMode();
     }
   };
-
-  const [splitDropTargetId, setSplitDropTargetId] = useState<string | null>(null);
 
   const handleSplitWith = (terminalId: string) => {
     if (activeTerminalId && terminalId !== activeTerminalId) {
@@ -96,29 +110,6 @@ export function TerminalTabs() {
       nickname ?? undefined,
     );
   };
-
-  const handleTabDragOver = useCallback((e: React.DragEvent, tabTerminalId: string) => {
-    if (isTerminalDrag(e)) {
-      e.preventDefault();
-      e.dataTransfer.dropEffect = 'move';
-      setSplitDropTargetId(tabTerminalId);
-    }
-  }, []);
-
-  const handleTabDragLeave = useCallback((e: React.DragEvent) => {
-    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-      setSplitDropTargetId(null);
-    }
-  }, []);
-
-  const handleTabDrop = useCallback((e: React.DragEvent, tabTerminalId: string) => {
-    e.preventDefault();
-    setSplitDropTargetId(null);
-    const payload = getDragData(e);
-    if (!payload || payload.terminalId === tabTerminalId) return;
-    setSplitTerminals([tabTerminalId, payload.terminalId]);
-    setSplitMode(true);
-  }, [setSplitTerminals, setSplitMode]);
 
   // Tab scroll overflow detection
   const tabsContainerRef = useRef<HTMLUListElement>(null);
@@ -214,14 +205,13 @@ export function TerminalTabs() {
               <ChevronLeft size={14} className="text-text-secondary" strokeWidth={1.75} />
             </button>
           )}
-          <Reorder.Group
+          <ul
             ref={tabsContainerRef}
-            axis="x"
-            values={terminalList}
-            onReorder={(next) => reorderTerminals(next.map((t) => t.id))}
-            className="flex items-center overflow-x-auto scrollbar-none"
+            data-tab-strip
+            className="flex items-center overflow-x-auto scrollbar-none list-none m-0 p-0"
           >
-            {terminalList.map((terminal) => {
+            <AnimatePresence initial={false}>
+            {renderList.map((terminal, index) => {
               const instance = terminals.get(terminal.id);
               const model = instance?.model;
               const isWorktree = instance?.isWorktree;
@@ -237,15 +227,25 @@ export function TerminalTabs() {
                 terminalStates.get(terminal.id) ?? (liveBusy ? 'busy' : 'idle');
               const isWorking = sessionState === 'busy';
               const isActiveTab = activeTerminalId === terminal.id && !activeFilePath;
+              const selected = isSelected(terminal.id);
+              const dragged = isDragging(terminal.id);
 
               return (
-              <Reorder.Item
+              <motion.li
                 key={terminal.id}
-                value={terminal}
-                className="flex-shrink-0"
+                layout
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.85 }}
+                transition={{ type: 'spring', stiffness: 700, damping: 42, mass: 0.6 }}
+                className="flex items-center flex-shrink-0"
               >
-                <button
-                  onClick={() => focusTerminal(terminal.id)}
+                <div
+                  role="tab"
+                  tabIndex={0}
+                  aria-selected={isActiveTab}
+                  data-dragging={dragged ? '' : undefined}
+                  {...tabHandlers(terminal.id, index)}
                   onAuxClick={(e) => {
                     // Middle-click (mouse wheel) closes the tab - same as VS Code.
                     if (e.button === 1) {
@@ -253,19 +253,16 @@ export function TerminalTabs() {
                       closeTerminal(terminal.id);
                     }
                   }}
-                  onDragOver={(e) => handleTabDragOver(e, terminal.id)}
-                  onDragLeave={handleTabDragLeave}
-                  onDrop={(e) => handleTabDrop(e, terminal.id)}
-                  className={`group relative flex items-center gap-2 px-3 h-9 text-[12px] transition-colors ${
+                  className={`group relative flex items-center gap-2 px-3 h-9 text-[12px] cursor-pointer select-none transition-all duration-150 ${
                     splitDropTargetId === terminal.id
                       ? 'bg-accent-primary/12 text-accent-primary'
-                      : activeTerminalId === terminal.id && !activeFilePath
+                      : isActiveTab
                         ? 'bg-elevation-0 text-text-primary'
                         : 'hover:bg-white/[0.045] text-text-secondary'
-                  } ${isWorking && !isActiveTab && showTabActivity ? 'ct-working-tab' : ''}`}
+                  } ${selected && !isActiveTab ? 'ring-1 ring-inset ring-accent-primary/40' : ''} ${dragged ? 'opacity-20' : ''} ${isWorking && !isActiveTab && showTabActivity ? 'ct-working-tab' : ''}`}
                 >
                   {/* IntelliJ-style bottom underline for active tab */}
-                  {((activeTerminalId === terminal.id && !activeFilePath) || splitDropTargetId === terminal.id) && (
+                  {(isActiveTab || splitDropTargetId === terminal.id) && (
                     <span className="absolute left-2 right-2 bottom-0 h-[2px] rounded-t bg-accent-primary" />
                   )}
                   {splitDropTargetId === terminal.id && (
@@ -363,11 +360,12 @@ export function TerminalTabs() {
                       <X size={12} />
                     </button>
                   </div>
-                </button>
-              </Reorder.Item>
+                </div>
+              </motion.li>
               );
             })}
-          </Reorder.Group>
+            </AnimatePresence>
+          </ul>
 
           {/* File tabs - rendered inline next to terminal tabs, VS Code style */}
           {openFiles.length > 0 && (
