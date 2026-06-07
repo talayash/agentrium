@@ -34,11 +34,6 @@
 ## Screenshots
 
 <p align="center">
-  <img src="docs/welcome.png" alt="Welcome screen" width="800">
-  <br><em>Welcome screen — empty state with quick-launch shortcuts and sidebar navigation</em>
-</p>
-
-<p align="center">
   <img src="docs/main-view.png" alt="Main view with active Claude Code session" width="800">
   <br><em>Main view — an active Claude Code session with branch indicator and status bar</em>
 </p>
