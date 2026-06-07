@@ -1,5 +1,13 @@
 [
   {
+    "version": "1.26.1",
+    "date": "2026-06-07",
+    "features": [
+      { "title": "Ctrl+V paste works again", "description": "Fixes a regression from v1.25 where plain Ctrl+V stopped pasting into the terminal and instead sent a raw control character. Native Ctrl+V paste is restored automatically - large pastes are still detected and offered as a file. You can still switch to Ctrl+Shift+V in Settings if you prefer." },
+      { "title": "CapsLock no longer breaks shortcuts", "description": "Ctrl+V, Ctrl+C, Ctrl+F and Ctrl+Z now work correctly even when CapsLock is on." }
+    ]
+  },
+  {
     "version": "1.26.0",
     "date": "2026-06-07",
     "features": [
