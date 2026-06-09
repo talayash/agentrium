@@ -348,6 +348,7 @@ describe('appStore - persist partialize', () => {
     'terminalCursorStyle',
     'terminalCursorBlink',
     'terminalScrollback',
+    'terminalScrollbarMode',
     'terminalTheme',
     'terminalBidi',
     'explorerHeightRatio',
