@@ -7,7 +7,7 @@ import { TerminalAppearancePreview } from '../../TerminalAppearancePreview';
 import { registerSetting } from '../index';
 
 const cat = { group: 'terminal', page: 'appearance' } as const;
-['font-family', 'font-size', 'line-height', 'cursor-style', 'cursor-blink', 'scrollback', 'theme', 'bidi'].forEach(
+['font-family', 'font-size', 'line-height', 'cursor-style', 'cursor-blink', 'scrollback', 'theme', 'bidi', 'scrollbar'].forEach(
   (id) => registerSetting({ category: cat, id, label: id.replace(/-/g, ' '), keywords: ['xterm', 'terminal', id] })
 );
 
@@ -28,10 +28,11 @@ export default function TerminalAppearancePage() {
   const terminalScrollback = useAppStore((s) => s.terminalScrollback);
   const terminalTheme = useAppStore((s) => s.terminalTheme);
   const terminalBidi = useAppStore((s) => s.terminalBidi);
+  const terminalScrollbarMode = useAppStore((s) => s.terminalScrollbarMode);
   const {
     setTerminalFontFamily, setTerminalFontSize, setTerminalLineHeight,
     setTerminalCursorStyle, setTerminalCursorBlink, setTerminalScrollback,
-    setTerminalTheme, setTerminalBidi,
+    setTerminalTheme, setTerminalBidi, setTerminalScrollbarMode,
   } = useAppStore.getState();
 
   return (
@@ -102,6 +103,17 @@ export default function TerminalAppearancePage() {
             options={[
               { value: 'dark', label: 'Dark' },
               { value: 'light', label: 'Light' },
+            ]}
+          />
+        </SettingRow>
+        <SettingRow label="Scrollbar" description="Auto-hide reveals it on mouse move or scroll, then fades when idle.">
+          <Segmented
+            value={terminalScrollbarMode}
+            onChange={setTerminalScrollbarMode}
+            options={[
+              { value: 'auto-hide', label: 'Auto-hide' },
+              { value: 'always', label: 'Always' },
+              { value: 'hidden', label: 'Hidden' },
             ]}
           />
         </SettingRow>

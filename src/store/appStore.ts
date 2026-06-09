@@ -4,6 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import type { TerminalThemeName } from '../lib/terminalThemes';
 
 export type TerminalCursorStyle = 'bar' | 'block' | 'underline';
+export type TerminalScrollbarMode = 'auto-hide' | 'always' | 'hidden';
 export const TERMINAL_SCROLLBACK_PRESETS = [1000, 10000, 50000, 100000] as const;
 // Stack JetBrains Mono first (kept for users who have it) → Cascadia Code
 // (ships with modern Windows / VS Code) → Consolas (always installed on
@@ -79,6 +80,7 @@ interface AppState {
   terminalScrollback: number;
   terminalTheme: TerminalThemeName;
   terminalBidi: boolean;
+  terminalScrollbarMode: TerminalScrollbarMode;
 
   // Appearance & Behavior (NEW v1.22.0)
   themeMode: ThemeMode;
@@ -243,6 +245,7 @@ interface AppState {
   setTerminalScrollback: (lines: number) => void;
   setTerminalTheme: (theme: TerminalThemeName) => void;
   setTerminalBidi: (enabled: boolean) => void;
+  setTerminalScrollbarMode: (mode: TerminalScrollbarMode) => void;
 
   // Appearance & Behavior setters (NEW v1.22.0)
   setThemeMode: (mode: ThemeMode) => void;
@@ -439,6 +442,7 @@ export const useAppStore = create<AppState>()(
       terminalScrollback: 50000,
       terminalTheme: 'dark' as TerminalThemeName,
       terminalBidi: false,
+      terminalScrollbarMode: 'auto-hide' as TerminalScrollbarMode,
 
       // Appearance & Behavior defaults (NEW v1.22.0)
       themeMode: 'dark' as ThemeMode,
@@ -600,6 +604,7 @@ export const useAppStore = create<AppState>()(
       setTerminalScrollback: (lines) => set({ terminalScrollback: Math.max(100, Math.min(1000000, Math.round(lines))) }),
       setTerminalTheme: (theme) => set({ terminalTheme: theme }),
       setTerminalBidi: (enabled) => set({ terminalBidi: enabled }),
+      setTerminalScrollbarMode: (mode) => set({ terminalScrollbarMode: mode }),
 
       // Appearance & Behavior setters (NEW v1.22.0).
       // Numeric setters clamp; string setters validate shape and fall back.
@@ -1001,6 +1006,7 @@ export const useAppStore = create<AppState>()(
         terminalScrollback: state.terminalScrollback,
         terminalTheme: state.terminalTheme,
         terminalBidi: state.terminalBidi,
+        terminalScrollbarMode: state.terminalScrollbarMode,
         explorerHeightRatio: state.explorerHeightRatio,
         toolsCollapsed: state.toolsCollapsed,
         sessionsCollapsed: state.sessionsCollapsed,
