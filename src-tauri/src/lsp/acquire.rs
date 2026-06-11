@@ -5,6 +5,7 @@
 
 use std::path::PathBuf;
 
+#[derive(Clone)]
 pub struct ServerSpec {
     /// Our language key: "typescript" | "python" | "rust".
     pub language: &'static str,
