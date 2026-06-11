@@ -61,6 +61,9 @@ interface AppState {
   restoreSession: boolean;
   telemetryEnabled: boolean;
   errorReportingEnabled: boolean;
+  // Master switch for language-server features (diagnostics squiggles).
+  lspEnabled: boolean;
+  setLspEnabled: (v: boolean) => void;
   // Per-session OTel cost/token tracking (distinct from the analytics heartbeat
   // `telemetryEnabled`, which reports to ct-analytics). This is local only.
   costTrackingEnabled: boolean;
@@ -427,6 +430,7 @@ export const useAppStore = create<AppState>()(
       restoreSession: true,
       telemetryEnabled: true,
       errorReportingEnabled: true,
+      lspEnabled: true,
       costTrackingEnabled: false,
       sessionBudgetUsd: 0,
       showGitPanel: true,
@@ -588,6 +592,7 @@ export const useAppStore = create<AppState>()(
       setRestoreSession: (enabled) => set({ restoreSession: enabled }),
       setTelemetryEnabled: (enabled) => set({ telemetryEnabled: enabled }),
       setErrorReportingEnabled: (enabled) => set({ errorReportingEnabled: enabled }),
+      setLspEnabled: (v) => set({ lspEnabled: v }),
       setCostTrackingEnabled: (v) => set({ costTrackingEnabled: v }),
       setSessionBudgetUsd: (v) => set({ sessionBudgetUsd: Math.max(0, v) }),
       setShowGitPanel: (enabled) => set({ showGitPanel: enabled }),
@@ -994,6 +999,7 @@ export const useAppStore = create<AppState>()(
         restoreSession: state.restoreSession,
         telemetryEnabled: state.telemetryEnabled,
         errorReportingEnabled: state.errorReportingEnabled,
+        lspEnabled: state.lspEnabled,
         costTrackingEnabled: state.costTrackingEnabled,
         sessionBudgetUsd: state.sessionBudgetUsd,
         showGitPanel: state.showGitPanel,

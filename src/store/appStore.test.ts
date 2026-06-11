@@ -359,6 +359,7 @@ describe('appStore - persist partialize', () => {
     'repositoriesHeightRatio',
     'orchestrationOpen',
     'lastSeenVersion',
+    'lspEnabled',
     'pasteAutoDetectEnabled',
     'pasteAutoDetectThresholdBytes',
     'pasteAutoDetectThresholdLines',
