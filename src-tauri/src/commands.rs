@@ -4455,6 +4455,13 @@ pub async fn lsp_did_close(
     .await
 }
 
+/// Generic LSP request passthrough (hover, definition, ...).
+///
+/// Contract: `root` must match the *effective* root used for document sync.
+/// did_open/did_change/did_close rewrite the root for rust via
+/// `rust_project_root` (crate root, not git root), so rust callers must pass
+/// `path` (the file the request targets) so the same rewrite is applied here —
+/// otherwise the request would spawn a second rust-analyzer with no open docs.
 #[command]
 pub async fn lsp_request(
     state: State<'_, crate::AppState>,
@@ -4462,10 +4469,23 @@ pub async fn lsp_request(
     language: String,
     method: String,
     params: serde_json::Value,
+    path: Option<String>,
 ) -> Result<serde_json::Value, String> {
     wrap_cmd("lsp_request", async move {
-        let mut mgr = state.lsp.lock().await;
-        mgr.request(&root, &language, &method, params).await
+        let root = match (language.as_str(), &path) {
+            ("rust", Some(p)) => crate::lsp::acquire::rust_project_root(p, &root),
+            _ => root,
+        };
+        // Two-phase locking: hold the manager lock only long enough to
+        // get/spawn the client, then release it for the request round-trip.
+        // The client request timeout is 120s — holding the manager lock that
+        // long would block every other LSP command on one wedged server.
+        let client = {
+            let mut mgr = state.lsp.lock().await;
+            mgr.ensure(&root, &language).await?
+        };
+        let c = client.lock().await;
+        c.request(&method, params).await
     })
     .await
 }

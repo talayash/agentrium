@@ -127,7 +127,9 @@ impl LspManager {
             .map(|h| (h.attempts, h.last_spawn.elapsed()));
         let Ok(attempts) = next_attempt(history) else {
             self.emit_status(language, root, "error", Some("crashed too many times".into()));
-            return Err(format!("{language} server crashed {MAX_RESTARTS}+ times; will retry after a cooldown, or restart it from Settings → Editor → Language Servers"));
+            // user_err: expected condition (cap is by design), not a defect —
+            // keeps every debounced did_change from spamming telemetry.
+            return Err(crate::error_reporter::user_err(format!("{language} server crashed {MAX_RESTARTS}+ times; will retry after a cooldown, or restart it from Settings → Editor → Language Servers")));
         };
 
         self.emit_status(language, root, "starting", None);
@@ -153,7 +155,9 @@ impl LspManager {
             acquire::Resolution::Installed { program } => program,
             acquire::Resolution::Missing => {
                 self.emit_status(language, root, "error", Some("not installed".into()));
-                return Err(format!("{language} language server is not installed (Settings → Editor → Language Servers)"));
+                // user_err: a missing optional server is an expected state,
+                // not a defect — skip telemetry.
+                return Err(crate::error_reporter::user_err(format!("{language} language server is not installed (Settings → Editor → Language Servers)")));
             }
         };
 
@@ -312,19 +316,6 @@ impl LspManager {
         c.notify("textDocument/didClose", json!({
             "textDocument": { "uri": path_to_uri(path) }
         }))
-    }
-
-    /// Generic passthrough for future features (hover, definition, ...).
-    pub async fn request(
-        &mut self,
-        root: &str,
-        language: &str,
-        method: &str,
-        params: Value,
-    ) -> Result<Value, String> {
-        let client = self.ensure(root, language).await?;
-        let c = client.lock().await;
-        c.request(method, params).await
     }
 
     /// Kill every server for `language`; they respawn (with fresh resolution
