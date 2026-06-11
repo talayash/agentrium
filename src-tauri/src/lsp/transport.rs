@@ -1,7 +1,10 @@
 //! LSP base-protocol framing: `Content-Length: N\r\n...\r\n\r\n<N bytes>`.
 
+const MAX_FRAME_BYTES: usize = 128 * 1024 * 1024; // far above any real LSP message
+
 /// Incremental decoder. Feed raw stdout bytes, get back complete message
 /// bodies. Holds partial data between feeds.
+#[derive(Default)]
 pub struct FrameDecoder {
     buf: Vec<u8>,
 }
@@ -18,7 +21,7 @@ impl FrameDecoder {
             let Some(header_end) = find_subslice(&self.buf, b"\r\n\r\n") else {
                 break;
             };
-            let header = String::from_utf8_lossy(&self.buf[..header_end]).to_string();
+            let header = String::from_utf8_lossy(&self.buf[..header_end]);
             let len = header.lines().find_map(|l| {
                 let (k, v) = l.split_once(':')?;
                 if k.trim().eq_ignore_ascii_case("content-length") {
@@ -32,11 +35,17 @@ impl FrameDecoder {
                 self.buf.drain(..header_end + 4);
                 continue;
             };
+            if len > MAX_FRAME_BYTES {
+                self.buf.drain(..header_end + 4);
+                continue; // treat as malformed
+            }
             let body_start = header_end + 4;
             if self.buf.len() < body_start + len {
                 break; // body not fully arrived yet
             }
             out.push(self.buf[body_start..body_start + len].to_vec());
+            // drain(..) is O(remaining bytes); fine for LSP-sized messages.
+            // Revisit only if profiling shows otherwise.
             self.buf.drain(..body_start + len);
         }
         out
@@ -114,5 +123,18 @@ mod tests {
         let body = br#"{"jsonrpc":"2.0"}"#;
         let mut d = FrameDecoder::new();
         assert_eq!(d.feed(&encode_frame(body)), vec![body.to_vec()]);
+    }
+
+    #[test]
+    fn rejects_absurdly_large_content_length() {
+        let mut d = FrameDecoder::new();
+        assert!(d.feed(b"Content-Length: 999999999999\r\n\r\n").is_empty());
+        assert_eq!(d.feed(&frame(r#"{"ok":1}"#)), vec![br#"{"ok":1}"#.to_vec()]);
+    }
+
+    #[test]
+    fn decodes_zero_length_body_to_empty_message() {
+        let mut d = FrameDecoder::new();
+        assert_eq!(d.feed(b"Content-Length: 0\r\n\r\n"), vec![Vec::<u8>::new()]);
     }
 }
