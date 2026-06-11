@@ -145,12 +145,55 @@ interface DiagnosticsEvent {
 }
 
 let initialized = false;
+let tsServerRunning = false;
+
+// Monaco's bundled TS worker paints its own 'typescript'-owned markers. Once
+// the real tsserver is connected those are redundant duplicates — and worse,
+// the worker is tsconfig-blind. Silence it while our LSP covers TS/JS;
+// restore it when LSP is off or the server isn't running so users keep the
+// pre-LSP single-file squiggles.
+function updateBuiltinTsDiagnostics(): void {
+  const builtinOn = !(useAppStore.getState().lspEnabled && tsServerRunning);
+  const opts = { noSemanticValidation: !builtinOn, noSyntaxValidation: !builtinOn };
+  monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions(opts);
+  monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions(opts);
+}
+
+interface StatusEvent {
+  language: string;
+  root: string;
+  state: string;
+  detail: string | null;
+}
 
 export function initLsp(): void {
   if (initialized) return;
   initialized = true;
 
+  listen<StatusEvent>('lsp-status', (event) => {
+    if (event.payload.language !== 'typescript') return;
+    if (event.payload.state === 'running') tsServerRunning = true;
+    else if (event.payload.state === 'error' || event.payload.state === 'stopped') tsServerRunning = false;
+    updateBuiltinTsDiagnostics();
+  }).catch((err) => console.warn('[lsp] listen failed:', err));
+
+  // Status events only fire on spawn transitions; a server that outlived a
+  // frontend reload would otherwise go unnoticed. Seed from current state.
+  invoke<Array<{ language: string; running_roots: string[] }>>('lsp_status')
+    .then((statuses) => {
+      const ts = statuses.find((st) => st.language === 'typescript');
+      if (ts && ts.running_roots.length > 0) {
+        tsServerRunning = true;
+        updateBuiltinTsDiagnostics();
+      }
+    })
+    .catch(() => {});
+
   listen<DiagnosticsEvent>('lsp-diagnostics', (event) => {
+    // Servers keep publishing project-wide diagnostics after didClose (the
+    // file is still part of the tsconfig/cargo project), so a disabled LSP
+    // must drop events or toggling off can't keep markers cleared.
+    if (!useAppStore.getState().lspEnabled) return;
     const key = pathKey(event.payload.uri);
     const markers = diagnosticsToMarkers(event.payload.diagnostics) as monaco.editor.IMarkerData[];
     const model = findModel(key);
@@ -179,6 +222,7 @@ export function initLsp(): void {
     if (state.openFiles !== prev.openFiles || state.lspEnabled !== prev.lspEnabled) {
       syncTabs(state.openFiles, state.lspEnabled);
     }
+    if (state.lspEnabled !== prev.lspEnabled) updateBuiltinTsDiagnostics();
   });
   const s = useAppStore.getState();
   syncTabs(s.openFiles, s.lspEnabled);
