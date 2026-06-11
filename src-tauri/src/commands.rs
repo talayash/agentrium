@@ -775,7 +775,7 @@ pub(crate) fn shell_command(program: &str, args: &[&str]) -> std::process::Comma
 /// version line. We scan from the bottom for a line that contains a
 /// dotted-numeric version. Falls back to the trimmed full output if nothing
 /// matches (e.g. unusual `--version` formats we don't want to silently drop).
-fn extract_version_line(stdout: &str) -> String {
+pub(crate) fn extract_version_line(stdout: &str) -> String {
     for line in stdout.lines().rev() {
         let trimmed = line.trim();
         if trimmed.is_empty() { continue; }

@@ -75,6 +75,25 @@ pub enum Resolution {
     Missing,
 }
 
+/// Resolve a bare binary name to an absolute path via the shell's lookup
+/// (`where` on Windows, `command -v` elsewhere). Returns None on any failure.
+fn path_lookup(bin: &str) -> Option<String> {
+    let (program, args): (&str, &[&str]) = if cfg!(target_os = "windows") {
+        ("where", &[bin])
+    } else {
+        ("command", &["-v", bin])
+    };
+    let out = crate::commands::shell_command(program, args).output().ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .map(|l| l.trim())
+        .find(|l| !l.is_empty())
+        .map(|l| l.to_string())
+}
+
 /// PATH probe + install-dir check. Blocking (runs `--version`); call via
 /// tokio::task::spawn_blocking from async contexts.
 pub fn resolve(language: &str) -> Result<(ServerSpec, Resolution), String> {
@@ -83,8 +102,17 @@ pub fn resolve(language: &str) -> Result<(ServerSpec, Resolution), String> {
     let probe = crate::commands::shell_command(spec.bin, &["--version"]).output();
     if let Ok(out) = probe {
         if out.status.success() {
-            let version = String::from_utf8_lossy(&out.stdout).lines().next().map(|s| s.trim().to_string());
-            let resolution = Resolution::Path { program: spec.bin.to_string(), version };
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            let version = if stdout.trim().is_empty() {
+                None
+            } else {
+                Some(crate::commands::extract_version_line(&stdout))
+            };
+            // Resolve to an absolute path: Command::new can't run .cmd shims
+            // by bare name on Windows, and packaged macOS GUI apps lack the
+            // login-shell PATH. Fall back to the bare name if lookup fails.
+            let program = path_lookup(spec.bin).unwrap_or_else(|| spec.bin.to_string());
+            let resolution = Resolution::Path { program, version };
             return Ok((spec, resolution));
         }
     }
@@ -139,12 +167,32 @@ fn ra_asset() -> Result<(&'static str, bool), String> {
     }
 }
 
+/// Find the index of the file entry whose name ends with `suffix`.
+fn zip_entry_index(
+    zip: &mut zip::ZipArchive<impl std::io::Read + std::io::Seek>,
+    suffix: &str,
+) -> Result<usize, String> {
+    for i in 0..zip.len() {
+        let entry = zip.by_index(i).map_err(|e| e.to_string())?;
+        if entry.is_file() && entry.name().ends_with(suffix) {
+            return Ok(i);
+        }
+    }
+    Err("unexpected rust-analyzer archive layout".to_string())
+}
+
 async fn install_rust_analyzer(dir: &std::path::Path) -> Result<(), String> {
     let (asset, is_zip) = ra_asset()?;
     let url = format!(
         "https://github.com/rust-lang/rust-analyzer/releases/latest/download/{asset}"
     );
-    let bytes = reqwest::get(&url)
+    let client = reqwest::Client::builder()
+        .https_only(true)
+        .build()
+        .map_err(|e| e.to_string())?;
+    let bytes = client
+        .get(&url)
+        .send()
         .await
         .map_err(|e| e.to_string())?
         .error_for_status()
@@ -156,24 +204,41 @@ async fn install_rust_analyzer(dir: &std::path::Path) -> Result<(), String> {
     let bin_dir = dir.join("bin");
     let target = installed_bin_path(&server_spec("rust").unwrap());
     tokio::task::spawn_blocking(move || -> Result<(), String> {
-        std::fs::create_dir_all(&bin_dir).map_err(|e| e.to_string())?;
-        let mut out = std::fs::File::create(&target).map_err(|e| e.to_string())?;
-        if is_zip {
-            let reader = std::io::Cursor::new(bytes.as_ref().to_vec());
-            let mut zip = zip::ZipArchive::new(reader).map_err(|e| e.to_string())?;
-            let mut entry = zip.by_index(0).map_err(|e| e.to_string())?;
-            std::io::copy(&mut entry, &mut out).map_err(|e| e.to_string())?;
-        } else {
-            let mut gz = flate2::read::GzDecoder::new(bytes.as_ref());
-            std::io::copy(&mut gz, &mut out).map_err(|e| e.to_string())?;
-        }
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o755))
-                .map_err(|e| e.to_string())?;
-        }
-        Ok(())
+        // Extract to a .part file and rename into place only on success, so a
+        // torn download never shows up as Installed (and overwriting a running
+        // exe on Windows doesn't hit a sharing violation).
+        let part = target.with_extension("part");
+        let extract = || -> Result<(), String> {
+            std::fs::create_dir_all(&bin_dir).map_err(|e| e.to_string())?;
+            let mut out = std::fs::File::create(&part).map_err(|e| e.to_string())?;
+            if is_zip {
+                let suffix = if cfg!(target_os = "windows") {
+                    "rust-analyzer.exe"
+                } else {
+                    "rust-analyzer"
+                };
+                let reader = std::io::Cursor::new(bytes.as_ref().to_vec());
+                let mut zip = zip::ZipArchive::new(reader).map_err(|e| e.to_string())?;
+                let index = zip_entry_index(&mut zip, suffix)?;
+                let mut entry = zip.by_index(index).map_err(|e| e.to_string())?;
+                std::io::copy(&mut entry, &mut out).map_err(|e| e.to_string())?;
+            } else {
+                let mut gz = flate2::read::GzDecoder::new(bytes.as_ref());
+                std::io::copy(&mut gz, &mut out).map_err(|e| e.to_string())?;
+            }
+            drop(out);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&part, std::fs::Permissions::from_mode(0o755))
+                    .map_err(|e| e.to_string())?;
+            }
+            std::fs::rename(&part, &target).map_err(|e| e.to_string())
+        };
+        extract().map_err(|e| {
+            let _ = std::fs::remove_file(&part);
+            e
+        })
     })
     .await
     .map_err(|e| e.to_string())?
@@ -185,12 +250,20 @@ async fn install_rust_analyzer(dir: &std::path::Path) -> Result<(), String> {
 /// else `fallback`.
 pub fn rust_project_root(file_path: &str, fallback: &str) -> String {
     let mut dir = std::path::Path::new(file_path).parent();
+    // Canonicalize only for the termination comparison, so mixed path forms
+    // (e.g. 8.3 short names, symlinks, verbatim \\?\ prefixes) still match.
+    // Returned values stay in the caller's original (non-canonical) form.
+    let stop_canon = std::fs::canonicalize(fallback).ok();
     let stop = std::path::Path::new(fallback);
     while let Some(d) = dir {
         if d.join("Cargo.toml").exists() {
             return d.to_string_lossy().to_string();
         }
-        if d == stop {
+        let canon_match = match (&stop_canon, std::fs::canonicalize(d).ok()) {
+            (Some(sc), Some(dc)) => *sc == dc,
+            _ => false,
+        };
+        if d == stop || canon_match {
             break;
         }
         dir = d.parent();
@@ -244,5 +317,25 @@ mod tests {
         std::fs::write(&file, "").unwrap();
         let root = rust_project_root(file.to_str().unwrap(), tmp.path().to_str().unwrap());
         assert_eq!(root, tmp.path().to_string_lossy().to_string());
+    }
+
+    #[test]
+    fn zip_entry_index_picks_matching_file_entry() {
+        use std::io::Write;
+        let mut buf = std::io::Cursor::new(Vec::new());
+        {
+            let mut writer = zip::write::ZipWriter::new(&mut buf);
+            let opts = zip::write::SimpleFileOptions::default();
+            writer.start_file("README.md", opts).unwrap();
+            writer.write_all(b"docs").unwrap();
+            writer.start_file("rust-analyzer.exe", opts).unwrap();
+            writer.write_all(b"binary").unwrap();
+            writer.finish().unwrap();
+        }
+        buf.set_position(0);
+        let mut zip = zip::ZipArchive::new(buf).unwrap();
+
+        assert_eq!(zip_entry_index(&mut zip, "rust-analyzer.exe").unwrap(), 1);
+        assert!(zip_entry_index(&mut zip, "pyright-langserver").is_err());
     }
 }
