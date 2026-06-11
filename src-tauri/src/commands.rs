@@ -728,7 +728,7 @@ fn shell_escape_arg(arg: &str) -> String {
 /// Creates a Command that works cross-platform.
 /// On Windows, wraps the command with `cmd /C` so that `.cmd`/`.bat` scripts
 /// (like `npm.cmd`, `claude.cmd`) are resolved correctly.
-fn shell_command(program: &str, args: &[&str]) -> std::process::Command {
+pub(crate) fn shell_command(program: &str, args: &[&str]) -> std::process::Command {
     if cfg!(target_os = "windows") {
         let mut cmd = std::process::Command::new("cmd");
         cmd.arg("/C").arg(program);
