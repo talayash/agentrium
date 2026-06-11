@@ -24,6 +24,7 @@ pub struct AppState {
     pub otel_port: u16,
     /// Shared aggregator so close_terminal can forget a terminal's metrics.
     pub otel_agg: std::sync::Arc<std::sync::Mutex<crate::otel_receiver::MetricsAggregator>>,
+    pub lsp: Arc<Mutex<lsp::LspManager>>,
 }
 
 fn main() {
@@ -62,6 +63,7 @@ fn main() {
             error_reporter::init(installation_id, app_version);
 
             let terminal_manager = terminal::TerminalManager::new();
+            let lsp_manager = lsp::LspManager::new(app.handle().clone());
 
             let (otel_port, otel_agg) = match otel_receiver::start(app.handle().clone()) {
                 Ok((port, agg)) => {
@@ -79,6 +81,7 @@ fn main() {
                 db: Arc::new(Mutex::new(db)),
                 otel_port,
                 otel_agg,
+                lsp: Arc::new(Mutex::new(lsp_manager)),
             });
 
             Ok(())
@@ -191,6 +194,14 @@ fn main() {
             commands::delete_changelist,
             commands::assign_files_to_changelist,
             commands::get_changelist_assignments,
+            commands::lsp_did_open,
+            commands::lsp_did_change,
+            commands::lsp_did_close,
+            commands::lsp_request,
+            commands::lsp_status,
+            commands::lsp_install_server,
+            commands::lsp_restart_server,
+            commands::lsp_server_log,
         ])
         .on_window_event(|window, event| {
             // Only the main window owns the app lifecycle. Detached (tear-off)

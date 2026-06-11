@@ -4383,6 +4383,160 @@ pub async fn search_in_files(
     .await
 }
 
+// ─── LSP ─────────────────────────────────────────────────────────────────────
+
+#[derive(Serialize)]
+pub struct LspLanguageStatus {
+    pub language: String,
+    pub resolution: crate::lsp::acquire::Resolution,
+    pub running_roots: Vec<String>,
+}
+
+#[command]
+pub async fn lsp_did_open(
+    state: State<'_, crate::AppState>,
+    root: String,
+    language: String,
+    path: String,
+    language_id: String,
+    text: String,
+    version: i64,
+) -> Result<(), String> {
+    wrap_cmd("lsp_did_open", async move {
+        // rust-analyzer wants the crate root (Cargo.toml dir), not the git root.
+        let root = if language == "rust" {
+            crate::lsp::acquire::rust_project_root(&path, &root)
+        } else {
+            root
+        };
+        let mut mgr = state.lsp.lock().await;
+        mgr.did_open(&root, &language, &path, &language_id, &text, version).await
+    })
+    .await
+}
+
+#[command]
+pub async fn lsp_did_change(
+    state: State<'_, crate::AppState>,
+    root: String,
+    language: String,
+    path: String,
+    text: String,
+    version: i64,
+) -> Result<(), String> {
+    wrap_cmd("lsp_did_change", async move {
+        let root = if language == "rust" {
+            crate::lsp::acquire::rust_project_root(&path, &root)
+        } else {
+            root
+        };
+        let mut mgr = state.lsp.lock().await;
+        mgr.did_change(&root, &language, &path, &text, version).await
+    })
+    .await
+}
+
+#[command]
+pub async fn lsp_did_close(
+    state: State<'_, crate::AppState>,
+    root: String,
+    language: String,
+    path: String,
+) -> Result<(), String> {
+    wrap_cmd("lsp_did_close", async move {
+        let root = if language == "rust" {
+            crate::lsp::acquire::rust_project_root(&path, &root)
+        } else {
+            root
+        };
+        let mut mgr = state.lsp.lock().await;
+        mgr.did_close(&root, &language, &path).await
+    })
+    .await
+}
+
+#[command]
+pub async fn lsp_request(
+    state: State<'_, crate::AppState>,
+    root: String,
+    language: String,
+    method: String,
+    params: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    wrap_cmd("lsp_request", async move {
+        let mut mgr = state.lsp.lock().await;
+        mgr.request(&root, &language, &method, params).await
+    })
+    .await
+}
+
+#[command]
+pub async fn lsp_status(
+    state: State<'_, crate::AppState>,
+) -> Result<Vec<LspLanguageStatus>, String> {
+    wrap_cmd("lsp_status", async move {
+        let mut out = Vec::new();
+        for language in ["typescript", "python", "rust"] {
+            let lang = language.to_string();
+            let (_, resolution) =
+                tokio::task::spawn_blocking(move || crate::lsp::acquire::resolve(&lang))
+                    .await
+                    .map_err(|e| e.to_string())??;
+            let running_roots = {
+                let mgr = state.lsp.lock().await;
+                mgr.running_roots(language).await
+            };
+            out.push(LspLanguageStatus {
+                language: language.to_string(),
+                resolution,
+                running_roots,
+            });
+        }
+        Ok(out)
+    })
+    .await
+}
+
+#[command]
+pub async fn lsp_install_server(
+    state: State<'_, crate::AppState>,
+    language: String,
+) -> Result<String, String> {
+    wrap_cmd("lsp_install_server", async move {
+        crate::lsp::acquire::install(&language).await?;
+        // Drop any cached resolution so the next ensure() picks up the
+        // fresh install instead of a stale Missing/Path result.
+        state.lsp.lock().await.invalidate_resolution(&language);
+        Ok(format!("{language} language server installed"))
+    })
+    .await
+}
+
+#[command]
+pub async fn lsp_restart_server(
+    state: State<'_, crate::AppState>,
+    language: String,
+) -> Result<(), String> {
+    wrap_cmd("lsp_restart_server", async move {
+        let mut mgr = state.lsp.lock().await;
+        mgr.restart_language(&language).await;
+        Ok(())
+    })
+    .await
+}
+
+#[command]
+pub async fn lsp_server_log(
+    state: State<'_, crate::AppState>,
+    language: String,
+) -> Result<Vec<String>, String> {
+    wrap_cmd("lsp_server_log", async move {
+        let mgr = state.lsp.lock().await;
+        Ok(mgr.stderr_log(&language).await)
+    })
+    .await
+}
+
 #[cfg(test)]
 mod version_extraction_tests {
     use super::{extract_version_line, has_semver_like};
