@@ -4,7 +4,7 @@
 
 use std::collections::{HashMap, VecDeque};
 use std::process::Stdio;
-use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::Arc;
 use serde_json::{json, Value};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
@@ -47,18 +47,21 @@ pub fn classify(msg: &Value) -> Incoming<'_> {
 /// Auto-reply for server→client requests we don't implement. Replying (rather
 /// than ignoring) prevents servers from stalling on an unanswered request.
 pub fn server_request_reply(id: &Value, method: &str, params: &Value) -> Value {
-    let result = match method {
+    match method {
         "workspace/configuration" => {
             let n = params
                 .get("items")
                 .and_then(|i| i.as_array())
                 .map(|a| a.len())
                 .unwrap_or(0);
-            Value::Array(vec![Value::Null; n])
+            json!({ "jsonrpc": "2.0", "id": id, "result": Value::Array(vec![Value::Null; n]) })
         }
-        _ => Value::Null,
-    };
-    json!({ "jsonrpc": "2.0", "id": id, "result": result })
+        _ => json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "error": { "code": -32601, "message": "method not implemented" }
+        }),
+    }
 }
 
 type Pending = Arc<Mutex<HashMap<i64, oneshot::Sender<Result<Value, String>>>>>;
@@ -68,6 +71,9 @@ pub struct LspClient {
     next_id: AtomicI64,
     pending: Pending,
     writer_tx: mpsc::UnboundedSender<Vec<u8>>,
+    /// Set by the pump tasks when the process is gone; lets `request()`
+    /// fail fast instead of waiting out the timeout.
+    dead: Arc<AtomicBool>,
     pub stderr_ring: Arc<Mutex<VecDeque<String>>>,
 }
 
@@ -81,16 +87,10 @@ impl LspClient {
         cwd: &str,
         sink: NotificationSink,
     ) -> Result<Self, String> {
-        let mut cmd = if cfg!(target_os = "windows")
-            && (program.to_lowercase().ends_with(".cmd") || program.to_lowercase().ends_with(".bat"))
-        {
-            // .cmd shims (npm bins) need cmd /C on Windows.
-            let mut c = Command::new("cmd");
-            c.arg("/C").arg(program);
-            c
-        } else {
-            Command::new(program)
-        };
+        // Since Rust 1.77.2 (BatBadBut fix), std/tokio route .cmd/.bat
+        // programs through cmd.exe themselves with injection-safe escaping,
+        // so no manual `cmd /C` wrapper is needed.
+        let mut cmd = Command::new(program);
         cmd.args(args)
             .current_dir(cwd)
             .stdin(Stdio::piped())
@@ -108,21 +108,31 @@ impl LspClient {
         let stderr = child.stderr.take().ok_or("no stderr")?;
 
         let pending: Pending = Arc::new(Mutex::new(HashMap::new()));
+        // Unbounded is a deliberate trade-off: LSP frames are small and
+        // didChange is debounced upstream, so backpressure isn't needed.
         let (writer_tx, mut writer_rx) = mpsc::unbounded_channel::<Vec<u8>>();
         let stderr_ring = Arc::new(Mutex::new(VecDeque::with_capacity(STDERR_RING_CAP)));
+        let dead = Arc::new(AtomicBool::new(false));
 
         // Writer task: serializes all outgoing frames onto stdin.
+        let pending_w = pending.clone();
+        let dead_w = dead.clone();
         tokio::spawn(async move {
             while let Some(bytes) = writer_rx.recv().await {
                 if stdin.write_all(&bytes).await.is_err() {
                     break;
                 }
             }
+            dead_w.store(true, Ordering::SeqCst);
+            for (_, tx) in pending_w.lock().await.drain() {
+                let _ = tx.send(Err("language server exited".into()));
+            }
         });
 
         // Reader task: frames → classify → resolve pending / auto-reply / sink.
         let pending_r = pending.clone();
         let writer_r = writer_tx.clone();
+        let dead_r = dead.clone();
         tokio::spawn(async move {
             let mut decoder = FrameDecoder::new();
             let mut chunk = [0u8; 8192];
@@ -135,7 +145,9 @@ impl LspClient {
                     let Ok(msg) = serde_json::from_slice::<Value>(&body) else { continue };
                     match classify(&msg) {
                         Incoming::Response { id, result } => {
-                            if let Some(tx) = pending_r.lock().await.remove(&id) {
+                            // Don't hold the pending lock across tx.send.
+                            let tx = pending_r.lock().await.remove(&id);
+                            if let Some(tx) = tx {
                                 let _ = tx.send(result.map(|v| v.clone()));
                             }
                         }
@@ -151,21 +163,34 @@ impl LspClient {
                 }
             }
             // Process ended: fail all in-flight requests.
+            dead_r.store(true, Ordering::SeqCst);
             for (_, tx) in pending_r.lock().await.drain() {
                 let _ = tx.send(Err("language server exited".into()));
             }
         });
 
         // Stderr task: ring buffer for the settings-page log viewer.
+        // read_until (not lines()) so non-UTF-8 output and unbounded lines
+        // can't kill or bloat the task.
         let ring = stderr_ring.clone();
         tokio::spawn(async move {
-            let mut lines = BufReader::new(stderr).lines();
-            while let Ok(Some(line)) = lines.next_line().await {
+            let mut reader = BufReader::new(stderr);
+            let mut buf = Vec::new();
+            loop {
+                match reader.read_until(b'\n', &mut buf).await {
+                    Ok(0) | Err(_) => break,
+                    Ok(_) => {}
+                }
+                let mut line = String::from_utf8_lossy(&buf).trim_end().to_string();
+                if line.len() > 4000 {
+                    line = line.chars().take(4000).collect();
+                }
                 let mut r = ring.lock().await;
                 if r.len() >= STDERR_RING_CAP {
                     r.pop_front();
                 }
                 r.push_back(line);
+                buf.clear();
             }
         });
 
@@ -174,18 +199,27 @@ impl LspClient {
             next_id: AtomicI64::new(1),
             pending,
             writer_tx,
+            dead,
             stderr_ring,
         })
     }
 
     pub async fn request(&self, method: &str, params: Value) -> Result<Value, String> {
+        if self.dead.load(Ordering::SeqCst) {
+            return Err("language server exited".into());
+        }
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
         let (tx, rx) = oneshot::channel();
         self.pending.lock().await.insert(id, tx);
         let msg = json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params });
-        self.writer_tx
+        if self
+            .writer_tx
             .send(encode_frame(msg.to_string().as_bytes()))
-            .map_err(|_| "language server writer closed".to_string())?;
+            .is_err()
+        {
+            self.pending.lock().await.remove(&id);
+            return Err("language server writer closed".into());
+        }
         match tokio::time::timeout(std::time::Duration::from_secs(REQUEST_TIMEOUT_SECS), rx).await {
             Ok(Ok(result)) => result,
             Ok(Err(_)) => Err("language server dropped the request".into()),
@@ -203,11 +237,16 @@ impl LspClient {
             .map_err(|_| "language server writer closed".to_string())
     }
 
-    pub fn is_alive(&mut self) -> bool {
-        matches!(self.child.try_wait(), Ok(None))
+    pub fn is_alive(&self) -> bool {
+        !self.dead.load(Ordering::SeqCst)
     }
 
+    /// Hard-kill the child. On Windows this may terminate a shim parent
+    /// (e.g. an npm .cmd wrapper) rather than the server grandchild — the
+    /// manager should attempt a graceful shutdown/exit handshake first;
+    /// stdin EOF (pipe drop) is the practical backstop.
     pub async fn kill(&mut self) {
+        self.dead.store(true, Ordering::SeqCst);
         let _ = self.child.kill().await;
     }
 }
@@ -229,9 +268,10 @@ mod tests {
     }
 
     #[test]
-    fn unknown_server_request_gets_null_result() {
+    fn unknown_server_request_gets_method_not_found() {
         let reply = server_request_reply(&json!("x"), "client/registerCapability", &json!({}));
-        assert_eq!(reply["result"], serde_json::Value::Null);
+        assert_eq!(reply["error"]["code"], json!(-32601));
+        assert!(reply.get("result").is_none());
         assert_eq!(reply["jsonrpc"], "2.0");
     }
 
@@ -253,5 +293,25 @@ mod tests {
             classify(&json!({"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{}})),
             Incoming::Notification { .. }
         ));
+    }
+
+    #[test]
+    fn classify_non_integer_id_response_is_other() {
+        assert!(matches!(
+            classify(&json!({"jsonrpc":"2.0","id":"abc","result":{}})),
+            Incoming::Other
+        ));
+    }
+
+    #[test]
+    fn classify_error_response_carries_message() {
+        match classify(&json!({"jsonrpc":"2.0","id":3,"error":{"code":-32601,"message":"nope"}})) {
+            Incoming::Response { id, result } => {
+                assert_eq!(id, 3);
+                let err = result.unwrap_err();
+                assert!(err.contains("nope"), "error text was: {}", err);
+            }
+            _ => panic!("expected Response"),
+        }
     }
 }
