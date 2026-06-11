@@ -114,12 +114,12 @@ export default function LanguageServersPage() {
                   <div className="flex items-center gap-2">
                     {/* resolution badge */}
                     {res.kind === 'path' && (
-                      <span className="text-[12px] text-[var(--ij-color-success,#59a869)]">
+                      <span className="text-[12px] text-success">
                         On PATH{res.version ? ` · ${res.version}` : ''}
                       </span>
                     )}
                     {res.kind === 'installed' && (
-                      <span className="text-[12px] text-[var(--ij-color-success,#59a869)]">
+                      <span className="text-[12px] text-success">
                         Installed
                       </span>
                     )}
