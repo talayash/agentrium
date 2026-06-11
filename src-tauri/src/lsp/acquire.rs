@@ -75,6 +75,36 @@ pub enum Resolution {
     Missing,
 }
 
+/// Pick the spawnable line from a `where` / `command -v` lookup.
+///
+/// On Windows, `where` lists the extensionless sh shim first for npm bins
+/// (e.g. "...\nodejs\npm" before "npm.cmd"), and Command::new on that sh
+/// script fails with ERROR_BAD_EXE_FORMAT — so prefer a line ending in
+/// .exe/.cmd/.bat. Elsewhere, require an absolute path so shell alias output
+/// (e.g. "alias foo='bar'") is rejected.
+fn pick_lookup_line(stdout: &str, windows: bool) -> Option<String> {
+    let lines: Vec<&str> = stdout
+        .lines()
+        .map(|l| l.trim())
+        .filter(|l| !l.is_empty())
+        .collect();
+    if windows {
+        lines
+            .iter()
+            .find(|l| {
+                let lower = l.to_ascii_lowercase();
+                lower.ends_with(".exe") || lower.ends_with(".cmd") || lower.ends_with(".bat")
+            })
+            .or_else(|| lines.first())
+            .map(|l| l.to_string())
+    } else {
+        lines
+            .first()
+            .filter(|l| l.starts_with('/'))
+            .map(|l| l.to_string())
+    }
+}
+
 /// Resolve a bare binary name to an absolute path via the shell's lookup
 /// (`where` on Windows, `command -v` elsewhere). Returns None on any failure.
 fn path_lookup(bin: &str) -> Option<String> {
@@ -87,11 +117,7 @@ fn path_lookup(bin: &str) -> Option<String> {
     if !out.status.success() {
         return None;
     }
-    String::from_utf8_lossy(&out.stdout)
-        .lines()
-        .map(|l| l.trim())
-        .find(|l| !l.is_empty())
-        .map(|l| l.to_string())
+    pick_lookup_line(&String::from_utf8_lossy(&out.stdout), cfg!(target_os = "windows"))
 }
 
 /// PATH probe + install-dir check. Blocking (runs `--version`); call via
@@ -337,5 +363,35 @@ mod tests {
 
         assert_eq!(zip_entry_index(&mut zip, "rust-analyzer.exe").unwrap(), 1);
         assert!(zip_entry_index(&mut zip, "pyright-langserver").is_err());
+    }
+
+    #[test]
+    fn pick_lookup_line_prefers_spawnable_extension_on_windows() {
+        let stdout = "C:\\nodejs\\tls\r\nC:\\nodejs\\tls.cmd\r\n";
+        assert_eq!(
+            pick_lookup_line(stdout, true),
+            Some("C:\\nodejs\\tls.cmd".to_string())
+        );
+    }
+
+    #[test]
+    fn pick_lookup_line_takes_single_exe_on_windows() {
+        assert_eq!(
+            pick_lookup_line("C:\\bin\\rust-analyzer.exe\r\n", true),
+            Some("C:\\bin\\rust-analyzer.exe".to_string())
+        );
+    }
+
+    #[test]
+    fn pick_lookup_line_rejects_alias_output_on_unix() {
+        assert_eq!(pick_lookup_line("alias foo='bar'\n", false), None);
+    }
+
+    #[test]
+    fn pick_lookup_line_takes_absolute_path_on_unix() {
+        assert_eq!(
+            pick_lookup_line("/usr/bin/rust-analyzer\n", false),
+            Some("/usr/bin/rust-analyzer".to_string())
+        );
     }
 }
