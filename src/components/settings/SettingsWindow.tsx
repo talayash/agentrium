@@ -13,6 +13,7 @@ const pages: Record<string, React.LazyExoticComponent<React.ComponentType>> = {
   'appearance-behavior.keymap':           lazy(() => import('./categories/KeymapPage')),
   'editor.general':                       lazy(() => import('./categories/EditorGeneralPage')),
   'editor.font':                          lazy(() => import('./categories/EditorFontPage')),
+  'editor.language-servers':              lazy(() => import('./categories/LanguageServersPage')),
   'terminal.appearance':                  lazy(() => import('./categories/TerminalAppearancePage')),
   'terminal.behavior':                    lazy(() => import('./categories/TerminalBehaviorPage')),
   'terminal.pastes':                      lazy(() => import('./categories/TerminalPastesPage')),

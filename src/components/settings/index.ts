@@ -27,8 +27,9 @@ export const CATEGORY_GROUPS: {
     { id: 'keymap',          label: 'Keymap' },
   ]},
   { id: 'editor', label: 'Editor', pages: [
-    { id: 'general', label: 'General' },
-    { id: 'font',    label: 'Font' },
+    { id: 'general',          label: 'General' },
+    { id: 'font',             label: 'Font' },
+    { id: 'language-servers', label: 'Language Servers' },
   ]},
   { id: 'terminal', label: 'Terminal', pages: [
     { id: 'appearance', label: 'Appearance' },
