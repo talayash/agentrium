@@ -11,6 +11,7 @@ mod claude_session;
 mod pastes;
 mod changelists;
 mod otel_receiver;
+mod lsp;
 
 use tauri::Manager;
 use std::sync::Arc;
