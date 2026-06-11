@@ -53,6 +53,7 @@ import { listen } from '@tauri-apps/api/event';
 import type { TerminalMetricsPayload } from './lib/sessionMetrics';
 import { invoke } from '@tauri-apps/api/core';
 import { getVersion } from '@tauri-apps/api/app';
+import { initLsp } from './lib/lsp/lspClient';
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
   constructor(props: { children: ReactNode }) {
@@ -206,6 +207,12 @@ function App() {
   useEffect(() => {
     const enabled = useAppStore.getState().errorReportingEnabled;
     invoke('set_error_reporting_enabled', { enabled }).catch(() => {});
+  }, []);
+
+  // Initialize the LSP client singleton once on mount. Subscribes to
+  // openFiles / lspEnabled changes and wires diagnostics events to Monaco.
+  useEffect(() => {
+    initLsp();
   }, []);
 
   // Telemetry heartbeat - fire on startup then every 5 minutes
