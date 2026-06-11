@@ -148,7 +148,7 @@ impl LspClient {
                             // Don't hold the pending lock across tx.send.
                             let tx = pending_r.lock().await.remove(&id);
                             if let Some(tx) = tx {
-                                let _ = tx.send(result.map(|v| v.clone()));
+                                let _ = tx.send(result.cloned());
                             }
                         }
                         Incoming::ServerRequest { id, method, params } => {

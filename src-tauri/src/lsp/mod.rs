@@ -171,10 +171,9 @@ impl LspManager {
 
         let (sink_tx, mut sink_rx) = tokio::sync::mpsc::unbounded_channel::<(String, Value)>();
         let args: Vec<String> = spec.args.iter().map(|s| s.to_string()).collect();
-        let client = LspClient::spawn(&program, &args, root, sink_tx).map_err(|e| {
+        let client = LspClient::spawn(&program, &args, root, sink_tx).inspect_err(|_| {
             // Invalidate cache: the binary that was resolved may have been deleted.
             self.invalidate_resolution(language);
-            e
         })?;
         let client = Arc::new(tokio::sync::Mutex::new(client));
 

@@ -7,8 +7,6 @@ use std::path::PathBuf;
 
 #[derive(Clone)]
 pub struct ServerSpec {
-    /// Our language key: "typescript" | "python" | "rust".
-    pub language: &'static str,
     /// Binary name probed on PATH and produced by install.
     pub bin: &'static str,
     pub args: &'static [&'static str],
@@ -20,19 +18,16 @@ pub struct ServerSpec {
 pub fn server_spec(language: &str) -> Option<ServerSpec> {
     match language {
         "typescript" => Some(ServerSpec {
-            language: "typescript",
             bin: "typescript-language-server",
             args: &["--stdio"],
             npm_packages: &["typescript-language-server", "typescript"],
         }),
         "python" => Some(ServerSpec {
-            language: "python",
             bin: "pyright-langserver",
             args: &["--stdio"],
             npm_packages: &["pyright"],
         }),
         "rust" => Some(ServerSpec {
-            language: "rust",
             bin: "rust-analyzer",
             args: &[],
             npm_packages: &[],
@@ -262,9 +257,8 @@ async fn install_rust_analyzer(dir: &std::path::Path) -> Result<(), String> {
             }
             std::fs::rename(&part, &target).map_err(|e| e.to_string())
         };
-        extract().map_err(|e| {
+        extract().inspect_err(|_| {
             let _ = std::fs::remove_file(&part);
-            e
         })
     })
     .await
