@@ -5,6 +5,7 @@ import type { editor } from 'monaco-editor';
 import { useAppStore } from '../store/appStore';
 import { toast } from '../store/toastStore';
 import { languageFromPath } from './monacoSetup';
+import { pathToFileUri } from '../lib/lsp/paths';
 
 interface FileEditorViewProps {
   path: string;
@@ -26,6 +27,10 @@ export function FileEditorView({ path }: FileEditorViewProps) {
 
   const dirty = tab ? tab.content !== tab.original : false;
   const language = useMemo(() => languageFromPath(path), [path]);
+  // Model key as a proper file:// URI. Passing the raw Windows path would make
+  // monaco.Uri.parse() treat 'C:' as a scheme and percent-encode the
+  // backslashes, so LSP diagnostics (matched via pathKey) would never attach.
+  const modelUri = useMemo(() => pathToFileUri(path), [path]);
 
   // Ctrl/Cmd+S saves the active file. Only active when this path is the
   // currently-focused file tab (the parent only mounts us for the active tab).
@@ -132,6 +137,10 @@ export function FileEditorView({ path }: FileEditorViewProps) {
             language={language}
             original={tab.headContent}
             modified={tab.content}
+            // Key the editable (right) side by the real file URI so LSP
+            // markers attach in diff mode too. The original (HEAD) side keeps
+            // its auto-generated in-memory model - it gets no markers.
+            modifiedModelPath={modelUri}
             onMount={onDiffMount}
             theme="vs-dark"
             options={{
@@ -150,7 +159,7 @@ export function FileEditorView({ path }: FileEditorViewProps) {
           <Editor
             height="100%"
             language={language}
-            path={path}
+            path={modelUri}
             value={tab.content}
             onChange={(v) => setFileTabContent(path, v ?? '')}
             onMount={onMount}

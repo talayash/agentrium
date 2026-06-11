@@ -14,6 +14,12 @@ export function pathKey(uriOrPath: string): string {
   let s = uriOrPath;
   if (s.startsWith('file://')) {
     s = decodeURIComponent(s.slice('file://'.length));
+  } else {
+    // Monaco URIs built from raw Windows paths percent-encode the backslashes
+    // ('C:%5CUsers%5C...') without a file:// prefix - decode so they key the
+    // same as the raw path. Malformed sequences (a literal '%' in a filename)
+    // are kept as-is.
+    try { s = decodeURIComponent(s); } catch { /* keep raw */ }
   }
   s = s.replace(/\\/g, '/');
   if (/^\/[a-zA-Z]:/.test(s)) s = s.slice(1); // /C:/... → C:/...

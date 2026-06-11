@@ -29,4 +29,8 @@ describe('pathKey', () => {
   it('decodes percent-encoded percent signs', () => {
     expect(pathKey('file:///C:/dev/100%25done/a.ts')).toBe('c:/dev/100%done/a.ts');
   });
+  it('decodes a Monaco URI parsed from a raw Windows path (encoded backslashes, no file://)', () => {
+    // monaco.Uri.parse('C:\\Users\\tal\\a.ts').toString() === 'C:%5CUsers%5Ctal%5Ca.ts'
+    expect(pathKey('C:%5CUsers%5Ctal%5Ca.ts')).toBe(pathKey('C:\\Users\\tal\\a.ts'));
+  });
 });

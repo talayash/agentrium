@@ -43,6 +43,14 @@ function findModel(key: string): monaco.editor.ITextModel | null {
   return monaco.editor.getModels().find((m) => pathKey(m.uri.toString()) === key) ?? null;
 }
 
+/** True if `key` (a pathKey) matches a doc currently mirrored to the backend. */
+function isSyncedKey(key: string): boolean {
+  for (const path of synced.keys()) {
+    if (pathKey(pathToFileUri(path)) === key) return true;
+  }
+  return false;
+}
+
 async function open(tab: FileTabState, binding: LspBinding): Promise<void> {
   const doc: SyncedDoc = {
     binding,
@@ -102,6 +110,7 @@ function close(path: string, doc: SyncedDoc): void {
 function syncTabs(openFiles: FileTabState[], lspEnabled: boolean): void {
   if (!lspEnabled) {
     for (const [path, doc] of [...synced]) close(path, doc);
+    pendingMarkers.clear();
     return;
   }
   const present = new Set<string>();
@@ -115,6 +124,12 @@ function syncTabs(openFiles: FileTabState[], lspEnabled: boolean): void {
       void open(tab, binding);
     } else if (tab.content !== doc.lastSent) {
       change(tab.path, doc, tab.content);
+    } else if (doc.debounce) {
+      // Undo back to the already-synced text within the debounce window:
+      // cancel the pending didChange so its stale captured content doesn't
+      // fire and desync the backend from what the editor shows.
+      clearTimeout(doc.debounce);
+      doc.debounce = null;
     }
   }
   for (const [path, doc] of [...synced]) {
@@ -135,21 +150,28 @@ export function initLsp(): void {
   if (initialized) return;
   initialized = true;
 
-  void listen<DiagnosticsEvent>('lsp-diagnostics', (event) => {
+  listen<DiagnosticsEvent>('lsp-diagnostics', (event) => {
     const key = pathKey(event.payload.uri);
     const markers = diagnosticsToMarkers(event.payload.diagnostics) as monaco.editor.IMarkerData[];
     const model = findModel(key);
     if (model) {
       monaco.editor.setModelMarkers(model, MARKER_OWNER, markers);
-    } else {
+    } else if (isSyncedKey(key)) {
+      // Cache only for docs we're actually syncing. rust-analyzer publishes
+      // diagnostics for the whole workspace; caching every uri would grow
+      // unboundedly.
       pendingMarkers.set(key, markers);
     }
-  });
+  }).catch((err) => console.warn('[lsp] listen failed:', err));
 
   // Apply diagnostics that arrived before the editor mounted the model.
   monaco.editor.onDidCreateModel((model) => {
-    const cached = pendingMarkers.get(pathKey(model.uri.toString()));
-    if (cached) monaco.editor.setModelMarkers(model, MARKER_OWNER, cached);
+    const key = pathKey(model.uri.toString());
+    const cached = pendingMarkers.get(key);
+    if (cached) {
+      monaco.editor.setModelMarkers(model, MARKER_OWNER, cached);
+      pendingMarkers.delete(key);
+    }
   });
 
   // Mirror file tabs → LSP documents.
