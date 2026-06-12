@@ -1,5 +1,13 @@
 [
   {
+    "version": "1.26.2",
+    "date": "2026-06-12",
+    "features": [
+      { "title": "Cleaner, flatter popups", "description": "Dialogs, menus, and toasts no longer paint a blurry shadow halo or blur the background behind them - every popup now sits on a crisp 1px border for a flat, IntelliJ-style look." },
+      { "title": "Lighter dialogs with clearer sections", "description": "Dialogs like New Terminal and Profiles are a step lighter, with a distinct header band and hairline dividers separating each section." }
+    ]
+  },
+  {
     "version": "1.26.1",
     "date": "2026-06-07",
     "features": [
