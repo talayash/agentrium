@@ -95,7 +95,7 @@ export function SessionTimeline() {
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.15 }}
-      className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50"
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
       onDoubleClick={closeSessionTimeline}
     >
       <motion.div
@@ -104,7 +104,7 @@ export function SessionTimeline() {
         exit={{ opacity: 0, scale: 0.98 }}
         transition={{ duration: 0.15 }}
         onDoubleClick={(e) => e.stopPropagation()}
-        className="bg-bg-elevated ring-1 ring-white/[0.08] rounded-lg shadow-2xl w-full max-w-2xl overflow-hidden max-h-[80vh] flex flex-col"
+        className="bg-bg-elevated ring-1 ring-white/[0.08] rounded-lg w-full max-w-2xl overflow-hidden max-h-[80vh] flex flex-col"
       >
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-border">

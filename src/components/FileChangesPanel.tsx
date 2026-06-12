@@ -1343,7 +1343,7 @@ function RepoRow({ repo }: { repo: ScannedGitRepo }) {
       </div>
 
       {menuOpen && (
-        <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-elevation-3 ring-1 ring-white/[0.08] rounded-lg shadow-elevation-3 overflow-hidden">
+        <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-elevation-3 ring-1 ring-white/[0.08] rounded-lg overflow-hidden">
           <div className="p-2 border-b border-[var(--ij-divider-soft)]">
             <div className="relative">
               <SearchIcon size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-text-tertiary" strokeWidth={1.75} />

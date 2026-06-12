@@ -631,7 +631,7 @@ export function FileTreePanel() {
         <div
           role="menu"
           data-context-menu="tree"
-          className="fixed z-[80] min-w-[220px] bg-bg-elevated ring-1 ring-white/[0.08] rounded-md shadow-elevation-4 py-1 select-none"
+          className="fixed z-[80] min-w-[220px] bg-bg-elevated ring-1 ring-white/[0.08] rounded-md py-1 select-none"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
           {menuItems.map((item, i) => {
@@ -674,11 +674,11 @@ export function FileTreePanel() {
       {/* Delete confirmation dialog */}
       {pendingDelete && (
         <div
-          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 backdrop-blur-sm"
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50"
           onClick={() => setPendingDelete(null)}
         >
           <div
-            className="bg-bg-elevated ring-1 ring-white/[0.08] rounded-md shadow-elevation-4 p-4 w-[360px]"
+            className="bg-bg-elevated ring-1 ring-white/[0.08] rounded-md p-4 w-[360px]"
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="text-text-primary text-[13px] font-semibold mb-1">

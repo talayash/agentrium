@@ -111,11 +111,11 @@ export function ProfileModal() {
     <Modal
       onClose={closeProfileModal}
       closeOn="doubleClick"
-      scrimClassName="bg-black/50 backdrop-blur-sm z-[60]"
+      scrimClassName="bg-black/50 z-[60]"
       panelClassName="w-full max-w-3xl"
     >
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-border">
+        <div className="flex items-center justify-between px-4 h-11 bg-elevation-2 border-b border-[var(--ij-divider-soft)]">
           <h2 className="text-text-primary text-[14px] font-semibold">Configuration Profiles</h2>
           <button
             onClick={closeProfileModal}
@@ -128,7 +128,7 @@ export function ProfileModal() {
         {/* Content */}
         <div className="flex h-[500px]">
           {/* Profile List */}
-          <div className="w-64 border-r border-border p-3 flex flex-col">
+          <div className="w-64 border-r border-[var(--ij-divider-soft)] bg-black/20 p-3 flex flex-col">
             <Button
               variant="primary"
               size="sm"
@@ -191,7 +191,7 @@ export function ProfileModal() {
                   />
                 </div>
 
-                <div>
+                <div className="border-t border-[var(--ij-divider-soft)] pt-4">
                   <label className="block text-text-secondary text-[12px] mb-1.5">Working Directory</label>
                   <div className="flex gap-2">
                     <input
@@ -211,7 +211,7 @@ export function ProfileModal() {
                   </div>
                 </div>
 
-                <div>
+                <div className="border-t border-[var(--ij-divider-soft)] pt-4">
                   <label className="block text-text-secondary text-[12px] mb-1.5">Claude Arguments (one per line)</label>
                   <textarea
                     value={selectedProfile.claude_args.join('\n')}
@@ -221,7 +221,7 @@ export function ProfileModal() {
                   />
                 </div>
 
-                <div>
+                <div className="border-t border-[var(--ij-divider-soft)] pt-4">
                   <label className="block text-text-secondary text-[12px] mb-1.5">Environment Variables</label>
                   <div className="space-y-1.5">
                     {Object.entries(selectedProfile.env_vars).map(([key, value], index) => (
@@ -271,7 +271,7 @@ export function ProfileModal() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 border-t border-[var(--ij-divider-soft)] pt-4">
                   <input
                     type="checkbox"
                     id="is_default"
@@ -288,7 +288,7 @@ export function ProfileModal() {
                   </div>
                 )}
 
-                <div className="flex gap-2 pt-4 border-t border-border">
+                <div className="flex gap-2 pt-4 border-t border-[var(--ij-divider-soft)]">
                   <Button
                     variant="primary"
                     onClick={handleSaveProfile}

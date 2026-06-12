@@ -59,7 +59,7 @@ export function ToolsMenu() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-1 z-50 w-[220px] bg-elevation-3 ring-1 ring-white/[0.08] rounded-lg shadow-elevation-3 overflow-hidden py-1">
+        <div className="absolute right-0 top-full mt-1 z-50 w-[220px] bg-elevation-3 ring-1 ring-white/[0.08] rounded-lg overflow-hidden py-1">
           {items.map(({ id, label, icon: Icon, action }) => (
             <button
               key={id}

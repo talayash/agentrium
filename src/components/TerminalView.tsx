@@ -548,7 +548,7 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
         <div
           role="menu"
           data-context-menu="terminal"
-          className="fixed z-[80] min-w-[160px] bg-bg-elevated ring-1 ring-white/[0.08] rounded-md shadow-elevation-4 py-1 select-none"
+          className="fixed z-[80] min-w-[160px] bg-bg-elevated ring-1 ring-white/[0.08] rounded-md py-1 select-none"
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onMouseDown={(e) => e.stopPropagation()}
         >

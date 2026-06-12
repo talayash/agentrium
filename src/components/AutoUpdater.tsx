@@ -120,7 +120,7 @@ export function AutoUpdater() {
         transition={{ duration: 0.15 }}
         className="fixed top-10 left-1/2 -translate-x-1/2 z-50 max-w-md w-full mx-4"
       >
-        <div className="bg-bg-elevated ring-1 ring-white/[0.08] rounded-lg shadow-2xl overflow-hidden">
+        <div className="bg-bg-elevated ring-1 ring-white/[0.08] rounded-lg overflow-hidden">
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
             <div className="flex items-center gap-2">

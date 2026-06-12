@@ -217,7 +217,7 @@ export function GlobalSearchModal() {
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.12 }}
-      className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm flex items-start justify-center pt-[8vh]"
+      className="fixed inset-0 z-[60] bg-black/50 flex items-start justify-center pt-[8vh]"
       onMouseDown={(e) => {
         // Click on backdrop (not modal) closes
         if (e.target === e.currentTarget) closeGlobalSearch();
@@ -228,7 +228,7 @@ export function GlobalSearchModal() {
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.97, y: -8 }}
         transition={{ duration: 0.15, ease: 'easeOut' }}
-        className="w-full max-w-[820px] mx-4 bg-elevation-3 ring-1 ring-white/[0.08] rounded-xl shadow-elevation-3 overflow-hidden flex flex-col"
+        className="w-full max-w-[820px] mx-4 bg-elevation-3 ring-1 ring-white/[0.08] rounded-xl overflow-hidden flex flex-col"
         style={{ maxHeight: '80vh' }}
         onKeyDown={handleKeyDown}
       >

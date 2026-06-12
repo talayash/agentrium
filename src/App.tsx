@@ -777,8 +777,8 @@ function App() {
 
       {/* Detached-window "ask each time" close dialog */}
       {isDetached && closePrompt && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="bg-bg-elevated ring-1 ring-white/[0.08] rounded-md shadow-elevation-4 p-4 w-[380px]">
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50">
+          <div className="bg-bg-elevated ring-1 ring-white/[0.08] rounded-md p-4 w-[380px]">
             <h3 className="text-text-primary text-[13px] font-semibold mb-1">Close this window?</h3>
             <p className="text-text-tertiary text-[12px] mb-4">
               {detachedTabCount} terminal{detachedTabCount === 1 ? '' : 's'}{' '}

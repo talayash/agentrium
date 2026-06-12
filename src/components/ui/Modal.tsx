@@ -19,7 +19,7 @@ interface ModalProps {
   closeOnEscape?: boolean;
   /** Tailwind sizing for the panel, e.g. 'w-full max-w-3xl'. */
   panelClassName?: string;
-  /** Extra classes for the scrim (z-index, blur, tint). */
+  /** Extra classes for the scrim (z-index, tint). */
   scrimClassName?: string;
 }
 
@@ -70,10 +70,10 @@ export function Modal({
         // Stop bubbling so clicks inside the panel never reach the scrim handler.
         onClick={(e) => e.stopPropagation()}
         onDoubleClick={(e) => e.stopPropagation()}
-        className={`bg-elevation-0 ring-1 ring-[var(--ij-divider-soft)] rounded-lg shadow-elevation-4 overflow-hidden ${panelClassName}`}
+        className={`bg-elevation-1 ring-1 ring-[var(--ij-divider-soft)] rounded-lg overflow-hidden ${panelClassName}`}
       >
         {showHeader && (
-          <div className="flex items-center justify-between px-4 h-11 bg-elevation-1 border-b border-[var(--ij-divider-soft)]">
+          <div className="flex items-center justify-between px-4 h-11 bg-elevation-2 border-b border-[var(--ij-divider-soft)]">
             <div className="flex items-center gap-2 min-w-0">
               {icon}
               <h2 className="text-text-primary text-[14px] font-semibold truncate">{title}</h2>

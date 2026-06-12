@@ -94,7 +94,7 @@ export function SessionHistory() {
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.15 }}
-      className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50"
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
       onDoubleClick={closeSessionHistory}
     >
       <motion.div
@@ -103,7 +103,7 @@ export function SessionHistory() {
         exit={{ opacity: 0 }}
         transition={{ duration: 0.15 }}
         onDoubleClick={(e) => e.stopPropagation()}
-        className="bg-bg-elevated ring-1 ring-white/[0.08] rounded-lg shadow-2xl w-full max-w-4xl overflow-hidden"
+        className="bg-bg-elevated ring-1 ring-white/[0.08] rounded-lg w-full max-w-4xl overflow-hidden"
       >
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-border">

@@ -82,7 +82,7 @@ function ToastItem({ id, type, title, message, duration, actions }: {
       animate={{ opacity: 1, x: 0, scale: 1 }}
       exit={{ opacity: 0, x: 80, scale: 0.95 }}
       transition={{ duration: 0.2, ease: 'easeOut' }}
-      className={`relative overflow-hidden rounded-lg bg-elevation-3 ring-1 ${colors.ring} shadow-[0_8px_28px_rgba(0,0,0,0.6)] backdrop-blur-xl pointer-events-auto isolate ${
+      className={`relative overflow-hidden rounded-lg bg-elevation-3 ring-1 ${colors.ring} pointer-events-auto isolate ${
         hasActions ? 'w-[420px]' : 'w-[320px]'
       }`}
     >

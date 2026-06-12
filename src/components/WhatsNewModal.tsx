@@ -49,7 +49,7 @@ export function WhatsNewModal() {
       title="What's New"
       icon={<Sparkles size={16} className="text-accent-primary" />}
       panelClassName="w-full max-w-lg"
-      scrimClassName="bg-black/50 backdrop-blur-sm z-50"
+      scrimClassName="bg-black/50 z-50"
     >
       {/* Body */}
       <div className="overflow-y-auto max-h-[70vh] p-4 space-y-4">

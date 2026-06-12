@@ -42,7 +42,7 @@ function StripeButton({ item, side }: { item: StripeItem; side: Side }) {
       <Icon size={17} strokeWidth={1.75} />
       {/* styled tooltip (label + shortcut) */}
       <span
-        className={`pointer-events-none absolute ${tooltipSide} top-1/2 -translate-y-1/2 z-[60] whitespace-nowrap rounded-md bg-elevation-3 ring-1 ring-[var(--ij-divider-soft)] px-2 py-1 text-[11.5px] text-text-primary shadow-elevation-3 opacity-0 group-hover:opacity-100 transition-opacity duration-100`}
+        className={`pointer-events-none absolute ${tooltipSide} top-1/2 -translate-y-1/2 z-[60] whitespace-nowrap rounded-md bg-elevation-3 ring-1 ring-[var(--ij-divider-soft)] px-2 py-1 text-[11.5px] text-text-primary opacity-0 group-hover:opacity-100 transition-opacity duration-100`}
       >
         {item.label}
         <span className="ml-2 text-text-tertiary">{item.shortcut}</span>

@@ -121,7 +121,7 @@ export function SnippetsModal() {
     <Modal
       onClose={closeSnippetsModal}
       closeOn="doubleClick"
-      scrimClassName="bg-black/50 backdrop-blur-sm z-50"
+      scrimClassName="bg-black/50 z-50"
       panelClassName="w-full max-w-3xl"
       showHeader
       title="Snippets"

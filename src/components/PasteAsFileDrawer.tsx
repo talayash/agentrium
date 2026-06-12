@@ -238,7 +238,7 @@ export function PasteAsFileDrawer() {
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ type: 'tween', duration: 0.2, ease: 'easeOut' }}
-            className="fixed top-0 right-0 bottom-0 w-[520px] bg-elevation-2 backdrop-blur-xl ring-1 ring-white/5 z-[201] flex flex-col"
+            className="fixed top-0 right-0 bottom-0 w-[520px] bg-elevation-2 ring-1 ring-white/5 z-[201] flex flex-col"
           >
             <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
               <h2 className="text-text-primary text-sm font-medium">Paste as File</h2>

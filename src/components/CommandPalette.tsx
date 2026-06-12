@@ -304,7 +304,7 @@ export function CommandPalette() {
 
   return (
     <div
-      className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50"
+      className="fixed inset-0 bg-black/50 z-50"
       onDoubleClick={closeCommandPalette}
     >
       <motion.div
@@ -315,7 +315,7 @@ export function CommandPalette() {
         className="mx-auto mt-[15vh] w-full max-w-[550px]"
         onDoubleClick={(e) => e.stopPropagation()}
       >
-        <div className="bg-elevation-4 ring-1 ring-white/[0.08] rounded-xl shadow-elevation-4 overflow-hidden">
+        <div className="bg-elevation-4 ring-1 ring-white/[0.08] rounded-xl overflow-hidden">
           {/* Search Input */}
           <div className="p-3 border-b border-border">
             <div className="relative flex items-center">

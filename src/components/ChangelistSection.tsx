@@ -273,7 +273,7 @@ export function ChangelistSection({ repoPath, unstagedFiles, onStage, refreshTri
                   <MoreVertical size={12} />
                 </button>
                 {isMenuOpen && (
-                  <div className="absolute right-0 top-full mt-1 z-50 w-[140px] bg-elevation-3 ring-1 ring-white/[0.08] rounded-lg shadow-elevation-3 overflow-hidden py-1">
+                  <div className="absolute right-0 top-full mt-1 z-50 w-[140px] bg-elevation-3 ring-1 ring-white/[0.08] rounded-lg overflow-hidden py-1">
                     <button
                       onClick={() => { setEditingId(listId); setEditingName(headerName); setMenuListId(null); }}
                       className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] text-text-primary hover:bg-white/[0.04]"
@@ -343,7 +343,7 @@ export function ChangelistSection({ repoPath, unstagedFiles, onStage, refreshTri
 
       {contextFile && (
         <div
-          className="fixed z-50 bg-elevation-3 ring-1 ring-white/[0.08] rounded-lg shadow-elevation-3 overflow-hidden py-1 min-w-[180px]"
+          className="fixed z-50 bg-elevation-3 ring-1 ring-white/[0.08] rounded-lg overflow-hidden py-1 min-w-[180px]"
           style={{ left: contextFile.x, top: contextFile.y }}
         >
           <div className="px-3 py-1 text-text-tertiary text-[10px] uppercase tracking-wider">

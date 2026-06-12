@@ -15,7 +15,7 @@ export function ClaudeConfigModal() {
     <Modal
       onClose={closeClaudeConfig}
       closeOn="doubleClick"
-      scrimClassName="bg-black/50 backdrop-blur-sm z-50"
+      scrimClassName="bg-black/50 z-50"
       panelClassName="w-full max-w-4xl"
     >
         {/* Header */}
