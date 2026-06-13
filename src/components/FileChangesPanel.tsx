@@ -1,20 +1,12 @@
 import { useState, useEffect, useMemo, useCallback, useRef, createContext, useContext } from 'react';
-import { RefreshCw, GitBranch, GitFork, FilePlus, FileEdit, FileX, FileQuestion, ArrowRightLeft, FolderOpen, ChevronRight, ChevronDown, CircleDot, ArrowUp, ArrowDown, Upload, Archive, Package, Loader2, Trash2, Download, Plus, Minus, Check, Search as SearchIcon, Pin, PinOff, GitPullRequestArrow, TerminalSquare } from 'lucide-react';
+import { RefreshCw, GitBranch, GitFork, FolderOpen, ChevronRight, ChevronDown, CircleDot, ArrowUp, ArrowDown, Upload, Archive, Package, Loader2, Trash2, Download, Plus, Check, Search as SearchIcon, Pin, PinOff, GitPullRequestArrow, TerminalSquare, MoreVertical } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
 import { toast } from '../store/toastStore';
 import { Button } from './ui/Button';
-import { InlineDiffView } from './InlineDiffView';
-import { ChangelistSection } from './ChangelistSection';
+import { ChangelistSection, type MergedChange } from './ChangelistSection';
 import type { WorktreeInfo, PushPreview } from '../types/git';
-import { getFileIconUrl } from '../utils/fileIcons';
-
-function pathBasename(p: string): string {
-  const trimmed = p.replace(/[\\/]+$/, '');
-  const idx = Math.max(trimmed.lastIndexOf('\\'), trimmed.lastIndexOf('/'));
-  return idx === -1 ? trimmed : trimmed.slice(idx + 1);
-}
 
 const DIRTY_TREE_PREFIX = 'Working tree has uncommitted changes';
 
@@ -51,6 +43,8 @@ type AutoStageMode = 'none' | 'tracked' | 'all';
 interface FileChangesResult {
   terminal_id: string;
   working_directory: string;
+  /** Absolute repo top-level - porcelain paths in `changes` are relative to this. */
+  repo_root: string | null;
   changes: FileChange[];
   is_git_repo: boolean;
   branch: string | null;
@@ -74,13 +68,10 @@ interface StashEntry {
   branch: string | null;
 }
 
-const statusConfig: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
-  new: { label: 'New', color: 'text-green-400', icon: <FilePlus size={14} /> },
-  modified: { label: 'Modified', color: 'text-yellow-400', icon: <FileEdit size={14} /> },
-  deleted: { label: 'Deleted', color: 'text-red-400', icon: <FileX size={14} /> },
-  renamed: { label: 'Renamed', color: 'text-blue-400', icon: <ArrowRightLeft size={14} /> },
-  untracked: { label: 'Untracked', color: 'text-text-tertiary', icon: <FileQuestion size={14} /> },
-};
+interface LastCommitInfo {
+  subject: string;
+  message: string;
+}
 
 interface RepoSelectionCtx {
   selectedRepoPath: string | null;
@@ -141,6 +132,10 @@ export function FileChangesPanel() {
   const [stashes, setStashes] = useState<StashEntry[]>([]);
   const [stashesExpanded, setStashesExpanded] = useState(false);
   const [stashActing, setStashActing] = useState<string | null>(null);
+  const [amend, setAmend] = useState(false);
+  const [lastCommit, setLastCommit] = useState<LastCommitInfo | null>(null);
+  const [commitMenuOpen, setCommitMenuOpen] = useState(false);
+  const commitMenuRef = useRef<HTMLDivElement>(null);
   // Files currently being staged/unstaged - keyed by "stage:path" or "unstage:path"
   const [stagingPaths, setStagingPaths] = useState<Set<string>>(new Set());
   const triggerChangesRefreshAction = useAppStore.getState().triggerChangesRefresh;
@@ -194,6 +189,31 @@ export function FileChangesPanel() {
     fetchStashes(activePath);
   }, [activePath, result?.is_git_repo, changesRefreshTrigger, fetchStashes]);
 
+  // Last commit - feeds the IntelliJ-style "Amend" row.
+  useEffect(() => {
+    if (!activePath || !result?.is_git_repo) { setLastCommit(null); return; }
+    let cancelled = false;
+    invoke<LastCommitInfo | null>('get_last_commit_info', { path: activePath })
+      .then((info) => { if (!cancelled) setLastCommit(info); })
+      .catch(() => { if (!cancelled) setLastCommit(null); });
+    return () => { cancelled = true; };
+  }, [activePath, result?.is_git_repo, changesRefreshTrigger]);
+
+  // Reset amend when switching repos so a stale checkbox can't rewrite the
+  // wrong repo's history.
+  useEffect(() => { setAmend(false); }, [activePath]);
+
+  const toggleAmend = useCallback(() => {
+    setAmend((prev) => {
+      const next = !prev;
+      // IntelliJ pre-fills the message with the commit being amended.
+      if (next && !commitMessage.trim() && lastCommit) {
+        setCommitMessage(lastCommit.message);
+      }
+      return next;
+    });
+  }, [commitMessage, lastCommit]);
+
   const handleCommit = useCallback(async (thenPush: boolean, autoStage: AutoStageMode) => {
     if (!activePath) return;
     const msg = commitMessage.trim();
@@ -203,9 +223,10 @@ export function FileChangesPanel() {
     }
     setCommitting(true);
     try {
-      await invoke('git_commit', { path: activePath, message: msg, autoStage });
-      toast.success('Committed', thenPush ? 'Pushing…' : msg.split('\n')[0]);
+      await invoke('git_commit', { path: activePath, message: msg, autoStage, amend });
+      toast.success(amend ? 'Amended' : 'Committed', thenPush ? 'Pushing…' : msg.split('\n')[0]);
       setCommitMessage('');
+      setAmend(false);
       if (thenPush) {
         setPushing(true);
         try {
@@ -231,7 +252,7 @@ export function FileChangesPanel() {
     } finally {
       setCommitting(false);
     }
-  }, [activePath, commitMessage, triggerChangesRefreshAction]);
+  }, [activePath, commitMessage, amend, triggerChangesRefreshAction]);
 
   const stageFiles = useCallback(async (files: string[]) => {
     if (!activePath || files.length === 0) return;
@@ -242,7 +263,6 @@ export function FileChangesPanel() {
     });
     try {
       await invoke('git_stage_files', { path: activePath, files });
-      triggerChangesRefreshAction();
     } catch (err) {
       toast.error('Stage failed', typeof err === 'string' ? err : 'Unknown error');
     } finally {
@@ -251,6 +271,9 @@ export function FileChangesPanel() {
         for (const f of files) next.delete(`stage:${f}`);
         return next;
       });
+      // Refresh even on failure - with --ignore-errors / reserved-name skips a
+      // batch can partially succeed and the checkboxes must reflect reality.
+      triggerChangesRefreshAction();
     }
   }, [activePath, triggerChangesRefreshAction]);
 
@@ -263,7 +286,6 @@ export function FileChangesPanel() {
     });
     try {
       await invoke('git_unstage_files', { path: activePath, files });
-      triggerChangesRefreshAction();
     } catch (err) {
       toast.error('Unstage failed', typeof err === 'string' ? err : 'Unknown error');
     } finally {
@@ -272,6 +294,7 @@ export function FileChangesPanel() {
         for (const f of files) next.delete(`unstage:${f}`);
         return next;
       });
+      triggerChangesRefreshAction();
     }
   }, [activePath, triggerChangesRefreshAction]);
 
@@ -383,8 +406,13 @@ export function FileChangesPanel() {
 
   useEffect(() => {
     fetchChanges();
-    setExpandedFile(null);
   }, [activeTerminalId, changesRefreshTrigger, selectedRepoPath, fetchChanges]);
+
+  // Collapse the expanded inline diff only when the target repo changes - NOT
+  // on every refresh tick, or toggling a checkbox would close the open diff.
+  useEffect(() => {
+    setExpandedFile(null);
+  }, [activeTerminalId, selectedRepoPath]);
 
   // Auto-refresh: window focus + tab visibility + slow interval while panel is mounted.
   // Silent so the spinner doesn't flash on every tick. Manual refresh button stays loud.
@@ -404,11 +432,40 @@ export function FileChangesPanel() {
     };
   }, []);
 
-  // Group changes by status
-  const stagedChanges = result?.changes.filter((c) => c.staged) ?? [];
-  const unstagedChanges = result?.changes.filter((c) => !c.staged) ?? [];
-  const hasStaged = stagedChanges.length > 0;
-  const hasUnstaged = unstagedChanges.length > 0;
+  // Merge staged + unstaged entries per path into the IntelliJ checkbox model:
+  // checked = fully staged, indeterminate = partially staged.
+  const mergedChanges = useMemo<MergedChange[]>(() => {
+    const map = new Map<string, { stagedEntry?: FileChange; unstagedEntry?: FileChange }>();
+    for (const c of result?.changes ?? []) {
+      const e = map.get(c.path) ?? {};
+      if (c.staged) e.stagedEntry = c; else e.unstagedEntry = c;
+      map.set(c.path, e);
+    }
+    return Array.from(map.entries()).map(([path, e]) => ({
+      path,
+      status: (e.unstagedEntry ?? e.stagedEntry)!.status,
+      staged: !!e.stagedEntry && !e.unstagedEntry,
+      partial: !!e.stagedEntry && !!e.unstagedEntry,
+    }));
+  }, [result?.changes]);
+  const checkedCount = mergedChanges.filter((m) => m.staged || m.partial).length;
+
+  // Close the commit kebab menu on outside click / Escape.
+  useEffect(() => {
+    if (!commitMenuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (commitMenuRef.current && !commitMenuRef.current.contains(e.target as Node)) {
+        setCommitMenuOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setCommitMenuOpen(false); };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [commitMenuOpen]);
 
   // Splitter between Repositories and Changes - mirrors the Sidebar/Explorer
   // splitter so the user can give either section more room.
@@ -450,40 +507,43 @@ export function FileChangesPanel() {
   return (
     <RepoSelectionContext.Provider value={{ selectedRepoPath, activePath, setSelectedRepoPath }}>
     <div className="h-full bg-bg-secondary border-l border-border flex flex-col">
-      {/* Header */}
-      <div className="p-3 border-b border-border">
-        <div className="flex items-center justify-between mb-1">
-          <h3 className="text-text-primary text-[13px] font-semibold">File Changes</h3>
+      {/* Header - IntelliJ commit tool window style: active "Commit" tab + icon toolbar */}
+      <div className="px-2 pt-2 pb-2 border-b border-border">
+        <div className="flex items-center justify-between mb-1.5">
+          <span className="h-6 px-2.5 inline-flex items-center rounded-[4px] bg-elevation-3 text-text-primary text-[12px] font-medium select-none">
+            Commit
+          </span>
           <div className="flex items-center gap-0.5">
             <button
               onClick={handleQuickPull}
               disabled={pullingTop || !activeTerminalId || !result?.is_git_repo}
-              className="flex items-center gap-1 h-6 px-1.5 rounded text-[11px] text-success hover:bg-success/10 transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
+              className="w-6 h-6 flex items-center justify-center rounded hover:bg-white/[0.06] text-success transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
               title="Pull from upstream (or origin/<current branch>) into the current branch"
+              aria-label="Pull"
             >
               {pullingTop ? (
-                <Loader2 size={12} className="animate-spin" />
+                <Loader2 size={13} className="animate-spin" />
               ) : (
-                <GitPullRequestArrow size={12} strokeWidth={2} />
+                <GitPullRequestArrow size={13} strokeWidth={2} />
               )}
-              <span>Pull</span>
             </button>
             <button
               onClick={() => { if (activePath) useAppStore.getState().openPushModal(activePath); }}
               disabled={!activePath || !result?.is_git_repo}
-              className="flex items-center gap-1 h-6 px-1.5 rounded text-[11px] text-error hover:bg-error/10 transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
+              className="w-6 h-6 flex items-center justify-center rounded hover:bg-white/[0.06] text-error transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
               title="Push commits to remote (Ctrl+Shift+K)"
+              aria-label="Push"
             >
-              <Upload size={12} strokeWidth={2} />
-              <span>Push</span>
+              <Upload size={13} strokeWidth={2} />
             </button>
             <button
               onClick={() => fetchChanges()}
               disabled={loading || !activeTerminalId}
-              className="p-1 rounded hover:bg-white/[0.04] text-text-secondary transition-colors disabled:opacity-40"
+              className="w-6 h-6 flex items-center justify-center rounded hover:bg-white/[0.06] text-accent-primary transition-colors disabled:opacity-40"
               title="Refresh"
+              aria-label="Refresh"
             >
-              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+              <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
             </button>
           </div>
         </div>
@@ -665,30 +725,19 @@ export function FileChangesPanel() {
             </div>
           )}
 
-          {hasStaged && (
-            <ChangeGroup
-              title="Staged"
-              count={stagedChanges.length}
-              files={stagedChanges}
-              staged={true}
-              expandedFile={expandedFile}
-              setExpandedFile={setExpandedFile}
-              activeTerminalId={activeTerminalId}
-              pathOverride={usingSelectedRepo ? selectedRepoPath : null}
-              repoRoot={activePath}
-              stagingPaths={stagingPaths}
+          {mergedChanges.length > 0 && activePath && result?.is_git_repo && (
+            <ChangelistSection
+              repoPath={result.repo_root ?? activePath}
+              files={mergedChanges}
+              branch={result.branch}
               onStage={stageFiles}
               onUnstage={unstageFiles}
-              onBulk={() => unstageFiles(stagedChanges.map((f) => f.path))}
-            />
-          )}
-
-          {hasUnstaged && activePath && (
-            <ChangelistSection
-              repoPath={activePath}
-              unstagedFiles={unstagedChanges}
-              onStage={stageFiles}
+              stagingPaths={stagingPaths}
               refreshTrigger={changesRefreshTrigger}
+              expandedFile={expandedFile}
+              setExpandedFile={setExpandedFile}
+              terminalId={activeTerminalId}
+              pathOverride={usingSelectedRepo ? selectedRepoPath : null}
             />
           )}
         </div>
@@ -779,63 +828,72 @@ export function FileChangesPanel() {
         </div>
       )}
 
-      {/* Commit bar */}
+      {/* Commit area - IntelliJ style: Amend row, message box, Commit / Commit and Push… */}
       {result?.is_git_repo && (
         <div className="border-t border-border p-2">
+          <label className="flex items-center gap-2 mb-1.5 px-0.5 text-[12px] text-text-secondary cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={amend}
+              onChange={toggleAmend}
+              disabled={committing || pushing || !lastCommit}
+              className="accent-accent-primary w-[13px] h-[13px]"
+            />
+            <span className={amend ? 'text-text-primary' : ''}>Amend</span>
+            {lastCommit && (
+              <span className="text-[11px] text-text-tertiary truncate" title={lastCommit.subject}>
+                {lastCommit.subject}
+              </span>
+            )}
+          </label>
           <textarea
             value={commitMessage}
             onChange={(e) => setCommitMessage(e.target.value)}
-            placeholder="Commit / stash message…"
-            rows={2}
-            className="w-full bg-bg-primary ring-1 ring-inset ring-border rounded-md px-2 py-1.5 text-[12px] text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-accent-primary/60 resize-none"
+            placeholder="Commit Message"
+            rows={4}
+            className="w-full bg-bg-primary ring-1 ring-inset ring-border rounded-[4px] px-2 py-1.5 text-[12px] text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-accent-primary/60 resize-none"
           />
-          <div className="flex items-center justify-between mt-2 gap-1">
-            <span className="text-[11px] text-text-tertiary">
-              {hasStaged ? `${stagedChanges.length} staged` : 'Nothing staged'}
-            </span>
-            <div className="flex items-center gap-1">
+          <div className="flex items-center mt-2 gap-1.5">
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => handleCommit(false, 'none')}
+              disabled={committing || pushing || stashing || !commitMessage.trim() || (checkedCount === 0 && !amend)}
+              loading={committing && !pushing}
+              title={checkedCount === 0 && !amend ? 'Check files to include them in the commit' : 'Commit checked files'}
+            >
+              Commit
+            </Button>
+            <button
+              onClick={() => handleCommit(true, 'none')}
+              disabled={committing || pushing || stashing || !commitMessage.trim() || (checkedCount === 0 && !amend)}
+              className="flex items-center gap-1 h-7 px-2.5 rounded-[4px] text-[11.5px] text-text-primary ring-1 ring-inset ring-border hover:bg-white/[0.06] transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
+              title="Commit checked files and push"
+            >
+              {pushing ? <Loader2 size={12} className="animate-spin" /> : null}
+              Commit and Push…
+            </button>
+            <span className="flex-1" />
+            <div className="relative" ref={commitMenuRef}>
               <button
-                onClick={handleStash}
-                disabled={stashing || committing || pushing || result.changes.length === 0}
-                className="flex items-center gap-1 h-7 px-2 rounded-md text-[11.5px] text-text-secondary hover:bg-white/[0.06] hover:text-text-primary transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
-                title="Stash working changes"
+                onClick={() => setCommitMenuOpen((v) => !v)}
+                className="w-6 h-6 flex items-center justify-center rounded hover:bg-white/[0.06] text-text-secondary transition-colors"
+                title="More actions"
+                aria-label="More commit actions"
               >
-                {stashing ? <Loader2 size={12} className="animate-spin" /> : <Archive size={12} />}
-                Stash
+                <MoreVertical size={13} />
               </button>
-              {hasStaged ? (
-                <>
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    onClick={() => handleCommit(false, 'none')}
-                    disabled={committing || pushing || stashing || !commitMessage.trim()}
-                    loading={committing && !pushing}
-                    title="Commit staged files only"
-                  >
-                    Commit
-                  </Button>
+              {commitMenuOpen && (
+                <div className="absolute right-0 bottom-full mb-1 z-50 w-[170px] bg-elevation-3 ring-1 ring-white/[0.08] rounded-lg overflow-hidden py-1">
                   <button
-                    onClick={() => handleCommit(true, 'none')}
-                    disabled={committing || pushing || stashing || !commitMessage.trim()}
-                    className="flex items-center gap-1 h-7 px-2 rounded-md text-[11.5px] text-accent-primary hover:bg-accent-primary/10 transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
-                    title="Commit staged and push"
+                    onClick={() => { setCommitMenuOpen(false); handleStash(); }}
+                    disabled={stashing || committing || pushing || result.changes.length === 0}
+                    className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] text-text-primary hover:bg-white/[0.04] disabled:opacity-40"
                   >
-                    {pushing ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
-                    &amp; Push
+                    {stashing ? <Loader2 size={12} className="animate-spin" /> : <Archive size={12} />}
+                    Stash Changes
                   </button>
-                </>
-              ) : (
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={() => handleCommit(false, 'all')}
-                  disabled={committing || pushing || stashing || !commitMessage.trim() || result.changes.length === 0}
-                  loading={committing}
-                  title="Stage all changes and commit"
-                >
-                  Commit all
-                </Button>
+                </div>
               )}
             </div>
           </div>
@@ -854,178 +912,12 @@ export function FileChangesPanel() {
             </div>
           )}
           <p className="text-text-secondary text-[11px]">
-            {result ? `${result.changes.length} changed file${result.changes.length !== 1 ? 's' : ''}` : 'Press F2 to toggle'}
+            {result ? `${mergedChanges.length} changed file${mergedChanges.length !== 1 ? 's' : ''}` : 'Press F2 to toggle'}
           </p>
         </div>
       </div>
     </div>
     </RepoSelectionContext.Provider>
-  );
-}
-
-interface ChangeGroupProps {
-  title: string;
-  count: number;
-  files: FileChange[];
-  staged: boolean;
-  expandedFile: string | null;
-  setExpandedFile: (v: string | null) => void;
-  activeTerminalId: string | null;
-  pathOverride: string | null;
-  repoRoot: string | null;
-  stagingPaths: Set<string>;
-  onStage: (files: string[]) => void;
-  onUnstage: (files: string[]) => void;
-  onBulk: () => void;
-}
-
-function joinRepoPath(root: string, relative: string): string {
-  // Normalize both sides to forward slashes so the result is valid on Windows
-  // (std::fs accepts either) and free of doubled-up separators when `relative`
-  // contains escapes. Git's porcelain output always uses forward slashes.
-  const cleanRoot = root.replace(/\\/g, '/').replace(/\/+$/, '');
-  const cleanRel = relative.replace(/\\/g, '/').replace(/^\/+/, '');
-  // Strip any surrounding quotes git may add for paths with special chars.
-  const unquotedRel = cleanRel.startsWith('"') && cleanRel.endsWith('"')
-    ? cleanRel.slice(1, -1)
-    : cleanRel;
-  return `${cleanRoot}/${unquotedRel}`;
-}
-
-function ChangeGroup({
-  title, count, files, staged, expandedFile, setExpandedFile,
-  activeTerminalId, pathOverride, repoRoot, stagingPaths, onStage, onUnstage, onBulk,
-}: ChangeGroupProps) {
-  const openDiffTab = useAppStore((s) => s.openDiffTab);
-  const triggerRefresh = useAppStore((s) => s.triggerChangesRefresh);
-  const closeFileTab = useAppStore((s) => s.closeFileTab);
-
-  const handleDiscard = useCallback(async (file: FileChange) => {
-    if (!repoRoot) return;
-    const label = file.path.split(/[\\/]/).pop() ?? file.path;
-    const verb = file.status === 'untracked' ? 'delete the untracked file' : 'discard all changes in';
-    const ok = window.confirm(`${verb === 'delete the untracked file' ? 'Delete' : 'Discard'}: ${label}?\n\n${verb} "${file.path}"? This cannot be undone.`);
-    if (!ok) return;
-    try {
-      await invoke('git_discard_file', {
-        path: repoRoot,
-        file: file.path,
-        untracked: file.status === 'untracked',
-      });
-      // If the file was open in the editor, close it - its contents no longer match disk.
-      const abs = joinRepoPath(repoRoot, file.path);
-      closeFileTab(abs);
-      toast.success('Discarded', label);
-      triggerRefresh();
-    } catch (err) {
-      toast.error('Discard failed', typeof err === 'string' ? err : 'Unknown error');
-    }
-  }, [repoRoot, triggerRefresh, closeFileTab]);
-  return (
-    <div className="mb-2">
-      <div className="flex items-center justify-between px-2 py-1 border-b border-border/30 mb-1">
-        <div className="flex items-center gap-1.5">
-          <span className={`text-[11px] font-semibold uppercase tracking-wider ${
-            staged ? 'text-accent-primary' : 'text-text-secondary'
-          }`}>
-            {title}
-          </span>
-          <span className="text-text-tertiary text-[11px]">({count})</span>
-        </div>
-        <button
-          onClick={onBulk}
-          className={`flex items-center gap-0.5 h-5 px-1.5 rounded text-[10.5px] transition-colors ${
-            staged
-              ? 'text-text-tertiary hover:bg-white/[0.06] hover:text-text-secondary'
-              : 'text-accent-primary hover:bg-accent-primary/10'
-          }`}
-          title={staged ? 'Unstage all' : 'Stage all'}
-        >
-          {staged ? <Minus size={11} /> : <Plus size={11} />}
-          {staged ? 'Unstage all' : 'Stage all'}
-        </button>
-      </div>
-
-      {files.map((file) => {
-        const isExpanded = expandedFile === file.path;
-        const config = statusConfig[file.status] || statusConfig.untracked;
-        const busyKey = staged ? `unstage:${file.path}` : `stage:${file.path}`;
-        const isBusy = stagingPaths.has(busyKey);
-        return (
-          <div key={`${staged ? 's' : 'u'}:${file.path}`} className="group">
-            <div
-              onClick={() => setExpandedFile(isExpanded ? null : file.path)}
-              className="ml-1 px-2 py-1 rounded hover:bg-white/[0.04] transition-colors cursor-pointer flex items-center gap-1"
-            >
-              {isExpanded ? (
-                <ChevronDown size={12} className="text-text-tertiary shrink-0" />
-              ) : (
-                <ChevronRight size={12} className="text-text-tertiary shrink-0" />
-              )}
-              <img
-                src={getFileIconUrl(pathBasename(file.path))}
-                alt=""
-                aria-hidden="true"
-                draggable={false}
-                className="w-[14px] h-[14px] shrink-0 select-none"
-              />
-              <span className={`${config.color} shrink-0`}>{config.icon}</span>
-              <p className={`flex-1 text-[12px] font-mono truncate ${config.color}`} title={file.path}>
-                {file.path}
-              </p>
-              {repoRoot && file.status !== 'deleted' && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    void openDiffTab(joinRepoPath(repoRoot, file.path), repoRoot, file.path);
-                  }}
-                  className="shrink-0 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity text-text-tertiary hover:bg-white/[0.08] hover:text-text-primary"
-                  title="Open diff in editor"
-                >
-                  <FileEdit size={11} />
-                </button>
-              )}
-              {repoRoot && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    void handleDiscard(file);
-                  }}
-                  className="shrink-0 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity text-text-tertiary hover:bg-red-500/20 hover:text-red-400"
-                  title={file.status === 'untracked' ? 'Delete untracked file' : 'Discard all changes'}
-                >
-                  <Trash2 size={11} />
-                </button>
-              )}
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (isBusy) return;
-                  if (staged) onUnstage([file.path]);
-                  else onStage([file.path]);
-                }}
-                disabled={isBusy}
-                className={`shrink-0 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity ${
-                  staged
-                    ? 'text-text-tertiary hover:bg-white/[0.08] hover:text-text-primary'
-                    : 'text-accent-primary hover:bg-accent-primary/15'
-                } disabled:opacity-60`}
-                title={staged ? 'Unstage file' : 'Stage file'}
-              >
-                {isBusy
-                  ? <Loader2 size={11} className="animate-spin" />
-                  : staged ? <Minus size={11} /> : <Plus size={11} />}
-              </button>
-            </div>
-            {isExpanded && activeTerminalId && (
-              <div className="ml-3 mr-1 mb-1 rounded overflow-hidden border border-border/30">
-                <InlineDiffView filePath={file.path} terminalId={activeTerminalId} pathOverride={pathOverride} />
-              </div>
-            )}
-          </div>
-        );
-      })}
-    </div>
   );
 }
 

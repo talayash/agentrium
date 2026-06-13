@@ -1245,6 +1245,9 @@ pub struct FileChange {
 pub struct FileChangesResult {
     pub terminal_id: String,
     pub working_directory: String,
+    /// Absolute repo top-level. Porcelain paths in `changes` are relative to
+    /// this, NOT to `working_directory` (which may be a subdirectory).
+    pub repo_root: Option<String>,
     pub changes: Vec<FileChange>,
     pub is_git_repo: bool,
     pub branch: Option<String>,
@@ -1270,6 +1273,7 @@ pub async fn get_terminal_changes(
                     return Ok(FileChangesResult {
                         terminal_id: id,
                         working_directory: String::new(),
+                        repo_root: None,
                         changes: vec![],
                         is_git_repo: false,
                         branch: None,
@@ -1296,12 +1300,15 @@ pub async fn get_terminal_changes(
             return Ok(FileChangesResult {
                 terminal_id: id,
                 working_directory,
+                repo_root: None,
                 changes: vec![],
                 is_git_repo: false,
                 branch: None,
                 error: None,
             });
         }
+
+        let repo_root = resolve_repo_root(&working_directory).ok();
 
         // Get changed files
         let status_output = shell_command("git", &["status", "--porcelain"])
@@ -1313,6 +1320,7 @@ pub async fn get_terminal_changes(
             return Ok(FileChangesResult {
                 terminal_id: id,
                 working_directory,
+                repo_root,
                 changes: vec![],
                 is_git_repo: true,
                 branch,
@@ -1370,6 +1378,7 @@ pub async fn get_terminal_changes(
         Ok(FileChangesResult {
             terminal_id: id,
             working_directory,
+            repo_root,
             changes,
             is_git_repo: true,
             branch,
@@ -1398,28 +1407,31 @@ pub async fn get_file_diff(
     staged: bool,
 ) -> Result<FileDiffResult, String> {
     wrap_cmd("get_file_diff", async move {
-        let (working_directory, file_status) = {
+        let working_directory = {
             let terminals = state.terminals.lock().await;
             let configs = terminals.get_all_configs();
             let config = configs
                 .into_iter()
                 .find(|c| c.id == id)
                 .ok_or_else(|| error_reporter::user_err("Terminal not found"))?;
+            config.working_directory.clone()
+        };
 
-            // Run git status for this specific file to determine its status
-            let status_output = shell_command("git", &["status", "--porcelain", "--", &file_path])
-                .current_dir(&config.working_directory)
-                .output()
-                .map_err(|e| format!("Failed to run git status: {}", e))?;
+        // `file_path` is repo-root-relative (porcelain output) - all git ops and
+        // file reads must resolve against the root, not the terminal's cwd.
+        let working_directory = resolve_repo_root(&working_directory)?;
 
-            let status_str = String::from_utf8_lossy(&status_output.stdout).trim().to_string();
-            let file_status = if status_str.len() >= 2 {
-                status_str[..2].trim().to_string()
-            } else {
-                String::new()
-            };
+        // Run git status for this specific file to determine its status
+        let status_output = shell_command("git", &["status", "--porcelain", "--", &file_path])
+            .current_dir(&working_directory)
+            .output()
+            .map_err(|e| format!("Failed to run git status: {}", e))?;
 
-            (config.working_directory.clone(), file_status)
+        let status_str = String::from_utf8_lossy(&status_output.stdout).trim().to_string();
+        let file_status = if status_str.len() >= 2 {
+            status_str[..2].trim().to_string()
+        } else {
+            String::new()
         };
 
         let is_new_file = file_status == "??" || file_status == "A";
@@ -1787,6 +1799,19 @@ fn run_git(path: &str, args: &[&str]) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&out.stdout).to_string())
 }
 
+/// Resolve the repository top-level for any path inside a repo. Git's
+/// porcelain status reports root-relative paths while command-line pathspecs
+/// resolve against the cwd, so commands that take file lists must run from
+/// the root or they fail with "pathspec did not match" in subdirectories.
+fn resolve_repo_root(path: &str) -> Result<String, String> {
+    let out = run_git(path, &["rev-parse", "--show-toplevel"])?;
+    let root = out.trim().to_string();
+    if root.is_empty() {
+        return Err("Not a git repository".to_string());
+    }
+    Ok(root)
+}
+
 fn validate_stash_ref(r: &str) -> Result<(), String> {
     // Must be "stash@{N}" to prevent argument injection
     if !r.starts_with("stash@{") || !r.ends_with('}') {
@@ -1825,12 +1850,50 @@ pub async fn git_stage_files(
     wrap_cmd("git_stage_files", async move {
         validate_path_is_trusted(&state, &path).await?;
         validate_file_list(&files)?;
-        // `git add -- <file>...` with `--` to terminate options
-        let mut args: Vec<&str> = vec!["add", "--"];
-        for f in &files { args.push(f); }
-        run_git(&path, &args).map(|_| ())
+        // File paths are root-relative (porcelain output) - run from the root.
+        let root = resolve_repo_root(&path)?;
+        // Files named after Windows device names (nul, con, ...) cannot be read
+        // by git ("short read while indexing nul") and would abort the whole
+        // add. Stage everything else and report them clearly instead.
+        let (reserved, addable): (Vec<&String>, Vec<&String>) =
+            files.iter().partition(|f| is_windows_reserved_name(f));
+        if !addable.is_empty() {
+            // `--ignore-errors` keeps indexing the rest if one file fails;
+            // `--` terminates options.
+            let mut args: Vec<&str> = vec!["add", "--ignore-errors", "--"];
+            for f in &addable { args.push(f); }
+            run_git(&root, &args)?;
+        }
+        if !reserved.is_empty() {
+            let names: Vec<&str> = reserved.iter().map(|s| s.as_str()).collect();
+            return Err(format!(
+                "Skipped {}: Windows reserved device name - git cannot index it. Delete the file or add it to .gitignore.",
+                names.join(", ")
+            ));
+        }
+        Ok(())
     })
     .await
+}
+
+/// True when the path's final component is a Windows reserved device name
+/// (nul, con, prn, aux, com1-9, lpt1-9), with or without an extension. Git on
+/// Windows cannot index these - reads hit the device instead of the file.
+#[cfg(windows)]
+fn is_windows_reserved_name(path: &str) -> bool {
+    let base = path.rsplit(['/', '\\']).next().unwrap_or(path);
+    let stem = base.split('.').next().unwrap_or(base).to_ascii_lowercase();
+    matches!(
+        stem.as_str(),
+        "con" | "prn" | "aux" | "nul"
+            | "com1" | "com2" | "com3" | "com4" | "com5" | "com6" | "com7" | "com8" | "com9"
+            | "lpt1" | "lpt2" | "lpt3" | "lpt4" | "lpt5" | "lpt6" | "lpt7" | "lpt8" | "lpt9"
+    )
+}
+
+#[cfg(not(windows))]
+fn is_windows_reserved_name(_path: &str) -> bool {
+    false
 }
 
 #[command]
@@ -1842,20 +1905,22 @@ pub async fn git_unstage_files(
     wrap_cmd("git_unstage_files", async move {
         validate_path_is_trusted(&state, &path).await?;
         validate_file_list(&files)?;
+        // File paths are root-relative (porcelain output) - run from the root.
+        let root = resolve_repo_root(&path)?;
         // Use `git reset HEAD -- <file>` for broad git-version compatibility.
         // `git restore --staged` (2.23+) is the modern equivalent.
         let mut args: Vec<&str> = vec!["reset", "HEAD", "--"];
         for f in &files { args.push(f); }
         // `git reset` returns non-zero on no-op or initial-commit edge cases, but
         // the files do end up unstaged - we tolerate non-fatal stderr.
-        match run_git(&path, &args) {
+        match run_git(&root, &args) {
             Ok(_) => Ok(()),
             Err(e) => {
                 // On a repo with no HEAD yet, use `git rm --cached` as fallback.
                 if e.contains("ambiguous argument 'HEAD'") || e.contains("unknown revision") {
                     let mut fb: Vec<&str> = vec!["rm", "--cached", "--"];
                     for f in &files { fb.push(f); }
-                    run_git(&path, &fb).map(|_| ())
+                    run_git(&root, &fb).map(|_| ())
                 } else {
                     Err(e)
                 }
@@ -1871,23 +1936,29 @@ pub async fn git_commit(
     path: String,
     message: String,
     auto_stage: AutoStageMode,
+    amend: Option<bool>,
 ) -> Result<(), String> {
+    let amend = amend.unwrap_or(false);
     wrap_cmd("git_commit", async move {
         validate_path_is_trusted(&state, &path).await?;
         if message.trim().is_empty() {
             return Err("Commit message cannot be empty".to_string());
         }
+        // Run from the repo root so auto-stage covers the whole repo even when
+        // `path` is a subdirectory (add -u/-A are cwd-scoped).
+        let root = resolve_repo_root(&path)?;
         // If the caller asks us to auto-stage, do so. Otherwise commit what's
         // already staged - and if nothing is staged, return a clear error.
+        // An amend with nothing staged is still valid (message-only rewrite).
         match auto_stage {
             AutoStageMode::None => {
-                let status = run_git(&path, &["diff", "--cached", "--name-only"])?;
-                if status.trim().is_empty() {
+                let status = run_git(&root, &["diff", "--cached", "--name-only"])?;
+                if status.trim().is_empty() && !amend {
                     return Err("Nothing is staged - stage files first or choose 'stage all'".to_string());
                 }
             }
-            AutoStageMode::Tracked => { run_git(&path, &["add", "-u"])?; }
-            AutoStageMode::All => { run_git(&path, &["add", "-A"])?; }
+            AutoStageMode::Tracked => { run_git(&root, &["add", "-u"])?; }
+            AutoStageMode::All => { run_git(&root, &["add", "-A"])?; }
         }
 
         // Pass message via a temp file to avoid any shell-quoting concerns for
@@ -1901,9 +1972,50 @@ pub async fn git_commit(
         ));
         std::fs::write(&tmp, message.as_bytes()).map_err(|e| format!("Failed to write commit message: {}", e))?;
         let tmp_str = tmp.to_string_lossy().to_string();
-        let res = run_git(&path, &["commit", "-F", &tmp_str]);
+        let mut args: Vec<&str> = vec!["commit"];
+        if amend {
+            args.push("--amend");
+        }
+        args.push("-F");
+        args.push(&tmp_str);
+        let res = run_git(&root, &args);
         let _ = std::fs::remove_file(&tmp);
         res.map(|_| ())
+    })
+    .await
+}
+
+#[derive(Debug, Serialize)]
+pub struct LastCommitInfo {
+    pub subject: String,
+    pub message: String,
+}
+
+#[command]
+pub async fn get_last_commit_info(
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<Option<LastCommitInfo>, String> {
+    wrap_cmd("get_last_commit_info", async move {
+        validate_path_is_trusted(&state, &path).await?;
+        // %s = subject, %B = raw body; separated by a unit separator so
+        // multi-line messages parse unambiguously.
+        match run_git(&path, &["log", "-1", "--format=%s%x1f%B"]) {
+            Ok(out) => {
+                let trimmed = out.trim_end();
+                if trimmed.is_empty() {
+                    return Ok(None);
+                }
+                let (subject, message) = match trimmed.split_once('\x1f') {
+                    Some((s, m)) => (s.to_string(), m.trim_end().to_string()),
+                    None => (trimmed.to_string(), trimmed.to_string()),
+                };
+                Ok(Some(LastCommitInfo { subject, message }))
+            }
+            // A repo with no commits yet has no HEAD - treat as "no last commit".
+            Err(e) if e.contains("does not have any commits") || e.contains("unknown revision") || e.contains("ambiguous argument") => Ok(None),
+            Err(e) => Err(e),
+        }
     })
     .await
 }
@@ -3394,12 +3506,15 @@ pub async fn get_path_changes(
             return Ok(FileChangesResult {
                 terminal_id: String::new(),
                 working_directory: path,
+                repo_root: None,
                 changes: vec![],
                 is_git_repo: false,
                 branch: None,
                 error: None,
             });
         }
+
+        let repo_root = resolve_repo_root(&path).ok();
 
         let status_output = shell_command("git", &["status", "--porcelain"])
             .current_dir(&path)
@@ -3410,6 +3525,7 @@ pub async fn get_path_changes(
             return Ok(FileChangesResult {
                 terminal_id: String::new(),
                 working_directory: path,
+                repo_root,
                 changes: vec![],
                 is_git_repo: true,
                 branch,
@@ -3463,6 +3579,7 @@ pub async fn get_path_changes(
         Ok(FileChangesResult {
             terminal_id: String::new(),
             working_directory: path,
+            repo_root,
             changes,
             is_git_repo: true,
             branch,
@@ -3481,6 +3598,9 @@ pub async fn get_path_file_diff(
 ) -> Result<FileDiffResult, String> {
     wrap_cmd("get_path_file_diff", async move {
         validate_path_is_trusted(&state, &path).await?;
+        // `file_path` is repo-root-relative (porcelain output) - resolve against
+        // the root in case `path` is a subdirectory of the repo.
+        let path = resolve_repo_root(&path)?;
 
         let status_output = shell_command("git", &["status", "--porcelain", "--", &file_path])
             .current_dir(&path)
@@ -3962,18 +4082,20 @@ pub async fn git_discard_file(
         if file.is_empty() || file.starts_with('-') {
             return Err("Invalid file path".to_string());
         }
+        // `file` is repo-root-relative (porcelain output) - resolve against the
+        // root, not `path`, which may be a subdirectory of the repo.
+        let root = resolve_repo_root(&path)?;
 
         if untracked {
             // Untracked files/directories aren't tracked by git - just remove from disk.
-            // `file` is relative to `path`. Resolve and sanity-check it ends up inside
-            // the repo to avoid `..` escapes.
-            let joined = std::path::Path::new(&path).join(&file);
+            // Resolve and sanity-check it ends up inside the repo to avoid `..` escapes.
+            let joined = std::path::Path::new(&root).join(&file);
             let canonical_target = joined.canonicalize().map_err(|e| {
                 format!("Cannot resolve '{}': {}", joined.display(), e)
             })?;
-            let canonical_root = std::path::Path::new(&path)
+            let canonical_root = std::path::Path::new(&root)
                 .canonicalize()
-                .map_err(|e| format!("Cannot resolve repo '{}': {}", path, e))?;
+                .map_err(|e| format!("Cannot resolve repo '{}': {}", root, e))?;
             if !canonical_target.starts_with(&canonical_root) {
                 return Err(format!(
                     "Refusing to delete path outside repo: {}",
@@ -3994,7 +4116,7 @@ pub async fn git_discard_file(
 
         // Tracked file - reset index + worktree for just this file to HEAD.
         let output = shell_command("git", &["checkout", "HEAD", "--", &file])
-            .current_dir(&path)
+            .current_dir(&root)
             .output()
             .map_err(|e| format!("Failed to run git checkout: {}", e))?;
         if !output.status.success() {

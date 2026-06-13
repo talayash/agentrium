@@ -1,27 +1,42 @@
-// IntelliJ-style Changelists Lite UI.
-// Renders the unstaged "Changes" portion of the FileChangesPanel as one section
-// per named changelist + a Default group for unassigned files.
+// IntelliJ-style commit Changes tree.
+// Mirrors the IntelliJ commit tool window structure 1:1:
+//   Changes            <- tracked files in the implicit Default changelist
+//   <named changelist> <- tracked files assigned to user changelists
+//   Unversioned Files  <- ALL untracked files, always their own group
+// with IntelliJ checkbox semantics:
+//   checked       = file is staged (included in the commit)
+//   unchecked     = file is unstaged
+//   indeterminate = partially staged (both staged and unstaged hunks)
+// Toggling a checkbox stages/unstages the file; group checkboxes act on the
+// whole group. Files named after Windows reserved devices (nul, con, ...)
+// cannot be indexed by git - their checkbox is disabled and group toggles
+// skip them.
 //
 // Backed by 6 Tauri commands in src-tauri/src/commands.rs:
 //   list_changelists, create_changelist, rename_changelist, delete_changelist,
 //   assign_files_to_changelist, get_changelist_assignments.
 //
-// "Default" is implicit. Mappings persist across commits (sticky).
+// "Default" is implicit (rendered as "Changes"). Mappings persist across
+// commits (sticky).
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Plus, ChevronRight, ChevronDown, MoreVertical, Edit3, Trash2, Check,
-  FilePlus, FileEdit, FileX, FileQuestion, ArrowRightLeft, Loader2,
+  FileEdit, Loader2,
 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from '../store/appStore';
 import { toast } from '../store/toastStore';
 import { getFileIconUrl } from '../utils/fileIcons';
+import { InlineDiffView } from './InlineDiffView';
 
-interface FileChange {
+export interface MergedChange {
   path: string;
   status: string;
+  /** Fully staged - no unstaged counterpart. */
   staged: boolean;
+  /** Appears both staged and unstaged (partially staged). */
+  partial: boolean;
 }
 
 interface ChangelistInfo {
@@ -32,17 +47,26 @@ interface ChangelistInfo {
 
 interface Props {
   repoPath: string;
-  unstagedFiles: FileChange[];
-  onStage: (paths: string[]) => Promise<void> | void;
+  files: MergedChange[];
+  branch: string | null;
+  onStage: (paths: string[]) => void;
+  onUnstage: (paths: string[]) => void;
+  stagingPaths: Set<string>;
   refreshTrigger: number;
+  expandedFile: string | null;
+  setExpandedFile: (v: string | null) => void;
+  terminalId: string | null;
+  pathOverride: string | null;
 }
 
-const statusConfig: Record<string, { color: string; icon: React.ReactNode }> = {
-  new:       { color: 'text-green-400',  icon: <FilePlus size={14} /> },
-  modified:  { color: 'text-yellow-400', icon: <FileEdit size={14} /> },
-  deleted:   { color: 'text-red-400',    icon: <FileX size={14} /> },
-  renamed:   { color: 'text-blue-400',   icon: <ArrowRightLeft size={14} /> },
-  untracked: { color: 'text-text-tertiary', icon: <FileQuestion size={14} /> },
+// IntelliJ conveys git status via filename color: new = green, modified = blue,
+// deleted = gray strikethrough, untracked = red.
+const statusConfig: Record<string, { color: string }> = {
+  new:       { color: 'text-green-400' },
+  modified:  { color: 'text-blue-400' },
+  deleted:   { color: 'text-text-tertiary line-through' },
+  renamed:   { color: 'text-cyan-400' },
+  untracked: { color: 'text-red-400' },
 };
 
 function pathBasename(p: string): string {
@@ -51,12 +75,86 @@ function pathBasename(p: string): string {
   return idx === -1 ? trimmed : trimmed.slice(idx + 1);
 }
 
-export function ChangelistSection({ repoPath, unstagedFiles, onStage, refreshTrigger }: Props) {
+function joinRepoPath(root: string, relative: string): string {
+  const cleanRoot = root.replace(/\\/g, '/').replace(/\/+$/, '');
+  const cleanRel = relative.replace(/\\/g, '/').replace(/^\/+/, '');
+  const unquotedRel = cleanRel.startsWith('"') && cleanRel.endsWith('"')
+    ? cleanRel.slice(1, -1)
+    : cleanRel;
+  return `${cleanRoot}/${unquotedRel}`;
+}
+
+// IntelliJ shows the file's directory as a dim path after the name: the
+// repo-relative directory for nested files, or the repo folder name for files
+// at the root (e.g. ".env.local  wg-client").
+function displayLocation(repoRoot: string, relPath: string): string {
+  const idx = Math.max(relPath.lastIndexOf('/'), relPath.lastIndexOf('\\'));
+  if (idx === -1) return pathBasename(repoRoot);
+  return relPath.slice(0, idx).replace(/\//g, '\\');
+}
+
+// Files named after Windows device names cannot be read by git - reads hit
+// the device instead of the file. Mirrors is_windows_reserved_name in
+// src-tauri/src/commands.rs.
+const RESERVED_NAMES = new Set([
+  'con', 'prn', 'aux', 'nul',
+  'com1', 'com2', 'com3', 'com4', 'com5', 'com6', 'com7', 'com8', 'com9',
+  'lpt1', 'lpt2', 'lpt3', 'lpt4', 'lpt5', 'lpt6', 'lpt7', 'lpt8', 'lpt9',
+]);
+function isWindowsReservedName(path: string): boolean {
+  const base = pathBasename(path);
+  const stem = base.split('.')[0] ?? base;
+  return RESERVED_NAMES.has(stem.toLowerCase());
+}
+const RESERVED_HINT = 'Windows reserved device name - git cannot index this file. Delete it or add it to .gitignore.';
+
+// Native checkbox that supports the indeterminate visual state.
+function TriCheckbox({
+  checked, indeterminate, busy, disabled, onToggle, label, title,
+}: {
+  checked: boolean;
+  indeterminate?: boolean;
+  busy?: boolean;
+  disabled?: boolean;
+  onToggle: () => void;
+  label: string;
+  title?: string;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (ref.current) ref.current.indeterminate = !!indeterminate && !checked;
+  }, [indeterminate, checked]);
+  if (busy) {
+    return <Loader2 size={12} className="animate-spin text-text-tertiary shrink-0 w-[13px]" />;
+  }
+  return (
+    <input
+      ref={ref}
+      type="checkbox"
+      checked={checked}
+      disabled={disabled}
+      onClick={(e) => e.stopPropagation()}
+      onChange={onToggle}
+      aria-label={label}
+      title={title}
+      className="accent-accent-primary w-[13px] h-[13px] shrink-0 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
+    />
+  );
+}
+
+type GroupKind = 'default' | 'named' | 'unversioned';
+
+export function ChangelistSection({
+  repoPath, files, branch, onStage, onUnstage, stagingPaths, refreshTrigger,
+  expandedFile, setExpandedFile, terminalId, pathOverride,
+}: Props) {
   const confirmDelete = useAppStore((s) => s.vcsChangelistsConfirmDelete);
   const triggerChangesRefresh = useAppStore((s) => s.triggerChangesRefresh);
+  const openDiffTab = useAppStore((s) => s.openDiffTab);
+  const closeFileTab = useAppStore((s) => s.closeFileTab);
 
-  const onDiscard = useCallback(async (file: FileChange) => {
-    const label = file.path.split(/[\\/]/).pop() ?? file.path;
+  const onDiscard = useCallback(async (file: MergedChange) => {
+    const label = pathBasename(file.path);
     const verb = file.status === 'untracked' ? 'Delete' : 'Discard';
     const ok = window.confirm(`${verb}: ${label}? This cannot be undone.`);
     if (!ok) return;
@@ -65,12 +163,14 @@ export function ChangelistSection({ repoPath, unstagedFiles, onStage, refreshTri
         path: repoPath, file: file.path,
         untracked: file.status === 'untracked',
       });
+      // If the file was open in the editor, close it - its contents no longer match disk.
+      closeFileTab(joinRepoPath(repoPath, file.path));
       toast.success(`${verb}ed`, label);
       triggerChangesRefresh();
     } catch (err) {
       toast.error(`${verb} failed`, typeof err === 'string' ? err : 'Unknown error');
     }
-  }, [repoPath, triggerChangesRefresh]);
+  }, [repoPath, triggerChangesRefresh, closeFileTab]);
 
   const [lists, setLists] = useState<ChangelistInfo[]>([{ id: null, name: 'Default', is_default: true }]);
   const [assignments, setAssignments] = useState<Map<string, number>>(new Map());
@@ -80,8 +180,7 @@ export function ChangelistSection({ repoPath, unstagedFiles, onStage, refreshTri
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editingName, setEditingName] = useState('');
   const [menuListId, setMenuListId] = useState<number | null>(null);
-  const [contextFile, setContextFile] = useState<{ file: FileChange; x: number; y: number } | null>(null);
-  const [busy, setBusy] = useState<Set<string>>(new Set());
+  const [contextFile, setContextFile] = useState<{ file: MergedChange; x: number; y: number } | null>(null);
 
   const fetch = useCallback(async () => {
     if (!repoPath) { setLists([{ id: null, name: 'Default', is_default: true }]); setAssignments(new Map()); return; }
@@ -101,17 +200,26 @@ export function ChangelistSection({ repoPath, unstagedFiles, onStage, refreshTri
 
   useEffect(() => { fetch(); }, [fetch, refreshTrigger]);
 
-  const grouped = useMemo(() => {
-    const out = new Map<number | 'default', FileChange[]>();
-    out.set('default', []);
-    for (const list of lists) if (list.id != null) out.set(list.id, []);
-    for (const f of unstagedFiles) {
+  const byBasename = (a: MergedChange, b: MergedChange) =>
+    pathBasename(a.path).localeCompare(pathBasename(b.path));
+
+  // Tracked files group by changelist; untracked always live in their own
+  // "Unversioned Files" group, like IntelliJ.
+  const { grouped, unversioned } = useMemo(() => {
+    const grouped = new Map<number | 'default', MergedChange[]>();
+    grouped.set('default', []);
+    for (const list of lists) if (list.id != null) grouped.set(list.id, []);
+    const unversioned: MergedChange[] = [];
+    for (const f of files) {
+      if (f.status === 'untracked') { unversioned.push(f); continue; }
       const assigned = assignments.get(f.path);
-      if (assigned != null && out.has(assigned)) out.get(assigned)!.push(f);
-      else out.get('default')!.push(f);
+      if (assigned != null && grouped.has(assigned)) grouped.get(assigned)!.push(f);
+      else grouped.get('default')!.push(f);
     }
-    return out;
-  }, [lists, unstagedFiles, assignments]);
+    for (const arr of grouped.values()) arr.sort(byBasename);
+    unversioned.sort(byBasename);
+    return { grouped, unversioned };
+  }, [lists, files, assignments]);
 
   const handleCreate = useCallback(async () => {
     const name = newName.trim();
@@ -141,7 +249,7 @@ export function ChangelistSection({ repoPath, unstagedFiles, onStage, refreshTri
 
   const handleDelete = useCallback(async (id: number, name: string) => {
     if (confirmDelete) {
-      const ok = window.confirm(`Delete changelist "${name}"? Its files revert to Default.`);
+      const ok = window.confirm(`Delete changelist "${name}"? Its files revert to Changes.`);
       if (!ok) return;
     }
     try {
@@ -176,170 +284,213 @@ export function ChangelistSection({ repoPath, unstagedFiles, onStage, refreshTri
     return () => document.removeEventListener('mousedown', onDown);
   }, []);
 
-  const renderRow = (file: FileChange) => {
+  const toggleFile = useCallback((file: MergedChange) => {
+    if (file.staged) onUnstage([file.path]);
+    else onStage([file.path]);
+  }, [onStage, onUnstage]);
+
+  const renderRow = (file: MergedChange) => {
     const config = statusConfig[file.status] || statusConfig.untracked;
-    const isBusy = busy.has(file.path);
+    const isBusy = stagingPaths.has(`stage:${file.path}`) || stagingPaths.has(`unstage:${file.path}`);
+    const isSelected = expandedFile === file.path;
+    const reserved = isWindowsReservedName(file.path);
     return (
-      <div
-        key={file.path}
-        className="group flex items-center gap-1 ml-1 px-2 py-1 rounded hover:bg-white/[0.04] cursor-pointer"
-        onContextMenu={(e) => {
-          e.preventDefault();
-          setContextFile({ file, x: e.clientX, y: e.clientY });
-        }}
-      >
-        <img
-          src={getFileIconUrl(pathBasename(file.path))}
-          alt="" aria-hidden draggable={false}
-          className="w-[14px] h-[14px] shrink-0 select-none"
-        />
-        <span className={`${config.color} shrink-0`}>{config.icon}</span>
-        <p className={`flex-1 text-[12px] font-mono truncate ${config.color}`} title={file.path}>
-          {file.path}
-        </p>
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            if (isBusy) return;
-            setBusy((b) => new Set(b).add(file.path));
-            Promise.resolve(onStage([file.path])).finally(() => {
-              setBusy((b) => { const n = new Set(b); n.delete(file.path); return n; });
-            });
+      <div key={file.path}>
+        <div
+          onClick={() => setExpandedFile(isSelected ? null : file.path)}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            if (file.status !== 'untracked') {
+              setContextFile({ file, x: e.clientX, y: e.clientY });
+            }
           }}
-          className="shrink-0 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity text-accent-primary hover:bg-accent-primary/15"
-          title="Stage file"
+          title={reserved ? RESERVED_HINT : undefined}
+          className={`group flex items-center gap-1.5 pl-7 pr-2 py-[3px] cursor-pointer transition-colors ${
+            isSelected ? 'bg-accent-primary' : 'hover:bg-white/[0.04]'
+          }`}
         >
-          {isBusy ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} />}
-        </button>
-        <button
-          onClick={(e) => { e.stopPropagation(); onDiscard(file); }}
-          className="shrink-0 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity text-text-tertiary hover:bg-red-500/20 hover:text-red-400"
-          title={file.status === 'untracked' ? 'Delete untracked file' : 'Discard all changes'}
-        >
-          <Trash2 size={11} />
-        </button>
+          <TriCheckbox
+            checked={file.staged}
+            indeterminate={file.partial}
+            busy={isBusy}
+            disabled={reserved}
+            onToggle={() => toggleFile(file)}
+            label={`Include ${file.path} in commit`}
+            title={reserved ? RESERVED_HINT : undefined}
+          />
+          <img
+            src={getFileIconUrl(pathBasename(file.path))}
+            alt="" aria-hidden draggable={false}
+            className="w-[14px] h-[14px] shrink-0 select-none"
+          />
+          <span
+            className={`text-[12px] truncate shrink-0 max-w-[55%] ${isSelected ? 'text-white' : config.color}`}
+            title={file.path}
+          >
+            {pathBasename(file.path)}
+          </span>
+          <span
+            className={`flex-1 text-[11px] truncate ${isSelected ? 'text-white/70' : 'text-text-tertiary'}`}
+            title={file.path}
+          >
+            {displayLocation(repoPath, file.path)}
+          </span>
+          {file.status !== 'deleted' && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                void openDiffTab(joinRepoPath(repoPath, file.path), repoPath, file.path);
+              }}
+              className={`shrink-0 p-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-white/[0.08] ${
+                isSelected ? 'text-white/80 hover:text-white' : 'text-text-tertiary hover:text-text-primary'
+              }`}
+              title="Open diff in editor"
+            >
+              <FileEdit size={11} />
+            </button>
+          )}
+          <button
+            onClick={(e) => { e.stopPropagation(); onDiscard(file); }}
+            className={`shrink-0 p-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500/20 hover:text-red-400 ${
+              isSelected ? 'text-white/80' : 'text-text-tertiary'
+            }`}
+            title={file.status === 'untracked' ? 'Delete untracked file' : 'Discard all changes'}
+          >
+            <Trash2 size={11} />
+          </button>
+        </div>
+        {isSelected && terminalId && (
+          <div className="ml-7 mr-1 my-1 rounded overflow-hidden border border-border/30">
+            <InlineDiffView filePath={file.path} terminalId={terminalId} pathOverride={pathOverride} />
+          </div>
+        )}
       </div>
     );
   };
 
-  const renderGroup = (headerName: string, isDefault: boolean, files: FileChange[], listId: number | null) => {
+  const renderGroup = (headerName: string, kind: GroupKind, groupFiles: MergedChange[], listId: number | null) => {
     const isCollapsed = collapsed.has(headerName);
     const isMenuOpen = menuListId === listId;
+    // Reserved-name files cannot be staged - exclude them from the group
+    // checkbox so "check all" never produces an error toast.
+    const stageables = groupFiles.filter((f) => !isWindowsReservedName(f.path));
+    const stagedCount = stageables.filter((f) => f.staged).length;
+    const partialCount = stageables.filter((f) => f.partial).length;
+    const allChecked = stageables.length > 0 && stagedCount === stageables.length;
+    const someChecked = stagedCount > 0 || partialCount > 0;
     return (
-      <div key={headerName + (listId ?? '')} className="mb-2">
-        <div className="flex items-center justify-between px-2 py-1 border-b border-border/30 mb-1">
+      <div key={`${kind}:${headerName}:${listId ?? ''}`}>
+        <div className="group flex items-center gap-1 px-1.5 py-[3px] hover:bg-white/[0.04]">
           <button
             onClick={() => {
               const next = new Set(collapsed);
               if (next.has(headerName)) next.delete(headerName); else next.add(headerName);
               setCollapsed(next);
             }}
-            className="flex items-center gap-1.5 text-text-secondary hover:text-text-primary min-w-0 flex-1 text-left"
+            className="shrink-0 text-text-tertiary hover:text-text-primary"
+            aria-label={isCollapsed ? `Expand ${headerName}` : `Collapse ${headerName}`}
           >
-            {isCollapsed ? <ChevronRight size={11} /> : <ChevronDown size={11} />}
-            {editingId === listId ? (
-              <input
-                autoFocus value={editingName}
-                onChange={(e) => setEditingName(e.target.value)}
-                onBlur={() => listId != null && handleRename(listId)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && listId != null) handleRename(listId);
-                  if (e.key === 'Escape') setEditingId(null);
-                }}
-                className="bg-transparent border-b border-accent-primary text-text-primary text-[11px] font-semibold uppercase tracking-wider focus:outline-none w-32"
-              />
-            ) : (
-              <span className="text-[11px] font-semibold uppercase tracking-wider truncate">{headerName}</span>
-            )}
-            <span className="text-text-tertiary text-[11px]">({files.length})</span>
+            {isCollapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
           </button>
-          <div className="flex items-center gap-1">
-            {files.length > 0 && (
-              <button
-                onClick={() => onStage(files.map((f) => f.path))}
-                className="flex items-center gap-0.5 h-5 px-1.5 rounded text-[10.5px] text-accent-primary hover:bg-accent-primary/10 transition-colors"
-                title="Stage all files in this list"
-              >
-                <Plus size={11} /> Stage all
-              </button>
-            )}
-            {!isDefault && listId != null && (
-              <div className="relative">
-                <button
-                  onClick={() => setMenuListId(isMenuOpen ? null : listId)}
-                  className="p-0.5 rounded hover:bg-white/[0.06] text-text-tertiary"
-                  aria-label="Changelist actions"
-                >
-                  <MoreVertical size={12} />
-                </button>
-                {isMenuOpen && (
-                  <div className="absolute right-0 top-full mt-1 z-50 w-[140px] bg-elevation-3 ring-1 ring-white/[0.08] rounded-lg overflow-hidden py-1">
-                    <button
-                      onClick={() => { setEditingId(listId); setEditingName(headerName); setMenuListId(null); }}
-                      className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] text-text-primary hover:bg-white/[0.04]"
-                    >
-                      <Edit3 size={12} /> Rename
-                    </button>
-                    <button
-                      onClick={() => { setMenuListId(null); handleDelete(listId, headerName); }}
-                      className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] text-red-400 hover:bg-red-500/10"
-                    >
-                      <Trash2 size={12} /> Delete
-                    </button>
-                  </div>
-                )}
+          <TriCheckbox
+            checked={allChecked}
+            indeterminate={!allChecked && someChecked}
+            onToggle={() => {
+              if (allChecked) onUnstage(stageables.map((f) => f.path));
+              else onStage(stageables.filter((f) => !f.staged).map((f) => f.path));
+            }}
+            label={`Include all files in ${headerName} in commit`}
+          />
+          {kind === 'named' && editingId != null && editingId === listId ? (
+            <input
+              autoFocus value={editingName}
+              onChange={(e) => setEditingName(e.target.value)}
+              onBlur={() => listId != null && handleRename(listId)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && listId != null) handleRename(listId);
+                if (e.key === 'Escape') setEditingId(null);
+              }}
+              className="bg-transparent border-b border-accent-primary text-text-primary text-[12px] focus:outline-none w-32"
+            />
+          ) : (
+            <span className="text-[12px] font-semibold text-text-primary truncate">{headerName}</span>
+          )}
+          <span className="text-text-tertiary text-[11px] shrink-0">
+            {groupFiles.length} file{groupFiles.length !== 1 ? 's' : ''}
+          </span>
+          {kind !== 'unversioned' && branch && (
+            <span className="shrink-0 px-1.5 py-px rounded-[3px] bg-white/[0.07] text-text-secondary text-[10.5px] truncate max-w-[140px]" title={branch}>
+              {branch}
+            </span>
+          )}
+          <span className="flex-1" />
+          {kind === 'default' && (
+            creating ? (
+              <div className="flex items-center gap-1 shrink-0">
+                <input
+                  autoFocus value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  onBlur={() => { if (!newName.trim()) setCreating(false); }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleCreate();
+                    if (e.key === 'Escape') { setCreating(false); setNewName(''); }
+                  }}
+                  placeholder="new-list"
+                  className="bg-elevation-0 ring-1 ring-border-light rounded text-[11px] px-2 py-0.5 text-text-primary w-28 focus:outline-none"
+                />
+                <button onClick={handleCreate} className="text-accent-primary" aria-label="Create changelist"><Check size={12} /></button>
               </div>
-            )}
-          </div>
+            ) : (
+              <button
+                onClick={() => setCreating(true)}
+                className="shrink-0 flex items-center gap-0.5 h-5 px-1.5 rounded text-[10.5px] text-accent-primary opacity-0 group-hover:opacity-100 hover:bg-accent-primary/10 transition-opacity"
+                title="Create new changelist"
+              >
+                <Plus size={11} /> List
+              </button>
+            )
+          )}
+          {kind === 'named' && listId != null && (
+            <div className="relative shrink-0">
+              <button
+                onClick={() => setMenuListId(isMenuOpen ? null : listId)}
+                className="p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-white/[0.06] text-text-tertiary transition-opacity"
+                aria-label="Changelist actions"
+              >
+                <MoreVertical size={12} />
+              </button>
+              {isMenuOpen && (
+                <div className="absolute right-0 top-full mt-1 z-50 w-[140px] bg-elevation-3 ring-1 ring-white/[0.08] rounded-lg overflow-hidden py-1">
+                  <button
+                    onClick={() => { setEditingId(listId); setEditingName(headerName); setMenuListId(null); }}
+                    className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] text-text-primary hover:bg-white/[0.04]"
+                  >
+                    <Edit3 size={12} /> Rename
+                  </button>
+                  <button
+                    onClick={() => { setMenuListId(null); handleDelete(listId, headerName); }}
+                    className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] text-red-400 hover:bg-red-500/10"
+                  >
+                    <Trash2 size={12} /> Delete
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
-        {!isCollapsed && (
-          <div>
-            {files.length === 0
-              ? <p className="px-3 py-1 text-text-tertiary text-[11px] italic">No files in this list.</p>
-              : files.map(renderRow)}
-          </div>
-        )}
+        {!isCollapsed && groupFiles.map(renderRow)}
       </div>
     );
   };
 
   return (
     <div ref={containerRef}>
-      <div className="flex items-center justify-between px-2 py-1 mb-1">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-text-secondary">
-          Unstaged
-        </span>
-        {creating ? (
-          <div className="flex items-center gap-1">
-            <input
-              autoFocus value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              onBlur={() => { if (!newName.trim()) setCreating(false); }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleCreate();
-                if (e.key === 'Escape') { setCreating(false); setNewName(''); }
-              }}
-              placeholder="new-list"
-              className="bg-elevation-0 ring-1 ring-border-light rounded text-[11px] px-2 py-0.5 text-text-primary w-28 focus:outline-none"
-            />
-            <button onClick={handleCreate} className="text-accent-primary"><Check size={12} /></button>
-          </div>
-        ) : (
-          <button
-            onClick={() => setCreating(true)}
-            className="flex items-center gap-0.5 h-5 px-1.5 rounded text-[10.5px] text-accent-primary hover:bg-accent-primary/10"
-            title="Create new changelist"
-          >
-            <Plus size={11} /> List
-          </button>
-        )}
-      </div>
-
-      {renderGroup('Default', true, grouped.get('default') ?? [], null)}
+      {renderGroup('Changes', 'default', grouped.get('default') ?? [], null)}
       {lists.filter((l) => l.id != null).map((l) =>
-        renderGroup(l.name, false, grouped.get(l.id!) ?? [], l.id!),
+        renderGroup(l.name, 'named', grouped.get(l.id!) ?? [], l.id!),
       )}
+      {unversioned.length > 0 && renderGroup('Unversioned Files', 'unversioned', unversioned, null)}
 
       {contextFile && (
         <div
@@ -353,7 +504,7 @@ export function ChangelistSection({ repoPath, unstagedFiles, onStage, refreshTri
             onClick={() => { moveFile(contextFile.file.path, null); setContextFile(null); }}
             className="w-full flex items-center justify-between px-3 py-1.5 text-[12px] text-text-primary hover:bg-white/[0.04]"
           >
-            Default
+            Changes
             {assignments.get(contextFile.file.path) == null && <Check size={11} className="text-accent-primary" />}
           </button>
           {lists.filter((l) => l.id != null).map((l) => {
@@ -374,4 +525,3 @@ export function ChangelistSection({ repoPath, unstagedFiles, onStage, refreshTri
     </div>
   );
 }
-

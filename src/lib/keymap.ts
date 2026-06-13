@@ -21,7 +21,7 @@ export const KEYMAP: KeymapEntry[] = [
   { id: 'split-view',           label: 'Split View',           shortcut: `${MOD}+\\`,      group: 'Terminals' },
   { id: 'toggle-explorer',      label: 'Toggle Explorer',      shortcut: `${MOD}+B`,       group: 'View' },
   { id: 'toggle-hints',         label: 'Toggle Hints',         shortcut: 'F1',             group: 'View' },
-  { id: 'toggle-changes',       label: 'File Changes',         shortcut: 'F2',             group: 'View' },
+  { id: 'toggle-changes',       label: 'Git',                  shortcut: 'F2',             group: 'View' },
   { id: 'toggle-orchestration', label: 'Agent Teams',          shortcut: 'F4',             group: 'View' },
   { id: 'claude-config',        label: 'Claude Config',        shortcut: 'F6',             group: 'View' },
   { id: 'session-timeline',     label: 'Session Timeline',     shortcut: 'F7',             group: 'View' },

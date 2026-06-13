@@ -158,7 +158,7 @@ export function CommandPalette() {
         { label: 'Open Settings', description: 'Open application settings', icon: Settings, shortcut: 'Ctrl+,', action: () => { useAppStore.getState().openSettings(); closeCommandPalette(); } },
         { label: 'Toggle Grid View', description: 'Switch between tab and grid view', icon: LayoutGrid, shortcut: 'Ctrl+G', action: () => { useAppStore.getState().toggleGridMode(); closeCommandPalette(); } },
         { label: 'Toggle Hints Panel', description: 'Show or hide Claude Code hints', icon: Lightbulb, shortcut: 'F1', action: () => { useAppStore.getState().toggleHints(); closeCommandPalette(); } },
-        { label: 'Toggle File Changes', description: 'Show or hide the file changes panel', icon: FileCode, shortcut: 'F2', action: () => { useAppStore.getState().toggleChanges(); closeCommandPalette(); } },
+        { label: 'Toggle Git', description: 'Show or hide the Git panel', icon: FileCode, shortcut: 'F2', action: () => { useAppStore.getState().toggleChanges(); closeCommandPalette(); } },
         { label: 'Manage Profiles', description: 'Open profile management', icon: User, action: () => { useAppStore.getState().openProfileModal(); closeCommandPalette(); } },
         { label: 'Workspaces', description: 'Open workspace manager', icon: FolderOpen, action: () => { useAppStore.getState().openWorkspaceModal(); closeCommandPalette(); } },
         { label: 'Snippets', description: 'Open snippet manager', icon: Scissors, shortcut: 'Ctrl+Shift+S', action: () => { useAppStore.getState().openSnippetsModal(); closeCommandPalette(); } },

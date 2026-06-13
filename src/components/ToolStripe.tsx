@@ -54,7 +54,7 @@ function StripeButton({ item, side }: { item: StripeItem; side: Side }) {
 /**
  * IntelliJ "New UI" tool-window stripe: a thin icon rail pinned to the window
  * edge that toggles tool windows. Left rail anchors the Project sidebar (and
- * Settings at the bottom); right rail anchors File Changes / Agent Teams /
+ * Settings at the bottom); right rail anchors Git / Agent Teams /
  * Commands. Drives the same appStore toggles as the keyboard shortcuts.
  */
 export function ToolStripe({ side }: { side: Side }) {
@@ -73,7 +73,7 @@ export function ToolStripe({ side }: { side: Side }) {
     side === 'left'
       ? [{ id: 'project', label: 'Project', shortcut: 'Ctrl+B', Icon: PanelLeft, active: sidebarOpen, onClick: toggleSidebar }]
       : [
-          { id: 'changes', label: 'File Changes', shortcut: 'F2', Icon: FileDiff, active: changesOpen, onClick: toggleChanges },
+          { id: 'changes', label: 'Git', shortcut: 'F2', Icon: FileDiff, active: changesOpen, onClick: toggleChanges },
           { id: 'teams', label: 'Agent Teams', shortcut: 'F4', Icon: Users, active: orchestrationOpen, onClick: toggleOrchestration },
           { id: 'hints', label: 'Commands', shortcut: 'F1', Icon: Lightbulb, active: hintsOpen, onClick: toggleHints },
         ];
