@@ -1,5 +1,12 @@
 [
   {
+    "version": "1.26.3",
+    "date": "2026-06-21",
+    "features": [
+      { "title": "Scrollback survives tab switches", "description": "Fixes a bug where, once a second tab existed, switching away from a tab and back left it unable to scroll - its history was being discarded. Every terminal now stays alive in the background, so its scrollback (and any output that arrives while you're on another tab) is preserved when you switch back." }
+    ]
+  },
+  {
     "version": "1.26.2",
     "date": "2026-06-12",
     "features": [
