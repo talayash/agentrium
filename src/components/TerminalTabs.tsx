@@ -142,6 +142,21 @@ export function TerminalTabs() {
     el.scrollBy({ left: direction === 'left' ? -200 : 200, behavior: 'smooth' });
   };
 
+  // Keep keyboard focus on the active terminal across tab switches. Every
+  // terminal is now permanently mounted (so its xterm + scrollback survive a
+  // switch - see the content area below), which means switching tabs only flips
+  // visibility; it no longer remounts and auto-focuses the terminal. So focus
+  // the newly-shown terminal's xterm here. rAF waits for the visibility flip to
+  // paint, since xterm can't focus a `visibility: hidden` textarea.
+  useEffect(() => {
+    if (!activeTerminalId || activeFilePath) return;
+    const id = activeTerminalId;
+    const raf = requestAnimationFrame(() => {
+      useTerminalStore.getState().terminals.get(id)?.xterm?.focus();
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [activeTerminalId, activeFilePath]);
+
   // If split mode is active with valid terminals, show split view
   if (splitMode && splitTerminalIds && terminals.has(splitTerminalIds[0]) && terminals.has(splitTerminalIds[1])) {
     return (
@@ -484,48 +499,48 @@ export function TerminalTabs() {
         </div>
       </div>
 
-      {/* Content area - terminal stays mounted so scrollback survives the
-          switch; the file editor overlays on top when a file tab is active. */}
+      {/* Content area - EVERY terminal stays mounted so its xterm instance and
+          scrollback survive tab switches; only the active one is visible (the
+          rest are `visibility: hidden`, which keeps their layout box sized so
+          xterm's fit stays correct, and makes them non-interactive). This
+          mirrors grid mode, which already mounts many terminals at once, and
+          keeps background terminals' buffers current as their PTYs stream. The
+          file editor overlays on top (z-10) when a file tab is active. */}
       <div className="flex-1 relative">
-        {activeTerminalId && (() => {
-          const scriptChildId = scriptChildren.get(activeTerminalId);
+        {terminalList.map((terminal) => {
+          const tid = terminal.id;
+          const isVisible = tid === activeTerminalId && !activeFilePath;
+          const inst = terminals.get(tid);
+          const scriptChildId = scriptChildren.get(tid);
           const scriptInst = scriptChildId ? terminals.get(scriptChildId) : null;
           return (
             <div
-              key={activeTerminalId}
+              key={tid}
               className="absolute inset-0 flex flex-col"
-              style={{ visibility: activeFilePath ? 'hidden' : 'visible' }}
-              aria-hidden={!!activeFilePath}
+              style={{ visibility: isVisible ? 'visible' : 'hidden' }}
+              aria-hidden={!isVisible}
             >
               <div className="flex-1 min-h-0 flex flex-col">
-                <TerminalView terminalId={activeTerminalId} />
+                <TerminalView terminalId={tid} />
               </div>
-              {(() => {
-                const inst = terminals.get(activeTerminalId);
-                if (inst?.config.status === 'Stopped' && inst?.sessionSummary) {
-                  return <SessionInsights summary={inst.sessionSummary} />;
-                }
-                return null;
-              })()}
-              {(() => {
-                const inst = terminals.get(activeTerminalId);
-                if (inst && terminalMetrics.get(activeTerminalId)) {
-                  return <SessionMetricsPanel terminalId={activeTerminalId} />;
-                }
-                return null;
-              })()}
+              {inst?.config.status === 'Stopped' && inst?.sessionSummary && (
+                <SessionInsights summary={inst.sessionSummary} />
+              )}
+              {inst && terminalMetrics.get(tid) && (
+                <SessionMetricsPanel terminalId={tid} />
+              )}
               {scriptInst && scriptChildId && (
                 <ScriptChildPane
-                  parentId={activeTerminalId}
+                  parentId={tid}
                   childId={scriptChildId}
                   scriptName={scriptInst.scriptName ?? ''}
                   status={scriptInst.config.status}
-                  onClose={() => { void closeScript(activeTerminalId); }}
+                  onClose={() => { void closeScript(tid); }}
                 />
               )}
             </div>
           );
-        })()}
+        })}
         {activeFilePath && openFiles.some((t) => t.path === activeFilePath) && (
           <div key={`file:${activeFilePath}`} className="absolute inset-0 z-10">
             <FileEditorView path={activeFilePath} />
