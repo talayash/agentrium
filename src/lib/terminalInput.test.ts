@@ -63,12 +63,42 @@ describe('captureClaudeInput', () => {
     expect(captureClaudeInput(term)).toBe('my prompt');
   });
 
-  it('captures the first line of a multi-line boxed prompt', () => {
+  it('captures all rows of a multi-line boxed prompt, stripping the indent', () => {
     const term = makeTerm(
-      ['│ > first line │', '│ second line   │'],
-      { cursorX: 0, cursorY: 0 },
+      [
+        '╭──────────────────────────╮',
+        '│ > first line of prompt    │',
+        '│   second line continues   │',
+        '│   third line here         │',
+        '╰──────────────────────────╯',
+      ],
+      { cursorX: 0, cursorY: 4 },
     );
-    expect(captureClaudeInput(term)).toBe('first line');
+    expect(captureClaudeInput(term)).toBe(
+      'first line of prompt\nsecond line continues\nthird line here',
+    );
+  });
+
+  it('preserves an interior blank line but trims trailing padding rows', () => {
+    const term = makeTerm(
+      [
+        '│ > paragraph one        │',
+        '│                        │',
+        '│   paragraph two        │',
+        '│                        │',
+        '╰────────────────────────╯',
+      ],
+      { cursorX: 0, cursorY: 4 },
+    );
+    expect(captureClaudeInput(term)).toBe('paragraph one\n\nparagraph two');
+  });
+
+  it('reads the multi-line prompt even when the cursor is on a continuation row', () => {
+    const term = makeTerm(
+      ['│ > line one      │', '│   line two      │', '╰─────────────────╯'],
+      { cursorX: 5, cursorY: 1 },
+    );
+    expect(captureClaudeInput(term)).toBe('line one\nline two');
   });
 
   it('strips trailing box border and padding', () => {

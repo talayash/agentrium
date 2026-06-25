@@ -1,60 +1,95 @@
 import type { Terminal } from '@xterm/xterm';
 
 // Prompt glyphs Claude Code (and common shells) use to mark the input line.
-// Matched after an optional box border ("│ ") and surrounding whitespace.
-const PROMPT_ROW = /^\s*(?:[│|]\s*)?[>❯➜▶$#]\s+(\S.*)$/u;
+const PROMPT_MARKER = /^([>❯➜▶$#]\s+)(\S.*)$/u;
+// Leading box border ("│ ") plus the inner content of a row.
+const BOX_ROW = /^(\s*[│|]\s?)?(.*)$/u;
 
 /**
  * Best-effort capture of the text the user has already typed into Claude Code's
  * input line, so the Prompt Editor can continue from it instead of starting
  * blank.
  *
- * Claude renders its prompt inside a box: `│ > the typed text            │`.
- * We can't rely on the terminal's hardware cursor (TUIs frequently hide it and
- * draw their own), so instead we scan the bottom of the viewport for the row
- * that looks like the prompt line and pull the text out of it, stripping the
- * box decoration. The dimmed empty-state placeholder is skipped via its faint
- * attribute.
+ * Claude renders its prompt inside a box. The first row carries the marker and
+ * the rest are indented continuation rows:
  *
- * Limitations: only the first prompt row is read, so a prompt already wrapped
- * across multiple visual lines in the terminal yields just its first line.
+ *   ╭───────────────────────────────╮
+ *   │ > first line of the prompt     │
+ *   │   second line continues        │
+ *   ╰───────────────────────────────╯
+ *
+ * We can't rely on the terminal's hardware cursor (TUIs hide it and draw their
+ * own), so we scan the bottom of the viewport for the marker row, then walk
+ * downward collecting continuation rows until the box border ends, stripping
+ * the decoration and the alignment indent. Rows are joined with newlines.
+ *
+ * Limitation: soft-wrapped long lines are indistinguishable from genuine line
+ * breaks, so a single long line that wrapped in the terminal comes back split
+ * at the wrap points. As a seed for further editing that's acceptable.
  */
 export function captureClaudeInput(term: Terminal): string {
   try {
     const buf = term.buffer.active;
 
-    const tryRow = (i: number): string | null => {
+    // Parse a row into its leading box decoration and inner content (trailing
+    // border + padding removed).
+    const split = (i: number): { hasBorder: boolean; deco: string; content: string } | null => {
       const ln = buf.getLine(i);
       if (!ln) return null;
-      // Drop the trailing box border + padding so the regex sees clean text.
-      const s = ln.translateToString(false).replace(/\s*[│|]?\s*$/u, '');
-      const m = s.match(PROMPT_ROW);
+      const r = ln.translateToString(false).replace(/\s*[│|]?\s*$/u, '');
+      const m = r.match(BOX_ROW);
       if (!m) return null;
-      const inner = m[1];
-      if (!inner.trim()) return null;
-      // Placeholder guard: the empty-state hint is rendered dimmed. Check the
-      // attribute of the first inner character.
-      const startCol = s.length - inner.length;
-      const cell = ln.getCell(startCol);
-      if (cell && cell.isDim()) return null;
-      return inner.trimEnd();
+      const deco = m[1] ?? '';
+      return { hasBorder: /[│|]/u.test(deco), deco, content: m[2] ?? '' };
     };
 
-    // Prefer the row the cursor is on, then scan the visible rows bottom-up.
+    const isDim = (row: number, col: number): boolean => {
+      const cell = buf.getLine(row)?.getCell(col);
+      return !!(cell && cell.isDim());
+    };
+
+    // Read a (possibly multi-line) prompt whose first row is `i`, or null if
+    // row `i` is not a prompt marker row.
+    const readFrom = (i: number): string | null => {
+      const head = split(i);
+      if (!head) return null;
+      const mm = head.content.match(PROMPT_MARKER);
+      if (!mm) return null;
+      const markerWidth = mm[1].length;
+      // Placeholder guard: the empty-state hint is rendered dimmed.
+      if (isDim(i, head.deco.length + markerWidth)) return null;
+
+      const lines = [mm[2].replace(/\s+$/u, '')];
+      // Collect continuation rows: inner box rows below the marker row, until
+      // the bottom border (a row without the "│" left border) ends the box.
+      const stripIndent = new RegExp(`^\\s{0,${markerWidth}}`, 'u');
+      for (let j = i + 1; j < i + 40; j++) {
+        const row = split(j);
+        if (!row || !row.hasBorder) break;
+        lines.push(row.content.replace(stripIndent, '').replace(/\s+$/u, ''));
+      }
+      // Trim trailing blank rows (box padding); keep interior blank lines.
+      while (lines.length > 1 && lines[lines.length - 1] === '') lines.pop();
+      return lines.join('\n');
+    };
+
+    // Prefer the cursor row, then scan the visible rows bottom-up. Scanning
+    // upward naturally lands on the marker row even when the cursor sits on a
+    // continuation row (continuation rows have no marker, so readFrom skips
+    // them).
     const cursorRow = buf.baseY + buf.cursorY;
-    const fromCursor = tryRow(cursorRow);
-    if (fromCursor) return fromCursor;
+    const fromCursor = readFrom(cursorRow);
+    if (fromCursor && fromCursor.trim()) return fromCursor;
 
     const bottom = buf.baseY + term.rows - 1;
-    const top = Math.max(0, bottom - 24);
-    for (let i = bottom; i >= top; i--) {
-      const r = tryRow(i);
-      if (r) return r;
+    const top = Math.max(0, bottom - 40);
+    for (let k = bottom; k >= top; k--) {
+      const r = readFrom(k);
+      if (r && r.trim()) return r;
     }
 
-    // Last resort: take whatever sits before the cursor on its row, stripping
-    // any leading box/prompt decoration. Covers Claude builds whose prompt
-    // glyph we don't recognize above.
+    // Last resort: whatever sits before the cursor on its row, decoration
+    // stripped. Covers builds whose prompt glyph we don't recognize.
     const ln = buf.getLine(cursorRow);
     if (ln) {
       const pre = ln
@@ -66,8 +101,6 @@ export function captureClaudeInput(term: Terminal): string {
     }
 
     if (import.meta.env.DEV) {
-      // Diagnostic to converge quickly if capture still misses: dump the rows
-      // we inspected so they can be shared from the devtools console.
       const dump: Record<number, string> = {};
       for (let i = bottom; i >= top; i--) {
         dump[i] = buf.getLine(i)?.translateToString(false) ?? '';

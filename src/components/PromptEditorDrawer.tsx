@@ -74,6 +74,9 @@ export function PromptEditorDrawer() {
   // Track which terminal the current `content` belongs to, so switching the
   // target dropdown flushes the old draft before loading the new one.
   const draftOwnerRef = useRef<string | null>(null);
+  // The text originally captured from the terminal, kept so Insert can clear
+  // the right number of input lines regardless of later edits.
+  const capturedSeedRef = useRef('');
 
   const visibleTerminals = useMemo(
     () => Array.from(terminals.values()).filter(
@@ -94,6 +97,7 @@ export function PromptEditorDrawer() {
     setTargetId(id);
     setContent(initial);
     draftOwnerRef.current = id;
+    capturedSeedRef.current = captured;
     setCapturedFromTerminal(!!captured);
     setSavingSnippet(false);
     setSnippetTitle('');
@@ -136,6 +140,7 @@ export function PromptEditorDrawer() {
     draftOwnerRef.current = nextId;
     // The captured text belonged to the original terminal; don't clear a
     // different one on Insert.
+    capturedSeedRef.current = '';
     setCapturedFromTerminal(false);
   };
 
@@ -162,9 +167,14 @@ export function PromptEditorDrawer() {
     if (!content.trim()) return;
     setBusy(true);
     try {
-      // If we pulled the prompt out of the terminal's input line, clear that
-      // line first (Ctrl+U kills to start) so injecting doesn't duplicate it.
-      if (capturedFromTerminal) await writeToTerminal(targetId, '\x15');
+      // If we pulled the prompt out of the terminal's input line, clear it
+      // first so injecting doesn't duplicate it. Send one Ctrl+U per captured
+      // line: harmless if Claude's Ctrl+U already kills the whole buffer (the
+      // extra ones no-op on an empty line), and clears each line if it doesn't.
+      if (capturedFromTerminal) {
+        const lineCount = Math.max(1, capturedSeedRef.current.split('\n').length);
+        await writeToTerminal(targetId, '\x15'.repeat(lineCount));
+      }
       await writeToTerminal(targetId, toBracketedPaste(content));
       if (withEnter) await writeToTerminal(targetId, '\r');
       useAppStore.getState().clearPromptDraft(targetId);
