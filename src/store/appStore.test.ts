@@ -366,6 +366,7 @@ describe('appStore - persist partialize', () => {
     'pastePromptTemplate',
     'pasteRetention',
     'pasteRetentionDays',
+    'promptEditorShortcutEnabled',
     // Appearance & Behavior (NEW v1.22.0)
     'themeMode',
     'uiDensity',
@@ -476,6 +477,14 @@ describe('appStore - prompt editor drafts', () => {
     // Clearing an unknown id is a harmless no-op.
     useAppStore.getState().clearPromptDraft('missing');
     expect(useAppStore.getState().promptDrafts).toEqual({ b: 'y' });
+  });
+
+  it('setPromptEditorShortcutEnabled toggles the persisted flag', () => {
+    expect(useAppStore.getState().promptEditorShortcutEnabled).toBe(true);
+    useAppStore.getState().setPromptEditorShortcutEnabled(false);
+    expect(useAppStore.getState().promptEditorShortcutEnabled).toBe(false);
+    useAppStore.getState().setPromptEditorShortcutEnabled(true);
+    expect(useAppStore.getState().promptEditorShortcutEnabled).toBe(true);
   });
 });
 

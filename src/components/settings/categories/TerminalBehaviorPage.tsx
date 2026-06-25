@@ -3,15 +3,19 @@ import { PageHeader, PageSection, SettingRow, Toggle, Segmented } from '../Setti
 import { registerSetting } from '../index';
 
 const cat = { group: 'terminal', page: 'behavior' } as const;
-['shell-override', 'copy-on-select', 'paste-shortcut'].forEach((id) =>
-  registerSetting({ category: cat, id, label: id.replace(/-/g, ' '), keywords: ['terminal', 'shell', id] })
+['shell-override', 'copy-on-select', 'paste-shortcut', 'prompt-editor-shortcut'].forEach((id) =>
+  registerSetting({ category: cat, id, label: id.replace(/-/g, ' '), keywords: ['terminal', 'shell', 'prompt', 'editor', id] })
 );
 
 export default function TerminalBehaviorPage() {
   const terminalShellPathOverride = useAppStore((s) => s.terminalShellPathOverride);
   const terminalCopyOnSelect = useAppStore((s) => s.terminalCopyOnSelect);
   const terminalPasteShortcut = useAppStore((s) => s.terminalPasteShortcut);
-  const { setTerminalShellPathOverride, setTerminalCopyOnSelect, setTerminalPasteShortcut } = useAppStore.getState();
+  const promptEditorShortcutEnabled = useAppStore((s) => s.promptEditorShortcutEnabled);
+  const {
+    setTerminalShellPathOverride, setTerminalCopyOnSelect, setTerminalPasteShortcut,
+    setPromptEditorShortcutEnabled,
+  } = useAppStore.getState();
 
   return (
     <div>
@@ -45,6 +49,15 @@ export default function TerminalBehaviorPage() {
               { value: 'ctrl+v',       label: 'Ctrl+V' },
             ]}
           />
+        </SettingRow>
+      </PageSection>
+
+      <PageSection title="Prompt Editor">
+        <SettingRow
+          label="Prompt Editor shortcut"
+          description="Open the Prompt Editor for the active terminal with Ctrl+Shift+E. The status-bar pencil works either way."
+        >
+          <Toggle value={promptEditorShortcutEnabled} onChange={setPromptEditorShortcutEnabled} />
         </SettingRow>
       </PageSection>
     </div>

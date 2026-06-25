@@ -222,6 +222,9 @@ interface AppState {
   // Unsent prompt draft per terminal id. Ephemeral on purpose - terminals
   // don't survive an app restart, so a persisted draft would orphan.
   promptDrafts: Record<string, string>;
+  // Whether the Ctrl+Shift+E shortcut opens the Prompt Editor (persisted).
+  // The status-bar pencil is always available regardless of this.
+  promptEditorShortcutEnabled: boolean;
 
   toggleSidebar: () => void;
   toggleSidebarCollapse: () => void;
@@ -397,6 +400,7 @@ interface AppState {
   closePromptEditor: () => void;
   setPromptDraft: (terminalId: string, text: string) => void;
   clearPromptDraft: (terminalId: string) => void;
+  setPromptEditorShortcutEnabled: (enabled: boolean) => void;
 }
 
 interface SavedTerminalConfig {
@@ -590,6 +594,7 @@ export const useAppStore = create<AppState>()(
       promptEditorTargetId: null,
       promptEditorSeed: null,
       promptDrafts: {},
+      promptEditorShortcutEnabled: true,
 
       toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
       toggleSidebarCollapse: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
@@ -1007,6 +1012,7 @@ export const useAppStore = create<AppState>()(
         delete next[terminalId];
         return { promptDrafts: next };
       }),
+      setPromptEditorShortcutEnabled: (enabled) => set({ promptEditorShortcutEnabled: enabled }),
     }),
     {
       name: 'claude-terminal-app',
@@ -1066,6 +1072,7 @@ export const useAppStore = create<AppState>()(
         pastePromptTemplate: state.pastePromptTemplate,
         pasteRetention: state.pasteRetention,
         pasteRetentionDays: state.pasteRetentionDays,
+        promptEditorShortcutEnabled: state.promptEditorShortcutEnabled,
 
         // Appearance & Behavior (NEW v1.22.0)
         themeMode: state.themeMode,

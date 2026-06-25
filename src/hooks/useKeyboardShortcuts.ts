@@ -65,8 +65,9 @@ export function useKeyboardShortcuts() {
       }
 
       // Prompt Editor: Ctrl+Shift+E - compose a prompt for the active terminal,
-      // seeded with whatever is already typed in its input line.
-      if (ctrl && shift && e.key === 'E') {
+      // seeded with whatever is already typed in its input line. Can be turned
+      // off in Settings (the status-bar pencil still works).
+      if (ctrl && shift && e.key === 'E' && useAppStore.getState().promptEditorShortcutEnabled) {
         e.preventDefault();
         const activeId = activeIdRef.current;
         const term = activeId ? terminalsRef.current.get(activeId)?.xterm : undefined;

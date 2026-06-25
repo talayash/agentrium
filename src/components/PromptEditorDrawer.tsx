@@ -179,10 +179,6 @@ export function PromptEditorDrawer() {
       if (withEnter) await writeToTerminal(targetId, '\r');
       useAppStore.getState().clearPromptDraft(targetId);
       closeEditor();
-      toast.success(
-        withEnter ? 'Prompt sent' : 'Prompt inserted',
-        withEnter ? 'Submitted to Claude.' : 'Press Enter in the terminal to send.',
-      );
     } catch (err) {
       toast.error('Failed to write to terminal', String(err));
     } finally {
