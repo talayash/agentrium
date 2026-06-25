@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useAppStore, DEFAULT_TERMINAL_FONT_SIZE } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
 import { toast } from '../store/toastStore';
+import { captureClaudeInput } from '../lib/terminalInput';
 
 /**
  * Return true when the focused element is an editable surface that is NOT
@@ -61,6 +62,16 @@ export function useKeyboardShortcuts() {
       if (ctrl && shift && e.key === 'S') {
         e.preventDefault();
         useAppStore.getState().openSnippetsModal();
+      }
+
+      // Prompt Editor: Ctrl+Shift+E - compose a prompt for the active terminal,
+      // seeded with whatever is already typed in its input line.
+      if (ctrl && shift && e.key === 'E') {
+        e.preventDefault();
+        const activeId = activeIdRef.current;
+        const term = activeId ? terminalsRef.current.get(activeId)?.xterm : undefined;
+        const seed = term ? captureClaudeInput(term) : '';
+        useAppStore.getState().openPromptEditor(activeId, seed);
       }
 
       // Paste as file: Ctrl+Shift+V

@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
-import { RotateCw, Square, ClipboardCopy, Clock, FolderOpen, Check, ClipboardPaste } from 'lucide-react';
+import { RotateCw, Square, ClipboardCopy, Clock, FolderOpen, Check, ClipboardPaste, Pencil } from 'lucide-react';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
+import { captureClaudeInput } from '../lib/terminalInput';
 
 interface TerminalStatusBarProps {
   terminalId: string;
@@ -81,16 +82,16 @@ export function TerminalStatusBar({ terminalId }: TerminalStatusBarProps) {
   const isRunning = status === 'Running';
 
   return (
-    <div className="flex items-center justify-between h-6 px-3 bg-bg-secondary border-t border-border text-[11px] select-none flex-shrink-0">
+    <div className="flex items-center justify-between h-9 px-3.5 bg-bg-secondary border-t border-border text-[12px] select-none flex-shrink-0">
       {/* Left: Duration + Model + Effort */}
-      <div className="flex items-center gap-3 min-w-0">
-        <span className="flex items-center gap-1 text-text-tertiary flex-shrink-0">
-          <Clock size={10} />
+      <div className="flex items-center gap-3.5 min-w-0">
+        <span className="flex items-center gap-1.5 text-text-tertiary flex-shrink-0">
+          <Clock size={13} />
           {elapsed}
         </span>
 
         {model && (
-          <span className={`px-1 rounded font-medium flex-shrink-0 text-[9px] ${
+          <span className={`px-1.5 py-0.5 rounded font-medium flex-shrink-0 text-[11px] ${
             model === 'opus' ? 'bg-purple-500/20 text-purple-400' :
             model === 'sonnet' ? 'bg-blue-500/20 text-blue-400' :
             model === 'haiku' ? 'bg-green-500/20 text-green-400' :
@@ -107,25 +108,38 @@ export function TerminalStatusBar({ terminalId }: TerminalStatusBarProps) {
         )}
 
         <span
-          className="flex items-center gap-1 text-text-tertiary truncate"
+          className="flex items-center gap-1.5 text-text-tertiary truncate"
           title={working_directory}
         >
-          <FolderOpen size={10} className="flex-shrink-0" />
+          <FolderOpen size={13} className="flex-shrink-0" />
           <span className="truncate">{truncatePath(working_directory)}</span>
         </span>
       </div>
 
       {/* Right: Quick Actions */}
-      <div className="flex items-center gap-1 flex-shrink-0 ml-2">
+      <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
         {isRunning && (
           <button
             onClick={handleInterrupt}
-            className="p-0.5 rounded hover:bg-white/[0.08] text-text-tertiary hover:text-yellow-400 transition-colors"
+            className="p-1.5 rounded-md hover:bg-white/[0.08] text-text-tertiary hover:text-yellow-400 transition-colors"
             title="Interrupt (Ctrl+C)"
           >
-            <Square size={10} />
+            <Square size={16} strokeWidth={2} />
           </button>
         )}
+
+        {/* Prompt Editor - the primary action, given an accent treatment so it
+            reads as a button rather than a faint glyph. */}
+        <button
+          onClick={() => {
+            const text = instance?.xterm ? captureClaudeInput(instance.xterm) : '';
+            useAppStore.getState().openPromptEditor(terminalId, text);
+          }}
+          className="p-1.5 rounded-md bg-accent-primary/15 text-accent-primary hover:bg-accent-primary/25 transition-colors"
+          title="Compose prompt (Ctrl+Shift+E)"
+        >
+          <Pencil size={16} strokeWidth={2.25} />
+        </button>
 
         <button
           onClick={async () => {
@@ -136,26 +150,26 @@ export function TerminalStatusBar({ terminalId }: TerminalStatusBarProps) {
               targetTerminalId: terminalId,
             });
           }}
-          className="p-0.5 rounded hover:bg-white/[0.08] text-text-tertiary hover:text-accent-primary transition-colors"
+          className="p-1.5 rounded-md hover:bg-white/[0.08] text-text-tertiary hover:text-accent-primary transition-colors"
           title="Paste as file (Ctrl+Shift+V)"
         >
-          <ClipboardPaste size={10} />
+          <ClipboardPaste size={16} strokeWidth={2} />
         </button>
 
         <button
           onClick={handleCopyOutput}
-          className="p-0.5 rounded hover:bg-white/[0.08] text-text-tertiary hover:text-text-secondary transition-colors"
+          className="p-1.5 rounded-md hover:bg-white/[0.08] text-text-tertiary hover:text-text-secondary transition-colors"
           title="Copy last output"
         >
-          {copied ? <Check size={10} className="text-success" /> : <ClipboardCopy size={10} />}
+          {copied ? <Check size={16} strokeWidth={2} className="text-success" /> : <ClipboardCopy size={16} strokeWidth={2} />}
         </button>
 
         <button
           onClick={handleRestart}
-          className="p-0.5 rounded hover:bg-white/[0.08] text-text-tertiary hover:text-accent-primary transition-colors"
+          className="p-1.5 rounded-md hover:bg-white/[0.08] text-text-tertiary hover:text-accent-primary transition-colors"
           title="Restart terminal"
         >
-          <RotateCw size={10} />
+          <RotateCw size={16} strokeWidth={2} />
         </button>
       </div>
     </div>

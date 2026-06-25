@@ -213,6 +213,16 @@ interface AppState {
   pasteRetention: 'close' | 'days' | 'forever';
   pasteRetentionDays: number;
 
+  // Prompt Editor (compose a prompt in a popup, inject into the terminal input)
+  promptEditorOpen: boolean;
+  promptEditorTargetId: string | null;
+  // Text captured from the terminal's current input line when the editor was
+  // opened, so it can seed/continue an in-progress prompt. Ephemeral.
+  promptEditorSeed: string | null;
+  // Unsent prompt draft per terminal id. Ephemeral on purpose - terminals
+  // don't survive an app restart, so a persisted draft would orphan.
+  promptDrafts: Record<string, string>;
+
   toggleSidebar: () => void;
   toggleSidebarCollapse: () => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
@@ -381,6 +391,12 @@ interface AppState {
   setPastePromptTemplate: (s: string) => void;
   setPasteRetention: (r: 'close' | 'days' | 'forever') => void;
   setPasteRetentionDays: (n: number) => void;
+
+  // Prompt Editor actions
+  openPromptEditor: (terminalId?: string | null, seedText?: string | null) => void;
+  closePromptEditor: () => void;
+  setPromptDraft: (terminalId: string, text: string) => void;
+  clearPromptDraft: (terminalId: string) => void;
 }
 
 interface SavedTerminalConfig {
@@ -568,6 +584,12 @@ export const useAppStore = create<AppState>()(
       pastePromptTemplate: 'Please look at @{path}',
       pasteRetention: 'close' as 'close' | 'days' | 'forever',
       pasteRetentionDays: 7,
+
+      // Prompt Editor
+      promptEditorOpen: false,
+      promptEditorTargetId: null,
+      promptEditorSeed: null,
+      promptDrafts: {},
 
       toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
       toggleSidebarCollapse: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
@@ -968,6 +990,23 @@ export const useAppStore = create<AppState>()(
       setPastePromptTemplate: (s) => set({ pastePromptTemplate: s }),
       setPasteRetention: (r) => set({ pasteRetention: r }),
       setPasteRetentionDays: (n) => set({ pasteRetentionDays: Math.max(1, n) }),
+
+      // Prompt Editor actions
+      openPromptEditor: (terminalId, seedText) => set({
+        promptEditorOpen: true,
+        promptEditorTargetId: terminalId ?? null,
+        promptEditorSeed: seedText ?? null,
+      }),
+      closePromptEditor: () => set({ promptEditorOpen: false }),
+      setPromptDraft: (terminalId, text) => set((state) => ({
+        promptDrafts: { ...state.promptDrafts, [terminalId]: text },
+      })),
+      clearPromptDraft: (terminalId) => set((state) => {
+        if (!(terminalId in state.promptDrafts)) return {};
+        const next = { ...state.promptDrafts };
+        delete next[terminalId];
+        return { promptDrafts: next };
+      }),
     }),
     {
       name: 'claude-terminal-app',

@@ -430,9 +430,52 @@ describe('appStore - persist partialize', () => {
       'pendingRestoreConfigs',
       'commandPaletteOpen',
       'globalSearchOpen',
+      'promptEditorOpen',
+      'promptEditorTargetId',
+      'promptEditorSeed',
+      'promptDrafts',
     ]) {
       expect(stored).not.toHaveProperty(key);
     }
+  });
+});
+
+describe('appStore - prompt editor drafts', () => {
+  beforeEach(() => {
+    useAppStore.setState({ promptEditorOpen: false, promptEditorTargetId: null, promptDrafts: {} });
+  });
+
+  it('openPromptEditor sets the target and clears it on the next open', () => {
+    useAppStore.getState().openPromptEditor('term-1');
+    expect(useAppStore.getState().promptEditorOpen).toBe(true);
+    expect(useAppStore.getState().promptEditorTargetId).toBe('term-1');
+
+    useAppStore.getState().closePromptEditor();
+    expect(useAppStore.getState().promptEditorOpen).toBe(false);
+
+    useAppStore.getState().openPromptEditor();
+    expect(useAppStore.getState().promptEditorTargetId).toBeNull();
+  });
+
+  it('setPromptDraft stores per-terminal drafts independently', () => {
+    useAppStore.getState().setPromptDraft('a', 'draft for a');
+    useAppStore.getState().setPromptDraft('b', 'draft for b');
+    expect(useAppStore.getState().promptDrafts).toEqual({ a: 'draft for a', b: 'draft for b' });
+
+    useAppStore.getState().setPromptDraft('a', 'updated a');
+    expect(useAppStore.getState().promptDrafts.a).toBe('updated a');
+    expect(useAppStore.getState().promptDrafts.b).toBe('draft for b');
+  });
+
+  it('clearPromptDraft removes only the given terminal draft', () => {
+    useAppStore.getState().setPromptDraft('a', 'x');
+    useAppStore.getState().setPromptDraft('b', 'y');
+    useAppStore.getState().clearPromptDraft('a');
+    expect(useAppStore.getState().promptDrafts).toEqual({ b: 'y' });
+
+    // Clearing an unknown id is a harmless no-op.
+    useAppStore.getState().clearPromptDraft('missing');
+    expect(useAppStore.getState().promptDrafts).toEqual({ b: 'y' });
   });
 });
 

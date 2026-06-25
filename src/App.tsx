@@ -18,6 +18,7 @@ import { PushModal } from './components/PushModal';
 import { SessionHistory } from './components/SessionHistory';
 import { SnippetsModal } from './components/SnippetsModal';
 import { PasteAsFileDrawer } from './components/PasteAsFileDrawer';
+import { PromptEditorDrawer } from './components/PromptEditorDrawer';
 import { CommandPalette } from './components/CommandPalette';
 import { SetupWizard } from './components/SetupWizard';
 import { AutoUpdater } from './components/AutoUpdater';
@@ -772,6 +773,7 @@ function App() {
             {globalSearchOpen && <GlobalSearchModal />}
           </AnimatePresence>
           <PasteAsFileDrawer />
+          <PromptEditorDrawer />
         </>
       )}
 
