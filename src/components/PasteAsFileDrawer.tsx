@@ -6,9 +6,8 @@ import { X, Send, Save, Trash2, FileText } from 'lucide-react';
 import { useAppStore } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
 import { usePasteStore, type PasteEntry } from '../store/pasteStore';
+import { detectKindClient, kindToExt } from '../lib/pasteKind';
 import { toast } from '../store/toastStore';
-
-type DetectedKind = 'json' | 'log' | 'xml' | 'text';
 
 const EXTENSIONS: { value: string; label: string; lang: string }[] = [
   { value: 'json', label: '.json', lang: 'json' },
@@ -17,27 +16,10 @@ const EXTENSIONS: { value: string; label: string; lang: string }[] = [
   { value: 'txt', label: '.txt', lang: 'plaintext' },
 ];
 
-function detectKindClient(content: string): DetectedKind {
-  const t = content.trimStart();
-  if ((t.startsWith('{') || t.startsWith('['))) {
-    try { JSON.parse(content); return 'json'; } catch { /* not json */ }
-  }
-  if (t.startsWith('<') && t.includes('>')) return 'xml';
-  const markers = ['[INFO]', '[ERROR]', '[WARN]', '[DEBUG]', 'ERROR:', 'WARN:'];
-  const lines = content.split('\n').slice(0, 50);
-  const hits = lines.filter((l) => markers.some((m) => l.includes(m))).length;
-  if (lines.length >= 5 && hits * 4 >= lines.length) return 'log';
-  return 'text';
-}
-
 function defaultBaseName(): string {
   const d = new Date();
   const pad = (n: number) => n.toString().padStart(2, '0');
   return `paste-${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`;
-}
-
-function kindToExt(k: DetectedKind): string {
-  return k === 'text' ? 'txt' : k;
 }
 
 function formatBytes(n: number): string {

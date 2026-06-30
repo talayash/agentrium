@@ -1,5 +1,16 @@
 import type { Terminal } from '@xterm/xterm';
 
+// Claude Code collapses pasted/multi-line input (and images) into a placeholder
+// token in its input box, e.g. "[Pasted text #1 +4 lines]" or "[Image #1]".
+// That token is a display stand-in, NOT the real text, so capturing it back as
+// the prompt is meaningless - callers use this to ignore such a capture.
+const PASTE_PLACEHOLDER = /^\[\s*(?:Pasted text|Image)\b[^\]]*\]$/iu;
+
+/** True if `s` is one of Claude's collapsed-paste / image placeholder tokens. */
+export function looksLikePastePlaceholder(s: string): boolean {
+  return PASTE_PLACEHOLDER.test(s.trim());
+}
+
 // Prompt glyphs Claude Code (and common shells) use to mark the input line.
 const PROMPT_MARKER = /^([>❯➜▶$#]\s+)(\S.*)$/u;
 // Leading box border ("│ ") plus the inner content of a row.
@@ -60,12 +71,26 @@ export function captureClaudeInput(term: Terminal): string {
       if (isDim(i, head.deco.length + markerWidth)) return null;
 
       const lines = [mm[2].replace(/\s+$/u, '')];
-      // Collect continuation rows: inner box rows below the marker row, until
-      // the bottom border (a row without the "│" left border) ends the box.
+      // Collect continuation rows below the marker. Two prompt styles:
+      //  - Boxed: continuation rows carry the "│" left border; the bottom
+      //    border (a row without it) ends the box.
+      //  - Borderless (newer Claude UI): continuation rows have no border and
+      //    are blank-indented to align under the marker text. We collect rows
+      //    indented at least as far as the marker, stopping at the first row
+      //    that breaks the alignment - a de-indented/blank row or the dimmed
+      //    status hint below the prompt.
       const stripIndent = new RegExp(`^\\s{0,${markerWidth}}`, 'u');
       for (let j = i + 1; j < i + 40; j++) {
         const row = split(j);
-        if (!row || !row.hasBorder) break;
+        if (!row) break;
+        if (head.hasBorder) {
+          if (!row.hasBorder) break;
+        } else {
+          if (row.hasBorder) break;
+          const indent = row.content.match(/^\s*/u)?.[0].length ?? 0;
+          if (row.content.trim() === '' || indent < markerWidth) break;
+          if (isDim(j, indent)) break;
+        }
         lines.push(row.content.replace(stripIndent, '').replace(/\s+$/u, ''));
       }
       // Trim trailing blank rows (box padding); keep interior blank lines.

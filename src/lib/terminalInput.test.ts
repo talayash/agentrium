@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Terminal } from '@xterm/xterm';
-import { captureClaudeInput } from './terminalInput';
+import { captureClaudeInput, looksLikePastePlaceholder } from './terminalInput';
 
 /**
  * Build a minimal fake xterm Terminal whose active buffer is `rows` (absolute
@@ -93,6 +93,22 @@ describe('captureClaudeInput', () => {
     expect(captureClaudeInput(term)).toBe('paragraph one\n\nparagraph two');
   });
 
+  it('captures a borderless multi-line prompt (newer Claude UI)', () => {
+    // No box border; continuation row is blank-indented under the marker text.
+    // Cursor on the continuation row; a dimmed status hint follows the prompt.
+    const term = makeTerm(
+      [
+        '> @.claudeterminal/pastes/paste.txt',
+        '  SUP ? ALL GOOOD',
+        '  bypass permissions on (shift+tab to cycle)',
+      ],
+      { cursorX: 5, cursorY: 1, dimRows: [2] },
+    );
+    expect(captureClaudeInput(term)).toBe(
+      '@.claudeterminal/pastes/paste.txt\nSUP ? ALL GOOOD',
+    );
+  });
+
   it('reads the multi-line prompt even when the cursor is on a continuation row', () => {
     const term = makeTerm(
       ['│ > line one      │', '│   line two      │', '╰─────────────────╯'],
@@ -115,5 +131,26 @@ describe('captureClaudeInput', () => {
     vi.spyOn(console, 'debug').mockImplementation(() => {});
     const term = makeTerm(['nothing here'], { cursorX: 0, cursorY: 0 });
     expect(captureClaudeInput(term)).toBe('');
+  });
+});
+
+describe('looksLikePastePlaceholder', () => {
+  it('matches Claude collapsed-paste tokens', () => {
+    expect(looksLikePastePlaceholder('[Pasted text #1 +4 lines]')).toBe(true);
+    expect(looksLikePastePlaceholder('[Pasted text #12 +250 lines]')).toBe(true);
+    expect(looksLikePastePlaceholder('  [Pasted text #1 +4 lines]  ')).toBe(true);
+  });
+
+  it('matches image placeholder tokens', () => {
+    expect(looksLikePastePlaceholder('[Image #1]')).toBe(true);
+  });
+
+  it('does not match real prompt text', () => {
+    expect(looksLikePastePlaceholder('fix the bug in commands.rs')).toBe(false);
+    expect(looksLikePastePlaceholder('')).toBe(false);
+    // Mentions the phrase but is not the bare token.
+    expect(looksLikePastePlaceholder('explain [Pasted text #1 +4 lines] to me')).toBe(false);
+    // Bracketed text that is not the placeholder.
+    expect(looksLikePastePlaceholder('[TODO] write tests')).toBe(false);
   });
 });

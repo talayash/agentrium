@@ -1,12 +1,16 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { invoke } from '@tauri-apps/api/core';
 import Editor, { type OnMount } from '@monaco-editor/react';
+import type { IRange } from 'monaco-editor';
 import {
   X, Send, CornerDownLeft, BookOpen, FileText, Save, Trash2, Search, Bookmark,
 } from 'lucide-react';
 import { useAppStore } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
+import { usePasteStore, type PasteEntry } from '../store/pasteStore';
+import { captureClaudeInput, looksLikePastePlaceholder } from '../lib/terminalInput';
+import { detectKindClient, kindToExt } from '../lib/pasteKind';
 import { toast } from '../store/toastStore';
 
 // Mirrors the backend Snippet shape (see SnippetsModal.tsx / commands.rs).
@@ -57,9 +61,6 @@ export function PromptEditorDrawer() {
   const [targetId, setTargetId] = useState<string | null>(null);
   const [side, setSide] = useState<SidePanel>('none');
   const [busy, setBusy] = useState(false);
-  // True when the editor was seeded from text already typed in the terminal.
-  // On Insert we then clear that line first so the prompt isn't duplicated.
-  const [capturedFromTerminal, setCapturedFromTerminal] = useState(false);
 
   const [hints, setHints] = useState<HintCategory[]>([]);
   const [snippets, setSnippets] = useState<Snippet[]>([]);
@@ -74,9 +75,9 @@ export function PromptEditorDrawer() {
   // Track which terminal the current `content` belongs to, so switching the
   // target dropdown flushes the old draft before loading the new one.
   const draftOwnerRef = useRef<string | null>(null);
-  // The text originally captured from the terminal, kept so Insert can clear
-  // the right number of input lines regardless of later edits.
-  const capturedSeedRef = useRef('');
+  // Mirror of `targetId` for the paste listener, which is attached once on mount
+  // and would otherwise close over a stale target.
+  const targetIdRef = useRef<string | null>(null);
 
   const visibleTerminals = useMemo(
     () => Array.from(terminals.values()).filter(
@@ -87,18 +88,20 @@ export function PromptEditorDrawer() {
 
   // Seed editor state when the drawer opens. Text captured from the terminal's
   // current input line wins over a stored draft so the user continues exactly
-  // where they left off; otherwise fall back to the saved draft.
+  // where they left off - but only when it's plainly readable. Claude collapses
+  // pasted/multi-line input into a "[Pasted text #1 +4 lines]" placeholder; that
+  // token is not the real prompt, so we ignore it and fall back to the editor's
+  // own draft (the source of truth), which always holds the real text.
   useEffect(() => {
     if (!open) return;
     const id = seedTargetId ?? activeId ?? null;
-    const captured = (useAppStore.getState().promptEditorSeed ?? '').trim();
+    const seed = (useAppStore.getState().promptEditorSeed ?? '').trim();
+    const cleanSeed = seed && !looksLikePastePlaceholder(seed) ? seed : '';
     const draft = id ? useAppStore.getState().promptDrafts[id] ?? '' : '';
-    const initial = captured || draft;
+    const initial = cleanSeed || draft;
     setTargetId(id);
     setContent(initial);
     draftOwnerRef.current = id;
-    capturedSeedRef.current = captured;
-    setCapturedFromTerminal(!!captured);
     setSavingSnippet(false);
     setSnippetTitle('');
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -138,10 +141,6 @@ export function PromptEditorDrawer() {
     setTargetId(nextId);
     setContent(draft);
     draftOwnerRef.current = nextId;
-    // The captured text belonged to the original terminal; don't clear a
-    // different one on Insert.
-    capturedSeedRef.current = '';
-    setCapturedFromTerminal(false);
   };
 
   const insertAtCursor = (text: string) => {
@@ -159,6 +158,75 @@ export function PromptEditorDrawer() {
     editor.focus();
   };
 
+  // Keep the paste handler's view of the target current without re-registering.
+  useEffect(() => { targetIdRef.current = targetId; }, [targetId]);
+
+  // Mirror the terminal's large-paste guard (TerminalView). A native DOM `paste`
+  // listener never sees Monaco's internal textarea paste path (so Ctrl+V slips
+  // through), so we hook Monaco's own onDidPaste instead: it fires for every
+  // paste with the inserted range. When the blob is large we offer (but never
+  // force) to save it as a file and reference it instead - the pasted text stays
+  // in the editor either way.
+  const offerLargePaste = useCallback(
+    (editor: Parameters<OnMount>[0], pasted: string, range: IRange) => {
+      // Saving as a file needs a target terminal to resolve a cwd. Without one we
+      // can't produce a referenceable path, so leave the paste inline.
+      const target = targetIdRef.current;
+      if (!target) return;
+
+      const bytes = new TextEncoder().encode(pasted).length;
+      const lines = pasted.split('\n').length;
+
+      // The pasted text stays in the editor (Monaco handles large text fine).
+      // We only OFFER to swap it for a file reference - if the toast is ignored
+      // the content is kept, never lost. Replace the pasted range in place.
+      const replacePasted = (value: string) => {
+        editor.executeEdits('prompt-paste', [
+          { range, text: value, forceMoveMarkers: true },
+        ]);
+        editor.focus();
+      };
+
+      toast.warning(
+        'Large paste detected',
+        `${(bytes / 1024).toFixed(1)} KB · ${lines} lines - sending this inline can bog down Claude Code. Save it as a file and reference it instead?`,
+        {
+          duration: 15000,
+          actions: [
+            {
+              label: 'Save & Reference',
+              variant: 'primary',
+              onClick: async () => {
+                try {
+                  const entry = await invoke<PasteEntry>('write_paste', {
+                    terminalId: target,
+                    content: pasted,
+                    extension: kindToExt(detectKindClient(pasted)),
+                  });
+                  usePasteStore.getState().add(target, entry, pasted);
+                  replacePasted(`@${entry.relative_path}`);
+                } catch (err) {
+                  toast.error('Failed to save paste', String(err));
+                }
+              },
+            },
+            {
+              label: 'Keep inline',
+              variant: 'neutral',
+              onClick: () => editor.focus(),
+            },
+            {
+              label: "Don't ask again",
+              variant: 'danger',
+              onClick: () => useAppStore.getState().setPasteAutoDetectEnabled(false),
+            },
+          ],
+        },
+      );
+    },
+    [],
+  );
+
   const inject = async (withEnter: boolean) => {
     if (!targetId) {
       toast.error('No target terminal', 'Pick a terminal to send the prompt to.');
@@ -167,17 +235,25 @@ export function PromptEditorDrawer() {
     if (!content.trim()) return;
     setBusy(true);
     try {
-      // If we pulled the prompt out of the terminal's input line, clear it
-      // first so injecting doesn't duplicate it. Send one Ctrl+U per captured
-      // line: harmless if Claude's Ctrl+U already kills the whole buffer (the
-      // extra ones no-op on an empty line), and clears each line if it doesn't.
-      if (capturedFromTerminal) {
-        const lineCount = Math.max(1, capturedSeedRef.current.split('\n').length);
-        await writeToTerminal(targetId, '\x15'.repeat(lineCount));
-      }
+      // Injecting must make the terminal hold *exactly* the editor content - a
+      // full replace, not an append. Re-capture the live input and clear it with
+      // Ctrl+U before writing. Ctrl+U on an empty line no-ops, so we send a few
+      // extra past the captured line count: this guards against under-counting
+      // (a line we failed to scrape) which would otherwise leave a remnant and
+      // turn the write into an append. Overcounting is always harmless.
+      const xterm = useTerminalStore.getState().terminals.get(targetId)?.xterm;
+      const current = xterm ? captureClaudeInput(xterm) : '';
+      const clearCount = Math.max(1, current.split('\n').length) + 3;
+      await writeToTerminal(targetId, '\x15'.repeat(clearCount));
       await writeToTerminal(targetId, toBracketedPaste(content));
-      if (withEnter) await writeToTerminal(targetId, '\r');
-      useAppStore.getState().clearPromptDraft(targetId);
+      if (withEnter) {
+        // Send: the prompt is submitted and consumed, so drop the draft - the
+        // next open starts fresh.
+        await writeToTerminal(targetId, '\r');
+        useAppStore.getState().clearPromptDraft(targetId);
+      }
+      // Insert (no Enter): keep the draft so reopening shows the real prompt
+      // even though Claude now displays it as a "[Pasted text ...]" placeholder.
       closeEditor();
     } catch (err) {
       toast.error('Failed to write to terminal', String(err));
@@ -322,7 +398,30 @@ export function PromptEditorDrawer() {
                       language="markdown"
                       value={content}
                       onChange={handleContentChange}
-                      onMount={(editor) => { editorRef.current = editor; editor.focus(); }}
+                      onMount={(editor) => {
+                        editorRef.current = editor;
+                        editor.focus();
+                        // onDidPaste fires for every paste (incl. Ctrl+V). Measure
+                        // the inserted text and, when it's large, hand off to the
+                        // save-as-file flow.
+                        editor.onDidPaste((e) => {
+                          const app = useAppStore.getState();
+                          if (!app.pasteAutoDetectEnabled) return;
+                          const model = editor.getModel();
+                          if (!model) return;
+                          const pasted = model.getValueInRange(e.range);
+                          if (!pasted) return;
+                          const bytes = new TextEncoder().encode(pasted).length;
+                          const lines = pasted.split('\n').length;
+                          if (
+                            bytes < app.pasteAutoDetectThresholdBytes &&
+                            lines < app.pasteAutoDetectThresholdLines
+                          ) {
+                            return; // small enough - leave it inline
+                          }
+                          offerLargePaste(editor, pasted, e.range);
+                        });
+                      }}
                       theme="vs-dark"
                       options={{
                         minimap: { enabled: false },
