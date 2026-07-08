@@ -2012,8 +2012,13 @@ pub async fn get_last_commit_info(
                 };
                 Ok(Some(LastCommitInfo { subject, message }))
             }
-            // A repo with no commits yet has no HEAD - treat as "no last commit".
-            Err(e) if e.contains("does not have any commits") || e.contains("unknown revision") || e.contains("ambiguous argument") => Ok(None),
+            // A repo with no commits yet has no HEAD, and a directory that
+            // isn't a git repo at all, both have no last commit - not errors.
+            Err(e)
+                if e.contains("does not have any commits")
+                    || e.contains("unknown revision")
+                    || e.contains("ambiguous argument")
+                    || e.contains("not a git repository") => Ok(None),
             Err(e) => Err(e),
         }
     })
