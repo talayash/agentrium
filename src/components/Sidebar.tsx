@@ -3,6 +3,7 @@ import { ChevronsLeft, ChevronsRight, FolderTree } from 'lucide-react';
 import { useAppStore } from '../store/appStore';
 import { FileTreePanel } from './FileTreePanel';
 import { SessionsPanel } from './SessionsPanel';
+import { Tooltip } from './ui/Tooltip';
 
 export function Sidebar() {
   const sidebarCollapsed = useAppStore((s) => s.sidebarCollapsed);
@@ -53,13 +54,14 @@ export function Sidebar() {
         className="h-full bg-elevation-1 border-r border-[var(--ij-divider)] flex flex-col items-center py-2 gap-0.5"
         style={{ width: 48 }}
       >
-        <button
-          onClick={toggleSidebarCollapse}
-          className="w-8 h-8 flex items-center justify-center rounded-[6px] hover:bg-white/[0.06] text-text-tertiary hover:text-text-secondary transition-colors"
-          title="Expand sidebar"
-        >
-          <ChevronsRight size={14} strokeWidth={1.75} />
-        </button>
+        <Tooltip label="Expand Sidebar" side="right">
+          <button
+            onClick={toggleSidebarCollapse}
+            className="w-8 h-8 flex items-center justify-center rounded-[6px] hover:bg-white/[0.06] text-text-tertiary hover:text-text-secondary transition-colors"
+          >
+            <ChevronsRight size={14} strokeWidth={1.75} />
+          </button>
+        </Tooltip>
       </div>
     );
   }
@@ -91,13 +93,14 @@ export function Sidebar() {
           <FolderTree size={12} strokeWidth={1.75} />
           Project
         </span>
-        <button
-          onClick={toggleSidebarCollapse}
-          className="w-6 h-6 flex items-center justify-center rounded-[4px] hover:bg-white/[0.06] text-text-tertiary hover:text-text-secondary transition-colors"
-          title="Collapse sidebar"
-        >
-          <ChevronsLeft size={13} strokeWidth={1.75} />
-        </button>
+        <Tooltip label="Collapse Sidebar">
+          <button
+            onClick={toggleSidebarCollapse}
+            className="w-6 h-6 flex items-center justify-center rounded-[4px] hover:bg-white/[0.06] text-text-tertiary hover:text-text-secondary transition-colors"
+          >
+            <ChevronsLeft size={13} strokeWidth={1.75} />
+          </button>
+        </Tooltip>
       </div>
 
       <div ref={stackRef} className="flex-1 min-h-0 flex flex-col">
@@ -113,7 +116,7 @@ export function Sidebar() {
             onMouseDown={onSplitterMouseDown}
             role="separator"
             aria-orientation="horizontal"
-            title="Drag to resize Sessions / Explorer"
+            aria-label="Drag to resize Sessions / Explorer"
             className="h-1 shrink-0 cursor-row-resize bg-transparent hover:bg-accent-primary/50 active:bg-accent-primary/70 transition-colors"
           />
         )}

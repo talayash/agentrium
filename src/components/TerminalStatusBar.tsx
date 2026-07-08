@@ -3,6 +3,7 @@ import { RotateCw, Square, ClipboardCopy, Clock, FolderOpen, Check, ClipboardPas
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
 import { captureClaudeInput } from '../lib/terminalInput';
+import { Tooltip } from './ui/Tooltip';
 
 interface TerminalStatusBarProps {
   terminalId: string;
@@ -107,70 +108,74 @@ export function TerminalStatusBar({ terminalId }: TerminalStatusBarProps) {
           </span>
         )}
 
-        <span
-          className="flex items-center gap-1.5 text-text-tertiary truncate"
-          title={working_directory}
-        >
-          <FolderOpen size={13} className="flex-shrink-0" />
-          <span className="truncate">{truncatePath(working_directory)}</span>
-        </span>
+        <Tooltip label={working_directory} side="top">
+          <span className="flex items-center gap-1.5 text-text-tertiary truncate">
+            <FolderOpen size={13} className="flex-shrink-0" />
+            <span className="truncate">{truncatePath(working_directory)}</span>
+          </span>
+        </Tooltip>
       </div>
 
       {/* Right: Quick Actions */}
       <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
         {isRunning && (
-          <button
-            onClick={handleInterrupt}
-            className="p-1.5 rounded-md hover:bg-white/[0.08] text-text-tertiary hover:text-yellow-400 transition-colors"
-            title="Interrupt (Ctrl+C)"
-          >
-            <Square size={16} strokeWidth={2} />
-          </button>
+          <Tooltip label="Interrupt" shortcut="Ctrl+C" side="top">
+            <button
+              onClick={handleInterrupt}
+              className="p-1.5 rounded-md hover:bg-white/[0.08] text-text-tertiary hover:text-yellow-400 transition-colors"
+            >
+              <Square size={16} strokeWidth={2} />
+            </button>
+          </Tooltip>
         )}
 
         {/* Prompt Editor - the primary action, given an accent treatment so it
             reads as a button rather than a faint glyph. */}
-        <button
-          onClick={() => {
-            const text = instance?.xterm ? captureClaudeInput(instance.xterm) : '';
-            useAppStore.getState().openPromptEditor(terminalId, text);
-          }}
-          className="p-1.5 rounded-md bg-accent-primary/15 text-accent-primary hover:bg-accent-primary/25 transition-colors"
-          title="Compose prompt (Ctrl+Shift+E)"
-        >
-          <Pencil size={16} strokeWidth={2.25} />
-        </button>
+        <Tooltip label="Compose prompt" shortcut="Ctrl+Shift+E" side="top">
+          <button
+            onClick={() => {
+              const text = instance?.xterm ? captureClaudeInput(instance.xterm) : '';
+              useAppStore.getState().openPromptEditor(terminalId, text);
+            }}
+            className="p-1.5 rounded-md bg-accent-primary/15 text-accent-primary hover:bg-accent-primary/25 transition-colors"
+          >
+            <Pencil size={16} strokeWidth={2.25} />
+          </button>
+        </Tooltip>
 
-        <button
-          onClick={async () => {
-            let clipboardText = '';
-            try { clipboardText = await navigator.clipboard.readText(); } catch { /* ignore */ }
-            useAppStore.getState().openPasteDrawer({
-              content: clipboardText,
-              targetTerminalId: terminalId,
-            });
-          }}
-          className="p-1.5 rounded-md hover:bg-white/[0.08] text-text-tertiary hover:text-accent-primary transition-colors"
-          title="Paste as file (Ctrl+Shift+V)"
-        >
-          <ClipboardPaste size={16} strokeWidth={2} />
-        </button>
+        <Tooltip label="Paste as file" shortcut="Ctrl+Shift+V" side="top">
+          <button
+            onClick={async () => {
+              let clipboardText = '';
+              try { clipboardText = await navigator.clipboard.readText(); } catch { /* ignore */ }
+              useAppStore.getState().openPasteDrawer({
+                content: clipboardText,
+                targetTerminalId: terminalId,
+              });
+            }}
+            className="p-1.5 rounded-md hover:bg-white/[0.08] text-text-tertiary hover:text-accent-primary transition-colors"
+          >
+            <ClipboardPaste size={16} strokeWidth={2} />
+          </button>
+        </Tooltip>
 
-        <button
-          onClick={handleCopyOutput}
-          className="p-1.5 rounded-md hover:bg-white/[0.08] text-text-tertiary hover:text-text-secondary transition-colors"
-          title="Copy last output"
-        >
-          {copied ? <Check size={16} strokeWidth={2} className="text-success" /> : <ClipboardCopy size={16} strokeWidth={2} />}
-        </button>
+        <Tooltip label="Copy last output" side="top">
+          <button
+            onClick={handleCopyOutput}
+            className="p-1.5 rounded-md hover:bg-white/[0.08] text-text-tertiary hover:text-text-secondary transition-colors"
+          >
+            {copied ? <Check size={16} strokeWidth={2} className="text-success" /> : <ClipboardCopy size={16} strokeWidth={2} />}
+          </button>
+        </Tooltip>
 
-        <button
-          onClick={handleRestart}
-          className="p-1.5 rounded-md hover:bg-white/[0.08] text-text-tertiary hover:text-accent-primary transition-colors"
-          title="Restart terminal"
-        >
-          <RotateCw size={16} strokeWidth={2} />
-        </button>
+        <Tooltip label="Restart terminal" side="top">
+          <button
+            onClick={handleRestart}
+            className="p-1.5 rounded-md hover:bg-white/[0.08] text-text-tertiary hover:text-accent-primary transition-colors"
+          >
+            <RotateCw size={16} strokeWidth={2} />
+          </button>
+        </Tooltip>
       </div>
     </div>
   );

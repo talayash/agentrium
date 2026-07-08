@@ -1,6 +1,7 @@
 import { PanelLeft, FileDiff, Users, Lightbulb, Settings } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useAppStore } from '../store/appStore';
+import { Tooltip } from './ui/Tooltip';
 
 type Side = 'left' | 'right';
 
@@ -17,37 +18,31 @@ function StripeButton({ item, side }: { item: StripeItem; side: Side }) {
   // The active indicator hugs the window edge (IntelliJ "stripe"): left rail →
   // left edge, right rail → right edge. Tooltip opens toward the editor.
   const stripeEdge = side === 'left' ? 'left-0' : 'right-0';
-  const tooltipSide = side === 'left' ? 'left-full ml-1.5' : 'right-full mr-1.5';
   const { Icon } = item;
 
   return (
-    <button
-      onClick={item.onClick}
-      aria-label={`${item.label} (${item.shortcut})`}
-      aria-pressed={item.active}
-      className={`group relative w-full h-9 flex items-center justify-center transition-colors ${
-        item.active ? 'text-accent-primary' : 'text-text-tertiary hover:text-text-primary'
-      }`}
-    >
-      {/* hover / active fill */}
-      <span
-        className={`absolute inset-x-1 inset-y-0.5 rounded transition-colors ${
-          item.active ? 'bg-accent-primary/10' : 'group-hover:bg-white/[0.06]'
+    <Tooltip label={item.label} shortcut={item.shortcut} side={side === 'left' ? 'right' : 'left'}>
+      <button
+        onClick={item.onClick}
+        aria-label={`${item.label} (${item.shortcut})`}
+        aria-pressed={item.active}
+        className={`group relative w-full h-9 flex items-center justify-center transition-colors ${
+          item.active ? 'text-accent-primary' : 'text-text-tertiary hover:text-text-primary'
         }`}
-      />
-      {/* active edge stripe */}
-      {item.active && (
-        <span className={`absolute ${stripeEdge} top-1.5 bottom-1.5 w-0.5 rounded-full bg-accent-primary`} />
-      )}
-      <Icon size={17} strokeWidth={1.75} />
-      {/* styled tooltip (label + shortcut) */}
-      <span
-        className={`pointer-events-none absolute ${tooltipSide} top-1/2 -translate-y-1/2 z-[60] whitespace-nowrap rounded-md bg-elevation-3 ring-1 ring-[var(--ij-divider-soft)] px-2 py-1 text-[11.5px] text-text-primary opacity-0 group-hover:opacity-100 transition-opacity duration-100`}
       >
-        {item.label}
-        <span className="ml-2 text-text-tertiary">{item.shortcut}</span>
-      </span>
-    </button>
+        {/* hover / active fill */}
+        <span
+          className={`absolute inset-x-1 inset-y-0.5 rounded transition-colors ${
+            item.active ? 'bg-accent-primary/10' : 'group-hover:bg-white/[0.06]'
+          }`}
+        />
+        {/* active edge stripe */}
+        {item.active && (
+          <span className={`absolute ${stripeEdge} top-1.5 bottom-1.5 w-0.5 rounded-full bg-accent-primary`} />
+        )}
+        <Icon size={17} strokeWidth={1.75} />
+      </button>
+    </Tooltip>
   );
 }
 

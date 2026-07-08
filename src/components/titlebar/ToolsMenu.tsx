@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Wrench, ChevronDown, FolderOpen, FileText, Clock, Settings, Brain, UserCog, type LucideIcon } from 'lucide-react';
 import { useAppStore } from '../../store/appStore';
+import { Tooltip } from '../ui/Tooltip';
 
 interface ToolItem {
   id: string;
@@ -46,17 +47,18 @@ export function ToolsMenu() {
 
   return (
     <div className="relative no-drag" ref={ref}>
-      <button
-        onClick={() => setOpen(!open)}
-        className={`flex items-center gap-1 h-7 px-2 rounded-[6px] transition-colors ${
-          open ? 'bg-white/[0.08]' : 'hover:bg-white/[0.06]'
-        }`}
-        title="Tools"
-        aria-label="Tools"
-      >
-        <Wrench size={13} strokeWidth={2} className="text-text-secondary" />
-        <ChevronDown size={10} strokeWidth={2} className="text-text-tertiary" />
-      </button>
+      <Tooltip label="Tools" disabled={open}>
+        <button
+          onClick={() => setOpen(!open)}
+          className={`flex items-center gap-1 h-7 px-2 rounded-[6px] transition-colors ${
+            open ? 'bg-white/[0.08]' : 'hover:bg-white/[0.06]'
+          }`}
+          aria-label="Tools"
+        >
+          <Wrench size={13} strokeWidth={2} className="text-text-secondary" />
+          <ChevronDown size={10} strokeWidth={2} className="text-text-tertiary" />
+        </button>
+      </Tooltip>
 
       {open && (
         <div className="absolute right-0 top-full mt-1 z-50 w-[220px] bg-elevation-3 ring-1 ring-white/[0.08] rounded-lg overflow-hidden py-1">

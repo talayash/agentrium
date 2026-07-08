@@ -12,6 +12,7 @@ import {
   Columns,
   LayoutGrid,
 } from 'lucide-react';
+import { Tooltip } from './ui/Tooltip';
 
 const MODEL_COLORS: Record<string, { bg: string; text: string; label: string }> = {
   opus: { bg: 'bg-purple-500/15', text: 'text-purple-400', label: 'Opus' },
@@ -74,10 +75,10 @@ export function StatusBar() {
       {/* Left side */}
       <div className="flex items-center gap-0.5">
         {/* Terminal count */}
+        <Tooltip label="Toggle Sidebar" shortcut="Ctrl+B" side="top">
         <button
           onClick={toggleSidebar}
           className="flex items-center gap-1.5 h-[18px] px-1.5 rounded-[3px] text-text-secondary hover:bg-white/[0.06] hover:text-text-primary transition-colors"
-          title="Toggle sidebar"
         >
           <Terminal size={11} strokeWidth={1.75} />
           <span>
@@ -86,16 +87,16 @@ export function StatusBar() {
               : `${terminalCount} terminal${terminalCount !== 1 ? 's' : ''}`}
           </span>
         </button>
+        </Tooltip>
 
         <span className="text-text-tertiary/50 px-1">·</span>
 
         {/* Active terminal status */}
         {activeTerminal && (
           <div className="flex items-center gap-1.5 h-[18px] px-1.5">
-            <div
-              className={`w-1.5 h-1.5 rounded-full ${STATUS_DOT_COLORS[activeStatus]}`}
-              title={activeStatus}
-            />
+            <Tooltip label={activeStatus} side="top">
+              <div className={`w-1.5 h-1.5 rounded-full ${STATUS_DOT_COLORS[activeStatus]}`} />
+            </Tooltip>
             <span className={`${STATUS_COLORS[activeStatus]} font-medium truncate max-w-[180px]`}>
               {activeTerminal.config.nickname || activeTerminal.config.label}
             </span>
@@ -105,6 +106,7 @@ export function StatusBar() {
         {activeTerminal && <span className="text-text-tertiary/50 px-1">·</span>}
 
         {/* Grid/Split indicator */}
+        <Tooltip label={gridMode ? 'Exit grid mode' : 'Enter grid mode'} side="top">
         <button
           onClick={toggleGridMode}
           className={`flex items-center gap-1 h-[18px] px-1.5 rounded-[3px] transition-colors ${
@@ -112,11 +114,11 @@ export function StatusBar() {
               ? 'text-accent-primary hover:bg-accent-primary/12'
               : 'text-text-tertiary hover:bg-white/[0.06] hover:text-text-secondary'
           }`}
-          title={gridMode ? 'Exit grid mode' : 'Enter grid mode'}
         >
           {gridMode ? <LayoutGrid size={10} strokeWidth={1.75} /> : <Columns size={10} strokeWidth={1.75} />}
           <span>{gridMode ? 'Grid' : 'Tabs'}</span>
         </button>
+        </Tooltip>
       </div>
 
       {/* Right side */}
@@ -134,32 +136,34 @@ export function StatusBar() {
         )}
 
         {/* Notifications toggle */}
-        <button
-          onClick={() => setNotifyOnFinish(!notifyOnFinish)}
-          className={`flex items-center h-[18px] w-[22px] justify-center rounded-[3px] transition-colors hover:bg-white/[0.06] ${
-            notifyOnFinish ? 'text-text-secondary hover:text-text-primary' : 'text-text-tertiary hover:text-text-secondary'
-          }`}
-          title={notifyOnFinish ? 'Notifications on' : 'Notifications off'}
-        >
-          {notifyOnFinish ? <Bell size={11} strokeWidth={1.75} /> : <BellOff size={11} strokeWidth={1.75} />}
-        </button>
+        <Tooltip label={notifyOnFinish ? 'Notifications on' : 'Notifications off'} side="top">
+          <button
+            onClick={() => setNotifyOnFinish(!notifyOnFinish)}
+            className={`flex items-center h-[18px] w-[22px] justify-center rounded-[3px] transition-colors hover:bg-white/[0.06] ${
+              notifyOnFinish ? 'text-text-secondary hover:text-text-primary' : 'text-text-tertiary hover:text-text-secondary'
+            }`}
+          >
+            {notifyOnFinish ? <Bell size={11} strokeWidth={1.75} /> : <BellOff size={11} strokeWidth={1.75} />}
+          </button>
+        </Tooltip>
 
         {/* Claude version */}
         {claudeVersion && (
-          <button
-            onClick={openSettings}
-            className="flex items-center gap-1 h-[18px] px-1.5 rounded-[3px] text-text-tertiary hover:bg-white/[0.06] hover:text-text-secondary transition-colors"
-            title="Open settings"
-          >
-            <ArrowDownCircle size={10} strokeWidth={1.75} />
-            <span>Claude {claudeVersion}</span>
-          </button>
+          <Tooltip label="Open Settings" side="top">
+            <button
+              onClick={openSettings}
+              className="flex items-center gap-1 h-[18px] px-1.5 rounded-[3px] text-text-tertiary hover:bg-white/[0.06] hover:text-text-secondary transition-colors"
+            >
+              <ArrowDownCircle size={10} strokeWidth={1.75} />
+              <span>Claude {claudeVersion}</span>
+            </button>
+          </Tooltip>
         )}
 
         {/* App version */}
-        <span className="text-text-tertiary px-1.5 font-mono" title={`ClaudeTerminal v${appVersion}`}>
-          v{appVersion}
-        </span>
+        <Tooltip label={`ClaudeTerminal v${appVersion}`} side="top">
+          <span className="text-text-tertiary px-1.5 font-mono">v{appVersion}</span>
+        </Tooltip>
       </div>
     </div>
   );

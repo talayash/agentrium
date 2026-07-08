@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { X, ChevronUp, ChevronDown, CaseSensitive } from 'lucide-react';
 import type { SearchAddon } from '@xterm/addon-search';
+import { Tooltip } from './ui/Tooltip';
 
 interface TerminalSearchProps {
   searchAddon: SearchAddon | null;
@@ -104,46 +105,50 @@ export function TerminalSearch({ searchAddon, visible, onClose }: TerminalSearch
       />
 
       {/* Case sensitive toggle */}
-      <button
-        onClick={toggleCaseSensitive}
-        className={`p-1 rounded transition-colors ${
-          caseSensitive
-            ? 'bg-accent-primary/15 text-accent-primary'
-            : 'text-text-tertiary hover:text-text-secondary hover:bg-white/[0.04]'
-        }`}
-        title="Match Case"
-      >
-        <CaseSensitive size={14} />
-      </button>
+      <Tooltip label="Match Case">
+        <button
+          onClick={toggleCaseSensitive}
+          className={`p-1 rounded transition-colors ${
+            caseSensitive
+              ? 'bg-accent-primary/15 text-accent-primary'
+              : 'text-text-tertiary hover:text-text-secondary hover:bg-white/[0.04]'
+          }`}
+        >
+          <CaseSensitive size={14} />
+        </button>
+      </Tooltip>
 
       {/* Previous match */}
-      <button
-        onClick={handlePrev}
-        disabled={!query}
-        className="p-1 rounded text-text-tertiary hover:text-text-secondary hover:bg-white/[0.04] disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
-        title="Previous Match (Shift+Enter)"
-      >
-        <ChevronUp size={14} />
-      </button>
+      <Tooltip label="Previous Match" shortcut="Shift+Enter">
+        <button
+          onClick={handlePrev}
+          disabled={!query}
+          className="p-1 rounded text-text-tertiary hover:text-text-secondary hover:bg-white/[0.04] disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+        >
+          <ChevronUp size={14} />
+        </button>
+      </Tooltip>
 
       {/* Next match */}
-      <button
-        onClick={handleNext}
-        disabled={!query}
-        className="p-1 rounded text-text-tertiary hover:text-text-secondary hover:bg-white/[0.04] disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
-        title="Next Match (Enter)"
-      >
-        <ChevronDown size={14} />
-      </button>
+      <Tooltip label="Next Match" shortcut="Enter">
+        <button
+          onClick={handleNext}
+          disabled={!query}
+          className="p-1 rounded text-text-tertiary hover:text-text-secondary hover:bg-white/[0.04] disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+        >
+          <ChevronDown size={14} />
+        </button>
+      </Tooltip>
 
       {/* Close */}
-      <button
-        onClick={onClose}
-        className="p-1 rounded text-text-tertiary hover:text-text-secondary hover:bg-white/[0.04] transition-colors"
-        title="Close (Escape)"
-      >
-        <X size={14} />
-      </button>
+      <Tooltip label="Close" shortcut="Esc">
+        <button
+          onClick={onClose}
+          className="p-1 rounded text-text-tertiary hover:text-text-secondary hover:bg-white/[0.04] transition-colors"
+        >
+          <X size={14} />
+        </button>
+      </Tooltip>
     </div>
   );
 }

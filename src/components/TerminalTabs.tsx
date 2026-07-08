@@ -19,6 +19,7 @@ import { useTabDrag } from '../hooks/useTabDrag';
 import { getWindowMode } from '../lib/windowMode';
 import { getLastOutputAt } from '../lib/terminalActivity';
 import { StateDot } from './StateDot';
+import { Tooltip } from './ui/Tooltip';
 import type { SessionState } from '../lib/terminalState';
 
 function fileBasename(p: string): string {
@@ -173,14 +174,15 @@ export function TerminalTabs() {
             </span>
           </div>
           <div className="flex items-center gap-1">
+            <Tooltip label="Toggle orientation">
             <button
               onClick={() => setSplitOrientation(splitOrientation === 'horizontal' ? 'vertical' : 'horizontal')}
               className="flex items-center gap-1 h-6 px-2 rounded-[4px] text-[11px] text-text-secondary hover:bg-white/[0.06] hover:text-text-primary transition-colors"
-              title="Toggle orientation"
             >
               <RotateCw size={12} strokeWidth={1.75} />
               {splitOrientation === 'horizontal' ? 'Vertical' : 'Horizontal'}
             </button>
+            </Tooltip>
             <button
               onClick={clearSplit}
               className="flex items-center gap-1 h-6 px-2 rounded-[4px] text-[11px] text-text-secondary hover:bg-white/[0.06] hover:text-text-primary transition-colors"
@@ -308,19 +310,20 @@ export function TerminalTabs() {
                     const label = formatCost(cost);
                     if (!label) return null;
                     return (
-                      <span
-                        className="text-[9px] px-1 rounded font-medium flex-shrink-0 bg-emerald-500/15 text-emerald-400 tabular-nums"
-                        title="Estimated session cost (live)"
-                      >
-                        {label}
-                      </span>
+                      <Tooltip label="Estimated session cost (live)">
+                        <span className="text-[9px] px-1 rounded font-medium flex-shrink-0 bg-emerald-500/15 text-emerald-400 tabular-nums">
+                          {label}
+                        </span>
+                      </Tooltip>
                     );
                   })()}
                   {isWorktree && (
                     <GitBranch size={10} className="text-cyan-400 flex-shrink-0" />
                   )}
                   {loopInfo && (
-                    <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse flex-shrink-0" title={`Loop: ${loopInfo.interval}`} />
+                    <Tooltip label={`Loop: ${loopInfo.interval}`}>
+                      <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse flex-shrink-0" />
+                    </Tooltip>
                   )}
                   <span className="max-w-[120px] truncate">{terminal.nickname || terminal.label}</span>
                   {gitInfoCache.get(terminal.id)?.current_branch && (
@@ -332,48 +335,53 @@ export function TerminalTabs() {
                   )}
                   <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                     {activeTerminalId && terminal.id !== activeTerminalId && (
+                      <Tooltip label="Split with active terminal">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleSplitWith(terminal.id);
+                          }}
+                          className="p-0.5 rounded hover:bg-white/[0.08] text-text-tertiary hover:text-text-secondary transition-colors"
+                        >
+                          <SplitSquareHorizontal size={12} />
+                        </button>
+                      </Tooltip>
+                    )}
+                    <Tooltip label="Duplicate terminal">
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleSplitWith(terminal.id);
+                          handleDuplicate(terminal.id);
                         }}
                         className="p-0.5 rounded hover:bg-white/[0.08] text-text-tertiary hover:text-text-secondary transition-colors"
-                        title="Split with active terminal"
                       >
-                        <SplitSquareHorizontal size={12} />
+                        <Copy size={12} />
                       </button>
-                    )}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDuplicate(terminal.id);
-                      }}
-                      className="p-0.5 rounded hover:bg-white/[0.08] text-text-tertiary hover:text-text-secondary transition-colors"
-                      title="Duplicate terminal"
-                    >
-                      <Copy size={12} />
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleAddToGrid(terminal.id);
-                      }}
-                      className={`p-0.5 rounded hover:bg-white/[0.08] transition-colors ${
-                        gridTerminalIds.includes(terminal.id) ? 'text-accent-primary' : 'text-text-tertiary hover:text-text-secondary'
-                      }`}
-                      title="Add to grid"
-                    >
-                      <Grid3X3 size={12} />
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        closeTerminal(terminal.id);
-                      }}
-                      className="p-0.5 rounded hover:bg-white/[0.08] text-text-tertiary hover:text-text-secondary"
-                    >
-                      <X size={12} />
-                    </button>
+                    </Tooltip>
+                    <Tooltip label="Add to grid">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleAddToGrid(terminal.id);
+                        }}
+                        className={`p-0.5 rounded hover:bg-white/[0.08] transition-colors ${
+                          gridTerminalIds.includes(terminal.id) ? 'text-accent-primary' : 'text-text-tertiary hover:text-text-secondary'
+                        }`}
+                      >
+                        <Grid3X3 size={12} />
+                      </button>
+                    </Tooltip>
+                    <Tooltip label="Close terminal">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          closeTerminal(terminal.id);
+                        }}
+                        className="p-0.5 rounded hover:bg-white/[0.08] text-text-tertiary hover:text-text-secondary"
+                      >
+                        <X size={12} />
+                      </button>
+                    </Tooltip>
                   </div>
                 </div>
               </motion.li>
@@ -393,8 +401,8 @@ export function TerminalTabs() {
                   const isActive = activeFilePath === tab.path;
                   const dirty = tab.content !== tab.original;
                   return (
+                    <Tooltip key={tab.path} label={tab.path}>
                     <button
-                      key={tab.path}
                       onClick={() => focusFile(tab.path)}
                       onAuxClick={(e) => {
                         if (e.button !== 1) return;
@@ -405,7 +413,6 @@ export function TerminalTabs() {
                         }
                         closeFileTab(tab.path);
                       }}
-                      title={tab.path}
                       className={`group relative flex items-center gap-1.5 px-3 h-9 text-[12px] transition-colors flex-shrink-0 ${
                         isActive
                           ? 'bg-elevation-0 text-text-primary'
@@ -435,7 +442,7 @@ export function TerminalTabs() {
                           }
                         }}
                         className="p-0.5 rounded hover:bg-white/[0.08] text-text-tertiary hover:text-text-primary transition-colors flex items-center justify-center"
-                        title={dirty ? 'Unsaved changes' : 'Close'}
+                        aria-label={dirty ? 'Unsaved changes' : 'Close'}
                       >
                         {dirty ? (
                           <span className="w-2 h-2 rounded-full bg-accent-primary" />
@@ -444,6 +451,7 @@ export function TerminalTabs() {
                         )}
                       </span>
                     </button>
+                    </Tooltip>
                   );
                 })}
               </div>
@@ -458,13 +466,14 @@ export function TerminalTabs() {
               <ChevronRight size={14} className="text-text-secondary" />
             </button>
           )}
-          <button
-            onClick={handleNewTab}
-            className="w-7 h-7 ml-0.5 flex items-center justify-center rounded-[4px] hover:bg-white/[0.06] text-text-tertiary hover:text-text-primary transition-colors flex-shrink-0"
-            title="New Terminal"
-          >
-            <Plus size={14} strokeWidth={1.75} />
-          </button>
+          <Tooltip label="New Terminal" shortcut="Ctrl+Shift+N">
+            <button
+              onClick={handleNewTab}
+              className="w-7 h-7 ml-0.5 flex items-center justify-center rounded-[4px] hover:bg-white/[0.06] text-text-tertiary hover:text-text-primary transition-colors flex-shrink-0"
+            >
+              <Plus size={14} strokeWidth={1.75} />
+            </button>
+          </Tooltip>
         </div>
 
         {/* Per-terminal actions: package.json scripts for the active terminal.
@@ -484,18 +493,19 @@ export function TerminalTabs() {
               {gridTerminalIds.length} in grid
             </span>
           )}
-          <button
-            onClick={toggleGridMode}
-            className={`flex items-center gap-1.5 h-7 px-2 rounded-[4px] text-[11.5px] font-medium transition-colors ${
-              gridTerminalIds.length > 0
-                ? 'bg-accent-primary/18 text-accent-primary ring-1 ring-inset ring-accent-primary/30 hover:bg-accent-primary/25'
-                : 'hover:bg-white/[0.06] text-text-secondary hover:text-text-primary'
-            }`}
-            title="Toggle Grid View"
-          >
-            <Grid3X3 size={13} strokeWidth={1.75} />
-            <span className="hidden sm:inline">Grid</span>
-          </button>
+          <Tooltip label="Toggle Grid View">
+            <button
+              onClick={toggleGridMode}
+              className={`flex items-center gap-1.5 h-7 px-2 rounded-[4px] text-[11.5px] font-medium transition-colors ${
+                gridTerminalIds.length > 0
+                  ? 'bg-accent-primary/18 text-accent-primary ring-1 ring-inset ring-accent-primary/30 hover:bg-accent-primary/25'
+                  : 'hover:bg-white/[0.06] text-text-secondary hover:text-text-primary'
+              }`}
+            >
+              <Grid3X3 size={13} strokeWidth={1.75} />
+              <span className="hidden sm:inline">Grid</span>
+            </button>
+          </Tooltip>
         </div>
       </div>
 

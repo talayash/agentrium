@@ -19,8 +19,9 @@ import { useAppStore } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
 import { toast } from '../store/toastStore';
 import { UpdatePill } from './UpdatePill';
-import { RecentTerminalsMenu } from './titlebar/RecentTerminalsMenu';
 import { ToolsMenu } from './titlebar/ToolsMenu';
+import { SessionWidget } from './titlebar/SessionWidget';
+import { Tooltip } from './ui/Tooltip';
 
 const isMac = navigator.platform.toUpperCase().includes('MAC');
 
@@ -158,34 +159,35 @@ export function TitleBar() {
             <button
               onClick={() => appWindow.close()}
               className="w-3 h-3 rounded-full bg-[#ff5f57] hover:brightness-90 transition-all"
-              title="Close"
+              aria-label="Close"
             />
             <button
               onClick={() => appWindow.minimize()}
               className="w-3 h-3 rounded-full bg-[#febc2e] hover:brightness-90 transition-all"
-              title="Minimize"
+              aria-label="Minimize"
             />
             <button
               onClick={() => appWindow.toggleMaximize()}
               className="w-3 h-3 rounded-full bg-[#28c840] hover:brightness-90 transition-all"
-              title="Maximize"
+              aria-label="Maximize"
             />
           </div>
         )}
 
-        <button
-          onClick={toggleSidebar}
-          className="no-drag w-7 h-7 flex items-center justify-center rounded-[6px] transition-colors text-text-secondary hover:bg-white/[0.06] hover:text-text-primary"
-          title="Toggle sidebar (Ctrl+B)"
-        >
-          <img src={appIcon} alt="ClaudeTerminal" className="w-[20px] h-[20px]" />
-        </button>
+        <Tooltip label="Toggle Sidebar" shortcut="Ctrl+B">
+          <button
+            onClick={toggleSidebar}
+            className="no-drag w-7 h-7 flex items-center justify-center rounded-[6px] transition-colors text-text-secondary hover:bg-white/[0.06] hover:text-text-primary"
+          >
+            <img src={appIcon} alt="ClaudeTerminal" className="w-[20px] h-[20px]" />
+          </button>
+        </Tooltip>
 
         {/* Project breadcrumb - IntelliJ main-toolbar project widget */}
+        <Tooltip label={active?.config.working_directory || 'No active terminal'}>
         <button
           onClick={openCommandPalette}
           className="no-drag group flex items-center gap-1.5 h-7 ml-1 pl-2 pr-2 rounded-[6px] hover:bg-white/[0.06] transition-colors max-w-[360px]"
-          title={active?.config.working_directory || 'No active terminal'}
         >
           <span className={`w-1.5 h-1.5 rounded-full ${statusDot} flex-shrink-0`} />
           {breadcrumb.sub && (
@@ -205,18 +207,19 @@ export function TitleBar() {
             className="text-text-tertiary group-hover:text-text-secondary flex-shrink-0"
           />
         </button>
+        </Tooltip>
 
         {/* Branch switcher */}
         {gitInfo?.is_git_repo && gitInfo.current_branch && (
           <>
             <span className="w-px h-4 bg-[var(--ij-divider-soft)] mx-0.5" />
             <div className="relative no-drag" ref={branchMenuRef}>
+              <Tooltip label="Switch branch" disabled={branchMenuOpen}>
               <button
                 onClick={() => (branchMenuOpen ? setBranchMenuOpen(false) : openBranchMenu())}
                 className={`flex items-center gap-1.5 h-7 px-2 rounded-[6px] transition-colors ${
                   branchMenuOpen ? 'bg-white/[0.08]' : 'hover:bg-white/[0.06]'
                 }`}
-                title={`Branch: ${gitInfo.current_branch} - click to switch`}
               >
                 <GitBranch size={12} strokeWidth={1.75} className="text-text-secondary" />
                 <span className="text-text-primary text-[12px] font-mono truncate max-w-[140px]">
@@ -224,6 +227,7 @@ export function TitleBar() {
                 </span>
                 <ChevronDown size={11} strokeWidth={2} className="text-text-tertiary" />
               </button>
+              </Tooltip>
 
               {branchMenuOpen && (
                 <div className="absolute left-0 top-full mt-1 z-50 w-[260px] bg-elevation-3 ring-1 ring-white/[0.08] rounded-lg overflow-hidden">
@@ -286,7 +290,7 @@ export function TitleBar() {
                         }
                       }}
                       className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-accent-primary hover:bg-accent-primary/10 transition-colors"
-                      title="Push commits to remote (Ctrl+Shift+K)"
+                      aria-keyshortcuts="Control+Shift+K"
                     >
                       <Upload size={12} strokeWidth={2} />
                       Push to remote…
@@ -297,6 +301,9 @@ export function TitleBar() {
             </div>
           </>
         )}
+
+        {/* Session widget - IntelliJ run-widget analog */}
+        <SessionWidget />
       </div>
 
       {/* Center spacer + brand (small, right-aligned on the drag zone) */}
@@ -313,14 +320,15 @@ export function TitleBar() {
       <div className="flex items-stretch">
         <div className="flex items-center gap-0.5 pr-2 no-drag">
           <UpdatePill />
-          <RecentTerminalsMenu />
           <ToolsMenu />
 
           <div className="w-px h-4 bg-[var(--ij-divider-soft)] mx-1" />
 
-          <button onClick={openSettings} className={toolBtn(false)} title="Settings (Ctrl+,)">
-            <Settings size={15} strokeWidth={2} />
-          </button>
+          <Tooltip label="Settings" shortcut="Ctrl+,">
+            <button onClick={openSettings} className={toolBtn(false)}>
+              <Settings size={15} strokeWidth={2} />
+            </button>
+          </Tooltip>
         </div>
 
         {!isMac && (
@@ -328,21 +336,21 @@ export function TitleBar() {
             <button
               onClick={() => appWindow.minimize()}
               className="w-[46px] h-9 flex items-center justify-center hover:bg-white/[0.06] text-text-secondary transition-colors"
-              title="Minimize"
+              aria-label="Minimize"
             >
               <Minus size={12} strokeWidth={1.75} />
             </button>
             <button
               onClick={() => appWindow.toggleMaximize()}
               className="w-[46px] h-9 flex items-center justify-center hover:bg-white/[0.06] text-text-secondary transition-colors"
-              title="Maximize"
+              aria-label="Maximize"
             >
               <Square size={11} strokeWidth={1.75} />
             </button>
             <button
               onClick={() => appWindow.close()}
               className="w-[46px] h-9 flex items-center justify-center hover:bg-[#E04545] text-text-secondary hover:text-white transition-colors"
-              title="Close"
+              aria-label="Close"
             >
               <X size={13} strokeWidth={2} />
             </button>

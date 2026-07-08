@@ -5,6 +5,7 @@ import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
 import { toast } from '../store/toastStore';
 import { Button } from './ui/Button';
+import { Tooltip } from './ui/Tooltip';
 import { ChangelistSection, type MergedChange } from './ChangelistSection';
 import type { WorktreeInfo, PushPreview } from '../types/git';
 
@@ -514,11 +515,11 @@ export function FileChangesPanel() {
             Commit
           </span>
           <div className="flex items-center gap-0.5">
+            <Tooltip label="Pull from upstream into the current branch">
             <button
               onClick={handleQuickPull}
               disabled={pullingTop || !activeTerminalId || !result?.is_git_repo}
               className="w-6 h-6 flex items-center justify-center rounded hover:bg-white/[0.06] text-success transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
-              title="Pull from upstream (or origin/<current branch>) into the current branch"
               aria-label="Pull"
             >
               {pullingTop ? (
@@ -527,24 +528,27 @@ export function FileChangesPanel() {
                 <GitPullRequestArrow size={13} strokeWidth={2} />
               )}
             </button>
+            </Tooltip>
+            <Tooltip label="Push commits to remote" shortcut="Ctrl+Shift+K">
             <button
               onClick={() => { if (activePath) useAppStore.getState().openPushModal(activePath); }}
               disabled={!activePath || !result?.is_git_repo}
               className="w-6 h-6 flex items-center justify-center rounded hover:bg-white/[0.06] text-error transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
-              title="Push commits to remote (Ctrl+Shift+K)"
               aria-label="Push"
             >
               <Upload size={13} strokeWidth={2} />
             </button>
+            </Tooltip>
+            <Tooltip label="Refresh">
             <button
               onClick={() => fetchChanges()}
               disabled={loading || !activeTerminalId}
               className="w-6 h-6 flex items-center justify-center rounded hover:bg-white/[0.06] text-accent-primary transition-colors disabled:opacity-40"
-              title="Refresh"
               aria-label="Refresh"
             >
               <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
             </button>
+            </Tooltip>
           </div>
         </div>
         {result?.branch && (
@@ -619,15 +623,16 @@ export function FileChangesPanel() {
                   {repos.length > 0 ? `(${repos.length})` : reposLoading ? '…' : ''}
                 </span>
               </button>
-              <button
-                onClick={() => activeCwd && fetchRepos(activeCwd)}
-                className={`w-5 h-5 flex items-center justify-center rounded-[3px] hover:bg-white/[0.06] text-text-tertiary hover:text-text-secondary transition-colors ${
-                  reposLoading ? 'animate-spin' : ''
-                }`}
-                title="Rescan"
-              >
-                <RefreshCw size={11} strokeWidth={1.75} />
-              </button>
+              <Tooltip label="Rescan">
+                <button
+                  onClick={() => activeCwd && fetchRepos(activeCwd)}
+                  className={`w-5 h-5 flex items-center justify-center rounded-[3px] hover:bg-white/[0.06] text-text-tertiary hover:text-text-secondary transition-colors ${
+                    reposLoading ? 'animate-spin' : ''
+                  }`}
+                >
+                  <RefreshCw size={11} strokeWidth={1.75} />
+                </button>
+              </Tooltip>
             </div>
             {reposExpanded && (
               <div className="px-2 pb-2 space-y-0.5 flex-1 min-h-0 overflow-y-auto">
@@ -791,34 +796,37 @@ export function FileChangesPanel() {
                       </div>
                     </div>
                     <div className="flex items-center gap-0.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button
-                        disabled={busy}
-                        onClick={() => runStashOp('git_stash_apply', s.reference, 'Apply')}
-                        className="p-1 rounded hover:bg-white/[0.08] text-text-tertiary hover:text-text-primary transition-colors disabled:opacity-40"
-                        title="Apply (keep stash)"
-                      >
-                        {isApplying ? <Loader2 size={11} className="animate-spin" /> : <Download size={11} />}
-                      </button>
-                      <button
-                        disabled={busy}
-                        onClick={() => runStashOp('git_stash_pop', s.reference, 'Pop')}
-                        className="p-1 rounded hover:bg-white/[0.08] text-text-tertiary hover:text-accent-primary transition-colors disabled:opacity-40"
-                        title="Pop (apply &amp; drop)"
-                      >
-                        {isPopping ? <Loader2 size={11} className="animate-spin" /> : <Package size={11} />}
-                      </button>
-                      <button
-                        disabled={busy}
-                        onClick={() => {
-                          if (confirm(`Drop ${s.reference}? This cannot be undone.`)) {
-                            runStashOp('git_stash_drop', s.reference, 'Drop');
-                          }
-                        }}
-                        className="p-1 rounded hover:bg-white/[0.08] text-text-tertiary hover:text-error transition-colors disabled:opacity-40"
-                        title="Drop"
-                      >
-                        {isDropping ? <Loader2 size={11} className="animate-spin" /> : <Trash2 size={11} />}
-                      </button>
+                      <Tooltip label="Apply (keep stash)">
+                        <button
+                          disabled={busy}
+                          onClick={() => runStashOp('git_stash_apply', s.reference, 'Apply')}
+                          className="p-1 rounded hover:bg-white/[0.08] text-text-tertiary hover:text-text-primary transition-colors disabled:opacity-40"
+                        >
+                          {isApplying ? <Loader2 size={11} className="animate-spin" /> : <Download size={11} />}
+                        </button>
+                      </Tooltip>
+                      <Tooltip label="Pop (apply & drop)">
+                        <button
+                          disabled={busy}
+                          onClick={() => runStashOp('git_stash_pop', s.reference, 'Pop')}
+                          className="p-1 rounded hover:bg-white/[0.08] text-text-tertiary hover:text-accent-primary transition-colors disabled:opacity-40"
+                        >
+                          {isPopping ? <Loader2 size={11} className="animate-spin" /> : <Package size={11} />}
+                        </button>
+                      </Tooltip>
+                      <Tooltip label="Drop">
+                        <button
+                          disabled={busy}
+                          onClick={() => {
+                            if (confirm(`Drop ${s.reference}? This cannot be undone.`)) {
+                              runStashOp('git_stash_drop', s.reference, 'Drop');
+                            }
+                          }}
+                          className="p-1 rounded hover:bg-white/[0.08] text-text-tertiary hover:text-error transition-colors disabled:opacity-40"
+                        >
+                          {isDropping ? <Loader2 size={11} className="animate-spin" /> : <Trash2 size={11} />}
+                        </button>
+                      </Tooltip>
                     </div>
                   </div>
                 );
@@ -875,14 +883,15 @@ export function FileChangesPanel() {
             </button>
             <span className="flex-1" />
             <div className="relative" ref={commitMenuRef}>
-              <button
-                onClick={() => setCommitMenuOpen((v) => !v)}
-                className="w-6 h-6 flex items-center justify-center rounded hover:bg-white/[0.06] text-text-secondary transition-colors"
-                title="More actions"
-                aria-label="More commit actions"
-              >
-                <MoreVertical size={13} />
-              </button>
+              <Tooltip label="More actions" disabled={commitMenuOpen}>
+                <button
+                  onClick={() => setCommitMenuOpen((v) => !v)}
+                  className="w-6 h-6 flex items-center justify-center rounded hover:bg-white/[0.06] text-text-secondary transition-colors"
+                  aria-label="More commit actions"
+                >
+                  <MoreVertical size={13} />
+                </button>
+              </Tooltip>
               {commitMenuOpen && (
                 <div className="absolute right-0 bottom-full mb-1 z-50 w-[170px] bg-elevation-3 ring-1 ring-white/[0.08] rounded-lg overflow-hidden py-1">
                   <button
@@ -1220,18 +1229,19 @@ function RepoRow({ repo }: { repo: ScannedGitRepo }) {
           )}
         </button>
 
-        <button
-          type="button"
-          onClick={togglePin}
-          className={`flex-shrink-0 w-6 h-6 mt-0.5 flex items-center justify-center rounded-[3px] transition-colors ${
-            isPinned
-              ? 'text-accent-primary bg-accent-primary/15 hover:bg-accent-primary/25'
-              : 'text-text-tertiary opacity-0 group-hover:opacity-100 hover:bg-white/[0.08] hover:text-text-secondary'
-          }`}
-          title={isPinned ? 'Unpin - use active terminal repo' : 'Pin as commit target'}
-        >
-          {isPinned ? <Pin size={11} strokeWidth={2} /> : <Pin size={11} strokeWidth={1.75} />}
-        </button>
+        <Tooltip label={isPinned ? 'Unpin - use active terminal repo' : 'Pin as commit target'}>
+          <button
+            type="button"
+            onClick={togglePin}
+            className={`flex-shrink-0 w-6 h-6 mt-0.5 flex items-center justify-center rounded-[3px] transition-colors ${
+              isPinned
+                ? 'text-accent-primary bg-accent-primary/15 hover:bg-accent-primary/25'
+                : 'text-text-tertiary opacity-0 group-hover:opacity-100 hover:bg-white/[0.08] hover:text-text-secondary'
+            }`}
+          >
+            {isPinned ? <Pin size={11} strokeWidth={2} /> : <Pin size={11} strokeWidth={1.75} />}
+          </button>
+        </Tooltip>
       </div>
 
       {menuOpen && (
