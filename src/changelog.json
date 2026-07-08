@@ -1,5 +1,14 @@
 [
   {
+    "version": "1.27.0",
+    "date": "2026-07-08",
+    "features": [
+      { "title": "Prompt Editor", "description": "Compose prompts in a full Monaco-based editor and inject them into a terminal's Claude input line - open it with the pencil button in the terminal status bar or Ctrl+Shift+E. Insert (no Enter) or Send (with Enter), continue an in-progress prompt (multi-line prompts are captured too), browse a built-in command guide and your saved prompts, and per-terminal drafts persist while you switch around. Large pastes into the editor can be saved as a file and referenced instead. The shortcut can be toggled off in Settings > Terminal > Behavior." },
+      { "title": "Session widget in the titlebar", "description": "A live session switcher next to the branch name: the active terminal's name with a working/waiting/idle state dot, plus an amber badge counting other sessions that are waiting for your input. Click it to switch terminals (waiting sessions sort first) or create a new one." },
+      { "title": "Styled tooltips everywhere", "description": "The titlebar, tabs, sidebar, status bars, search, and Git panel now show crisp IntelliJ-style tooltips with keyboard-shortcut hints instead of the slow native browser ones - and they appear instantly as you move between neighboring buttons." }
+    ]
+  },
+  {
     "version": "1.26.3",
     "date": "2026-06-21",
     "features": [
