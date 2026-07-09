@@ -1,5 +1,13 @@
 [
   {
+    "version": "1.27.1",
+    "date": "2026-07-09",
+    "features": [
+      { "title": "Each terminal keeps its own conversation after restore", "description": "Fixes the bug where text pasted or typed in one terminal appeared in every other terminal tab. When several terminals ran in the same project folder, restoring a session attached them all to the same Claude conversation - one tab's input then showed up in all of them. Restored terminals now always reattach to their own session: a conversation is never resumed twice, and duplicates restart fresh with their previous output still painted above." },
+      { "title": "Dedicated to Amit Aflalo", "description": "This release is dedicated to Amit Aflalo. ❤️" }
+    ]
+  },
+  {
     "version": "1.27.0",
     "date": "2026-07-08",
     "features": [
