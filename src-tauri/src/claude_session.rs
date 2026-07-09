@@ -68,13 +68,29 @@ pub fn snapshot_session_files() -> HashSet<PathBuf> {
 /// `snapshot`. Returns the UUID stem of the newest such file. Returns `None`
 /// if the project dir doesn't exist yet, has no new files, or its entries
 /// can't be read.
+///
+/// `exclude` holds session ids already claimed by OTHER live terminals in the
+/// same app. Several terminals in one cwd all see each other's session files
+/// as "new" relative to their own snapshots; without the exclusion they all
+/// converge on the same (most recently active) session, and the next restore
+/// then attaches every terminal to ONE shared Claude conversation.
 pub fn find_new_session_for_cwd(
     snapshot: &HashSet<PathBuf>,
     cwd: &str,
+    exclude: &HashSet<String>,
 ) -> Option<String> {
     let root = claude_projects_dir()?;
     let dir = root.join(encode_cwd(cwd));
-    let entries = std::fs::read_dir(&dir).ok()?;
+    find_new_session_in_dir(&dir, snapshot, exclude)
+}
+
+/// Testable core of [`find_new_session_for_cwd`]: scan `dir` directly.
+fn find_new_session_in_dir(
+    dir: &std::path::Path,
+    snapshot: &HashSet<PathBuf>,
+    exclude: &HashSet<String>,
+) -> Option<String> {
+    let entries = std::fs::read_dir(dir).ok()?;
     let mut newest: Option<(String, std::time::SystemTime)> = None;
     for entry in entries.flatten() {
         let path = entry.path();
@@ -85,6 +101,9 @@ pub fn find_new_session_for_cwd(
             continue;
         }
         let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else { continue };
+        if exclude.contains(stem) {
+            continue;
+        }
         let mtime = entry.metadata().and_then(|m| m.modified()).ok();
         if let Some(t) = mtime {
             if newest.as_ref().map(|(_, n)| t > *n).unwrap_or(true) {
@@ -189,5 +208,45 @@ mod tests {
             encode_cwd(r"C:\Dev\AlefBar - Kornish"),
             "C--Dev-AlefBar---Kornish"
         );
+    }
+
+    fn touch(dir: &std::path::Path, name: &str) -> PathBuf {
+        let p = dir.join(name);
+        std::fs::write(&p, "{}").unwrap();
+        p
+    }
+
+    #[test]
+    fn finds_newest_new_session() {
+        let tmp = tempfile::tempdir().unwrap();
+        let old = touch(tmp.path(), "old-session.jsonl");
+        let snapshot: HashSet<PathBuf> = [old].into_iter().collect();
+        touch(tmp.path(), "new-session.jsonl");
+        let found = find_new_session_in_dir(tmp.path(), &snapshot, &HashSet::new());
+        assert_eq!(found.as_deref(), Some("new-session"));
+    }
+
+    #[test]
+    fn skips_sessions_claimed_by_other_terminals() {
+        let tmp = tempfile::tempdir().unwrap();
+        let snapshot = HashSet::new();
+        touch(tmp.path(), "claimed-by-z.jsonl");
+        let exclude: HashSet<String> = ["claimed-by-z".to_string()].into_iter().collect();
+        // The only new file is claimed elsewhere - must NOT bind to it.
+        assert_eq!(find_new_session_in_dir(tmp.path(), &snapshot, &exclude), None);
+        // A second, unclaimed file is fair game even if it's older.
+        touch(tmp.path(), "mine.jsonl");
+        assert_eq!(
+            find_new_session_in_dir(tmp.path(), &snapshot, &exclude).as_deref(),
+            Some("mine")
+        );
+    }
+
+    #[test]
+    fn ignores_files_already_in_snapshot() {
+        let tmp = tempfile::tempdir().unwrap();
+        let pre = touch(tmp.path(), "pre-existing.jsonl");
+        let snapshot: HashSet<PathBuf> = [pre].into_iter().collect();
+        assert_eq!(find_new_session_in_dir(tmp.path(), &snapshot, &HashSet::new()), None);
     }
 }

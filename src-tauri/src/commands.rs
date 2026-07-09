@@ -313,13 +313,21 @@ pub async fn create_terminal(
             eprintln!("[session-resume] spawning '{}' with --resume {}", config.label, id);
         } else if continue_recent {
             eprintln!("[session-resume] spawning '{}' with --continue", config.label);
-            // No detection task: `--continue` means we're attaching to the
-            // newest existing session in this cwd, so any pre-existing .jsonl
-            // would *appear* new to our snapshot. The captured id from the
-            // first user turn on the next save will still be correct for the
-            // restored conversation, so we let the watcher run on the next
-            // spawn rather than try to figure out which file we're attached
-            // to from outside.
+            // `--continue` attaches to the newest existing session in this
+            // cwd. Record that id immediately so the NEXT restore can
+            // `--resume` it precisely instead of falling back to `--continue`
+            // again (a second `--continue` in the same cwd would attach to
+            // whatever session happens to be newest by then - possibly a
+            // different terminal's conversation).
+            let sessions = crate::claude_session::list_sessions_for_cwd(&working_directory);
+            if let Some(newest) = sessions.first() {
+                eprintln!(
+                    "[session-resume] '{}' recorded --continue target session {}",
+                    config.label, newest.id
+                );
+                let mut m = state.terminals.lock().await;
+                m.update_claude_session_id(&config.id, newest.id.clone());
+            }
         } else {
             let manager = state.terminals.clone();
             let detect_id = config.id.clone();
@@ -330,16 +338,36 @@ pub async fn create_terminal(
                 loop {
                     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
                     // Stop watching once the terminal is gone - both saves
-                    // CPU and avoids racing close_terminal.
-                    {
+                    // CPU and avoids racing close_terminal. While we hold the
+                    // lock, also gather what the OTHER live terminals have
+                    // claimed, and whether THIS terminal was recently typed
+                    // in. A Claude session file is created on a user turn, so
+                    // a new .jsonl can only belong to a terminal with recent
+                    // input - without these two guards, every terminal in the
+                    // same cwd converges on the same (newest) session id and
+                    // the next restore attaches them all to ONE conversation.
+                    let claimed_by_others = {
                         let m = manager.lock().await;
-                        if !m.terminals.contains_key(&detect_id) {
+                        let Some(me) = m.terminals.get(&detect_id) else {
                             return;
+                        };
+                        let recently_typed = me
+                            .last_input_at
+                            .map(|t| t.elapsed() < std::time::Duration::from_secs(120))
+                            .unwrap_or(false);
+                        if !recently_typed {
+                            continue;
                         }
-                    }
+                        m.terminals
+                            .iter()
+                            .filter(|(tid, _)| tid.as_str() != detect_id)
+                            .filter_map(|(_, t)| t.config.claude_session_id.clone())
+                            .collect::<std::collections::HashSet<String>>()
+                    };
                     if let Some(session_id) = crate::claude_session::find_new_session_for_cwd(
                         &session_snapshot,
                         &cwd_for_log,
+                        &claimed_by_others,
                     ) {
                         if last_recorded.as_deref() != Some(&session_id) {
                             eprintln!(

@@ -35,6 +35,7 @@ import { DragPreview } from './components/DragPreview';
 import { WebviewWindow, getAllWebviewWindows } from '@tauri-apps/api/webviewWindow';
 import { installTransferReceiver, requestTransfer, restoreDetachedWindow } from './lib/tabTransfer';
 import { keyOf, upsertEntry, removeEntry, getDetachedEntries, currentGeometry } from './lib/windowLayout';
+import { planRestoreModes } from './lib/restorePlan';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import type { TerminalConfig } from './store/terminalStore';
 import { useAppStore } from './store/appStore';
@@ -569,6 +570,13 @@ function App() {
     // can route terminals back into their detached windows below.
     const keyToNewId: Record<string, string> = {};
 
+    // Decide session attachment up-front so no two terminals reattach to the
+    // same Claude conversation (same-cwd terminals often carry the same
+    // captured session id, and `--continue` always picks the single newest
+    // session in a cwd). A duplicate would make everything typed/pasted in
+    // one terminal show up in the others after restore.
+    const restoreModes = planRestoreModes(pendingRestoreConfigs);
+
     for (let i = 0; i < pendingRestoreConfigs.length; i++) {
       const config = pendingRestoreConfigs[i];
       const stableKey = keyOf({
@@ -591,15 +599,16 @@ function App() {
           // Script runner - owned by parent terminal, skip on restore.
           continue;
         } else {
-          // Restore semantics:
-          //   - If we captured a session id last run: `claude --resume <id>` -
-          //     exact attach. Claude redraws the conversation; we suppress the
-          //     painted log so the transcript isn't doubled.
-          //   - Otherwise (old save, or detection never fired): fall back to
-          //     `claude --continue` - attaches to the most recent session in
-          //     this cwd. Same suppression rule.
-          const sessionId = config.claude_session_id ?? undefined;
-          const willResume = sessionId !== undefined;
+          // Restore semantics (deduped by planRestoreModes):
+          //   - resume:   `claude --resume <id>` - exact attach. Claude
+          //     redraws the conversation; we suppress the painted log so the
+          //     transcript isn't doubled.
+          //   - continue: `claude --continue` - newest session in this cwd
+          //     (at most ONE terminal per cwd). Same suppression rule.
+          //   - fresh:    plain `claude` + painted log. Used for duplicate
+          //     session claims - visual context stays, but the terminal gets
+          //     its own new conversation instead of hijacking another tab's.
+          const mode = restoreModes[i];
           const newId = await createTerminal(
             config.label,
             config.working_directory,
@@ -607,9 +616,9 @@ function App() {
             config.env_vars,
             config.color_tag ?? undefined,
             config.nickname ?? undefined,
-            willResume ? undefined : (logs[i] ?? undefined),
-            sessionId,
-            !willResume,  // continue_recent: fall back to --continue
+            mode.kind === 'fresh' ? (logs[i] ?? undefined) : undefined,
+            mode.kind === 'resume' ? mode.sessionId : undefined,
+            mode.kind === 'continue',
           );
           keyToNewId[stableKey] = newId;
         }

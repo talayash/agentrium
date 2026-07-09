@@ -43,6 +43,11 @@ pub struct Terminal {
     pub writer: Box<dyn Write + Send>,
     /// Handle to the reader thread for cleanup on close
     pub reader_handle: Option<JoinHandle<()>>,
+    /// When this terminal last received user input (any `write()`). The
+    /// session-detection watcher only binds a newly-appeared session file to a
+    /// terminal that was recently typed in - a Claude session file is created
+    /// on a user turn, so an idle terminal can't own a brand-new file.
+    pub last_input_at: Option<std::time::Instant>,
 }
 
 pub struct TerminalManager {
@@ -322,6 +327,7 @@ impl TerminalManager {
                 pty_pair,
                 writer,
                 reader_handle: Some(reader_handle),
+                last_input_at: None,
             },
         );
 
@@ -444,6 +450,7 @@ impl TerminalManager {
                 pty_pair,
                 writer,
                 reader_handle: Some(reader_handle),
+                last_input_at: None,
             },
         );
 
@@ -553,6 +560,7 @@ impl TerminalManager {
                 pty_pair,
                 writer,
                 reader_handle: Some(reader_handle),
+                last_input_at: None,
             },
         );
 
@@ -568,6 +576,7 @@ impl TerminalManager {
         let Some(terminal) = self.terminals.get_mut(id) else {
             return Ok(());
         };
+        terminal.last_input_at = Some(std::time::Instant::now());
         terminal
             .writer
             .write_all(data)
