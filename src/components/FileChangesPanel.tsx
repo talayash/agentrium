@@ -304,6 +304,7 @@ export function FileChangesPanel() {
   const handleQuickPull = useCallback(async () => {
     if (!activePath || !result?.is_git_repo) return;
     setPullingTop(true);
+    useAppStore.getState().setGlobalBusy('Pulling…');
     try {
       const upstream = await invoke<string | null>('get_upstream_branch', { path: activePath });
       let remote: string | null = null;
@@ -346,6 +347,7 @@ export function FileChangesPanel() {
       toast.error('Pull failed', typeof err === 'string' ? err : 'Unknown error');
     } finally {
       setPullingTop(false);
+      useAppStore.getState().setGlobalBusy(null);
     }
   }, [activePath, result?.is_git_repo, result?.branch, activeTerminalId, activeCwd, triggerChangesRefreshAction]);
 
@@ -1068,6 +1070,7 @@ function RepoRow({ repo }: { repo: ScannedGitRepo }) {
     const branch = pullRef.slice(slashIdx + 1);
 
     setPulling(true);
+    useAppStore.getState().setGlobalBusy('Pulling…');
     try {
       const msg = await pullWithStashConfirm({
         path: repo.path,
@@ -1087,6 +1090,7 @@ function RepoRow({ repo }: { repo: ScannedGitRepo }) {
       toast.error('Pull failed', typeof err === 'string' ? err : 'Unknown error');
     } finally {
       setPulling(false);
+      useAppStore.getState().setGlobalBusy(null);
     }
   }, [repo.path, pullRef, pullStrategy, activeTerminalId, activeCwd, fetchGitInfo, triggerChangesRefreshAction]);
 
