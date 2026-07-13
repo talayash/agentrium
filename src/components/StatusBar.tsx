@@ -44,6 +44,8 @@ export function StatusBar() {
     setNotifyOnFinish,
     openSettings,
   } = useAppStore();
+  const unreadCount = useAppStore((s) => s.unreadNotificationCount);
+  const clearUnread = useAppStore((s) => s.clearUnreadNotifications);
 
   const [appVersion, setAppVersion] = useState('');
   const [claudeVersion, setClaudeVersion] = useState<string | null>(null);
@@ -136,14 +138,30 @@ export function StatusBar() {
         )}
 
         {/* Notifications toggle */}
-        <Tooltip label={notifyOnFinish ? 'Notifications on' : 'Notifications off'} side="top">
+        <Tooltip
+          label={
+            unreadCount > 0
+              ? `${unreadCount} unread notification${unreadCount === 1 ? '' : 's'}`
+              : notifyOnFinish ? 'Notifications on' : 'Notifications off'
+          }
+          side="top"
+        >
           <button
-            onClick={() => setNotifyOnFinish(!notifyOnFinish)}
-            className={`flex items-center h-[18px] w-[22px] justify-center rounded-[3px] transition-colors hover:bg-white/[0.06] ${
+            onClick={() => {
+              setNotifyOnFinish(!notifyOnFinish);
+              if (unreadCount > 0) clearUnread();
+            }}
+            className={`relative flex items-center h-[18px] w-[22px] justify-center rounded-[3px] transition-colors hover:bg-white/[0.06] ${
               notifyOnFinish ? 'text-text-secondary hover:text-text-primary' : 'text-text-tertiary hover:text-text-secondary'
             }`}
           >
             {notifyOnFinish ? <Bell size={11} strokeWidth={1.75} /> : <BellOff size={11} strokeWidth={1.75} />}
+            {unreadCount > 0 && (
+              <span
+                aria-hidden
+                className="absolute top-[1px] right-[2px] w-[6px] h-[6px] rounded-full bg-accent-primary"
+              />
+            )}
           </button>
         </Tooltip>
 
