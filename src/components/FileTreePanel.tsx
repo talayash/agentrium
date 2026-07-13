@@ -19,6 +19,8 @@ import { useAppStore } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
 import { getFileIconUrl, getFolderIconUrl } from '../utils/fileIcons';
 import { toast } from '../store/toastStore';
+import { PanelHeader } from './ui/PanelHeader';
+import { ListRow } from './ui/ListRow';
 
 const isMac = navigator.platform.toUpperCase().includes('MAC');
 const REVEAL_LABEL = isMac ? 'Reveal in Finder' : 'Show in File Explorer';
@@ -108,6 +110,7 @@ export function FileTreePanel() {
   const defaultClaudeArgs = useAppStore((s) => s.defaultClaudeArgs);
   const setPinnedRepoPath = useAppStore((s) => s.setPinnedRepoPath);
   const openFileTab = useAppStore((s) => s.openFileTab);
+  const activeFilePath = useAppStore((s) => s.activeFilePath);
   const changesRefreshTrigger = useAppStore((s) => s.changesRefreshTrigger);
   const triggerChangesRefresh = useAppStore((s) => s.triggerChangesRefresh);
   const collapsed = useAppStore((s) => s.explorerCollapsed);
@@ -556,31 +559,25 @@ export function FileTreePanel() {
 
   return (
     <div className="flex flex-col h-full min-h-0 overflow-hidden">
-      {/* Section header */}
-      <div className="flex items-center justify-between h-[26px] px-3 flex-shrink-0">
-        <button
-          onClick={toggleCollapsed}
-          className="flex items-center gap-1.5 text-text-secondary hover:text-text-primary transition-colors"
-          title={collapsed ? 'Expand Explorer' : 'Collapse Explorer'}
-        >
-          {collapsed ? (
-            <ChevronRight size={11} strokeWidth={2} />
-          ) : (
-            <ChevronDown size={11} strokeWidth={2} />
-          )}
-          <span className="text-[11px] font-semibold uppercase tracking-[0.06em]">Explorer</span>
-        </button>
-        {!collapsed && (
-          <button
-            onClick={refreshRoot}
-            disabled={rootLoading}
-            className="w-5 h-5 flex items-center justify-center rounded-[4px] hover:bg-white/[0.06] text-text-tertiary hover:text-text-secondary transition-colors disabled:opacity-40"
-            title="Refresh"
-          >
-            <RefreshCw size={11} className={rootLoading ? 'animate-spin' : ''} strokeWidth={1.75} />
-          </button>
-        )}
-      </div>
+      <PanelHeader
+        title="Explorer"
+        collapsible
+        collapsed={collapsed}
+        onToggleCollapsed={toggleCollapsed}
+        progress={{ active: !collapsed && rootLoading }}
+        actions={
+          !collapsed ? (
+            <button
+              onClick={refreshRoot}
+              disabled={rootLoading}
+              className="w-5 h-5 flex items-center justify-center rounded-[4px] hover:bg-white/[0.06] text-text-tertiary hover:text-text-secondary transition-colors disabled:opacity-40"
+              title="Refresh"
+            >
+              <RefreshCw size={11} className={rootLoading ? 'animate-spin' : ''} strokeWidth={1.75} />
+            </button>
+          ) : undefined
+        }
+      />
 
       {/* Root path label */}
       {!collapsed && rootPath && (
@@ -622,6 +619,7 @@ export function FileTreePanel() {
             renamingPath={renamingPath}
             onRenameCommit={doRenameCommit}
             onRenameCancel={() => setRenamingPath(null)}
+            activeFilePath={activeFilePath}
           />
         ))}
       </div>}
@@ -726,6 +724,7 @@ interface TreeRowProps {
   renamingPath: string | null;
   onRenameCommit: (oldPath: string, newName: string) => void;
   onRenameCancel: () => void;
+  activeFilePath: string | null;
 }
 
 function TreeRow({
@@ -738,14 +737,13 @@ function TreeRow({
   renamingPath,
   onRenameCommit,
   onRenameCancel,
+  activeFilePath,
 }: TreeRowProps) {
   const { entry } = node;
   const indent = 8 + depth * 12;
   const isRenaming = renamingPath === entry.path;
   const isCut = cutPaths !== null && cutPaths.includes(entry.path);
-  const rowClass = `group flex items-center gap-1 h-[22px] px-1 rounded-[3px] cursor-pointer hover:bg-white/[0.045] transition-colors ${
-    isCut ? 'opacity-50' : ''
-  }`;
+  const cutClass = isCut ? 'opacity-50' : '';
 
   const renameInput = isRenaming && (
     <RenameInput
@@ -758,30 +756,36 @@ function TreeRow({
   if (entry.is_dir) {
     return (
       <>
-        <div
-          className={rowClass}
-          style={{ paddingLeft: indent }}
+        <ListRow
+          as="div"
+          variant="compact"
           onClick={() => { if (!isRenaming) onToggle(node); }}
           onContextMenu={(e) => onContextMenu(e, entry.path, true)}
+          style={{ paddingLeft: indent }}
+          className={cutClass}
+          leading={
+            <>
+              {node.expanded ? (
+                <ChevronDown size={11} className="text-text-tertiary shrink-0" strokeWidth={2} />
+              ) : (
+                <ChevronRight size={11} className="text-text-tertiary shrink-0" strokeWidth={2} />
+              )}
+              <img
+                src={getFolderIconUrl(entry.name, node.expanded)}
+                alt=""
+                aria-hidden="true"
+                draggable={false}
+                className="w-[14px] h-[14px] shrink-0 select-none"
+              />
+            </>
+          }
         >
-          {node.expanded ? (
-            <ChevronDown size={11} className="text-text-tertiary shrink-0" strokeWidth={2} />
-          ) : (
-            <ChevronRight size={11} className="text-text-tertiary shrink-0" strokeWidth={2} />
-          )}
-          <img
-            src={getFolderIconUrl(entry.name, node.expanded)}
-            alt=""
-            aria-hidden="true"
-            draggable={false}
-            className="w-[14px] h-[14px] shrink-0 select-none"
-          />
           {isRenaming ? renameInput : (
             <span className="text-[12px] text-text-primary truncate" title={entry.name}>
               {entry.name}
             </span>
           )}
-        </div>
+        </ListRow>
         {node.expanded && node.loading && (
           <div className="text-text-tertiary text-[11px]" style={{ paddingLeft: indent + 24 }}>
             Loading…
@@ -804,6 +808,7 @@ function TreeRow({
             renamingPath={renamingPath}
             onRenameCommit={onRenameCommit}
             onRenameCancel={onRenameCancel}
+            activeFilePath={activeFilePath}
           />
         ))}
       </>
@@ -811,25 +816,33 @@ function TreeRow({
   }
 
   // File row
+  const isActive = activeFilePath === entry.path;
   return (
-    <div
-      className={rowClass}
-      style={{ paddingLeft: indent + 12 /* align with folder names */ }}
+    <ListRow
+      as="div"
+      variant="compact"
+      selected={isActive}
       onClick={() => { if (!isRenaming) onOpenFile(entry.path); }}
       onContextMenu={(e) => onContextMenu(e, entry.path, false)}
       title={entry.path}
+      style={{ paddingLeft: indent + 12 }}
+      className={cutClass}
+      leading={
+        <img
+          src={getFileIconUrl(entry.name)}
+          alt=""
+          aria-hidden="true"
+          draggable={false}
+          className="w-[14px] h-[14px] shrink-0 select-none"
+        />
+      }
     >
-      <img
-        src={getFileIconUrl(entry.name)}
-        alt=""
-        aria-hidden="true"
-        draggable={false}
-        className="w-[14px] h-[14px] shrink-0 select-none"
-      />
       {isRenaming ? renameInput : (
-        <span className="text-[12px] text-text-secondary truncate">{entry.name}</span>
+        <span className={`text-[12px] truncate ${isActive ? 'text-text-primary' : 'text-text-secondary'}`}>
+          {entry.name}
+        </span>
       )}
-    </div>
+    </ListRow>
   );
 }
 

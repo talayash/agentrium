@@ -1,5 +1,5 @@
 import { forwardRef } from 'react';
-import type { ReactNode, MouseEvent, KeyboardEvent } from 'react';
+import type { ReactNode, MouseEvent, KeyboardEvent, CSSProperties } from 'react';
 
 export type ListRowVariant = 'default' | 'compact';
 
@@ -21,6 +21,8 @@ interface ListRowProps {
   title?: string;
   ariaLabel?: string;
   className?: string;
+  /** Inline style overrides - used e.g. for tree indent (`paddingLeft`). */
+  style?: CSSProperties;
   children: ReactNode;
 }
 
@@ -46,6 +48,7 @@ export const ListRow = forwardRef<HTMLElement, ListRowProps>(function ListRow(
     title,
     ariaLabel,
     className = '',
+    style,
     children,
   },
   ref,
@@ -83,6 +86,7 @@ export const ListRow = forwardRef<HTMLElement, ListRowProps>(function ListRow(
         onClick={disabled ? undefined : onClick}
         onContextMenu={onContextMenu}
         onKeyDown={onKeyDown}
+        style={style}
         className={`${base} ${state} ${disabledCls} ${className}`}
       >
         {content}
@@ -101,6 +105,7 @@ export const ListRow = forwardRef<HTMLElement, ListRowProps>(function ListRow(
       onClick={onClick}
       onContextMenu={onContextMenu}
       onKeyDown={onKeyDown}
+      style={style}
       className={`${base} ${state} ${disabledCls} ${className}`}
     >
       {content}
