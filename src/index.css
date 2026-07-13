@@ -221,6 +221,13 @@
   100% { background-position:  240px 0; }
 }
 
+/* ProgressStripe indeterminate slide (Phase-2 UI polish). Neutralised by the
+   global reduce-motion cascade above. */
+@keyframes ct-stripe-slide {
+  0%   { left: -30%; }
+  100% { left: 100%; }
+}
+
 /* Tab drag "pickup": the floating ghost fades + settles in when grabbed.
    Only opacity is animated here — position/rotate/scale are written live as an
    inline transform, so they must not be touched by this keyframe. */
