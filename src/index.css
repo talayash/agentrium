@@ -228,6 +228,31 @@
   100% { left: 100%; }
 }
 
+/* Tab bottom-underline "just finished" flash (Phase-2 UI polish). Runs once
+   for ~800 ms when a terminal transitions from busy → idle. Reduce-motion
+   collapses to a static color change via the global cascade. */
+@keyframes ct-tab-finish {
+  0%   { background-color: #4ADE80; }               /* --success */
+  100% { background-color: var(--accent-primary); }
+}
+.ct-tab-finish-underline {
+  animation: ct-tab-finish 800ms cubic-bezier(0.25, 0.1, 0.25, 1) forwards;
+}
+/* For inactive tabs (no persistent underline), inject the flash via ::after. */
+.ct-tab-finish-inactive {
+  position: relative;
+}
+.ct-tab-finish-inactive::after {
+  content: '';
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 0;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  animation: ct-tab-finish 800ms cubic-bezier(0.25, 0.1, 0.25, 1) forwards;
+}
+
 /* Tab drag "pickup": the floating ghost fades + settles in when grabbed.
    Only opacity is animated here — position/rotate/scale are written live as an
    inline transform, so they must not be touched by this keyframe. */
