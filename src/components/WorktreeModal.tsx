@@ -7,6 +7,8 @@ import { useTerminalStore } from '../store/terminalStore';
 import type { WorktreeInfo } from '../types/git';
 import { Modal } from './ui/Modal';
 import { Button } from './ui/Button';
+import { ListRow } from './ui/ListRow';
+import { EmptyState } from './ui/EmptyState';
 
 export function WorktreeModal() {
   const { closeWorktreeModal, worktreeModalRepoPath, defaultClaudeArgs } = useAppStore();
@@ -183,35 +185,41 @@ export function WorktreeModal() {
                 </div>
               ) : error ? (
                 <p className="text-error text-[12px] text-center py-4">{error}</p>
+              ) : worktrees.length === 0 ? (
+                <EmptyState
+                  icon={<GitBranch size={20} strokeWidth={1.75} />}
+                  title="No worktrees"
+                  description="Create a worktree to work on multiple branches in parallel."
+                  compact
+                />
               ) : (
                 worktrees.map((wt) => (
-                  <div
+                  <ListRow
                     key={wt.path}
+                    selected={selectedPath === wt.path}
                     onClick={() => {
                       setSelectedPath(wt.path);
                       setConfirmRemove(false);
                       setRemoveError(null);
                     }}
-                    className={`p-2 rounded-md cursor-pointer transition-colors ${
-                      selectedPath === wt.path
-                        ? 'bg-accent-primary/10 ring-1 ring-accent-primary/30'
-                        : 'hover:bg-white/[0.04]'
-                    }`}
-                  >
-                    <div className="flex items-center gap-1.5">
-                      {wt.is_main ? (
+                    className="items-start py-1.5"
+                    leading={
+                      wt.is_main ? (
                         <GitBranch size={13} className="text-accent-primary flex-shrink-0" />
                       ) : (
                         <GitFork size={13} className="text-purple-400 flex-shrink-0" />
-                      )}
-                      <p className="text-text-primary text-[12px] font-mono font-medium truncate">
+                      )
+                    }
+                  >
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-text-primary text-[12px] font-mono font-medium truncate">
                         {wt.branch || '(detached)'}
-                      </p>
+                      </span>
+                      {wt.is_main && (
+                        <span className="text-text-tertiary text-[11px]">main worktree</span>
+                      )}
                     </div>
-                    {wt.is_main && (
-                      <p className="text-text-tertiary text-[11px] ml-5">main worktree</p>
-                    )}
-                  </div>
+                  </ListRow>
                 ))
               )}
             </div>
