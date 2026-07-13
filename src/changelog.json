@@ -1,5 +1,17 @@
 [
   {
+    "version": "1.28.0",
+    "date": "2026-07-13",
+    "features": [
+      { "title": "Accent stripe on selected list rows", "description": "Every selectable list in the app - Sessions, Explorer, branches, session widget, Worktrees, Snippets, Profiles, History - now marks the selected row with a 2 px accent-blue stripe on the left plus a subtle tint. The IntelliJ tool-window selection you'd expect." },
+      { "title": "Consistent tool-window headers", "description": "Sessions and Explorer share a single 26 px header primitive - uppercase muted title, count badge, action buttons on the right, and an optional thin progress bar under the header that lights up while the panel is loading." },
+      { "title": "Considered empty states", "description": "Empty lists in Sessions, Worktrees, Snippets, Profiles, and History now show a centered stack (muted icon + short title + one-line description) instead of a lonely paragraph." },
+      { "title": "Status-bar notification dot", "description": "When a terminal finishes while the app is in the background, the status-bar bell shows a small accent dot. Click the bell to clear it." },
+      { "title": "Global progress stripe", "description": "A 2 px accent stripe appears above the status bar while a language server is starting or a git pull is running, so you know work is in flight even when the panel that started it is out of view." },
+      { "title": "Tab flashes green when a session finishes", "description": "The active terminal's tab briefly flashes green on the busy → idle transition, then fades back to accent blue. Inactive tabs get the same signal on their underline so you can catch it from across the strip." }
+    ]
+  },
+  {
     "version": "1.27.1",
     "date": "2026-07-09",
     "features": [
