@@ -19,8 +19,12 @@ no color-scheme or font changes, no layout re-work.
 ## Part 1 — New primitives
 
 Four new components in `src/components/ui/`. Each is small, prop-driven, and
-inherits the existing focus-ring cascade from `index.css`. Each ships with a
-`*.test.tsx` (rendered smoke test + one behavior test where behavior exists).
+inherits the existing focus-ring cascade from `index.css`. Where a primitive
+has non-trivial branching logic (currently only `ProgressStripe`), that logic
+is extracted to `src/lib/<name>.ts` and unit-tested there, matching the
+existing codebase style (see `tooltipPosition.test.ts`). The rest is visual
+polish — verified in the running dev app, not in a rendered-component test
+(this repo does not use `@testing-library/react`).
 
 ### 1.1 `ListRow`
 
@@ -218,10 +222,12 @@ New files:
 
 ```
 src/components/ui/
-  ListRow.tsx         + ListRow.test.tsx
-  PanelHeader.tsx     + PanelHeader.test.tsx
-  ProgressStripe.tsx  + ProgressStripe.test.tsx
-  EmptyState.tsx      + EmptyState.test.tsx
+  ListRow.tsx
+  PanelHeader.tsx
+  ProgressStripe.tsx
+  EmptyState.tsx
+src/lib/
+  progressStripe.ts       + progressStripe.test.ts
 ```
 
 Modified files (migration):
@@ -246,8 +252,8 @@ No files are deleted.
 ## Verification
 
 - `npx tsc --noEmit` — clean.
-- `vite build` — clean.
-- Vitest — all existing suites plus the four new `*.test.tsx` files green.
+- `npm run build` — clean.
+- Vitest — all existing suites plus the new `progressStripe.test.ts` green.
 - Manual visual check in `npm run tauri dev` (port 5174):
   1. Open Sessions panel with a folder that has ≥ 1 saved session — active
      session row shows the 2 px accent stripe on the left.
