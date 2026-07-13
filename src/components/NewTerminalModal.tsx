@@ -9,6 +9,7 @@ import { open } from '@tauri-apps/plugin-dialog';
 import type { WorktreeInfo, WorktreeDetectResult } from '../types/git';
 import { Button } from './ui/Button';
 import { Modal } from './ui/Modal';
+import { ListRow } from './ui/ListRow';
 
 const isMac = navigator.platform.toUpperCase().includes('MAC');
 
@@ -469,23 +470,22 @@ export function NewTerminalModal() {
                     const isSelected = selectedWorktreePath === wt.path
                       || (!selectedWorktreePath && wt.path.replace(/\//g, '\\') === workingDirectory.replace(/\//g, '\\'));
                     return (
-                      <button
+                      <ListRow
                         key={wt.path}
+                        selected={isSelected}
                         onClick={() => {
                           setSelectedWorktreePath(wt.path);
                           setWorkingDirectory(wt.path);
                         }}
-                        className={`w-full flex items-center gap-2 p-2 rounded-md text-left transition-colors ${
-                          isSelected
-                            ? 'bg-accent-primary/10 ring-1 ring-accent-primary/30'
-                            : 'bg-bg-primary ring-1 ring-border hover:ring-border-light'
-                        }`}
+                        className="items-start py-1.5"
+                        leading={
+                          wt.is_main ? (
+                            <GitBranch size={13} className="text-accent-primary flex-shrink-0" />
+                          ) : (
+                            <GitFork size={13} className="text-purple-400 flex-shrink-0" />
+                          )
+                        }
                       >
-                        {wt.is_main ? (
-                          <GitBranch size={13} className="text-accent-primary flex-shrink-0" />
-                        ) : (
-                          <GitFork size={13} className="text-purple-400 flex-shrink-0" />
-                        )}
                         <div className="flex-1 min-w-0">
                           <p className="text-text-primary text-[12px] font-mono truncate">
                             {wt.branch || '(detached)'}
@@ -493,7 +493,7 @@ export function NewTerminalModal() {
                           </p>
                           <p className="text-text-tertiary text-[11px] truncate">{wt.path}</p>
                         </div>
-                      </button>
+                      </ListRow>
                     );
                   })}
                 </div>
