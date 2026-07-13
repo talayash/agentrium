@@ -53,8 +53,9 @@ export const ListRow = forwardRef<HTMLElement, ListRowProps>(function ListRow(
   },
   ref,
 ) {
-  const height = variant === 'compact' ? 'h-[22px]' : 'h-[26px]';
-  const base = `relative flex items-center gap-2 w-full px-3 text-left transition-colors ${height}`;
+  // `min-h` (not `h`) lets multi-line content (e.g. session widget) grow.
+  const height = variant === 'compact' ? 'min-h-[22px]' : 'min-h-[26px]';
+  const base = `relative flex items-center gap-2 w-full px-3 py-0.5 text-left transition-colors ${height}`;
   const state = selected
     ? 'bg-accent-primary/12 text-text-primary'
     : 'text-text-primary hover:bg-white/[0.045]';
