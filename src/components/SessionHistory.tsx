@@ -3,6 +3,8 @@ import { motion } from 'framer-motion';
 import { X, Trash2, Clock, FileText } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from '../store/appStore';
+import { ListRow } from './ui/ListRow';
+import { EmptyState } from './ui/EmptyState';
 
 interface SessionHistoryEntry {
   id: number;
@@ -124,42 +126,42 @@ export function SessionHistory() {
           {/* Left: Entry List */}
           <div className="w-72 border-r border-border overflow-y-auto p-2">
             {entries.map((entry) => (
-              <div
+              <ListRow
                 key={entry.id}
+                selected={selectedEntry?.id === entry.id}
                 onClick={() => handleSelect(entry)}
-                className={`group p-2.5 rounded-md cursor-pointer transition-colors mb-0.5 ${
-                  selectedEntry?.id === entry.id
-                    ? 'bg-accent-primary/10 ring-1 ring-accent-primary/30'
-                    : 'hover:bg-white/[0.04]'
-                }`}
-              >
-                <div className="flex items-start justify-between">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-text-primary text-[12px] font-medium truncate">{entry.label}</p>
-                    <p className="text-text-tertiary text-[11px] mt-0.5">
-                      {formatDate(entry.started_at)}
-                    </p>
-                    <p className="text-text-tertiary text-[11px]">
-                      Duration: {formatDuration(entry.started_at, entry.ended_at)}
-                    </p>
-                  </div>
+                className="group items-start py-1.5 mb-0.5"
+                trailing={
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
                       handleDelete(entry);
                     }}
-                    className="p-1 rounded hover:bg-red-500/10 text-text-tertiary hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0"
+                    className="p-1 rounded hover:bg-red-500/10 text-text-tertiary hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
                   >
                     <Trash2 size={12} />
                   </button>
+                }
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="text-text-primary text-[12px] font-medium truncate">{entry.label}</p>
+                  <p className="text-text-tertiary text-[11px] mt-0.5">
+                    {formatDate(entry.started_at)}
+                  </p>
+                  <p className="text-text-tertiary text-[11px]">
+                    Duration: {formatDuration(entry.started_at, entry.ended_at)}
+                  </p>
                 </div>
-              </div>
+              </ListRow>
             ))}
 
             {entries.length === 0 && (
-              <p className="text-text-tertiary text-[12px] text-center py-8">
-                No session history yet
-              </p>
+              <EmptyState
+                icon={<Clock size={20} strokeWidth={1.75} />}
+                title="No session history yet"
+                description="Closed terminals with saved logs will appear here."
+                compact
+              />
             )}
           </div>
 
