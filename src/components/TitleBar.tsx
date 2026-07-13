@@ -22,6 +22,7 @@ import { UpdatePill } from './UpdatePill';
 import { ToolsMenu } from './titlebar/ToolsMenu';
 import { SessionWidget } from './titlebar/SessionWidget';
 import { Tooltip } from './ui/Tooltip';
+import { ListRow } from './ui/ListRow';
 
 const isMac = navigator.platform.toUpperCase().includes('MAC');
 
@@ -260,23 +261,24 @@ export function TitleBar() {
                       const isCurrent = b === gitInfo.current_branch;
                       const isChecking = checkoutTarget === b;
                       return (
-                        <button
+                        <ListRow
                           key={b}
-                          onClick={() => handleCheckout(b)}
+                          variant="compact"
+                          selected={isCurrent}
                           disabled={isChecking || isCurrent}
-                          className={`w-full flex items-center justify-between px-3 py-1.5 text-[12px] font-mono text-left transition-colors ${
-                            isCurrent
-                              ? 'text-accent-primary bg-accent-primary/10 cursor-default'
-                              : 'text-text-primary hover:bg-white/[0.05]'
-                          }`}
+                          onClick={() => handleCheckout(b)}
+                          trailing={
+                            isChecking ? (
+                              <Loader2 size={11} className="animate-spin text-text-tertiary" />
+                            ) : isCurrent ? (
+                              <Check size={12} className="text-accent-primary" />
+                            ) : null
+                          }
                         >
-                          <span className="truncate">{b}</span>
-                          {isChecking ? (
-                            <Loader2 size={11} className="animate-spin text-text-tertiary flex-shrink-0" />
-                          ) : isCurrent ? (
-                            <Check size={12} className="text-accent-primary flex-shrink-0" />
-                          ) : null}
-                        </button>
+                          <span className={`truncate font-mono text-[12px] ${isCurrent ? 'text-accent-primary' : 'text-text-primary'}`}>
+                            {b}
+                          </span>
+                        </ListRow>
                       );
                     })}
                   </div>
