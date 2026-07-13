@@ -12,7 +12,7 @@ import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
 import { toast } from '../store/toastStore';
 import { resolveTerminalTheme } from '../lib/terminalThemes';
-import { copyText } from '../lib/clipboard';
+import { copyText, readClipboardText } from '../lib/clipboard';
 import { TerminalSearch } from './TerminalSearch';
 import { TerminalStatusBar } from './TerminalStatusBar';
 import '@xterm/xterm/css/xterm.css';
@@ -53,6 +53,12 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
   // Right-click context menu (copy / paste). null when closed; otherwise the
   // viewport coordinates to anchor the menu at and whether a selection exists.
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; hasSelection: boolean } | null>(null);
+  // The right-click itself collapses the terminal selection (focus + textarea
+  // reposition happen before the `contextmenu` event fires), so by the time the
+  // menu reads hasSelection() it's already gone. We snapshot the selection text
+  // in the CAPTURE phase of mousedown - before any handler can clear it - and
+  // the menu's Copy uses this snapshot instead of a (now-empty) live read.
+  const menuSelectionRef = useRef<string>('');
   // Narrow selector - only re-render when THIS terminal's instance changes,
   // not on every output-unread-set update for other terminals.
   const instance = useTerminalStore((s) => s.terminals.get(terminalId));
@@ -82,22 +88,31 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
     setSearchVisible(prev => !prev);
   }, []);
 
+  // Snapshot the selection in the capture phase, before the right-click can
+  // collapse it. Falls back to a live read for keyboard-invoked menus (Menu
+  // key), which fire `contextmenu` with no preceding mousedown.
+  const captureSelectionForMenu = useCallback((e: React.MouseEvent) => {
+    if (e.button !== 2) return;
+    menuSelectionRef.current = terminalRef.current?.getSelection() ?? '';
+  }, []);
+
   const openContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
-    const term = terminalRef.current;
-    setContextMenu({ x: e.clientX, y: e.clientY, hasSelection: !!term?.hasSelection() });
+    const snapshot = menuSelectionRef.current || terminalRef.current?.getSelection() || '';
+    menuSelectionRef.current = snapshot;
+    setContextMenu({ x: e.clientX, y: e.clientY, hasSelection: snapshot.length > 0 });
   }, []);
 
   const handleMenuCopy = useCallback(() => {
-    const term = terminalRef.current;
-    if (term?.hasSelection()) copyText(term.getSelection());
+    const text = menuSelectionRef.current;
+    if (text) copyText(text);
     setContextMenu(null);
   }, []);
 
   const handleMenuPaste = useCallback(async () => {
     setContextMenu(null);
     try {
-      const text = await navigator.clipboard.readText();
+      const text = await readClipboardText();
       if (text) await writeToTerminal(terminalId, text);
       terminalRef.current?.focus();
     } catch {
@@ -533,7 +548,8 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
       <div
         ref={containerRef}
         className="flex-1 min-h-0 w-full relative"
-        onMouseDown={() => terminalRef.current?.focus()}
+        onMouseDownCapture={captureSelectionForMenu}
+        onMouseDown={(e) => { if (e.button !== 2) terminalRef.current?.focus(); }}
         onContextMenu={openContextMenu}
       >
         {isDragOver && (
