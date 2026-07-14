@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Plus, Trash2, Save, FolderOpen } from 'lucide-react';
+import { X, Plus, Trash2, Save, FolderOpen, User } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { useAppStore } from '../store/appStore';
@@ -7,6 +7,8 @@ import { toast } from '../store/toastStore';
 import { v4 as uuidv4 } from 'uuid';
 import { Button } from './ui/Button';
 import { Modal } from './ui/Modal';
+import { ListRow } from './ui/ListRow';
+import { EmptyState } from './ui/EmptyState';
 
 interface ConfigProfile {
   id: string;
@@ -141,27 +143,29 @@ export function ProfileModal() {
 
             <div className="flex-1 overflow-y-auto space-y-0.5">
               {profiles.map((profile) => (
-                <div
+                <ListRow
                   key={profile.id}
+                  selected={selectedProfile?.id === profile.id}
                   onClick={() => {
                     setSelectedProfile(profile);
                     setIsCreating(false);
                   }}
-                  className={`p-2 rounded-md cursor-pointer transition-colors ${
-                    selectedProfile?.id === profile.id
-                      ? 'bg-accent-primary/10 ring-1 ring-accent-primary/30'
-                      : 'hover:bg-white/[0.04]'
-                  }`}
+                  className="items-start py-1.5"
                 >
-                  <p className="text-text-primary text-[12px] font-medium truncate">{profile.name}</p>
-                  <p className="text-text-tertiary text-[11px] truncate">{profile.description || 'No description'}</p>
-                </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-text-primary text-[12px] font-medium truncate">{profile.name}</p>
+                    <p className="text-text-tertiary text-[11px] truncate">{profile.description || 'No description'}</p>
+                  </div>
+                </ListRow>
               ))}
 
               {profiles.length === 0 && (
-                <p className="text-text-tertiary text-[12px] text-center py-4">
-                  No profiles yet
-                </p>
+                <EmptyState
+                  icon={<User size={20} strokeWidth={1.75} />}
+                  title="No profiles yet"
+                  description="Save Claude command-line flags and env vars as reusable profiles."
+                  compact
+                />
               )}
             </div>
           </div>

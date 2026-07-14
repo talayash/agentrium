@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import {
-  ChevronRight,
-  ChevronDown,
   RefreshCw,
   MessageSquare,
   ExternalLink,
@@ -13,6 +11,9 @@ import { homeDir } from '@tauri-apps/api/path';
 import { useAppStore } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
 import { toast } from '../store/toastStore';
+import { PanelHeader } from './ui/PanelHeader';
+import { ListRow } from './ui/ListRow';
+import { EmptyState } from './ui/EmptyState';
 
 const isMac = navigator.platform.toUpperCase().includes('MAC');
 const REVEAL_LABEL = isMac ? 'Reveal in Finder' : 'Show in File Explorer';
@@ -197,37 +198,26 @@ export function SessionsPanel() {
   return (
     <div className="flex flex-col h-full min-h-0 overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between h-[26px] px-3 flex-shrink-0">
-        <button
-          onClick={toggleCollapsed}
-          className="flex items-center gap-1.5 text-text-secondary hover:text-text-primary transition-colors"
-          title={collapsed ? 'Expand Sessions' : 'Collapse Sessions'}
-        >
-          {collapsed ? (
-            <ChevronRight size={11} strokeWidth={2} />
-          ) : (
-            <ChevronDown size={11} strokeWidth={2} />
-          )}
-          <span className="text-[11px] font-semibold uppercase tracking-[0.06em]">
-            Sessions
-          </span>
-          {sessions.length > 0 && !collapsed && (
-            <span className="text-text-tertiary text-[10.5px] tabular-nums">
-              {sessions.length}
-            </span>
-          )}
-        </button>
-        {!collapsed && (
-          <button
-            onClick={fetchSessions}
-            disabled={loading}
-            className="w-5 h-5 flex items-center justify-center rounded-[4px] hover:bg-white/[0.06] text-text-tertiary hover:text-text-secondary transition-colors disabled:opacity-40"
-            title="Refresh"
-          >
-            <RefreshCw size={11} className={loading ? 'animate-spin' : ''} strokeWidth={1.75} />
-          </button>
-        )}
-      </div>
+      <PanelHeader
+        title="Sessions"
+        count={collapsed ? undefined : sessions.length}
+        collapsible
+        collapsed={collapsed}
+        onToggleCollapsed={toggleCollapsed}
+        progress={{ active: !collapsed && loading }}
+        actions={
+          !collapsed ? (
+            <button
+              onClick={fetchSessions}
+              disabled={loading}
+              className="w-5 h-5 flex items-center justify-center rounded-[4px] hover:bg-white/[0.06] text-text-tertiary hover:text-text-secondary transition-colors disabled:opacity-40"
+              title="Refresh"
+            >
+              <RefreshCw size={11} className={loading ? 'animate-spin' : ''} strokeWidth={1.75} />
+            </button>
+          ) : undefined
+        }
+      />
 
       {/* Body - only when expanded */}
       {!collapsed && (
@@ -248,9 +238,12 @@ export function SessionsPanel() {
                 <div className="px-3 py-2 text-red-400 text-[11px]">{error}</div>
               )}
               {!error && sessions.length === 0 && !loading && (
-                <div className="px-3 py-2 text-text-tertiary text-[11px]">
-                  No saved sessions in this folder yet.
-                </div>
+                <EmptyState
+                  icon={<MessageSquare size={20} strokeWidth={1.75} />}
+                  title="No sessions yet"
+                  description="Resumable Claude sessions in this folder will appear here."
+                  compact
+                />
               )}
               {sessions.map((s) => {
                 const isActive = activeSessionId === s.id;
@@ -294,42 +287,32 @@ interface SessionRowProps {
 
 function SessionRow({ session, active, onOpenInNewTab, onContextMenu }: SessionRowProps) {
   return (
-    <button
-      type="button"
+    <ListRow
+      selected={active}
       onClick={() => { if (!active) onOpenInNewTab(session); }}
       onContextMenu={(e) => onContextMenu(e, session)}
       title={session.preview || session.id}
-      className={`w-full text-left px-3 py-1.5 group flex items-start gap-2 transition-colors ${
-        active
-          ? 'bg-accent-primary/10'
-          : 'hover:bg-white/[0.045]'
-      }`}
+      leading={
+        <MessageSquare
+          size={11}
+          strokeWidth={1.75}
+          className={`shrink-0 ${active ? 'text-accent-primary' : 'text-text-tertiary'}`}
+        />
+      }
+      trailing={
+        <span className="text-[10.5px] text-text-tertiary tabular-nums">
+          {formatRelativeTime(session.modified_at)}
+        </span>
+      }
     >
-      <MessageSquare
-        size={11}
-        strokeWidth={1.75}
-        className={`mt-0.5 shrink-0 ${active ? 'text-accent-primary' : 'text-text-tertiary'}`}
-      />
-      <div className="flex-1 min-w-0">
-        <div className="flex items-baseline justify-between gap-2">
-          <span
-            className={`text-[12px] truncate ${
-              active ? 'text-accent-primary font-medium' : 'text-text-primary'
-            }`}
-          >
-            {session.preview || `Session ${session.id.slice(0, 8)}`}
-          </span>
-          <span className="text-[10.5px] text-text-tertiary tabular-nums shrink-0">
-            {formatRelativeTime(session.modified_at)}
-          </span>
-        </div>
-        {session.preview && (
-          <div className="text-[10.5px] text-text-tertiary font-mono truncate">
-            {session.id.slice(0, 8)}{active && ' · active'}
-          </div>
-        )}
-      </div>
-    </button>
+      <span
+        className={`text-[12px] truncate ${
+          active ? 'text-accent-primary font-medium' : 'text-text-primary'
+        }`}
+      >
+        {session.preview || `Session ${session.id.slice(0, 8)}`}
+      </span>
+    </ListRow>
   );
 }
 

@@ -6,6 +6,8 @@ import { useTerminalStore } from '../store/terminalStore';
 import { toast } from '../store/toastStore';
 import { Modal } from './ui/Modal';
 import { Button } from './ui/Button';
+import { ListRow } from './ui/ListRow';
+import { EmptyState } from './ui/EmptyState';
 
 interface Snippet {
   id: string;
@@ -164,37 +166,37 @@ export function SnippetsModal() {
             {/* Snippet List */}
             <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
               {filteredSnippets.map((snippet) => (
-                <div
+                <ListRow
                   key={snippet.id}
+                  selected={selectedSnippet?.id === snippet.id}
                   onClick={() => handleSelect(snippet)}
-                  className={`group p-2 rounded-md cursor-pointer transition-colors ${
-                    selectedSnippet?.id === snippet.id
-                      ? 'bg-accent-primary/10 ring-1 ring-accent-primary/30'
-                      : 'hover:bg-white/[0.04]'
-                  }`}
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-text-primary text-[12px] font-medium truncate">{snippet.title}</p>
-                      <p className="text-text-tertiary text-[11px] truncate mt-0.5">{snippet.category}</p>
-                    </div>
+                  className="group items-start py-1.5"
+                  trailing={
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         handleDelete(snippet);
                       }}
-                      className="p-0.5 rounded hover:bg-red-500/10 text-text-tertiary hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0"
+                      className="p-0.5 rounded hover:bg-red-500/10 text-text-tertiary hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
                     >
                       <Trash2 size={12} />
                     </button>
+                  }
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="text-text-primary text-[12px] font-medium truncate">{snippet.title}</p>
+                    <p className="text-text-tertiary text-[11px] truncate mt-0.5">{snippet.category}</p>
                   </div>
-                </div>
+                </ListRow>
               ))}
 
               {filteredSnippets.length === 0 && (
-                <p className="text-text-tertiary text-[12px] text-center py-4">
-                  No snippets yet
-                </p>
+                <EmptyState
+                  icon={<FileText size={20} strokeWidth={1.75} />}
+                  title="No snippets yet"
+                  description="Save reusable Claude prompts, commands, or templates here."
+                  compact
+                />
               )}
             </div>
           </div>
