@@ -1,7 +1,7 @@
 [
   {
     "version": "1.28.0",
-    "date": "2026-07-13",
+    "date": "2026-07-16",
     "features": [
       { "title": "Accent stripe on selected list rows", "description": "Every selectable list in the app - Sessions, Explorer, branches, session widget, Worktrees, Snippets, Profiles, History - now marks the selected row with a 2 px accent-blue stripe on the left plus a subtle tint. The IntelliJ tool-window selection you'd expect." },
       { "title": "Consistent tool-window headers", "description": "Sessions and Explorer share a single 26 px header primitive - uppercase muted title, count badge, action buttons on the right, and an optional thin progress bar under the header that lights up while the panel is loading." },
