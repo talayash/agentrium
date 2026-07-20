@@ -9,6 +9,7 @@ import { emit, listen } from '@tauri-apps/api/event';
 import { useTerminalStore } from '../store/terminalStore';
 import type { TerminalConfig } from '../store/terminalStore';
 import type { WindowGeometry } from './windowLayout';
+import { reportError } from './errorReporter';
 
 const TRANSFER_EVENT = 'ct://tab-transfer';
 const TRANSFER_DONE_EVENT = 'ct://tab-transfer-done';
@@ -56,6 +57,9 @@ export async function createDetachedWindow(ids: string[], physX: number, physY: 
   });
   win.once('tauri://error', (e) => {
     console.error('[tabTransfer] failed to create detached window:', e);
+    // Window creation is Tauri-internal (not a wrapped command), so nothing
+    // else reports it - and the user is left with a tab that went nowhere.
+    reportError('window_create', `tear-off window failed: ${JSON.stringify(e.payload ?? e)}`);
   });
 }
 
@@ -92,6 +96,7 @@ export async function restoreDetachedWindow(ids: string[], geometry?: WindowGeom
   });
   win.once('tauri://error', (e) => {
     console.error('[tabTransfer] failed to restore detached window:', e);
+    reportError('window_create', `detached-window restore failed: ${JSON.stringify(e.payload ?? e)}`);
   });
 
   // The new window adopts these ids on load; remove them from main now.

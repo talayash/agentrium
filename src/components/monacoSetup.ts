@@ -11,6 +11,7 @@ import tsWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker'
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
 import { toast } from '../store/toastStore';
+import { watchWorkerErrors } from '../lib/workerErrors';
 
 declare global {
   interface Window { __monacoReady?: boolean }
@@ -86,11 +87,16 @@ function isPackageJson(uri: monaco.Uri): boolean {
 if (typeof window !== 'undefined' && !window.__monacoReady) {
   (self as unknown as { MonacoEnvironment: monaco.Environment }).MonacoEnvironment = {
     getWorker(_: string, label: string) {
-      if (label === 'json') return new jsonWorker();
-      if (label === 'css' || label === 'scss' || label === 'less') return new cssWorker();
-      if (label === 'html' || label === 'handlebars' || label === 'razor') return new htmlWorker();
-      if (label === 'typescript' || label === 'javascript') return new tsWorker();
-      return new editorWorker();
+      // A worker crash never reaches window.onerror - watch each one so the
+      // silent loss of language features still shows up in telemetry.
+      if (label === 'json') return watchWorkerErrors(new jsonWorker(), label);
+      if (label === 'css' || label === 'scss' || label === 'less')
+        return watchWorkerErrors(new cssWorker(), label);
+      if (label === 'html' || label === 'handlebars' || label === 'razor')
+        return watchWorkerErrors(new htmlWorker(), label);
+      if (label === 'typescript' || label === 'javascript')
+        return watchWorkerErrors(new tsWorker(), label);
+      return watchWorkerErrors(new editorWorker(), label);
     },
   };
   loader.config({ monaco });
