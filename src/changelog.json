@@ -1,5 +1,14 @@
 [
   {
+    "version": "1.28.1",
+    "date": "2026-07-20",
+    "features": [
+      { "title": "No more phantom \"Canceled\" errors on macOS", "description": "The code editor's WebKit clipboard workaround fired a benign \"Canceled\" rejection on nearly every editor click - it was two-thirds of all reported error volume and never indicated a real problem. It's now filtered out, in the app and at the telemetry endpoint." },
+      { "title": "Editor language-worker crashes are caught", "description": "If a Monaco language worker (TypeScript, JSON, CSS, HTML) crashes, language features used to just silently stop. Those crashes are now detected and reported so they can be fixed." },
+      { "title": "Rare copy and tear-off failures are now visible", "description": "A copy that fails through every clipboard path, and a torn-off tab window that fails to open, are now reported instead of vanishing without a trace." }
+    ]
+  },
+  {
     "version": "1.28.0",
     "date": "2026-07-16",
     "features": [
