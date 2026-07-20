@@ -2,7 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import './index.css';
-import { reportError } from './lib/errorReporter';
+import { isCancellationError, reportError } from './lib/errorReporter';
 
 // Known-benign browser warnings that fire constantly during layout work
 // (e.g. xterm.js + Framer Motion resizing). Filtering here avoids polluting
@@ -24,6 +24,7 @@ window.addEventListener('error', (e) => {
 
 window.addEventListener('unhandledrejection', (e) => {
   const r = e.reason;
+  if (isCancellationError(r)) return;
   const name = r?.name ?? 'UnhandledRejection';
   const message =
     typeof r === 'string' ? r : r?.message ?? (r === undefined ? 'undefined' : String(r));

@@ -10,6 +10,17 @@ const NOISE_PATTERNS: readonly RegExp[] = [
   /^ResizeObserver loop (?:completed with undelivered notifications|limit exceeded)\.?$/i,
 ];
 
+/**
+ * Monaco (VS Code core) rejects cancelled internal promises with a
+ * CancellationError whose name and message are both "Canceled" — e.g. the
+ * WebKit clipboard workaround cancels its pending write on every click or
+ * keydown. These surface as unhandled rejections but are benign by design;
+ * VS Code itself ignores them in its global error handler.
+ */
+export function isCancellationError(reason: unknown): boolean {
+  return reason instanceof Error && reason.name === 'Canceled' && reason.message === 'Canceled';
+}
+
 export function reportError(kind: string, message: string, stack?: string): void {
   if (NOISE_PATTERNS.some((re) => re.test(message))) {
     return;
