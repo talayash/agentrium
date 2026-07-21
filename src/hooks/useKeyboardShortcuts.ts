@@ -44,6 +44,14 @@ export function useKeyboardShortcuts() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't hijack keys while the user is typing in a non-terminal editable
+      // surface (Settings/modal input, Monaco editor, global search box). These
+      // are app-global accelerators - in a text field the native control must
+      // win, otherwise Ctrl+P, Ctrl+W, F2 (Monaco rename), Ctrl+Shift+F/S/D,
+      // etc. get stolen mid-edit. The helper returns false for xterm's own
+      // textarea, so terminal-focused shortcuts still work.
+      if (isFocusInNonTerminalEditable()) return;
+
       const ctrl = e.ctrlKey || e.metaKey;
       const shift = e.shiftKey;
 

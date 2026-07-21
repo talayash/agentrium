@@ -344,7 +344,10 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       const newTerminals = new Map(state.terminals);
       const instance = newTerminals.get(id);
       if (instance) {
-        instance.config.label = label;
+        // Immutable update: replace the instance/config objects rather than
+        // mutating them in place, so React.memo consumers keyed on config
+        // identity re-render and prior-state snapshots aren't corrupted.
+        newTerminals.set(id, { ...instance, config: { ...instance.config, label } });
       }
       return { terminals: newTerminals };
     });
@@ -357,7 +360,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       const newTerminals = new Map(state.terminals);
       const instance = newTerminals.get(id);
       if (instance) {
-        instance.config.nickname = nickname;
+        newTerminals.set(id, { ...instance, config: { ...instance.config, nickname } });
       }
       return { terminals: newTerminals };
     });
@@ -469,7 +472,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       const newTerminals = new Map(state.terminals);
       const instance = newTerminals.get(id);
       if (instance) {
-        instance.config.status = status;
+        newTerminals.set(id, { ...instance, config: { ...instance.config, status } });
       }
       return { terminals: newTerminals };
     });
@@ -480,7 +483,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       const newTerminals = new Map(state.terminals);
       const instance = newTerminals.get(id);
       if (instance) {
-        instance.loopInfo = info;
+        newTerminals.set(id, { ...instance, loopInfo: info });
       }
       return { terminals: newTerminals };
     });
@@ -491,7 +494,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       const newTerminals = new Map(state.terminals);
       const instance = newTerminals.get(id);
       if (instance) {
-        instance.sessionSummary = summary;
+        newTerminals.set(id, { ...instance, sessionSummary: summary });
       }
       return { terminals: newTerminals };
     });

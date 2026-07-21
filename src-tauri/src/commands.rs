@@ -1499,6 +1499,54 @@ pub struct FileDiffResult {
     pub is_binary: bool,
 }
 
+/// Reject a single git pathspec that isn't a plain repo-relative path.
+/// Mirrors `validate_file_list`'s per-entry checks. The diff/show commands pass
+/// a frontend-supplied file path straight into git args, so this is both a
+/// traversal guard and defense-in-depth for the arg-handling seams.
+fn validate_git_pathspec(file: &str) -> Result<(), String> {
+    if file.is_empty() || file.contains('\0') {
+        return Err("Invalid file path".to_string());
+    }
+    if file.starts_with('/') || file.starts_with('\\') || file.contains("..") {
+        return Err(format!("Invalid file path: {}", file));
+    }
+    Ok(())
+}
+
+/// Build the `+`-prefixed pseudo-diff for a new/untracked file, capping size and
+/// sniffing for binary the same way `read_text_file` does. Returns a short
+/// human-readable marker (not an error) when the file can't be previewed, so the
+/// diff pane degrades gracefully instead of reading an unbounded file into RAM.
+fn build_new_file_diff(full_path: &std::path::Path, file_path: &str) -> String {
+    const MAX_DIFF_FILE_BYTES: u64 = 5 * 1024 * 1024; // 5 MB, matches read_text_file
+    match std::fs::metadata(full_path) {
+        Ok(m) if m.len() > MAX_DIFF_FILE_BYTES => {
+            return format!("File is too large to preview ({} bytes).", m.len());
+        }
+        Ok(_) => {}
+        Err(_) => return String::from("Unable to read file contents"),
+    }
+    let bytes = match std::fs::read(full_path) {
+        Ok(b) => b,
+        Err(_) => return String::from("Unable to read file contents"),
+    };
+    let sniff = bytes.len().min(8192);
+    if bytes[..sniff].contains(&0u8) {
+        return String::from("Binary file - preview not available");
+    }
+    let content = match String::from_utf8(bytes) {
+        Ok(c) => c,
+        Err(_) => return String::from("File is not valid UTF-8"),
+    };
+    let lines: Vec<String> = content.lines().map(|l| format!("+{}", l)).collect();
+    format!(
+        "--- /dev/null\n+++ b/{}\n@@ -0,0 +1,{} @@\n{}",
+        file_path,
+        lines.len(),
+        lines.join("\n")
+    )
+}
+
 #[command]
 pub async fn get_file_diff(
     state: State<'_, AppState>,
@@ -1507,6 +1555,7 @@ pub async fn get_file_diff(
     staged: bool,
 ) -> Result<FileDiffResult, String> {
     wrap_cmd("get_file_diff", async move {
+        validate_git_pathspec(&file_path)?;
         let working_directory = {
             let terminals = state.terminals.lock().await;
             let configs = terminals.get_all_configs();
@@ -1539,21 +1588,9 @@ pub async fn get_file_diff(
 
         let diff_text = if is_new_file {
             // For untracked/new files, read the file and format as all-added
+            // (size-capped + binary-sniffed - see build_new_file_diff).
             let full_path = std::path::Path::new(&working_directory).join(&file_path);
-            match std::fs::read_to_string(&full_path) {
-                Ok(content) => {
-                    let lines: Vec<String> = content.lines().enumerate().map(|(_, line)| {
-                        format!("+{}", line)
-                    }).collect();
-                    format!(
-                        "--- /dev/null\n+++ b/{}\n@@ -0,0 +1,{} @@\n{}",
-                        file_path,
-                        lines.len(),
-                        lines.join("\n")
-                    )
-                }
-                Err(_) => String::from("Unable to read file contents")
-            }
+            build_new_file_diff(&full_path, &file_path)
         } else if is_deleted_file {
             // For deleted files, show content from HEAD
             let show_output = git_command(&["show", &format!("HEAD:{}", file_path)])
@@ -3706,6 +3743,7 @@ pub async fn get_path_file_diff(
 ) -> Result<FileDiffResult, String> {
     wrap_cmd("get_path_file_diff", async move {
         validate_path_is_trusted(&state, &path).await?;
+        validate_git_pathspec(&file_path)?;
         // `file_path` is repo-root-relative (porcelain output) - resolve against
         // the root in case `path` is a subdirectory of the repo.
         let path = resolve_repo_root(&path)?;
@@ -3727,18 +3765,7 @@ pub async fn get_path_file_diff(
 
         let diff_text = if is_new_file {
             let full_path = std::path::Path::new(&path).join(&file_path);
-            match std::fs::read_to_string(&full_path) {
-                Ok(content) => {
-                    let lines: Vec<String> = content.lines().map(|line| format!("+{}", line)).collect();
-                    format!(
-                        "--- /dev/null\n+++ b/{}\n@@ -0,0 +1,{} @@\n{}",
-                        file_path,
-                        lines.len(),
-                        lines.join("\n")
-                    )
-                }
-                Err(_) => String::from("Unable to read file contents"),
-            }
+            build_new_file_diff(&full_path, &file_path)
         } else if is_deleted_file {
             let show_output = git_command(&["show", &format!("HEAD:{}", file_path)])
                 .current_dir(&path)
@@ -4157,7 +4184,8 @@ pub async fn get_git_head_content(
 ) -> Result<String, String> {
     wrap_cmd("get_git_head_content", async move {
         validate_path_is_trusted(&state, &path).await?;
-        if file.is_empty() || file.starts_with('-') {
+        validate_git_pathspec(&file)?;
+        if file.starts_with('-') {
             return Err("Invalid file path".to_string());
         }
         // git uses forward slashes in ref specs, even on Windows.

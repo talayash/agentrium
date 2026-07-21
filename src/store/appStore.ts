@@ -930,12 +930,24 @@ export const useAppStore = create<AppState>()(
 
       // Command Palette actions (F1)
       recordPaletteUse: (key) =>
-        set((s) => ({
-          paletteUsage: {
+        set((s) => {
+          // Cap the persisted map so orphaned keys (e.g. snippet:<id> for a
+          // deleted snippet) can't accumulate forever toward the localStorage
+          // quota. Keep the most-recently-used entries.
+          const MAX_PALETTE_USAGE = 300;
+          const next: Record<string, { count: number; lastUsedTs: number }> = {
             ...s.paletteUsage,
             [key]: { count: (s.paletteUsage[key]?.count ?? 0) + 1, lastUsedTs: Date.now() },
-          },
-        })),
+          };
+          const keys = Object.keys(next);
+          if (keys.length <= MAX_PALETTE_USAGE) return { paletteUsage: next };
+          const kept = keys
+            .sort((a, b) => next[b].lastUsedTs - next[a].lastUsedTs)
+            .slice(0, MAX_PALETTE_USAGE);
+          const trimmed: Record<string, { count: number; lastUsedTs: number }> = {};
+          for (const k of kept) trimmed[k] = next[k];
+          return { paletteUsage: trimmed };
+        }),
       openCommandPalette: () => set({ commandPaletteOpen: true }),
       closeCommandPalette: () => set({ commandPaletteOpen: false }),
       toggleCommandPalette: () => set((state) => ({ commandPaletteOpen: !state.commandPaletteOpen })),

@@ -36,6 +36,21 @@ pub enum TerminalStatus {
     Stopped,
 }
 
+/// True when a PTY read error is just the normal teardown of a closing terminal
+/// rather than a genuine mid-session failure. On Windows, killing the child (see
+/// `close`) or the user exiting tears the pipe down and surfaces as a broken-pipe
+/// / invalid-handle error on the reader's next read instead of a clean EOF. We
+/// treat those as EOF: break quietly, without an error banner or telemetry.
+fn is_benign_close_error(e: &std::io::Error) -> bool {
+    use std::io::ErrorKind;
+    if matches!(e.kind(), ErrorKind::BrokenPipe | ErrorKind::UnexpectedEof) {
+        return true;
+    }
+    // Windows: ERROR_INVALID_HANDLE (6), ERROR_BROKEN_PIPE (109),
+    // ERROR_NO_DATA / "pipe is being closed" (232).
+    matches!(e.raw_os_error(), Some(6) | Some(109) | Some(232))
+}
+
 pub struct Terminal {
     pub config: TerminalConfig,
     /// Kept alive to maintain the PTY connection
@@ -298,6 +313,12 @@ impl TerminalManager {
                         }
                     }
                     Err(e) => {
+                        // Normal close/teardown (esp. Windows ConPTY after the
+                        // child is killed) surfaces as a read error rather than
+                        // EOF - exit quietly, no banner, no telemetry.
+                        if is_benign_close_error(&e) {
+                            break;
+                        }
                         eprintln!("Error reading from pty: {}", e);
                         // Capture so we hear about broken-mid-session terminals.
                         // RustCommand (not RustPanic) because the PTY is a
@@ -439,6 +460,11 @@ impl TerminalManager {
                         if tx.blocking_send((terminal_id.clone(), data)).is_err() { break; }
                     }
                     Err(e) => {
+                        // Quiet exit on normal close teardown (see the claude
+                        // reader above); only surface genuine mid-session errors.
+                        if is_benign_close_error(&e) {
+                            break;
+                        }
                         let _ = tx.blocking_send((
                             terminal_id.clone(),
                             format!("\r\n[Error: {}]\r\n", e).into_bytes(),
@@ -550,6 +576,11 @@ impl TerminalManager {
                         if tx.blocking_send((terminal_id.clone(), data)).is_err() { break; }
                     }
                     Err(e) => {
+                        // Quiet exit on normal close teardown (see the claude
+                        // reader above); only surface genuine mid-session errors.
+                        if is_benign_close_error(&e) {
+                            break;
+                        }
                         let _ = tx.blocking_send((
                             terminal_id.clone(),
                             format!("\r\n[Error: {}]\r\n", e).into_bytes(),

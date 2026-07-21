@@ -60,6 +60,7 @@ impl Database {
         conn.execute_batch(
             "
             PRAGMA journal_mode=WAL;
+            PRAGMA foreign_keys=ON;
 
             CREATE TABLE IF NOT EXISTS profiles (
                 id TEXT PRIMARY KEY,
@@ -192,13 +193,29 @@ impl Database {
             .map_err(|e| e.to_string())?;
 
         let profiles = stmt.query_map([], |row| {
+            let id: String = row.get(0)?;
+            let name: String = row.get(1)?;
+            let args_raw: String = row.get(4)?;
+            let env_raw: String = row.get(5)?;
+            // Malformed JSON here means a profile launches with no args / no env
+            // vars - a silent behaviour change that's hard to diagnose. Log it
+            // (with the profile identity) before falling back, rather than
+            // swallowing it, so it shows up in stderr/telemetry.
+            let claude_args = serde_json::from_str(&args_raw).unwrap_or_else(|e| {
+                eprintln!("[profiles] corrupt claude_args for '{}' ({}): {}", name, id, e);
+                Default::default()
+            });
+            let env_vars = serde_json::from_str(&env_raw).unwrap_or_else(|e| {
+                eprintln!("[profiles] corrupt env_vars for '{}' ({}): {}", name, id, e);
+                Default::default()
+            });
             Ok(ConfigProfile {
-                id: row.get(0)?,
-                name: row.get(1)?,
+                id,
+                name,
                 description: row.get(2)?,
                 working_directory: row.get(3)?,
-                claude_args: serde_json::from_str(&row.get::<_, String>(4)?).unwrap_or_default(),
-                env_vars: serde_json::from_str(&row.get::<_, String>(5)?).unwrap_or_default(),
+                claude_args,
+                env_vars,
                 is_default: row.get::<_, i32>(6)? != 0,
             })
         }).map_err(|e| e.to_string())?;
