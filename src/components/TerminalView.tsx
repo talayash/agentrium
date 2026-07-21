@@ -13,6 +13,7 @@ import { useAppStore } from '../store/appStore';
 import { toast } from '../store/toastStore';
 import { resolveTerminalTheme } from '../lib/terminalThemes';
 import { copyText, readClipboardText } from '../lib/clipboard';
+import { isVisibilityHidden } from '../utils/dragDrop';
 import { TerminalSearch } from './TerminalSearch';
 import { TerminalStatusBar } from './TerminalStatusBar';
 import '@xterm/xterm/css/xterm.css';
@@ -493,6 +494,10 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
     const hitTest = (physX: number, physY: number): boolean => {
       const el = containerRef.current;
       if (!el) return false;
+      // Inactive tab terminals are visibility: hidden but keep their layout
+      // box, so their rects still cover the drop point — without this check a
+      // drop pastes the path into every mounted terminal.
+      if (isVisibilityHidden(el)) return false;
       const rect = el.getBoundingClientRect();
       const scale = window.devicePixelRatio || 1;
       const x = physX / scale;
