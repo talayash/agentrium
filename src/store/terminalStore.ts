@@ -38,6 +38,11 @@ interface TerminalInstance {
   config: TerminalConfig;
   xterm: Terminal | null;
   restoredOutput?: string;
+  // Serialized xterm buffer stashed when the view unmounts (e.g. switching
+  // tab <-> grid/split), replayed on remount so scrollback survives the
+  // teardown that xterm's single-DOM-node model forces. Distinct from
+  // restoredOutput, which is persisted session history shown with banners.
+  carryOverBuffer?: string;
   model?: string;
   effort?: string;
   isWorktree: boolean;
@@ -95,7 +100,8 @@ interface TerminalState {
   updateNickname: (id: string, nickname: string) => Promise<void>;
   writeToTerminal: (id: string, data: string) => Promise<void>;
   resizeTerminal: (id: string, cols: number, rows: number) => Promise<void>;
-  setXterm: (id: string, xterm: Terminal) => void;
+  setXterm: (id: string, xterm: Terminal | null) => void;
+  stashTerminalBuffer: (id: string, data: string) => void;
   handleTerminalOutput: (id: string, data: Uint8Array) => void;
   updateTerminalStatus: (id: string, status: TerminalConfig['status']) => void;
   setLoopMode: (id: string, info: LoopInfo | null) => void;
@@ -373,6 +379,22 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
   },
 
   setXterm: (id, xterm) => {
+    // Clearing the ref (xterm === null) on unmount/dispose. Without this the
+    // store keeps pointing at a disposed Terminal, and handleTerminalOutput
+    // would keep calling write() on it (a disposed instance is still truthy)
+    // whenever the PTY streams while the view is unmounted (e.g. grid/split).
+    if (!xterm) {
+      set((state) => {
+        const newTerminals = new Map(state.terminals);
+        const inst = newTerminals.get(id);
+        if (inst) {
+          inst.xterm = null;
+        }
+        return { terminals: newTerminals };
+      });
+      return;
+    }
+
     const { terminals } = get();
     const instance = terminals.get(id);
 
@@ -382,6 +404,10 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       xterm.write('\x1b[90m─── Previous session output ───\x1b[0m\r\n\r\n');
       xterm.write(lines.replace(/\n/g, '\r\n'));
       xterm.write('\r\n\r\n\x1b[90m─── Session restored ───\x1b[0m\r\n\r\n');
+    } else if (instance?.carryOverBuffer) {
+      // Replay a buffer stashed on a view switch, verbatim and banner-free -
+      // this is the same live session, just re-rendered into a new xterm.
+      xterm.write(instance.carryOverBuffer);
     }
 
     set((state) => {
@@ -390,6 +416,21 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       if (inst) {
         inst.xterm = xterm;
         delete inst.restoredOutput; // Free memory
+        delete inst.carryOverBuffer; // Replayed - drop the snapshot
+      }
+      return { terminals: newTerminals };
+    });
+  },
+
+  stashTerminalBuffer: (id, data) => {
+    set((state) => {
+      const inst = state.terminals.get(id);
+      // No-op if the terminal is gone (permanently closed) - nothing to carry.
+      if (!inst) return state;
+      const newTerminals = new Map(state.terminals);
+      const next = newTerminals.get(id);
+      if (next) {
+        next.carryOverBuffer = data;
       }
       return { terminals: newTerminals };
     });
@@ -399,7 +440,14 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
     const state = get();
     const instance = state.terminals.get(id);
     if (instance?.xterm) {
-      instance.xterm.write(data);
+      // Guard against a dispose/output race: if the view unmounted between the
+      // store read and this write, xterm.write() on a disposed instance throws.
+      // Swallow it rather than surface an UnhandledRejection in the event loop.
+      try {
+        instance.xterm.write(data);
+      } catch {
+        /* terminal disposed - drop this chunk */
+      }
     }
     // Active-work indicator: record the timestamp in a plain Map (no Zustand
     // set() - that would defeat the streaming-rate optimization below).
