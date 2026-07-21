@@ -157,7 +157,10 @@ export function NewTerminalModal() {
       const parentDir = repoPath.replace(/[\\/][^\\/]*$/, '');
       const repoName = repoPath.replace(/^.*[\\/]/, '');
       const sanitized = newBranchName.replace(/\//g, '-');
-      setNewWorktreePath(`${parentDir}\\${repoName}-${sanitized}`);
+      // Match the repo path's separator so the prefilled path is valid on
+      // macOS/Linux too (hardcoding '\\' produced broken paths there).
+      const sep = repoPath.includes('\\') ? '\\' : '/';
+      setNewWorktreePath(`${parentDir}${sep}${repoName}-${sanitized}`);
     }
   }, [newBranchName, worktreeDetect, workingDirectory]);
 

@@ -69,6 +69,11 @@ function SettingsTab() {
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  // Set when the settings file can't be READ (permission/IO/too-large). While
+  // set, we render an error panel instead of the editor so a Save can never
+  // overwrite a real-but-unreadable settings.json with empty content. A missing
+  // file is NOT an error - the backend returns "{}" for it via the success path.
+  const [loadError, setLoadError] = useState('');
 
   useEffect(() => {
     loadSettings();
@@ -76,15 +81,23 @@ function SettingsTab() {
 
   const loadSettings = async () => {
     setLoading(true);
+    setLoadError('');
     try {
       const raw = await invoke<string>('read_claude_settings');
-      // Pretty-print the JSON
-      const formatted = JSON.stringify(JSON.parse(raw), null, 2);
+      let formatted: string;
+      try {
+        // Pretty-print when it parses.
+        formatted = JSON.stringify(JSON.parse(raw), null, 2);
+      } catch {
+        // File exists but isn't valid JSON (hand-edited typo, etc.). Show the
+        // raw content verbatim so the user can fix it - never replace it with
+        // "{}". Save re-validates the JSON before writing.
+        formatted = raw;
+      }
       setContent(formatted);
       setOriginalContent(formatted);
     } catch (err) {
-      setContent('{}');
-      setOriginalContent('{}');
+      setLoadError(String(err));
     }
     setLoading(false);
   };
@@ -118,6 +131,25 @@ function SettingsTab() {
     return (
       <div className="h-full flex items-center justify-center text-text-tertiary text-[13px]">
         Loading settings...
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center gap-3 px-8 text-center">
+        <AlertCircle size={28} className="text-error" />
+        <p className="text-text-primary text-[13px] font-medium">
+          Couldn't read ~/.claude/settings.json
+        </p>
+        <p className="text-text-tertiary text-[12px] max-w-md break-words">{loadError}</p>
+        <p className="text-text-tertiary text-[11px] max-w-md">
+          Editing is disabled so your existing settings aren't overwritten. Fix the
+          file permissions and try again.
+        </p>
+        <Button variant="secondary" size="sm" onClick={loadSettings} className="mt-1">
+          Retry
+        </Button>
       </div>
     );
   }

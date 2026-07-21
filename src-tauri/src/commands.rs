@@ -325,11 +325,19 @@ pub async fn create_terminal(
                     "[session-resume] '{}' recorded --continue target session {}",
                     config.label, newest.id
                 );
-                let mut m = state.terminals.lock().await;
-                m.update_claude_session_id(&config.id, newest.id.clone());
+                {
+                    let mut m = state.terminals.lock().await;
+                    m.update_claude_session_id(&config.id, newest.id.clone());
+                }
+                // Persist to history so the Session Timeline can `--resume` it.
+                {
+                    let db = state.db.lock().await;
+                    let _ = db.update_session_claude_id(&config.id, &newest.id);
+                }
             }
         } else {
             let manager = state.terminals.clone();
+            let db_for_detect = state.db.clone();
             let detect_id = config.id.clone();
             let detect_label = config.label.clone();
             let cwd_for_log = working_directory.clone();
@@ -374,8 +382,15 @@ pub async fn create_terminal(
                                 "[session-detect] '{}' bound to session {} (cwd={})",
                                 detect_label, session_id, cwd_for_log
                             );
-                            let mut m = manager.lock().await;
-                            m.update_claude_session_id(&detect_id, session_id.clone());
+                            {
+                                let mut m = manager.lock().await;
+                                m.update_claude_session_id(&detect_id, session_id.clone());
+                            }
+                            // Mirror onto the history row for later `--resume`.
+                            {
+                                let db = db_for_detect.lock().await;
+                                let _ = db.update_session_claude_id(&detect_id, &session_id);
+                            }
                             last_recorded = Some(session_id);
                         }
                     }
@@ -391,6 +406,7 @@ pub async fn create_terminal(
                 &config.label,
                 &config.created_at.to_rfc3339(),
                 Some(&log_path),
+                Some(&config.working_directory),
             ) {
                 eprintln!("Failed to insert session history: {}", e);
             }

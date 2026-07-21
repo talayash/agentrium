@@ -4,6 +4,7 @@ import { X, Clock, Play, Search, RotateCw } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
+import { toast } from '../store/toastStore';
 
 interface SessionHistoryEntry {
   id: number;
@@ -12,6 +13,8 @@ interface SessionHistoryEntry {
   started_at: string;
   ended_at: string | null;
   log_path: string | null;
+  working_directory: string | null;
+  claude_session_id: string | null;
 }
 
 function formatDuration(start: string, end: string | null): string {
@@ -80,10 +83,21 @@ export function SessionTimeline() {
       ];
       const colorTag = colorTags[terminals.size % colorTags.length];
 
-      await createTerminal(label, '.', ['--continue'], {}, colorTag);
+      // Resume in the directory the session actually ran in - not the app's cwd.
+      // Fall back to '.' only for pre-migration rows that never stored a cwd.
+      const cwd = session.working_directory || '.';
+      if (session.claude_session_id) {
+        // Exact resume of THIS conversation via --resume <id> (8th arg).
+        await createTerminal(label, cwd, [], {}, colorTag, undefined, undefined, session.claude_session_id);
+      } else {
+        // No id captured (older row, or Claude never wrote a session file):
+        // continue the most recent session in that directory (9th arg).
+        await createTerminal(label, cwd, [], {}, colorTag, undefined, undefined, undefined, true);
+      }
       closeSessionTimeline();
     } catch (err) {
       console.error('Failed to resume session:', err);
+      toast.error('Could not resume session', String(err));
     } finally {
       setResuming(null);
     }
