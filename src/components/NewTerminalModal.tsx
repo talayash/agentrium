@@ -12,6 +12,12 @@ import { Modal } from './ui/Modal';
 
 const isMac = navigator.platform.toUpperCase().includes('MAC');
 
+interface PreviewProfile {
+  enabled: boolean;
+  url_override?: string | null;
+  framework_hint?: string | null;
+}
+
 interface ConfigProfile {
   id: string;
   name: string;
@@ -20,6 +26,7 @@ interface ConfigProfile {
   claude_args: string[];
   env_vars: Record<string, string>;
   is_default: boolean;
+  preview?: PreviewProfile | null;
 }
 
 const TAG_COLORS = [
@@ -278,6 +285,15 @@ export function NewTerminalModal() {
           finalArgs.unshift('--worktree');
         }
 
+        const previewInit = selectedProfile?.preview?.enabled
+          ? {
+              isOpen: true,
+              userOverride: selectedProfile.preview.url_override ?? null,
+              frameworkHint: (selectedProfile.preview.framework_hint ?? 'unknown') as
+                import('../lib/preview/framework').FrameworkHint,
+            }
+          : undefined;
+
         newTerminalId = await createTerminal(
           label,
           workingDirectory,
@@ -285,6 +301,10 @@ export function NewTerminalModal() {
           envVars,
           colorTag,
           nickname || undefined,
+          undefined,
+          undefined,
+          undefined,
+          previewInit,
         );
       }
 

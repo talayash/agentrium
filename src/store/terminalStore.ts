@@ -6,10 +6,44 @@ import { markTerminalActive, clearTerminalActivity } from '../lib/terminalActivi
 import { chunkUtf8Bytes } from '../lib/chunkUtf8';
 import type { SessionState } from '../lib/terminalState';
 import { mergeMetrics, emptyMetrics, type SessionMetrics, type TerminalMetricsPayload } from '../lib/sessionMetrics';
+import { usePreviewStore, type PreviewState } from './previewStore';
+import { detectFramework, type FrameworkHint } from '../lib/preview/framework';
 
 // Stay safely under the backend's 64 KB per-write cap so very large pastes
 // (multi-hundred KB) don't hit "Write payload too large".
 const TERMINAL_WRITE_CHUNK_BYTES = 60 * 1024;
+
+/**
+ * Best-effort framework detection for the Preview panel. Reads the terminal's
+ * cwd/package.json via the existing `list_package_scripts` IPC (no new Rust
+ * command or fs plugin required), reconstructs a minimal package.json shape,
+ * and seeds the preview store with the detected framework hint.
+ *
+ * The IPC only exposes `scripts.*` — not `dependencies` — so detection here is
+ * limited to the `scripts.dev` path of `detectFramework`, which matches the
+ * common case (`next dev`, `vite`, `astro dev`, `nuxt dev`, `svelte`, `ng serve`,
+ * `react-scripts start`, `expo start`, `remix dev`). That is enough for the
+ * default port and hint to feed downstream UX. Failures are swallowed silently.
+ */
+async function seedFrameworkHint(terminalId: string, cwd: string): Promise<void> {
+  if (!cwd) return;
+  try {
+    const scripts = await invoke<{ name: string; command: string }[]>(
+      'list_package_scripts',
+      { cwd },
+    );
+    if (!scripts || scripts.length === 0) return;
+    const scriptsMap: Record<string, string> = {};
+    for (const s of scripts) scriptsMap[s.name] = s.command;
+    const { hint } = detectFramework({ scripts: scriptsMap });
+    if (hint !== 'unknown') {
+      const seed: Partial<PreviewState> = { frameworkHint: hint as FrameworkHint };
+      usePreviewStore.getState().seedTerminal(terminalId, seed);
+    }
+  } catch {
+    // no package.json, invalid JSON, path not trusted — silent.
+  }
+}
 
 export interface TerminalConfig {
   id: string;
@@ -87,6 +121,7 @@ interface TerminalState {
     restoredOutput?: string,
     resumeSessionId?: string,
     continueRecent?: boolean,
+    previewInit?: Partial<PreviewState>,
   ) => Promise<string>;
   createShellTerminalTab: (
     label: string,
@@ -152,7 +187,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
   bottomTerminalIds: [],
   activeBottomTerminalId: null,
 
-  createTerminal: async (label, workingDirectory, claudeArgs, envVars, colorTag, nickname, restoredOutput, resumeSessionId, continueRecent) => {
+  createTerminal: async (label, workingDirectory, claudeArgs, envVars, colorTag, nickname, restoredOutput, resumeSessionId, continueRecent, previewInit) => {
     try {
       const { useAppStore } = await import('./appStore');
       const costTracking = useAppStore.getState().costTrackingEnabled;
@@ -193,6 +228,23 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
 
       // Fetch git info in the background
       get().fetchGitInfo(config.id);
+
+      // Seed the preview store with any per-profile hints the caller passed in.
+      // Callers that don't know about the preview feature (grid, restore, tests)
+      // omit previewInit entirely, in which case we still seed with defaults so
+      // downstream reads never hit an undefined per-terminal state.
+      if (previewInit) {
+        usePreviewStore.getState().seedTerminal(config.id, previewInit);
+        // Auto-open the panel when a "Has GUI preview" profile launches a tab.
+        if (previewInit.isOpen && !usePreviewStore.getState().globalOpen) {
+          usePreviewStore.getState().toggleGlobal();
+        }
+      }
+
+      // Fire-and-forget: probe package.json for a framework hint. Runs even if
+      // the caller didn't pass previewInit — that way an ad-hoc terminal in a
+      // Vite/Next repo gets its hint auto-detected.
+      void seedFrameworkHint(config.id, workingDirectory);
 
       return config.id;
     } catch (error) {
@@ -309,6 +361,11 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       const newBudgetWarned = new Set(state.budgetWarnedIds);
       newBudgetWarned.delete(id);
       if (childId) newBudgetWarned.delete(childId);
+
+      // Drop preview state for this terminal (and any script child) - mirrors
+      // the unread/metrics/git-cache cleanup above so nothing points at a gone id.
+      usePreviewStore.getState().removeTerminal(id);
+      if (childId) usePreviewStore.getState().removeTerminal(childId);
 
       // Only pick a fallback from terminals that actually appear in the main
       // tab bar - script children and bottom-pane shells must never become
