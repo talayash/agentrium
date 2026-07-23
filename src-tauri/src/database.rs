@@ -217,6 +217,7 @@ impl Database {
                 claude_args,
                 env_vars,
                 is_default: row.get::<_, i32>(6)? != 0,
+                preview: None,
             })
         }).map_err(|e| e.to_string())?;
 
@@ -497,6 +498,7 @@ mod tests {
             claude_args: vec!["--model".to_string(), "opus".to_string()],
             env_vars: env,
             is_default: false,
+            preview: None,
         }
     }
 
