@@ -23,14 +23,30 @@ export function PreviewPanel() {
     [url, allowList],
   );
 
+  // In dev mode the app itself is served from http://localhost:5173, so a
+  // preview pointed there would load ClaudeTerminal recursively into an
+  // iframe — a Reload click looks like the whole app restarted. Refuse to
+  // iframe our own origin. In production `window.location.origin` is
+  // `tauri://localhost` (or similar), which never matches a detected URL.
+  const isSelfPreview = useMemo(() => {
+    if (!url) return false;
+    try {
+      return new URL(url).origin === window.location.origin;
+    } catch {
+      return false;
+    }
+  }, [url]);
+
   const keepAliveEntries = useMemo(() => {
     if (!keepAliveAcrossTabs) return [] as Array<{ id: string; url: string; reloadCounter: number }>;
     const out: Array<{ id: string; url: string; reloadCounter: number }> = [];
+    const selfOrigin = window.location.origin;
     for (const [id, s] of perTerminal) {
       const u = s.userOverride ?? s.detectedUrl;
-      if (u && isUrlAllowed(u, allowList)) {
-        out.push({ id, url: u, reloadCounter: s.reloadCounter });
-      }
+      if (!u || !isUrlAllowed(u, allowList)) continue;
+      // Skip self-preview entries so a keep-alive iframe never embeds the app in itself.
+      try { if (new URL(u).origin === selfOrigin) continue; } catch { continue; }
+      out.push({ id, url: u, reloadCounter: s.reloadCounter });
     }
     return out;
   }, [keepAliveAcrossTabs, perTerminal, allowList]);
@@ -102,7 +118,7 @@ export function PreviewPanel() {
               Waiting for a dev-server URL…
             </div>
           )}
-          {url && !allowed && (
+          {url && !allowed && !isSelfPreview && (
             <div className="absolute inset-0 flex items-center justify-center text-center p-6">
               <div className="max-w-sm">
                 <div className="text-text-primary text-[13px] font-semibold mb-1">
@@ -115,7 +131,20 @@ export function PreviewPanel() {
               </div>
             </div>
           )}
-          {url && allowed && !keepAliveAcrossTabs && (
+          {url && isSelfPreview && (
+            <div className="absolute inset-0 flex items-center justify-center text-center p-6">
+              <div className="max-w-sm">
+                <div className="text-text-primary text-[13px] font-semibold mb-1">
+                  Can't preview ClaudeTerminal itself
+                </div>
+                <div className="text-text-tertiary text-[11.5px]">
+                  <code className="text-text-secondary">{url}</code> is ClaudeTerminal's own dev
+                  server. Point the preview at your app's URL (a different port).
+                </div>
+              </div>
+            </div>
+          )}
+          {url && allowed && !isSelfPreview && !keepAliveAcrossTabs && (
             <iframe
               key={`${url}#${reloadCounter}`}
               src={url}
@@ -123,7 +152,7 @@ export function PreviewPanel() {
               className="absolute inset-0 w-full h-full border-0"
             />
           )}
-          {url && allowed && keepAliveAcrossTabs && keepAliveEntries.map(({ id, url: entryUrl, reloadCounter: rc }) => {
+          {url && allowed && !isSelfPreview && keepAliveAcrossTabs && keepAliveEntries.map(({ id, url: entryUrl, reloadCounter: rc }) => {
             const isActive = id === activeId;
             return (
               <iframe
