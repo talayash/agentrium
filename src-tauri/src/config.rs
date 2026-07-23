@@ -1,6 +1,14 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct PreviewProfile {
+    pub enabled: bool,
+    pub url_override: Option<String>,
+    pub framework_hint: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConfigProfile {
     pub id: String,
@@ -10,6 +18,8 @@ pub struct ConfigProfile {
     pub claude_args: Vec<String>,
     pub env_vars: HashMap<String, String>,
     pub is_default: bool,
+    #[serde(default)]
+    pub preview: Option<PreviewProfile>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -268,6 +278,7 @@ mod tests {
             claude_args: vec!["--model".to_string(), "opus".to_string()],
             env_vars: env,
             is_default: true,
+            preview: None,
         }
     }
 
@@ -296,6 +307,7 @@ mod tests {
             claude_args: vec![],
             env_vars: HashMap::new(),
             is_default: false,
+            preview: None,
         };
         let json = serde_json::to_string(&p).unwrap();
         let back: ConfigProfile = serde_json::from_str(&json).unwrap();
@@ -303,6 +315,40 @@ mod tests {
         assert_eq!(back.description, None);
         assert!(back.claude_args.is_empty());
         assert!(back.env_vars.is_empty());
+    }
+
+    #[test]
+    fn preview_profile_default_and_roundtrip() {
+        let p = PreviewProfile {
+            enabled: true,
+            url_override: Some("http://localhost:3000".into()),
+            framework_hint: Some("vite".into()),
+        };
+        let json = serde_json::to_string(&p).unwrap();
+        let back: PreviewProfile = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.enabled, true);
+        assert_eq!(back.url_override.as_deref(), Some("http://localhost:3000"));
+        assert_eq!(back.framework_hint.as_deref(), Some("vite"));
+    }
+
+    #[test]
+    fn missing_preview_deserializes_as_none_on_config_profile() {
+        // Simulate an old serialized ConfigProfile without the preview field.
+        // Include every non-defaultable field (id, name, working_directory,
+        // claude_args, env_vars, is_default) so serde is not asked to
+        // synthesise them - the assertion under test is that `preview`
+        // defaults to None when absent.
+        let json = r#"{
+            "id": "p1",
+            "name": "x",
+            "description": null,
+            "working_directory": "/tmp",
+            "claude_args": [],
+            "env_vars": {},
+            "is_default": false
+        }"#;
+        let cfg: ConfigProfile = serde_json::from_str(json).unwrap();
+        assert!(cfg.preview.is_none());
     }
 
     #[test]

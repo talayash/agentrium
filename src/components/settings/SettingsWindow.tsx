@@ -22,6 +22,7 @@ const pages: Record<string, React.LazyExoticComponent<React.ComponentType>> = {
   'claude.defaults':                      lazy(() => import('./categories/ClaudeDefaultsPage')),
   'claude.updates':                       lazy(() => import('./categories/ClaudeUpdatesPage')),
   'tools.launchers':                      lazy(() => import('./categories/ToolsLaunchersPage')),
+  'tools.preview':                        lazy(() => import('./categories/PreviewPage')),
   'privacy-about.privacy':                lazy(() => import('./categories/PrivacyPage')),
   'privacy-about.about':                  lazy(() => import('./categories/AboutPage')),
 };

@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.29.0",
+    "date": "2026-07-23",
+    "features": [
+      { "title": "Live preview panel for GUI projects", "description": "A new right-docked Preview panel renders your dev server side-by-side with the terminal. Detects the URL automatically from Vite, Next.js, Astro, Nuxt, SvelteKit, Remix, Angular, CRA, and Expo dev-server output. Toggle it from the right toolbar or Ctrl+Alt+P. Drag the left edge to resize. Includes URL bar, reload, and open-in-browser." },
+      { "title": "Profiles that have a GUI", "description": "Profiles gained a 'Has GUI preview' checkbox with optional URL override — terminals launched from a GUI profile open the preview panel automatically. Ad-hoc terminals get a subtle inline hint when a dev-server URL is detected." },
+      { "title": "Preview allow-list", "description": "Localhost is always allowed. To preview through a tunnel, add hostname globs (e.g. *.ngrok.io) in Settings → Preview. Anything outside the allow-list is blocked with a clear inline explanation." },
+      { "title": "F5 no longer nukes your terminals", "description": "Pressing F5 or Ctrl+R in the app now reloads the preview iframe when the preview panel is open, or does nothing when it's closed - it no longer reloads the whole app and closes every open terminal." }
+    ]
+  },
+  {
     "version": "1.28.1",
     "date": "2026-07-20",
     "features": [

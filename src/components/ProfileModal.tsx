@@ -10,6 +10,12 @@ import { Modal } from './ui/Modal';
 import { ListRow } from './ui/ListRow';
 import { EmptyState } from './ui/EmptyState';
 
+interface PreviewProfile {
+  enabled: boolean;
+  url_override?: string | null;
+  framework_hint?: string | null;
+}
+
 interface ConfigProfile {
   id: string;
   name: string;
@@ -18,6 +24,7 @@ interface ConfigProfile {
   claude_args: string[];
   env_vars: Record<string, string>;
   is_default: boolean;
+  preview?: PreviewProfile | null;
 }
 
 export function ProfileModal() {
@@ -284,6 +291,55 @@ export function ProfileModal() {
                     className="rounded border-border-light bg-bg-primary text-accent-primary focus:ring-accent-primary"
                   />
                   <label htmlFor="is_default" className="text-text-primary text-[13px]">Set as default profile</label>
+                </div>
+
+                <div className="border-t border-[var(--ij-divider-soft)] pt-4 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="preview_enabled"
+                      checked={selectedProfile.preview?.enabled ?? false}
+                      onChange={(e) => {
+                        const enabled = e.target.checked;
+                        const nextPreview: PreviewProfile | null = enabled
+                          ? {
+                              enabled: true,
+                              url_override: selectedProfile.preview?.url_override ?? null,
+                              framework_hint: selectedProfile.preview?.framework_hint ?? null,
+                            }
+                          : null;
+                        setSelectedProfile({ ...selectedProfile, preview: nextPreview });
+                      }}
+                      className="rounded border-border-light bg-bg-primary text-accent-primary focus:ring-accent-primary"
+                    />
+                    <label htmlFor="preview_enabled" className="text-text-primary text-[13px]">
+                      Has GUI preview
+                    </label>
+                  </div>
+                  {selectedProfile.preview?.enabled && (
+                    <div>
+                      <label className="block text-text-secondary text-[12px] mb-1.5">
+                        Preview URL (optional override)
+                      </label>
+                      <input
+                        type="text"
+                        value={selectedProfile.preview?.url_override ?? ''}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          setSelectedProfile({
+                            ...selectedProfile,
+                            preview: {
+                              enabled: true,
+                              url_override: value ? value : null,
+                              framework_hint: selectedProfile.preview?.framework_hint ?? null,
+                            },
+                          });
+                        }}
+                        className="w-full bg-bg-primary ring-1 ring-border-light rounded-md h-9 px-3 text-text-primary text-[13px] focus:outline-none focus:ring-accent-primary transition-colors"
+                        placeholder="http://localhost:3000"
+                      />
+                    </div>
+                  )}
                 </div>
 
                 {saveError && (

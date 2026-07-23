@@ -12,6 +12,13 @@ pub struct SessionHistoryEntry {
     pub started_at: String,
     pub ended_at: Option<String>,
     pub log_path: Option<String>,
+    /// Working directory the session ran in - needed to resume it in the right
+    /// place. Added in a later release, so NULL for pre-migration rows.
+    pub working_directory: Option<String>,
+    /// The Claude session UUID, captured once detected, so a resume can use
+    /// `--resume <id>` exactly instead of `--continue`. NULL until detected or
+    /// for pre-migration rows.
+    pub claude_session_id: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -53,6 +60,7 @@ impl Database {
         conn.execute_batch(
             "
             PRAGMA journal_mode=WAL;
+            PRAGMA foreign_keys=ON;
 
             CREATE TABLE IF NOT EXISTS profiles (
                 id TEXT PRIMARY KEY,
@@ -61,7 +69,8 @@ impl Database {
                 working_directory TEXT NOT NULL,
                 claude_args TEXT NOT NULL,
                 env_vars TEXT NOT NULL,
-                is_default INTEGER DEFAULT 0
+                is_default INTEGER DEFAULT 0,
+                preview_json TEXT
             );
 
             CREATE TABLE IF NOT EXISTS workspaces (
@@ -77,7 +86,9 @@ impl Database {
                 label TEXT NOT NULL,
                 started_at TEXT NOT NULL,
                 ended_at TEXT,
-                log_path TEXT
+                log_path TEXT,
+                working_directory TEXT,
+                claude_session_id TEXT
             );
 
             CREATE TABLE IF NOT EXISTS snippets (
@@ -124,7 +135,34 @@ impl Database {
             CREATE INDEX IF NOT EXISTS idx_changelist_files_list ON changelist_files(changelist_id);
             ",
         )
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+
+        // Migrations for databases created before these columns existed.
+        // `CREATE TABLE IF NOT EXISTS` never alters an existing table, so add
+        // the columns here. ADD COLUMN errors with "duplicate column name" when
+        // already present (fresh installs, or a second launch) - treat that as
+        // success and propagate anything else.
+        for column in ["working_directory TEXT", "claude_session_id TEXT"] {
+            let sql = format!("ALTER TABLE session_history ADD COLUMN {}", column);
+            if let Err(e) = conn.execute(&sql, []) {
+                if !e.to_string().contains("duplicate column name") {
+                    return Err(e.to_string());
+                }
+            }
+        }
+        // Same pattern for the profiles table: `preview_json` is nullable JSON
+        // storing the profile's PreviewProfile (see config.rs). NULL means the
+        // profile has no preview config, matching the Option<PreviewProfile>
+        // shape in Rust.
+        for column in ["preview_json TEXT"] {
+            let sql = format!("ALTER TABLE profiles ADD COLUMN {}", column);
+            if let Err(e) = conn.execute(&sql, []) {
+                if !e.to_string().contains("duplicate column name") {
+                    return Err(e.to_string());
+                }
+            }
+        }
+        Ok(())
     }
 
     pub(crate) fn conn(&self) -> &Connection {
@@ -146,9 +184,19 @@ impl Database {
             .map_err(|e| format!("Failed to serialize claude_args: {}", e))?;
         let env_vars_json = serde_json::to_string(&profile.env_vars)
             .map_err(|e| format!("Failed to serialize env_vars: {}", e))?;
+        // preview_json mirrors env_vars: JSON in a TEXT column, but nullable -
+        // Option<PreviewProfile>::None persists as SQL NULL so old rows and
+        // opted-out profiles are indistinguishable on read.
+        let preview_json: Option<String> = match &profile.preview {
+            Some(preview) => Some(
+                serde_json::to_string(preview)
+                    .map_err(|e| format!("Failed to serialize preview: {}", e))?,
+            ),
+            None => None,
+        };
         self.conn.execute(
-            "INSERT OR REPLACE INTO profiles (id, name, description, working_directory, claude_args, env_vars, is_default)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            "INSERT OR REPLACE INTO profiles (id, name, description, working_directory, claude_args, env_vars, is_default, preview_json)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             params![
                 profile.id,
                 profile.name,
@@ -157,6 +205,7 @@ impl Database {
                 claude_args_json,
                 env_vars_json,
                 profile.is_default as i32,
+                preview_json,
             ],
         ).map_err(|e| e.to_string())?;
         Ok(())
@@ -164,18 +213,46 @@ impl Database {
 
     pub fn get_profiles(&self) -> Result<Vec<ConfigProfile>, String> {
         let mut stmt = self.conn
-            .prepare("SELECT id, name, description, working_directory, claude_args, env_vars, is_default FROM profiles")
+            .prepare("SELECT id, name, description, working_directory, claude_args, env_vars, is_default, preview_json FROM profiles")
             .map_err(|e| e.to_string())?;
 
         let profiles = stmt.query_map([], |row| {
+            let id: String = row.get(0)?;
+            let name: String = row.get(1)?;
+            let args_raw: String = row.get(4)?;
+            let env_raw: String = row.get(5)?;
+            // Malformed JSON here means a profile launches with no args / no env
+            // vars - a silent behaviour change that's hard to diagnose. Log it
+            // (with the profile identity) before falling back, rather than
+            // swallowing it, so it shows up in stderr/telemetry.
+            let claude_args = serde_json::from_str(&args_raw).unwrap_or_else(|e| {
+                eprintln!("[profiles] corrupt claude_args for '{}' ({}): {}", name, id, e);
+                Default::default()
+            });
+            let env_vars = serde_json::from_str(&env_raw).unwrap_or_else(|e| {
+                eprintln!("[profiles] corrupt env_vars for '{}' ({}): {}", name, id, e);
+                Default::default()
+            });
+            // preview_json is nullable; a NULL column and a JSON `null` both
+            // yield `None`. Corrupt JSON falls back to `None` with a log line,
+            // matching the defensive treatment of claude_args / env_vars above.
+            let preview_raw: Option<String> = row.get(7)?;
+            let preview: Option<crate::config::PreviewProfile> = match preview_raw {
+                Some(raw) => serde_json::from_str(&raw).unwrap_or_else(|e| {
+                    eprintln!("[profiles] corrupt preview for '{}' ({}): {}", name, id, e);
+                    None
+                }),
+                None => None,
+            };
             Ok(ConfigProfile {
-                id: row.get(0)?,
-                name: row.get(1)?,
+                id,
+                name,
                 description: row.get(2)?,
                 working_directory: row.get(3)?,
-                claude_args: serde_json::from_str(&row.get::<_, String>(4)?).unwrap_or_default(),
-                env_vars: serde_json::from_str(&row.get::<_, String>(5)?).unwrap_or_default(),
+                claude_args,
+                env_vars,
                 is_default: row.get::<_, i32>(6)? != 0,
+                preview,
             })
         }).map_err(|e| e.to_string())?;
 
@@ -280,12 +357,31 @@ impl Database {
 
     // Session history methods
 
-    pub fn insert_session_history(&self, terminal_id: &str, label: &str, started_at: &str, log_path: Option<&str>) -> Result<i64, String> {
+    pub fn insert_session_history(
+        &self,
+        terminal_id: &str,
+        label: &str,
+        started_at: &str,
+        log_path: Option<&str>,
+        working_directory: Option<&str>,
+    ) -> Result<i64, String> {
         self.conn.execute(
-            "INSERT INTO session_history (terminal_id, label, started_at, log_path) VALUES (?1, ?2, ?3, ?4)",
-            params![terminal_id, label, started_at, log_path],
+            "INSERT INTO session_history (terminal_id, label, started_at, log_path, working_directory) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![terminal_id, label, started_at, log_path, working_directory],
         ).map_err(|e| e.to_string())?;
         Ok(self.conn.last_insert_rowid())
+    }
+
+    /// Persist the detected Claude session id onto the terminal's currently-open
+    /// history row (the one without an ended_at) so a later resume can use
+    /// `--resume <id>` precisely. Idempotent - overwrites on redetection (e.g.
+    /// after `/clear` rotates the id).
+    pub fn update_session_claude_id(&self, terminal_id: &str, claude_session_id: &str) -> Result<(), String> {
+        self.conn.execute(
+            "UPDATE session_history SET claude_session_id = ?1 WHERE terminal_id = ?2 AND ended_at IS NULL",
+            params![claude_session_id, terminal_id],
+        ).map_err(|e| e.to_string())?;
+        Ok(())
     }
 
     pub fn update_session_ended(&self, terminal_id: &str, ended_at: &str) -> Result<(), String> {
@@ -298,7 +394,7 @@ impl Database {
 
     pub fn get_session_history(&self) -> Result<Vec<SessionHistoryEntry>, String> {
         let mut stmt = self.conn
-            .prepare("SELECT id, terminal_id, label, started_at, ended_at, log_path FROM session_history ORDER BY started_at DESC LIMIT 100")
+            .prepare("SELECT id, terminal_id, label, started_at, ended_at, log_path, working_directory, claude_session_id FROM session_history ORDER BY started_at DESC LIMIT 100")
             .map_err(|e| e.to_string())?;
 
         let entries = stmt.query_map([], |row| {
@@ -309,6 +405,8 @@ impl Database {
                 started_at: row.get(3)?,
                 ended_at: row.get(4)?,
                 log_path: row.get(5)?,
+                working_directory: row.get(6)?,
+                claude_session_id: row.get(7)?,
             })
         }).map_err(|e| e.to_string())?;
 
@@ -420,6 +518,7 @@ impl Database {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::PreviewProfile;
     use crate::terminal::{TerminalConfig, TerminalStatus};
     use chrono::{Duration, Utc};
     use std::collections::HashMap;
@@ -435,6 +534,7 @@ mod tests {
             claude_args: vec!["--model".to_string(), "opus".to_string()],
             env_vars: env,
             is_default: false,
+            preview: None,
         }
     }
 
@@ -472,6 +572,35 @@ mod tests {
         assert_eq!(loaded[0].id, "p1");
         assert_eq!(loaded[0].claude_args, vec!["--model", "opus"]);
         assert_eq!(loaded[0].env_vars.get("FOO"), Some(&"bar".to_string()));
+    }
+
+    #[test]
+    fn profile_round_trips_preview_when_present_and_absent() {
+        let db = Database::new_in_memory().unwrap();
+
+        // With preview -> round-trips exact field values.
+        let mut with_preview = make_profile("p-with", "with");
+        with_preview.preview = Some(PreviewProfile {
+            enabled: true,
+            url_override: Some("http://localhost:3000".to_string()),
+            framework_hint: Some("vite".to_string()),
+        });
+        db.save_profile(&with_preview).unwrap();
+
+        // Without preview -> persists as SQL NULL and reads back as None.
+        let without_preview = make_profile("p-none", "none");
+        db.save_profile(&without_preview).unwrap();
+
+        let loaded = db.get_profiles().unwrap();
+        let with_loaded = loaded.iter().find(|p| p.id == "p-with").unwrap();
+        let without_loaded = loaded.iter().find(|p| p.id == "p-none").unwrap();
+
+        let preview = with_loaded.preview.as_ref().expect("preview persisted");
+        assert_eq!(preview.enabled, true);
+        assert_eq!(preview.url_override.as_deref(), Some("http://localhost:3000"));
+        assert_eq!(preview.framework_hint.as_deref(), Some("vite"));
+
+        assert!(without_loaded.preview.is_none(), "None preview must stay None across a round-trip");
     }
 
     #[test]
@@ -585,23 +714,27 @@ mod tests {
     fn session_history_insert_then_close_sets_ended_at() {
         let db = Database::new_in_memory().unwrap();
         let id = db
-            .insert_session_history("t1", "label", "2026-01-01T00:00:00Z", Some("/log/path"))
+            .insert_session_history("t1", "label", "2026-01-01T00:00:00Z", Some("/log/path"), Some("/work/dir"))
             .unwrap();
         assert!(id > 0);
+        // Claude session id is detected after spawn and stamped onto the open row.
+        db.update_session_claude_id("t1", "sess-abc").unwrap();
         db.update_session_ended("t1", "2026-01-01T01:00:00Z").unwrap();
 
         let entries = db.get_session_history().unwrap();
         let found = entries.iter().find(|e| e.id == id).expect("entry present");
         assert_eq!(found.ended_at.as_deref(), Some("2026-01-01T01:00:00Z"));
         assert_eq!(found.log_path.as_deref(), Some("/log/path"));
+        assert_eq!(found.working_directory.as_deref(), Some("/work/dir"));
+        assert_eq!(found.claude_session_id.as_deref(), Some("sess-abc"));
     }
 
     #[test]
     fn get_log_path_for_terminal_returns_the_most_recent_non_null_path() {
         let db = Database::new_in_memory().unwrap();
-        db.insert_session_history("t1", "old", "2026-01-01T00:00:00Z", Some("/old"))
+        db.insert_session_history("t1", "old", "2026-01-01T00:00:00Z", Some("/old"), None)
             .unwrap();
-        db.insert_session_history("t1", "new", "2026-01-02T00:00:00Z", Some("/new"))
+        db.insert_session_history("t1", "new", "2026-01-02T00:00:00Z", Some("/new"), None)
             .unwrap();
 
         assert_eq!(

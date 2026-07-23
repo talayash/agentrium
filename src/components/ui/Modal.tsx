@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import type { MouseEvent, ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import { X } from 'lucide-react';
@@ -40,6 +40,8 @@ export function Modal({
   panelClassName = 'w-full max-w-lg',
   scrimClassName = 'bg-black/55 z-50',
 }: ModalProps) {
+  const panelRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     if (!closeOnEscape) return;
     const onKey = (e: KeyboardEvent) => {
@@ -48,6 +50,53 @@ export function Modal({
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [closeOnEscape, onClose]);
+
+  // Focus management: move focus into the dialog on open, trap Tab within it,
+  // and restore focus to the trigger on close. Without this, Tab escapes behind
+  // the scrim and focus is never returned - a keyboard/screen-reader trap.
+  useEffect(() => {
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const panel = panelRef.current;
+    const getFocusable = () =>
+      panel
+        ? Array.from(
+            panel.querySelectorAll<HTMLElement>(
+              'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+            ),
+          ).filter((el) => el.offsetParent !== null)
+        : [];
+
+    const first = getFocusable()[0];
+    if (first) first.focus();
+    else panel?.focus();
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab' || !panel) return;
+      const items = getFocusable();
+      if (items.length === 0) {
+        e.preventDefault();
+        panel.focus();
+        return;
+      }
+      const firstEl = items[0];
+      const lastEl = items[items.length - 1];
+      const active = document.activeElement as HTMLElement | null;
+      if (e.shiftKey) {
+        if (active === firstEl || !panel.contains(active)) {
+          e.preventDefault();
+          lastEl.focus();
+        }
+      } else if (active === lastEl || !panel.contains(active)) {
+        e.preventDefault();
+        firstEl.focus();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      previouslyFocused?.focus?.();
+    };
+  }, []);
 
   const onScrimClick = (e: MouseEvent) => {
     if (closeOn === 'click' && e.target === e.currentTarget) onClose();
@@ -65,8 +114,10 @@ export function Modal({
     >
       <motion.div
         {...dialogMotion}
+        ref={panelRef}
         role="dialog"
         aria-modal="true"
+        tabIndex={-1}
         // Stop bubbling so clicks inside the panel never reach the scrim handler.
         onClick={(e) => e.stopPropagation()}
         onDoubleClick={(e) => e.stopPropagation()}

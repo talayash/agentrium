@@ -85,6 +85,27 @@ fn main() {
                 lsp: Arc::new(Mutex::new(lsp_manager)),
             });
 
+            // WebView2 ships a default browser context menu with "Refresh" that
+            // reloads the top-level document — clicking it inside the preview
+            // iframe closes every open terminal. Parent-window JS can't cancel
+            // that click (iframes are separate documents), and WebView2 also
+            // auto-confirms `beforeunload` in Tauri, so the ONLY reliable
+            // block is turning the default context menu off at the shell
+            // level. Applies to every webview created by this process.
+            #[cfg(target_os = "windows")]
+            {
+                for (_, w) in app.webview_windows() {
+                    let _ = w.with_webview(|webview| unsafe {
+                        if let Ok(core) = webview.controller().CoreWebView2() {
+                            if let Ok(settings) = core.Settings() {
+                                let _ = settings
+                                    .SetAreDefaultContextMenusEnabled(false.into());
+                            }
+                        }
+                    });
+                }
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

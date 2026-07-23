@@ -6,6 +6,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 import { SearchAddon } from '@xterm/addon-search';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
+import { SerializeAddon } from '@xterm/addon-serialize';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { useTerminalStore } from '../store/terminalStore';
@@ -49,6 +50,7 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
   const terminalRef = useRef<Terminal | null>(null);
   const searchAddonRef = useRef<SearchAddon | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
+  const serializeAddonRef = useRef<SerializeAddon | null>(null);
   const [searchVisible, setSearchVisible] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   // Right-click context menu (copy / paste). null when closed; otherwise the
@@ -69,6 +71,7 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
   const writeToTerminal = useTerminalStore.getState().writeToTerminal;
   const resizeTerminal = useTerminalStore.getState().resizeTerminal;
   const setXterm = useTerminalStore.getState().setXterm;
+  const stashTerminalBuffer = useTerminalStore.getState().stashTerminalBuffer;
 
   // Terminal appearance settings (issue #21). Scrollback and BiDi need a
   // recreate when they change (xterm caches buffer at construction; the
@@ -166,12 +169,15 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
       });
     });
     const searchAddon = new SearchAddon();
+    const serializeAddon = new SerializeAddon();
 
     terminal.loadAddon(fitAddon);
     terminal.loadAddon(webLinksAddon);
     terminal.loadAddon(searchAddon);
+    terminal.loadAddon(serializeAddon);
     searchAddonRef.current = searchAddon;
     fitAddonRef.current = fitAddon;
+    serializeAddonRef.current = serializeAddon;
 
     // BiDi (issue #21): opt-in Unicode11 addon enables grapheme-aware width
     // calculation and the proposed BiDi rendering path in xterm. Off by
@@ -404,9 +410,28 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
       resizeObserver.disconnect();
       terminal.textarea?.removeEventListener('blur', handleBlur);
       container.removeEventListener('mouseup', handleMouseUp);
+      // Snapshot the buffer (viewport + scrollback, with colors) before we
+      // dispose, so remounting in a different view (tab -> grid/split and back,
+      // or a scrollback/bidi settings change) can replay it instead of showing
+      // an empty terminal. Serialization is bounded by xterm's scrollback size.
+      // Skipped implicitly for terminals being permanently closed - their store
+      // instance is already gone, so stashTerminalBuffer is a no-op.
+      try {
+        const snapshot = serializeAddonRef.current?.serialize();
+        if (snapshot) {
+          stashTerminalBuffer(terminalId, snapshot);
+        }
+      } catch {
+        /* serialize failed - fall back to an empty terminal on remount */
+      }
       searchAddonRef.current = null;
       fitAddonRef.current = null;
+      serializeAddonRef.current = null;
       terminalRef.current = null;
+      // Clear the store's reference BEFORE disposing so live PTY output can't
+      // be written to a disposed terminal (see handleTerminalOutput). Both are
+      // synchronous, so no terminal-output callback runs between them.
+      setXterm(terminalId, null);
       webglAddon?.dispose();
       terminal.dispose();
     };

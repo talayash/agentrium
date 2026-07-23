@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useAppStore, DEFAULT_TERMINAL_FONT_SIZE } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
+import { usePreviewStore } from '../store/previewStore';
 import { toast } from '../store/toastStore';
 import { captureClaudeInput } from '../lib/terminalInput';
 
@@ -44,8 +45,30 @@ export function useKeyboardShortcuts() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't hijack keys while the user is typing in a non-terminal editable
+      // surface (Settings/modal input, Monaco editor, global search box). These
+      // are app-global accelerators - in a text field the native control must
+      // win, otherwise Ctrl+P, Ctrl+W, F2 (Monaco rename), Ctrl+Shift+F/S/D,
+      // etc. get stolen mid-edit. The helper returns false for xterm's own
+      // textarea, so terminal-focused shortcuts still work.
+      if (isFocusInNonTerminalEditable()) return;
+
       const ctrl = e.ctrlKey || e.metaKey;
       const shift = e.shiftKey;
+
+      // Swallow F5 and Ctrl+R globally. WebView2's default reloads the
+      // top-level document, which throws away all open terminals (they
+      // aren't persisted). If the preview panel is open, route to the
+      // preview reload instead.
+      if (e.key === 'F5' || (ctrl && !shift && (e.key === 'r' || e.key === 'R'))) {
+        e.preventDefault();
+        const previewOpen = usePreviewStore.getState().globalOpen;
+        const activeId = activeIdRef.current;
+        if (previewOpen && activeId) {
+          usePreviewStore.getState().reload(activeId);
+        }
+        return;
+      }
 
       if (ctrl && shift && e.key === 'N') {
         e.preventDefault();
@@ -87,6 +110,12 @@ export function useKeyboardShortcuts() {
             targetTerminalId: activeId,
           });
         })();
+      }
+
+      // Preview panel toggle: Ctrl+Alt+P (Ctrl+Shift+V and Ctrl+Shift+G are taken).
+      if (ctrl && e.altKey && !shift && (e.key === 'p' || e.key === 'P')) {
+        e.preventDefault();
+        usePreviewStore.getState().toggleGlobal();
       }
 
       // Split View: Ctrl+\

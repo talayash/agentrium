@@ -1,4 +1,4 @@
-use portable_pty::{native_pty_system, CommandBuilder, PtyPair, PtySize};
+use portable_pty::{native_pty_system, Child, CommandBuilder, PtyPair, PtySize};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::{BufWriter, Read, Write};
@@ -36,11 +36,31 @@ pub enum TerminalStatus {
     Stopped,
 }
 
+/// True when a PTY read error is just the normal teardown of a closing terminal
+/// rather than a genuine mid-session failure. On Windows, killing the child (see
+/// `close`) or the user exiting tears the pipe down and surfaces as a broken-pipe
+/// / invalid-handle error on the reader's next read instead of a clean EOF. We
+/// treat those as EOF: break quietly, without an error banner or telemetry.
+fn is_benign_close_error(e: &std::io::Error) -> bool {
+    use std::io::ErrorKind;
+    if matches!(e.kind(), ErrorKind::BrokenPipe | ErrorKind::UnexpectedEof) {
+        return true;
+    }
+    // Windows: ERROR_INVALID_HANDLE (6), ERROR_BROKEN_PIPE (109),
+    // ERROR_NO_DATA / "pipe is being closed" (232).
+    matches!(e.raw_os_error(), Some(6) | Some(109) | Some(232))
+}
+
 pub struct Terminal {
     pub config: TerminalConfig,
     /// Kept alive to maintain the PTY connection
     pub pty_pair: PtyPair,
     pub writer: Box<dyn Write + Send>,
+    /// The spawned child process. Kept so `close()` can `kill()` it: on Windows
+    /// a ConPTY read can block indefinitely after the writer/PTY is dropped, so
+    /// relying on EOF alone leaks the reader thread and orphans the process.
+    /// Killing the child forces EOF and lets the reader thread exit.
+    pub child: Box<dyn Child + Send + Sync>,
     /// Handle to the reader thread for cleanup on close
     pub reader_handle: Option<JoinHandle<()>>,
     /// When this terminal last received user input (any `write()`). The
@@ -236,7 +256,7 @@ impl TerminalManager {
         }
 
         // Spawn the command
-        let _child = pty_pair.slave.spawn_command(cmd)
+        let child = pty_pair.slave.spawn_command(cmd)
             .map_err(|e| format!("Failed to spawn command: {}", e))?;
 
         let config = TerminalConfig {
@@ -293,6 +313,12 @@ impl TerminalManager {
                         }
                     }
                     Err(e) => {
+                        // Normal close/teardown (esp. Windows ConPTY after the
+                        // child is killed) surfaces as a read error rather than
+                        // EOF - exit quietly, no banner, no telemetry.
+                        if is_benign_close_error(&e) {
+                            break;
+                        }
                         eprintln!("Error reading from pty: {}", e);
                         // Capture so we hear about broken-mid-session terminals.
                         // RustCommand (not RustPanic) because the PTY is a
@@ -326,6 +352,7 @@ impl TerminalManager {
                 config: config.clone(),
                 pty_pair,
                 writer,
+                child,
                 reader_handle: Some(reader_handle),
                 last_input_at: None,
             },
@@ -397,7 +424,7 @@ impl TerminalManager {
             cmd.cwd(&working_directory);
         }
 
-        let _child = pty_pair.slave.spawn_command(cmd)
+        let child = pty_pair.slave.spawn_command(cmd)
             .map_err(|e| format!("Failed to spawn npm run {}: {}", script_name, e))?;
 
         let id = Uuid::new_v4().to_string();
@@ -433,6 +460,11 @@ impl TerminalManager {
                         if tx.blocking_send((terminal_id.clone(), data)).is_err() { break; }
                     }
                     Err(e) => {
+                        // Quiet exit on normal close teardown (see the claude
+                        // reader above); only surface genuine mid-session errors.
+                        if is_benign_close_error(&e) {
+                            break;
+                        }
                         let _ = tx.blocking_send((
                             terminal_id.clone(),
                             format!("\r\n[Error: {}]\r\n", e).into_bytes(),
@@ -449,6 +481,7 @@ impl TerminalManager {
                 config: config.clone(),
                 pty_pair,
                 writer,
+                child,
                 reader_handle: Some(reader_handle),
                 last_input_at: None,
             },
@@ -507,7 +540,7 @@ impl TerminalManager {
             cmd.cwd(&working_directory);
         }
 
-        let _child = pty_pair.slave.spawn_command(cmd)
+        let child = pty_pair.slave.spawn_command(cmd)
             .map_err(|e| format!("Failed to spawn shell: {}", e))?;
 
         let id = Uuid::new_v4().to_string();
@@ -543,6 +576,11 @@ impl TerminalManager {
                         if tx.blocking_send((terminal_id.clone(), data)).is_err() { break; }
                     }
                     Err(e) => {
+                        // Quiet exit on normal close teardown (see the claude
+                        // reader above); only surface genuine mid-session errors.
+                        if is_benign_close_error(&e) {
+                            break;
+                        }
                         let _ = tx.blocking_send((
                             terminal_id.clone(),
                             format!("\r\n[Error: {}]\r\n", e).into_bytes(),
@@ -559,6 +597,7 @@ impl TerminalManager {
                 config: config.clone(),
                 pty_pair,
                 writer,
+                child,
                 reader_handle: Some(reader_handle),
                 last_input_at: None,
             },
@@ -606,19 +645,26 @@ impl TerminalManager {
     }
 
     pub fn close(&mut self, id: &str) -> Result<(), String> {
-        if let Some(terminal) = self.terminals.remove(id) {
-            // Dropping the terminal drops the writer and PTY pair, which signals EOF
-            // to the reader thread. The reader thread will exit on its next read attempt
-            // and clean up asynchronously. We do NOT join the reader thread here because
-            // on Windows, PTY reads can block indefinitely even after the writer is dropped,
-            // which would deadlock the mutex and freeze the entire application.
+        if let Some(mut terminal) = self.terminals.remove(id) {
+            // Kill the child process first. On Windows a ConPTY read can block
+            // indefinitely even after the writer/PTY is dropped, so EOF alone
+            // is not guaranteed - the reader thread (and the process itself)
+            // would leak. Killing the child forces the read to unblock so the
+            // thread exits. `kill()` is non-blocking (TerminateProcess / SIGKILL),
+            // so it can't deadlock the mutex; we still don't join the reader.
+            let _ = terminal.child.kill();
+            // Dropping the terminal then drops the writer and PTY pair.
             drop(terminal);
         }
         Ok(())
     }
 
     pub fn close_all(&mut self) {
-        // Clear all terminals at once - reader threads clean up asynchronously
+        // Kill every child so their reader threads unblock and no processes are
+        // orphaned, then clear. Reader threads still clean up asynchronously.
+        for terminal in self.terminals.values_mut() {
+            let _ = terminal.child.kill();
+        }
         self.terminals.clear();
     }
 

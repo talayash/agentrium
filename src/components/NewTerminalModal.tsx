@@ -13,6 +13,12 @@ import { ListRow } from './ui/ListRow';
 
 const isMac = navigator.platform.toUpperCase().includes('MAC');
 
+interface PreviewProfile {
+  enabled: boolean;
+  url_override?: string | null;
+  framework_hint?: string | null;
+}
+
 interface ConfigProfile {
   id: string;
   name: string;
@@ -21,6 +27,7 @@ interface ConfigProfile {
   claude_args: string[];
   env_vars: Record<string, string>;
   is_default: boolean;
+  preview?: PreviewProfile | null;
 }
 
 const TAG_COLORS = [
@@ -158,7 +165,10 @@ export function NewTerminalModal() {
       const parentDir = repoPath.replace(/[\\/][^\\/]*$/, '');
       const repoName = repoPath.replace(/^.*[\\/]/, '');
       const sanitized = newBranchName.replace(/\//g, '-');
-      setNewWorktreePath(`${parentDir}\\${repoName}-${sanitized}`);
+      // Match the repo path's separator so the prefilled path is valid on
+      // macOS/Linux too (hardcoding '\\' produced broken paths there).
+      const sep = repoPath.includes('\\') ? '\\' : '/';
+      setNewWorktreePath(`${parentDir}${sep}${repoName}-${sanitized}`);
     }
   }, [newBranchName, worktreeDetect, workingDirectory]);
 
@@ -276,6 +286,15 @@ export function NewTerminalModal() {
           finalArgs.unshift('--worktree');
         }
 
+        const previewInit = selectedProfile?.preview?.enabled
+          ? {
+              isOpen: true,
+              userOverride: selectedProfile.preview.url_override ?? null,
+              frameworkHint: (selectedProfile.preview.framework_hint ?? 'unknown') as
+                import('../lib/preview/framework').FrameworkHint,
+            }
+          : undefined;
+
         newTerminalId = await createTerminal(
           label,
           workingDirectory,
@@ -283,6 +302,10 @@ export function NewTerminalModal() {
           envVars,
           colorTag,
           nickname || undefined,
+          undefined,
+          undefined,
+          undefined,
+          previewInit,
         );
       }
 

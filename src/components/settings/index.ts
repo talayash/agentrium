@@ -46,6 +46,7 @@ export const CATEGORY_GROUPS: {
   ]},
   { id: 'tools', label: 'Tools', pages: [
     { id: 'launchers', label: 'Launchers' },
+    { id: 'preview',   label: 'Preview' },
   ]},
   { id: 'privacy-about', label: 'Privacy & About', pages: [
     { id: 'privacy', label: 'Privacy' },

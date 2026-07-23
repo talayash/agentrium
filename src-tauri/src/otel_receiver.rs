@@ -1,6 +1,7 @@
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::HashMap;
+use std::io::Read;
 use std::sync::{Arc, Mutex};
 
 /// One terminal's metrics extracted from a single OTLP/JSON export.
@@ -156,15 +157,33 @@ pub fn parse_otlp_metrics(body: &str) -> Vec<SessionMetricUpdate> {
 /// export (e.g. cost-only) leaves previously-accumulated token totals intact.
 pub struct MetricsAggregator {
     by_terminal: HashMap<String, SessionMetricUpdate>,
+    // Recently-closed terminal ids. Claude's OTLP exporter flushes on shutdown
+    // (~3s cadence), so a final export can arrive AFTER forget() and would
+    // otherwise re-insert a dead terminal via apply()'s or_insert - growing the
+    // map for the app's lifetime. We drop exports for tombstoned ids. Bounded
+    // ring so the tombstone set can't grow without bound either.
+    closed: std::collections::VecDeque<String>,
+    closed_set: std::collections::HashSet<String>,
 }
+
+const MAX_CLOSED_TOMBSTONES: usize = 512;
 
 impl MetricsAggregator {
     pub fn new() -> Self {
-        Self { by_terminal: HashMap::new() }
+        Self {
+            by_terminal: HashMap::new(),
+            closed: std::collections::VecDeque::new(),
+            closed_set: std::collections::HashSet::new(),
+        }
     }
 
     /// Add a delta export into the running total and return the full snapshot.
-    pub fn apply(&mut self, u: SessionMetricUpdate) -> SessionMetricUpdate {
+    /// Returns `None` for a terminal that has already been closed (a late
+    /// export), so the caller neither stores nor emits it.
+    pub fn apply(&mut self, u: SessionMetricUpdate) -> Option<SessionMetricUpdate> {
+        if self.closed_set.contains(&u.terminal_id) {
+            return None;
+        }
         let entry = self
             .by_terminal
             .entry(u.terminal_id.clone())
@@ -186,12 +205,21 @@ impl MetricsAggregator {
         add_u(&mut entry.tokens_cache_creation, u.tokens_cache_creation);
         add_u(&mut entry.lines_added, u.lines_added);
         add_u(&mut entry.lines_removed, u.lines_removed);
-        entry.clone()
+        Some(entry.clone())
     }
 
-    /// Drop a terminal's accumulated metrics (called when a terminal closes).
+    /// Drop a terminal's accumulated metrics (called when a terminal closes) and
+    /// tombstone its id so a late export can't resurrect it.
     pub fn forget(&mut self, terminal_id: &str) {
         self.by_terminal.remove(terminal_id);
+        if self.closed_set.insert(terminal_id.to_string()) {
+            self.closed.push_back(terminal_id.to_string());
+            if self.closed.len() > MAX_CLOSED_TOMBSTONES {
+                if let Some(old) = self.closed.pop_front() {
+                    self.closed_set.remove(&old);
+                }
+            }
+        }
     }
 }
 
@@ -211,15 +239,31 @@ pub fn start(app: tauri::AppHandle) -> std::io::Result<(u16, Arc<Mutex<MetricsAg
         // claude CLI posting small OTLP payloads (a few KB); the bound stops a
         // misbehaving local process from OOMing us with a giant body.
         const MAX_OTLP_BODY_BYTES: usize = 4 * 1024 * 1024;
+        // Parse the constant response header once, not per request (the old
+        // per-request `.unwrap()` was a panic point in a long-lived thread).
+        let json_header: tiny_http::Header = "Content-Type: application/json"
+            .parse()
+            .expect("static header literal is always valid");
         for mut request in server.incoming_requests() {
             // Reject oversized payloads up front via Content-Length.
             if request.body_length().is_some_and(|n| n > MAX_OTLP_BODY_BYTES) {
                 let _ = request.respond(tiny_http::Response::empty(413));
                 continue;
             }
-            // Only metrics POSTs carry a body we care about.
+            // Only metrics POSTs carry a body we care about. Cap the read itself
+            // (not just Content-Length) so a chunked / length-less request can't
+            // stream an unbounded body and OOM us. Read one byte past the limit
+            // to detect overflow.
             let mut body = String::new();
-            let _ = request.as_reader().read_to_string(&mut body);
+            {
+                let mut limited =
+                    request.as_reader().take(MAX_OTLP_BODY_BYTES as u64 + 1);
+                let _ = limited.read_to_string(&mut body);
+            }
+            if body.len() > MAX_OTLP_BODY_BYTES {
+                let _ = request.respond(tiny_http::Response::empty(413));
+                continue;
+            }
 
             let updates = parse_otlp_metrics(&body);
             {
@@ -228,19 +272,19 @@ pub fn start(app: tauri::AppHandle) -> std::io::Result<(u16, Arc<Mutex<MetricsAg
                     Err(p) => p.into_inner(), // poisoned: recover, telemetry is non-critical
                 };
                 for u in updates {
-                    let merged = guard.apply(u);
-                    use tauri::Emitter;
-                    if let Err(e) = app.emit("terminal-metrics", &merged) {
-                        eprintln!("Failed to emit terminal-metrics: {}", e);
+                    // None => export for an already-closed terminal; skip it.
+                    if let Some(merged) = guard.apply(u) {
+                        use tauri::Emitter;
+                        if let Err(e) = app.emit("terminal-metrics", &merged) {
+                            eprintln!("Failed to emit terminal-metrics: {}", e);
+                        }
                     }
                 }
             }
             // OTLP expects 200 with an (empty) JSON body.
             let response = tiny_http::Response::from_string("{}")
                 .with_status_code(200)
-                .with_header(
-                    "Content-Type: application/json".parse::<tiny_http::Header>().unwrap(),
-                );
+                .with_header(json_header.clone());
             let _ = request.respond(response);
         }
         eprintln!("[otel_receiver] accept loop exited - telemetry collection stopped");
@@ -289,7 +333,7 @@ mod tests {
             tokens_input: Some(100),
             ..Default::default()
         };
-        let merged1 = agg.apply(first);
+        let merged1 = agg.apply(first).expect("live terminal");
         assert_eq!(merged1.cost_usd, Some(0.01));
         assert_eq!(merged1.tokens_input, Some(100));
 
@@ -301,11 +345,24 @@ mod tests {
             tokens_output: Some(40),
             ..Default::default()
         };
-        let merged2 = agg.apply(second);
+        let merged2 = agg.apply(second).expect("live terminal");
         // Use epsilon comparison because 0.01 + 0.05 = 0.060000000000000005 in IEEE 754.
         assert!((merged2.cost_usd.unwrap() - 0.06).abs() < 1e-10, "expected ~0.06, got {:?}", merged2.cost_usd); // 0.01 + 0.05
         assert_eq!(merged2.tokens_input, Some(100)); // unchanged (no delta)
         assert_eq!(merged2.tokens_output, Some(40));
+    }
+
+    #[test]
+    fn aggregator_drops_exports_for_closed_terminals() {
+        let mut agg = MetricsAggregator::new();
+        assert!(agg
+            .apply(SessionMetricUpdate { terminal_id: "A".into(), cost_usd: Some(0.01), ..Default::default() })
+            .is_some());
+        agg.forget("A");
+        // A late export after close must not resurrect the terminal.
+        assert!(agg
+            .apply(SessionMetricUpdate { terminal_id: "A".into(), cost_usd: Some(0.02), ..Default::default() })
+            .is_none());
     }
 
     #[test]

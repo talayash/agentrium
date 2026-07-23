@@ -6,10 +6,44 @@ import { markTerminalActive, clearTerminalActivity } from '../lib/terminalActivi
 import { chunkUtf8Bytes } from '../lib/chunkUtf8';
 import type { SessionState } from '../lib/terminalState';
 import { mergeMetrics, emptyMetrics, type SessionMetrics, type TerminalMetricsPayload } from '../lib/sessionMetrics';
+import { usePreviewStore, type PreviewState } from './previewStore';
+import { detectFramework, type FrameworkHint } from '../lib/preview/framework';
 
 // Stay safely under the backend's 64 KB per-write cap so very large pastes
 // (multi-hundred KB) don't hit "Write payload too large".
 const TERMINAL_WRITE_CHUNK_BYTES = 60 * 1024;
+
+/**
+ * Best-effort framework detection for the Preview panel. Reads the terminal's
+ * cwd/package.json via the existing `list_package_scripts` IPC (no new Rust
+ * command or fs plugin required), reconstructs a minimal package.json shape,
+ * and seeds the preview store with the detected framework hint.
+ *
+ * The IPC only exposes `scripts.*` — not `dependencies` — so detection here is
+ * limited to the `scripts.dev` path of `detectFramework`, which matches the
+ * common case (`next dev`, `vite`, `astro dev`, `nuxt dev`, `svelte`, `ng serve`,
+ * `react-scripts start`, `expo start`, `remix dev`). That is enough for the
+ * default port and hint to feed downstream UX. Failures are swallowed silently.
+ */
+async function seedFrameworkHint(terminalId: string, cwd: string): Promise<void> {
+  if (!cwd) return;
+  try {
+    const scripts = await invoke<{ name: string; command: string }[]>(
+      'list_package_scripts',
+      { cwd },
+    );
+    if (!scripts || scripts.length === 0) return;
+    const scriptsMap: Record<string, string> = {};
+    for (const s of scripts) scriptsMap[s.name] = s.command;
+    const { hint } = detectFramework({ scripts: scriptsMap });
+    if (hint !== 'unknown') {
+      const seed: Partial<PreviewState> = { frameworkHint: hint as FrameworkHint };
+      usePreviewStore.getState().seedTerminal(terminalId, seed);
+    }
+  } catch {
+    // no package.json, invalid JSON, path not trusted — silent.
+  }
+}
 
 export interface TerminalConfig {
   id: string;
@@ -38,6 +72,11 @@ interface TerminalInstance {
   config: TerminalConfig;
   xterm: Terminal | null;
   restoredOutput?: string;
+  // Serialized xterm buffer stashed when the view unmounts (e.g. switching
+  // tab <-> grid/split), replayed on remount so scrollback survives the
+  // teardown that xterm's single-DOM-node model forces. Distinct from
+  // restoredOutput, which is persisted session history shown with banners.
+  carryOverBuffer?: string;
   model?: string;
   effort?: string;
   isWorktree: boolean;
@@ -86,6 +125,7 @@ interface TerminalState {
     restoredOutput?: string,
     resumeSessionId?: string,
     continueRecent?: boolean,
+    previewInit?: Partial<PreviewState>,
   ) => Promise<string>;
   createShellTerminalTab: (
     label: string,
@@ -99,7 +139,8 @@ interface TerminalState {
   updateNickname: (id: string, nickname: string) => Promise<void>;
   writeToTerminal: (id: string, data: string) => Promise<void>;
   resizeTerminal: (id: string, cols: number, rows: number) => Promise<void>;
-  setXterm: (id: string, xterm: Terminal) => void;
+  setXterm: (id: string, xterm: Terminal | null) => void;
+  stashTerminalBuffer: (id: string, data: string) => void;
   handleTerminalOutput: (id: string, data: Uint8Array) => void;
   updateTerminalStatus: (id: string, status: TerminalConfig['status']) => void;
   setLoopMode: (id: string, info: LoopInfo | null) => void;
@@ -151,7 +192,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
   bottomTerminalIds: [],
   activeBottomTerminalId: null,
 
-  createTerminal: async (label, workingDirectory, claudeArgs, envVars, colorTag, nickname, restoredOutput, resumeSessionId, continueRecent) => {
+  createTerminal: async (label, workingDirectory, claudeArgs, envVars, colorTag, nickname, restoredOutput, resumeSessionId, continueRecent, previewInit) => {
     try {
       const { useAppStore } = await import('./appStore');
       const costTracking = useAppStore.getState().costTrackingEnabled;
@@ -192,6 +233,23 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
 
       // Fetch git info in the background
       get().fetchGitInfo(config.id);
+
+      // Seed the preview store with any per-profile hints the caller passed in.
+      // Callers that don't know about the preview feature (grid, restore, tests)
+      // omit previewInit entirely, in which case we still seed with defaults so
+      // downstream reads never hit an undefined per-terminal state.
+      if (previewInit) {
+        usePreviewStore.getState().seedTerminal(config.id, previewInit);
+        // Auto-open the panel when a "Has GUI preview" profile launches a tab.
+        if (previewInit.isOpen && !usePreviewStore.getState().globalOpen) {
+          usePreviewStore.getState().toggleGlobal();
+        }
+      }
+
+      // Fire-and-forget: probe package.json for a framework hint. Runs even if
+      // the caller didn't pass previewInit — that way an ad-hoc terminal in a
+      // Vite/Next repo gets its hint auto-detected.
+      void seedFrameworkHint(config.id, workingDirectory);
 
       return config.id;
     } catch (error) {
@@ -309,6 +367,11 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       newBudgetWarned.delete(id);
       if (childId) newBudgetWarned.delete(childId);
 
+      // Drop preview state for this terminal (and any script child) - mirrors
+      // the unread/metrics/git-cache cleanup above so nothing points at a gone id.
+      usePreviewStore.getState().removeTerminal(id);
+      if (childId) usePreviewStore.getState().removeTerminal(childId);
+
       // Only pick a fallback from terminals that actually appear in the main
       // tab bar - script children and bottom-pane shells must never become
       // the "active tab".
@@ -343,7 +406,10 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       const newTerminals = new Map(state.terminals);
       const instance = newTerminals.get(id);
       if (instance) {
-        instance.config.label = label;
+        // Immutable update: replace the instance/config objects rather than
+        // mutating them in place, so React.memo consumers keyed on config
+        // identity re-render and prior-state snapshots aren't corrupted.
+        newTerminals.set(id, { ...instance, config: { ...instance.config, label } });
       }
       return { terminals: newTerminals };
     });
@@ -356,7 +422,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       const newTerminals = new Map(state.terminals);
       const instance = newTerminals.get(id);
       if (instance) {
-        instance.config.nickname = nickname;
+        newTerminals.set(id, { ...instance, config: { ...instance.config, nickname } });
       }
       return { terminals: newTerminals };
     });
@@ -378,6 +444,22 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
   },
 
   setXterm: (id, xterm) => {
+    // Clearing the ref (xterm === null) on unmount/dispose. Without this the
+    // store keeps pointing at a disposed Terminal, and handleTerminalOutput
+    // would keep calling write() on it (a disposed instance is still truthy)
+    // whenever the PTY streams while the view is unmounted (e.g. grid/split).
+    if (!xterm) {
+      set((state) => {
+        const newTerminals = new Map(state.terminals);
+        const inst = newTerminals.get(id);
+        if (inst) {
+          inst.xterm = null;
+        }
+        return { terminals: newTerminals };
+      });
+      return;
+    }
+
     const { terminals } = get();
     const instance = terminals.get(id);
 
@@ -387,6 +469,10 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       xterm.write('\x1b[90m─── Previous session output ───\x1b[0m\r\n\r\n');
       xterm.write(lines.replace(/\n/g, '\r\n'));
       xterm.write('\r\n\r\n\x1b[90m─── Session restored ───\x1b[0m\r\n\r\n');
+    } else if (instance?.carryOverBuffer) {
+      // Replay a buffer stashed on a view switch, verbatim and banner-free -
+      // this is the same live session, just re-rendered into a new xterm.
+      xterm.write(instance.carryOverBuffer);
     }
 
     set((state) => {
@@ -395,6 +481,21 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       if (inst) {
         inst.xterm = xterm;
         delete inst.restoredOutput; // Free memory
+        delete inst.carryOverBuffer; // Replayed - drop the snapshot
+      }
+      return { terminals: newTerminals };
+    });
+  },
+
+  stashTerminalBuffer: (id, data) => {
+    set((state) => {
+      const inst = state.terminals.get(id);
+      // No-op if the terminal is gone (permanently closed) - nothing to carry.
+      if (!inst) return state;
+      const newTerminals = new Map(state.terminals);
+      const next = newTerminals.get(id);
+      if (next) {
+        next.carryOverBuffer = data;
       }
       return { terminals: newTerminals };
     });
@@ -404,7 +505,14 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
     const state = get();
     const instance = state.terminals.get(id);
     if (instance?.xterm) {
-      instance.xterm.write(data);
+      // Guard against a dispose/output race: if the view unmounted between the
+      // store read and this write, xterm.write() on a disposed instance throws.
+      // Swallow it rather than surface an UnhandledRejection in the event loop.
+      try {
+        instance.xterm.write(data);
+      } catch {
+        /* terminal disposed - drop this chunk */
+      }
     }
     // Active-work indicator: record the timestamp in a plain Map (no Zustand
     // set() - that would defeat the streaming-rate optimization below).
@@ -426,7 +534,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       const newTerminals = new Map(state.terminals);
       const instance = newTerminals.get(id);
       if (instance) {
-        instance.config.status = status;
+        newTerminals.set(id, { ...instance, config: { ...instance.config, status } });
       }
       return { terminals: newTerminals };
     });
@@ -437,7 +545,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       const newTerminals = new Map(state.terminals);
       const instance = newTerminals.get(id);
       if (instance) {
-        instance.loopInfo = info;
+        newTerminals.set(id, { ...instance, loopInfo: info });
       }
       return { terminals: newTerminals };
     });
@@ -448,7 +556,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       const newTerminals = new Map(state.terminals);
       const instance = newTerminals.get(id);
       if (instance) {
-        instance.sessionSummary = summary;
+        newTerminals.set(id, { ...instance, sessionSummary: summary });
       }
       return { terminals: newTerminals };
     });
