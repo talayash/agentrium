@@ -3,6 +3,7 @@ import { ChevronDown, GitBranch, GitFork, Plus } from 'lucide-react';
 import { useTerminalStore } from '../../store/terminalStore';
 import { useAppStore } from '../../store/appStore';
 import { StateDot } from '../StateDot';
+import { ListRow } from '../ui/ListRow';
 import type { SessionState } from '../../lib/terminalState';
 
 const STATE_ORDER: Record<SessionState, number> = { waiting: 0, busy: 1, idle: 2, stopped: 3 };
@@ -110,16 +111,17 @@ export function SessionWidget() {
                 const isActive = t.config.id === activeTerminalId;
                 const gitInfo = gitInfoCache.get(t.config.id);
                 return (
-                  <button
+                  <ListRow
                     key={t.config.id}
+                    selected={isActive}
                     onClick={() => { setActiveTerminal(t.config.id); setOpen(false); }}
-                    className={`w-full flex items-start gap-2 px-3 py-1.5 text-left transition-colors ${
-                      isActive ? 'bg-accent-primary/15 text-text-primary' : 'hover:bg-white/[0.05] text-text-secondary'
-                    }`}
+                    className="py-1.5 items-start"
+                    leading={
+                      <span className="mt-1">
+                        <StateDot state={terminalStates.get(t.config.id) ?? 'idle'} size={6} />
+                      </span>
+                    }
                   >
-                    <span className="mt-1.5">
-                      <StateDot state={terminalStates.get(t.config.id) ?? 'idle'} size={6} />
-                    </span>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5">
                         <span className="text-[12px] font-medium truncate text-text-primary">
@@ -139,7 +141,7 @@ export function SessionWidget() {
                         {t.config.working_directory}
                       </div>
                     </div>
-                  </button>
+                  </ListRow>
                 );
               })}
             </div>

@@ -503,6 +503,11 @@ function App() {
       // Always show in-app toast
       toast.info('Terminal Finished', `${name} has finished running.`);
 
+      // Status-bar unread dot when the user isn't watching.
+      if (document.hidden) {
+        useAppStore.getState().incrementUnreadNotifications();
+      }
+
       if (notifyOnFinish) {
         notify('Terminal Finished', `${name} has finished running.`);
       }

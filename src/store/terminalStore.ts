@@ -99,6 +99,10 @@ interface TerminalState {
   // Written only on transitions by the detection poller - never on the
   // streaming hot path - so subscribers re-render only when state changes.
   terminalStates: Map<string, SessionState>;
+  // Timestamp when a terminal most recently transitioned busy → idle. Drives
+  // the "just finished" green flash on the tab underline. Cleared ~850 ms
+  // after the transition so React unmounts the class cleanly.
+  justFinishedAt: Map<string, number>;
   // Live per-terminal cost/token metrics from the OTel receiver.
   terminalMetrics: Map<string, SessionMetrics>;
   // Terminals already warned about exceeding the budget cap (fire-once).
@@ -180,6 +184,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
   activeTerminalId: null,
   unreadTerminalIds: new Set(),
   terminalStates: new Map(),
+  justFinishedAt: new Map(),
   terminalMetrics: new Map(),
   budgetWarnedIds: new Set(),
   gitInfoCache: new Map(),
@@ -574,12 +579,30 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
 
   setTerminalState: (id, state) => {
     // Short-circuit before set() so unchanged states cause zero re-renders.
-    if (get().terminalStates.get(id) === state) return;
+    const prev = get().terminalStates.get(id);
+    if (prev === state) return;
     set((s) => {
       const next = new Map(s.terminalStates);
       next.set(id, state);
       return { terminalStates: next };
     });
+    // Busy → idle transition: mark the tab so its underline flashes green.
+    if (prev === 'busy' && state === 'idle') {
+      const stamp = Date.now();
+      set((s) => {
+        const jf = new Map(s.justFinishedAt);
+        jf.set(id, stamp);
+        return { justFinishedAt: jf };
+      });
+      setTimeout(() => {
+        set((s) => {
+          if (s.justFinishedAt.get(id) !== stamp) return {};
+          const jf = new Map(s.justFinishedAt);
+          jf.delete(id);
+          return { justFinishedAt: jf };
+        });
+      }, 850);
+    }
   },
 
   applyTerminalMetrics: (payload) => {

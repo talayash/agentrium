@@ -13,6 +13,7 @@ import {
   LayoutGrid,
 } from 'lucide-react';
 import { Tooltip } from './ui/Tooltip';
+import { ProgressStripe } from './ui/ProgressStripe';
 
 const MODEL_COLORS: Record<string, { bg: string; text: string; label: string }> = {
   opus: { bg: 'bg-purple-500/15', text: 'text-purple-400', label: 'Opus' },
@@ -44,6 +45,9 @@ export function StatusBar() {
     setNotifyOnFinish,
     openSettings,
   } = useAppStore();
+  const unreadCount = useAppStore((s) => s.unreadNotificationCount);
+  const clearUnread = useAppStore((s) => s.clearUnreadNotifications);
+  const globalBusy = useAppStore((s) => s.globalBusy);
 
   const [appVersion, setAppVersion] = useState('');
   const [claudeVersion, setClaudeVersion] = useState<string | null>(null);
@@ -71,7 +75,13 @@ export function StatusBar() {
   const modelInfo = modelKey ? MODEL_COLORS[modelKey] : null;
 
   return (
-    <div className="h-[22px] flex items-center justify-between pl-2 pr-1 bg-elevation-1 border-t border-[var(--ij-divider)] text-[11px] select-none shrink-0">
+    <div className="flex flex-col shrink-0">
+      {globalBusy && (
+        <div title={globalBusy}>
+          <ProgressStripe />
+        </div>
+      )}
+      <div className="h-[22px] flex items-center justify-between pl-2 pr-1 bg-elevation-1 border-t border-[var(--ij-divider)] text-[11px] select-none">
       {/* Left side */}
       <div className="flex items-center gap-0.5">
         {/* Terminal count */}
@@ -136,14 +146,30 @@ export function StatusBar() {
         )}
 
         {/* Notifications toggle */}
-        <Tooltip label={notifyOnFinish ? 'Notifications on' : 'Notifications off'} side="top">
+        <Tooltip
+          label={
+            unreadCount > 0
+              ? `${unreadCount} unread notification${unreadCount === 1 ? '' : 's'}`
+              : notifyOnFinish ? 'Notifications on' : 'Notifications off'
+          }
+          side="top"
+        >
           <button
-            onClick={() => setNotifyOnFinish(!notifyOnFinish)}
-            className={`flex items-center h-[18px] w-[22px] justify-center rounded-[3px] transition-colors hover:bg-white/[0.06] ${
+            onClick={() => {
+              setNotifyOnFinish(!notifyOnFinish);
+              if (unreadCount > 0) clearUnread();
+            }}
+            className={`relative flex items-center h-[18px] w-[22px] justify-center rounded-[3px] transition-colors hover:bg-white/[0.06] ${
               notifyOnFinish ? 'text-text-secondary hover:text-text-primary' : 'text-text-tertiary hover:text-text-secondary'
             }`}
           >
             {notifyOnFinish ? <Bell size={11} strokeWidth={1.75} /> : <BellOff size={11} strokeWidth={1.75} />}
+            {unreadCount > 0 && (
+              <span
+                aria-hidden
+                className="absolute top-[1px] right-[2px] w-[6px] h-[6px] rounded-full bg-accent-primary"
+              />
+            )}
           </button>
         </Tooltip>
 
@@ -164,6 +190,7 @@ export function StatusBar() {
         <Tooltip label={`ClaudeTerminal v${appVersion}`} side="top">
           <span className="text-text-tertiary px-1.5 font-mono">v{appVersion}</span>
         </Tooltip>
+      </div>
       </div>
     </div>
   );

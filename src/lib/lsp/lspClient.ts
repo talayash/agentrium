@@ -147,6 +147,16 @@ interface DiagnosticsEvent {
 let initialized = false;
 let tsServerRunning = false;
 
+// Track how many language servers are currently in `starting` state so the
+// global status-bar progress stripe only clears when the *last* one is done.
+let startingCount = 0;
+function bumpStartingCount(delta: number): void {
+  startingCount = Math.max(0, startingCount + delta);
+  useAppStore.getState().setGlobalBusy(
+    startingCount > 0 ? 'Starting language server…' : null,
+  );
+}
+
 // Monaco's bundled TS worker paints its own 'typescript'-owned markers. Once
 // the real tsserver is connected those are redundant duplicates — and worse,
 // the worker is tsconfig-blind. Silence it while our LSP covers TS/JS;
@@ -170,7 +180,21 @@ export function initLsp(): void {
   if (initialized) return;
   initialized = true;
 
+  // Per-server state - so bumpStartingCount can flip only on transitions.
+  const starting = new Set<string>();
+
   listen<StatusEvent>('lsp-status', (event) => {
+    const key = `${event.payload.language}:${event.payload.root}`;
+    if (event.payload.state === 'starting') {
+      if (!starting.has(key)) {
+        starting.add(key);
+        bumpStartingCount(+1);
+      }
+    } else if (starting.has(key)) {
+      starting.delete(key);
+      bumpStartingCount(-1);
+    }
+
     if (event.payload.language !== 'typescript') return;
     if (event.payload.state === 'running') tsServerRunning = true;
     else if (event.payload.state === 'error' || event.payload.state === 'stopped') tsServerRunning = false;

@@ -13,15 +13,18 @@
 // then fall back to the web APIs (for running the UI in a plain browser during
 // dev, where the Tauri IPC bridge is absent).
 import { writeText as tauriWriteText, readText as tauriReadText } from '@tauri-apps/plugin-clipboard-manager';
+import { reportError } from './errorReporter';
 
 export async function copyText(text: string): Promise<boolean> {
   // 1. Native OS clipboard via Tauri - the reliable path in this window.
+  let nativeErr: unknown;
   try {
     await tauriWriteText(text);
     return true;
-  } catch {
+  } catch (e) {
     // Not running under Tauri (dev-in-browser) or the IPC call failed - fall
     // through to the web APIs.
+    nativeErr = e;
   }
   // 2. Web Clipboard API - works from button clicks where the document is
   //    focused, and in a plain browser.
@@ -30,7 +33,16 @@ export async function copyText(text: string): Promise<boolean> {
     return true;
   } catch {
     // 3. Legacy synchronous fallback - last resort.
-    return execCommandCopy(text);
+    const ok = execCommandCopy(text);
+    if (!ok) {
+      // Every path failed: the user's copy did nothing. The clipboard plugin
+      // is not a wrapped command, so this is the only place it gets reported.
+      reportError(
+        'clipboard_copy',
+        `all clipboard paths failed; native: ${nativeErr instanceof Error ? nativeErr.message : String(nativeErr)}`,
+      );
+    }
+    return ok;
   }
 }
 

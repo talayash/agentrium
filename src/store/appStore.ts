@@ -58,6 +58,16 @@ interface AppState {
   pushModalRepoPath: string | null;
   defaultClaudeArgs: string[];
   notifyOnFinish: boolean;
+  /** Count of terminal-finished events fired while the app was hidden and not
+   *  yet acknowledged by the user. Renders the accent dot on the status-bar bell. */
+  unreadNotificationCount: number;
+  incrementUnreadNotifications: () => void;
+  clearUnreadNotifications: () => void;
+  /** Label of the currently-busy global activity (LSP starting, git fetch/pull),
+   *  or null. Drives the 2px ProgressStripe above the status bar. Ephemeral -
+   *  never persisted. */
+  globalBusy: string | null;
+  setGlobalBusy: (label: string | null) => void;
   restoreSession: boolean;
   telemetryEnabled: boolean;
   errorReportingEnabled: boolean;
@@ -447,6 +457,12 @@ export const useAppStore = create<AppState>()(
       pushModalRepoPath: null,
       defaultClaudeArgs: [],
       notifyOnFinish: true,
+      unreadNotificationCount: 0,
+      incrementUnreadNotifications: () =>
+        set((s) => ({ unreadNotificationCount: s.unreadNotificationCount + 1 })),
+      clearUnreadNotifications: () => set({ unreadNotificationCount: 0 }),
+      globalBusy: null,
+      setGlobalBusy: (label) => set({ globalBusy: label }),
       restoreSession: true,
       telemetryEnabled: true,
       errorReportingEnabled: true,

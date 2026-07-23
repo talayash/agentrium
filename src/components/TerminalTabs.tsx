@@ -41,6 +41,7 @@ export function TerminalTabs() {
   const { openNewTerminalModal, gridMode, toggleGridMode, addToGrid, gridTerminalIds, splitMode, splitTerminalIds, splitOrientation, splitRatio, setSplitOrientation, setSplitRatio, clearSplit, setSplitTerminals, setSplitMode, openFiles, activeFilePath, setActiveFilePath, closeFileTab, showFileTree, showTabActivity } = useAppStore();
   const now = useNowTick();
   const terminalStates = useTerminalStore((s) => s.terminalStates);
+  const justFinishedAt = useTerminalStore((s) => s.justFinishedAt);
   const terminalMetrics = useTerminalStore((s) => s.terminalMetrics);
 
   // Tab drag/drop + multi-select + tear-off. Keyed on this window's label so a
@@ -276,11 +277,17 @@ export function TerminalTabs() {
                       : isActiveTab
                         ? 'bg-elevation-0 text-text-primary'
                         : 'hover:bg-white/[0.045] text-text-secondary'
-                  } ${selected && !isActiveTab ? 'ring-1 ring-inset ring-accent-primary/40' : ''} ${dragged ? 'opacity-20' : ''} ${isWorking && !isActiveTab && showTabActivity ? 'ct-working-tab' : ''}`}
+                  } ${selected && !isActiveTab ? 'ring-1 ring-inset ring-accent-primary/40' : ''} ${dragged ? 'opacity-20' : ''} ${isWorking && !isActiveTab && showTabActivity ? 'ct-working-tab' : ''} ${
+                    justFinishedAt.has(terminal.id) && !isActiveTab ? 'ct-tab-finish-inactive' : ''
+                  }`}
                 >
                   {/* IntelliJ-style bottom underline for active tab */}
                   {(isActiveTab || splitDropTargetId === terminal.id) && (
-                    <span className="absolute left-2 right-2 bottom-0 h-[2px] rounded-t bg-accent-primary" />
+                    <span
+                      className={`absolute left-2 right-2 bottom-0 h-[2px] rounded-t bg-accent-primary ${
+                        justFinishedAt.has(terminal.id) ? 'ct-tab-finish-underline' : ''
+                      }`}
+                    />
                   )}
                   {splitDropTargetId === terminal.id && (
                     <SplitSquareHorizontal size={12} className="text-accent-primary flex-shrink-0 animate-pulse" />
