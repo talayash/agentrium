@@ -69,7 +69,8 @@ impl Database {
                 working_directory TEXT NOT NULL,
                 claude_args TEXT NOT NULL,
                 env_vars TEXT NOT NULL,
-                is_default INTEGER DEFAULT 0
+                is_default INTEGER DEFAULT 0,
+                preview_json TEXT
             );
 
             CREATE TABLE IF NOT EXISTS workspaces (
@@ -149,6 +150,18 @@ impl Database {
                 }
             }
         }
+        // Same pattern for the profiles table: `preview_json` is nullable JSON
+        // storing the profile's PreviewProfile (see config.rs). NULL means the
+        // profile has no preview config, matching the Option<PreviewProfile>
+        // shape in Rust.
+        for column in ["preview_json TEXT"] {
+            let sql = format!("ALTER TABLE profiles ADD COLUMN {}", column);
+            if let Err(e) = conn.execute(&sql, []) {
+                if !e.to_string().contains("duplicate column name") {
+                    return Err(e.to_string());
+                }
+            }
+        }
         Ok(())
     }
 
@@ -171,9 +184,19 @@ impl Database {
             .map_err(|e| format!("Failed to serialize claude_args: {}", e))?;
         let env_vars_json = serde_json::to_string(&profile.env_vars)
             .map_err(|e| format!("Failed to serialize env_vars: {}", e))?;
+        // preview_json mirrors env_vars: JSON in a TEXT column, but nullable -
+        // Option<PreviewProfile>::None persists as SQL NULL so old rows and
+        // opted-out profiles are indistinguishable on read.
+        let preview_json: Option<String> = match &profile.preview {
+            Some(preview) => Some(
+                serde_json::to_string(preview)
+                    .map_err(|e| format!("Failed to serialize preview: {}", e))?,
+            ),
+            None => None,
+        };
         self.conn.execute(
-            "INSERT OR REPLACE INTO profiles (id, name, description, working_directory, claude_args, env_vars, is_default)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            "INSERT OR REPLACE INTO profiles (id, name, description, working_directory, claude_args, env_vars, is_default, preview_json)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             params![
                 profile.id,
                 profile.name,
@@ -182,6 +205,7 @@ impl Database {
                 claude_args_json,
                 env_vars_json,
                 profile.is_default as i32,
+                preview_json,
             ],
         ).map_err(|e| e.to_string())?;
         Ok(())
@@ -189,7 +213,7 @@ impl Database {
 
     pub fn get_profiles(&self) -> Result<Vec<ConfigProfile>, String> {
         let mut stmt = self.conn
-            .prepare("SELECT id, name, description, working_directory, claude_args, env_vars, is_default FROM profiles")
+            .prepare("SELECT id, name, description, working_directory, claude_args, env_vars, is_default, preview_json FROM profiles")
             .map_err(|e| e.to_string())?;
 
         let profiles = stmt.query_map([], |row| {
@@ -209,6 +233,17 @@ impl Database {
                 eprintln!("[profiles] corrupt env_vars for '{}' ({}): {}", name, id, e);
                 Default::default()
             });
+            // preview_json is nullable; a NULL column and a JSON `null` both
+            // yield `None`. Corrupt JSON falls back to `None` with a log line,
+            // matching the defensive treatment of claude_args / env_vars above.
+            let preview_raw: Option<String> = row.get(7)?;
+            let preview: Option<crate::config::PreviewProfile> = match preview_raw {
+                Some(raw) => serde_json::from_str(&raw).unwrap_or_else(|e| {
+                    eprintln!("[profiles] corrupt preview for '{}' ({}): {}", name, id, e);
+                    None
+                }),
+                None => None,
+            };
             Ok(ConfigProfile {
                 id,
                 name,
@@ -217,7 +252,7 @@ impl Database {
                 claude_args,
                 env_vars,
                 is_default: row.get::<_, i32>(6)? != 0,
-                preview: None,
+                preview,
             })
         }).map_err(|e| e.to_string())?;
 
@@ -483,6 +518,7 @@ impl Database {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::PreviewProfile;
     use crate::terminal::{TerminalConfig, TerminalStatus};
     use chrono::{Duration, Utc};
     use std::collections::HashMap;
@@ -536,6 +572,35 @@ mod tests {
         assert_eq!(loaded[0].id, "p1");
         assert_eq!(loaded[0].claude_args, vec!["--model", "opus"]);
         assert_eq!(loaded[0].env_vars.get("FOO"), Some(&"bar".to_string()));
+    }
+
+    #[test]
+    fn profile_round_trips_preview_when_present_and_absent() {
+        let db = Database::new_in_memory().unwrap();
+
+        // With preview -> round-trips exact field values.
+        let mut with_preview = make_profile("p-with", "with");
+        with_preview.preview = Some(PreviewProfile {
+            enabled: true,
+            url_override: Some("http://localhost:3000".to_string()),
+            framework_hint: Some("vite".to_string()),
+        });
+        db.save_profile(&with_preview).unwrap();
+
+        // Without preview -> persists as SQL NULL and reads back as None.
+        let without_preview = make_profile("p-none", "none");
+        db.save_profile(&without_preview).unwrap();
+
+        let loaded = db.get_profiles().unwrap();
+        let with_loaded = loaded.iter().find(|p| p.id == "p-with").unwrap();
+        let without_loaded = loaded.iter().find(|p| p.id == "p-none").unwrap();
+
+        let preview = with_loaded.preview.as_ref().expect("preview persisted");
+        assert_eq!(preview.enabled, true);
+        assert_eq!(preview.url_override.as_deref(), Some("http://localhost:3000"));
+        assert_eq!(preview.framework_hint.as_deref(), Some("vite"));
+
+        assert!(without_loaded.preview.is_none(), "None preview must stay None across a round-trip");
     }
 
     #[test]
