@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { useTerminalStore } from '../store/terminalStore';
 import { usePreviewStore } from '../store/previewStore';
 import { isUrlAllowed } from '../lib/preview/allowlist';
+import { PreviewToolbar } from './PreviewToolbar';
 
 export function PreviewPanel() {
   const activeId = useTerminalStore((s) => s.activeTerminalId);
@@ -28,12 +29,7 @@ export function PreviewPanel() {
       style={{ width: panelWidthPx }}
       data-testid="preview-panel"
     >
-      <div className="px-3 py-2 border-b border-white/[0.06] flex items-center justify-between shrink-0">
-        <div className="text-text-primary text-[12px] font-medium">Preview</div>
-        <div className="text-text-tertiary text-[11px] truncate max-w-[65%]">
-          {url ?? 'no url'}
-        </div>
-      </div>
+      <PreviewToolbar terminalId={activeId} url={url} allowed={allowed} />
 
       <div className="flex-1 relative bg-black">
         {!url && (
