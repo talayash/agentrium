@@ -56,6 +56,20 @@ export function useKeyboardShortcuts() {
       const ctrl = e.ctrlKey || e.metaKey;
       const shift = e.shiftKey;
 
+      // Swallow F5 and Ctrl+R globally. WebView2's default reloads the
+      // top-level document, which throws away all open terminals (they
+      // aren't persisted). If the preview panel is open, route to the
+      // preview reload instead.
+      if (e.key === 'F5' || (ctrl && !shift && (e.key === 'r' || e.key === 'R'))) {
+        e.preventDefault();
+        const previewOpen = usePreviewStore.getState().globalOpen;
+        const activeId = activeIdRef.current;
+        if (previewOpen && activeId) {
+          usePreviewStore.getState().reload(activeId);
+        }
+        return;
+      }
+
       if (ctrl && shift && e.key === 'N') {
         e.preventDefault();
         useAppStore.getState().openNewTerminalModal();

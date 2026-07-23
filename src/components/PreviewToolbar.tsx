@@ -29,6 +29,7 @@ export function PreviewToolbar({ terminalId, url, allowed }: Props) {
   return (
     <div className="px-2 py-1.5 border-b border-white/[0.06] flex items-center gap-1.5 shrink-0">
       <button
+        type="button"
         onClick={() => reload(terminalId)}
         disabled={!url}
         className="p-1 rounded hover:bg-white/[0.05] text-text-secondary disabled:opacity-40"
@@ -48,6 +49,7 @@ export function PreviewToolbar({ terminalId, url, allowed }: Props) {
         }`}
       />
       <button
+        type="button"
         onClick={openExternal}
         disabled={!url || !allowed}
         className="p-1 rounded hover:bg-white/[0.05] text-text-secondary disabled:opacity-40"
@@ -56,6 +58,7 @@ export function PreviewToolbar({ terminalId, url, allowed }: Props) {
         <ExternalLink size={14} />
       </button>
       <button
+        type="button"
         onClick={toggleGlobal}
         className="p-1 rounded hover:bg-white/[0.05] text-text-secondary"
         title="Close preview"
