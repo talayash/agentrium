@@ -36,6 +36,15 @@ tiny_http = "0.12"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 flate2 = "1"
 
+# On Windows, we reach into the underlying CoreWebView2 to disable the
+# default browser context menu (Back/Refresh/Save-as/Inspect) — otherwise
+# right-click → Refresh inside the preview iframe reloads the top-level
+# app and closes every open terminal. Matches the version Tauri already
+# pulls in transitively so nothing extra needs to compile.
+[target.'cfg(target_os = "windows")'.dependencies]
+webview2-com = "0.38"
+windows-core = "0.61"
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
