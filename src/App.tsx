@@ -26,6 +26,7 @@ import { WhatsNewModal } from './components/WhatsNewModal';
 import { ClaudeConfigModal } from './components/ClaudeConfigModal';
 import { OrchestrationPanel } from './components/OrchestrationPanel';
 import { PreviewPanel } from './components/PreviewPanel';
+import { PreviewInlineHint } from './components/PreviewInlineHint';
 import { GlobalSearchModal } from './components/GlobalSearchModal';
 import { SessionTimeline } from './components/SessionTimeline';
 import { MemoryEditor } from './components/MemoryEditor';
@@ -838,6 +839,7 @@ function App() {
         </div>
       )}
 
+      <PreviewInlineHint />
       <ToastContainer />
     </div>
   );
