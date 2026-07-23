@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useAppStore, DEFAULT_TERMINAL_FONT_SIZE } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
+import { usePreviewStore } from '../store/previewStore';
 import { toast } from '../store/toastStore';
 import { captureClaudeInput } from '../lib/terminalInput';
 
@@ -95,6 +96,12 @@ export function useKeyboardShortcuts() {
             targetTerminalId: activeId,
           });
         })();
+      }
+
+      // Preview panel toggle: Ctrl+Alt+P (Ctrl+Shift+V and Ctrl+Shift+G are taken).
+      if (ctrl && e.altKey && !shift && (e.key === 'p' || e.key === 'P')) {
+        e.preventDefault();
+        usePreviewStore.getState().toggleGlobal();
       }
 
       // Split View: Ctrl+\

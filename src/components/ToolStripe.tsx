@@ -1,6 +1,7 @@
-import { PanelLeft, FileDiff, Users, Lightbulb, Settings } from 'lucide-react';
+import { PanelLeft, FileDiff, Users, Lightbulb, Monitor, Settings } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useAppStore } from '../store/appStore';
+import { usePreviewStore } from '../store/previewStore';
 import { Tooltip } from './ui/Tooltip';
 
 type Side = 'left' | 'right';
@@ -58,6 +59,8 @@ export function ToolStripe({ side }: { side: Side }) {
   const orchestrationOpen = useAppStore((s) => s.orchestrationOpen);
   const hintsOpen = useAppStore((s) => s.hintsOpen);
   const settingsOpen = useAppStore((s) => s.settingsOpen);
+  const previewOpen = usePreviewStore((s) => s.globalOpen);
+  const togglePreview = usePreviewStore((s) => s.toggleGlobal);
   const toggleSidebar = useAppStore((s) => s.toggleSidebar);
   const toggleChanges = useAppStore((s) => s.toggleChanges);
   const toggleOrchestration = useAppStore((s) => s.toggleOrchestration);
@@ -71,6 +74,7 @@ export function ToolStripe({ side }: { side: Side }) {
           { id: 'changes', label: 'Git', shortcut: 'F2', Icon: FileDiff, active: changesOpen, onClick: toggleChanges },
           { id: 'teams', label: 'Agent Teams', shortcut: 'F4', Icon: Users, active: orchestrationOpen, onClick: toggleOrchestration },
           { id: 'hints', label: 'Commands', shortcut: 'F1', Icon: Lightbulb, active: hintsOpen, onClick: toggleHints },
+          { id: 'preview', label: 'Preview', shortcut: 'Ctrl+Alt+P', Icon: Monitor, active: previewOpen, onClick: togglePreview },
         ];
 
   const bottom: StripeItem[] =
