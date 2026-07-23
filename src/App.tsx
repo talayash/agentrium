@@ -46,6 +46,7 @@ import { usePreviewStore } from './store/previewStore';
 import { toast } from './store/toastStore';
 import { detectUrl } from './lib/preview/detector';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { usePreventWebviewReload } from './hooks/usePreventWebviewReload';
 import { useNotification } from './hooks/useNotification';
 import { useSessionStateDetection } from './hooks/useSessionStateDetection';
 import {
@@ -140,6 +141,7 @@ function App() {
   const hasAdoptedRef = useRef(false);
 
   useKeyboardShortcuts();
+  usePreventWebviewReload();
   useSessionStateDetection();
 
   // v1.22.0 - apply theme/density/accent/motion/scale on store change.
