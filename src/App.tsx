@@ -433,13 +433,18 @@ function App() {
       }
 
       // Passive dev-server URL detection for the preview panel.
+      // Script-runner children (`npm run dev`, etc.) emit output under their
+      // own terminal id but the user is looking at the parent tab, so route
+      // the URL to the parent when this terminal is a script child.
       try {
         const text = new TextDecoder().decode(new Uint8Array(data));
         const found = detectUrl(text);
         if (found) {
-          const cur = usePreviewStore.getState().perTerminal.get(id);
+          const term = useTerminalStore.getState().terminals.get(id);
+          const targetId = term?.scriptParentId ?? id;
+          const cur = usePreviewStore.getState().perTerminal.get(targetId);
           if (cur?.detectedUrl !== found) {
-            usePreviewStore.getState().setDetectedUrl(id, found);
+            usePreviewStore.getState().setDetectedUrl(targetId, found);
           }
         }
       } catch { /* ignore decode errors */ }
