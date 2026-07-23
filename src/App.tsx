@@ -25,6 +25,7 @@ import { AutoUpdater } from './components/AutoUpdater';
 import { WhatsNewModal } from './components/WhatsNewModal';
 import { ClaudeConfigModal } from './components/ClaudeConfigModal';
 import { OrchestrationPanel } from './components/OrchestrationPanel';
+import { PreviewPanel } from './components/PreviewPanel';
 import { GlobalSearchModal } from './components/GlobalSearchModal';
 import { SessionTimeline } from './components/SessionTimeline';
 import { MemoryEditor } from './components/MemoryEditor';
@@ -40,7 +41,9 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import type { TerminalConfig } from './store/terminalStore';
 import { useAppStore } from './store/appStore';
 import { useTerminalStore } from './store/terminalStore';
+import { usePreviewStore } from './store/previewStore';
 import { toast } from './store/toastStore';
+import { detectUrl } from './lib/preview/detector';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useNotification } from './hooks/useNotification';
 import { useSessionStateDetection } from './hooks/useSessionStateDetection';
@@ -427,6 +430,18 @@ function App() {
       } catch {
         // Ignore decode errors
       }
+
+      // Passive dev-server URL detection for the preview panel.
+      try {
+        const text = new TextDecoder().decode(new Uint8Array(data));
+        const found = detectUrl(text);
+        if (found) {
+          const cur = usePreviewStore.getState().perTerminal.get(id);
+          if (cur?.detectedUrl !== found) {
+            usePreviewStore.getState().setDetectedUrl(id, found);
+          }
+        }
+      } catch { /* ignore decode errors */ }
     });
 
     return () => {
@@ -757,6 +772,8 @@ function App() {
                 </div>
               )}
             </AnimatePresence>
+
+            <PreviewPanel />
 
             <ToolStripe side="right" />
           </div>
