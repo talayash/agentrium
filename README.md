@@ -111,7 +111,7 @@
 
 Before installing ClaudeTerminal, ensure you have:
 
-1. **Node.js** (v18 or higher) - [Download](https://nodejs.org/)
+1. **Node.js** (v22 LTS or higher) - [Download](https://nodejs.org/)
 2. **Claude Code** - Install via npm:
    ```bash
    npm install -g @anthropic-ai/claude-code
@@ -193,7 +193,7 @@ Press `F1` or click the lightbulb icon to open the Hints panel:
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/) v18+
+- [Node.js](https://nodejs.org/) v22+
 - [Rust](https://rustup.rs/) (latest stable)
 - [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) (Windows)
 

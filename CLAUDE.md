@@ -100,7 +100,7 @@ Key Tauri commands exposed to the frontend:
 
 ### Prerequisites
 
-- Node.js v18+
+- Node.js v22+ (LTS; v18/v20 are EOL — CI builds on 22)
 - Rust (latest stable via rustup)
 - Visual Studio Build Tools (Windows)
 
