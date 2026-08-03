@@ -20,20 +20,23 @@ tauri-plugin-updater = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["full"] }
-portable-pty = "0.8"
+portable-pty = "0.9"
 uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
-rusqlite = { version = "0.31", features = ["bundled"] }
-directories = "5"
+rusqlite = { version = "0.40", features = ["bundled"] }
+directories = "6"
 open = "5"
 strip-ansi-escapes = "0.2"
 regex = "1"
 sha2 = "0.10"
-reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+# reqwest 0.13 split the old `rustls-tls` feature into `rustls` (the TLS
+# stack) + an explicit root store; `webpki-roots` keeps the bundled roots
+# behavior 0.12's `rustls-tls` had.
+reqwest = { version = "0.13", features = ["json", "rustls", "webpki-roots"], default-features = false }
 url = "2"
 trash = "5"
 tiny_http = "0.12"
-zip = { version = "2", default-features = false, features = ["deflate"] }
+zip = { version = "8", default-features = false, features = ["deflate"] }
 flate2 = "1"
 
 # On Windows, we reach into the underlying CoreWebView2 to disable the
