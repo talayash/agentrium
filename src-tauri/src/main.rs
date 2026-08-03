@@ -28,8 +28,15 @@ pub struct AppState {
 }
 
 fn main() {
-    // In release builds (panic = "abort"), panic reports are best-effort:
-    // the spawned send task usually doesn't get to flush before abort.
+    // Arm the reporter before anything can fail: version + persisted consent
+    // flag are available immediately; the installation id is attached later in
+    // setup() once the database is open. This makes startup crashes (including
+    // a broken database) reportable instead of silent.
+    error_reporter::init_early();
+
+    // report_blocking flushes synchronously on a dedicated thread, so the
+    // report survives `panic = "abort"` in release builds - the abort happens
+    // only after the hook returns.
     std::panic::set_hook(Box::new(|info| {
         let msg = info
             .payload()
@@ -59,9 +66,19 @@ fn main() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let db = database::Database::new()?;
-            let installation_id = db.get_or_create_installation_id().unwrap_or_default();
-            let app_version = app.package_info().version.to_string();
-            error_reporter::init(installation_id, app_version);
+            let installation_id = match db.get_or_create_installation_id() {
+                Ok(id) => id,
+                Err(e) => {
+                    // An empty id corrupts per-install grouping server-side,
+                    // so make the cause visible instead of silently degrading.
+                    error_reporter::report_bg(
+                        "installation_id",
+                        format!("get_or_create_installation_id failed: {}", e),
+                    );
+                    String::new()
+                }
+            };
+            error_reporter::set_installation_id(installation_id);
 
             let terminal_manager = terminal::TerminalManager::new();
             let lsp_manager = lsp::LspManager::new(app.handle().clone());
@@ -73,6 +90,10 @@ fn main() {
                 }
                 Err(e) => {
                     eprintln!("[otel] failed to start metrics receiver: {} (cost tracking disabled)", e);
+                    error_reporter::report_bg(
+                        "otel_receiver_start",
+                        format!("metrics receiver failed to start (cost tracking disabled): {}", e),
+                    );
                     (0, std::sync::Arc::new(std::sync::Mutex::new(otel_receiver::MetricsAggregator::new())))
                 }
             };
@@ -248,6 +269,15 @@ fn main() {
                         let db = db.lock().await;
                         if let Err(e) = db.save_last_session(&configs) {
                             eprintln!("Failed to save last session on exit: {}", e);
+                            // This is the user's whole workspace-restore state
+                            // and the process exits right after - flush
+                            // synchronously or the report never leaves.
+                            error_reporter::report_blocking(
+                                error_reporter::ErrorSource::RustCommand,
+                                Some("save_last_session_on_exit".to_string()),
+                                format!("Failed to save last session on exit: {}", e),
+                                None,
+                            );
                         }
                     }
                     // Close all terminals (drops PTY resources, reader threads clean up async)

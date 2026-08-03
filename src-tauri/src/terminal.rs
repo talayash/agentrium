@@ -6,7 +6,7 @@ use std::thread::JoinHandle;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
-use crate::error_reporter::{self, ErrorSource};
+use crate::error_reporter;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TerminalConfig {
@@ -115,10 +115,10 @@ impl TerminalManager {
         // Validate claude_args: reject any argument containing shell metacharacters
         for arg in &claude_args {
             if arg.contains(Self::SHELL_METACHARACTERS) {
-                return Err(format!(
+                return Err(error_reporter::user_err(format!(
                     "Invalid character in argument: \"{}\". Shell metacharacters are not allowed.",
                     arg
-                ));
+                )));
             }
         }
 
@@ -131,7 +131,7 @@ impl TerminalManager {
         // through the metacharacter check as defense-in-depth.
         let injected: Vec<String> = if let Some(id) = resume_session_id.as_deref() {
             if id.contains(Self::SHELL_METACHARACTERS) {
-                return Err("Invalid session id".to_string());
+                return Err(error_reporter::user_err("Invalid session id"));
             }
             // `--resume` is `[value]` in Claude's help (optional argument), so
             // Commander.js parses `--resume <id>` as "open picker" plus `<id>`
@@ -294,7 +294,15 @@ impl TerminalManager {
             // issuing one syscall per PTY chunk.
             let mut log_file = log_file_path.and_then(|path| {
                 std::fs::File::create(&path)
-                    .map_err(|e| eprintln!("Failed to create log file: {}", e))
+                    .map_err(|e| {
+                        // Without this file the whole session transcript is
+                        // silently unrecorded (history/summarize come up empty).
+                        eprintln!("Failed to create log file: {}", e);
+                        error_reporter::report_bg(
+                            "session_log_create",
+                            format!("Failed to create session log file: {}", e),
+                        );
+                    })
                     .ok()
                     .map(|f| BufWriter::with_capacity(64 * 1024, f))
             });
@@ -321,17 +329,11 @@ impl TerminalManager {
                         }
                         eprintln!("Error reading from pty: {}", e);
                         // Capture so we hear about broken-mid-session terminals.
-                        // RustCommand (not RustPanic) because the PTY is a
-                        // command-owned resource; we don't want to pollute the
-                        // panic stream with background-thread I/O. The 60s
-                        // dedup window in the reporter collapses repeated
-                        // identical errors.
-                        error_reporter::report_blocking(
-                            ErrorSource::RustCommand,
-                            Some("pty_reader_error".to_string()),
-                            e.to_string(),
-                            None,
-                        );
+                        // report_bg (not report_blocking) so the user-visible
+                        // error line below isn't delayed behind a network send.
+                        // The 60s dedup window in the reporter collapses
+                        // repeated identical errors.
+                        error_reporter::report_bg("pty_reader_error", e.to_string());
                         let _ = tx.blocking_send((
                             terminal_id.clone(),
                             format!("\r\n[Error reading from terminal: {}]\r\n", e).into_bytes(),
@@ -374,7 +376,10 @@ impl TerminalManager {
         // npm script names come from package.json keys but the user picks them
         // via UI, so reject any shell metacharacter as defense-in-depth.
         if script_name.is_empty() || script_name.contains(Self::SHELL_METACHARACTERS) {
-            return Err(format!("Invalid script name: '{}'", script_name));
+            return Err(error_reporter::user_err(format!(
+                "Invalid script name: '{}'",
+                script_name
+            )));
         }
 
         let pty_system = native_pty_system();
@@ -465,6 +470,10 @@ impl TerminalManager {
                         if is_benign_close_error(&e) {
                             break;
                         }
+                        error_reporter::report_bg(
+                            "pty_reader_error",
+                            format!("script terminal: {}", e),
+                        );
                         let _ = tx.blocking_send((
                             terminal_id.clone(),
                             format!("\r\n[Error: {}]\r\n", e).into_bytes(),
@@ -581,6 +590,10 @@ impl TerminalManager {
                         if is_benign_close_error(&e) {
                             break;
                         }
+                        error_reporter::report_bg(
+                            "pty_reader_error",
+                            format!("shell terminal: {}", e),
+                        );
                         let _ = tx.blocking_send((
                             terminal_id.clone(),
                             format!("\r\n[Error: {}]\r\n", e).into_bytes(),
@@ -611,26 +624,56 @@ impl TerminalManager {
     /// that as `Err("Terminal not found")` produced a flood of telemetry events
     /// plus a frontend UnhandledRejection from the resize observer's callback -
     /// see error fingerprints 599c11f8 / 808a0ce1.
+    ///
+    /// Also a no-op once the terminal is Stopped: the tab stays open for
+    /// scrollback after the child exits, so keystrokes keep arriving while the
+    /// ConPTY pipe is dead - writing there fails with os error 232 ("the pipe
+    /// is being closed", fingerprint 6c5825d1). A BrokenPipe error while still
+    /// Running is the same exit, one tick before the reader thread flips the
+    /// status - mark it Stopped and swallow it.
     pub fn write(&mut self, id: &str, data: &[u8]) -> Result<(), String> {
         let Some(terminal) = self.terminals.get_mut(id) else {
             return Ok(());
         };
+        if terminal.config.status == TerminalStatus::Stopped {
+            return Ok(());
+        }
         terminal.last_input_at = Some(std::time::Instant::now());
-        terminal
+        let result = terminal
             .writer
             .write_all(data)
-            .map_err(|e| format!("Failed to write: {}", e))?;
-        terminal.writer.flush().map_err(|e| format!("Failed to flush: {}", e))?;
-        Ok(())
+            .map_err(|e| (e.kind(), format!("Failed to write: {}", e)))
+            .and_then(|_| {
+                terminal
+                    .writer
+                    .flush()
+                    .map_err(|e| (e.kind(), format!("Failed to flush: {}", e)))
+            });
+        match result {
+            Ok(()) => Ok(()),
+            Err((std::io::ErrorKind::BrokenPipe, _)) => {
+                terminal.config.status = TerminalStatus::Stopped;
+                Ok(())
+            }
+            Err((_, msg)) => Err(msg),
+        }
     }
 
     /// Silent no-op when the id is no longer in the map. The ResizeObserver in
     /// TerminalView fires once more after the close_terminal call removes the
     /// entry; we don't want that race to produce an error report.
+    ///
+    /// Also a no-op once the terminal is Stopped: resizing a dead ConPTY fails
+    /// with HRESULT 0x800700E8 ("the pipe is being closed") when the window is
+    /// resized while a finished tab is showing scrollback - fingerprints
+    /// 3a3f899b / 590a2e40.
     pub fn resize(&mut self, id: &str, cols: u16, rows: u16) -> Result<(), String> {
         let Some(terminal) = self.terminals.get_mut(id) else {
             return Ok(());
         };
+        if terminal.config.status == TerminalStatus::Stopped {
+            return Ok(());
+        }
         terminal
             .pty_pair
             .master
@@ -677,7 +720,9 @@ impl TerminalManager {
             terminal.config.label = label;
             Ok(())
         } else {
-            Err("Terminal not found".to_string())
+            // Close-race condition, not a defect: keep surfacing to the UI
+            // but skip telemetry.
+            Err(error_reporter::user_err("Terminal not found"))
         }
     }
 
@@ -695,7 +740,7 @@ impl TerminalManager {
             terminal.config.nickname = Some(nickname);
             Ok(())
         } else {
-            Err("Terminal not found".to_string())
+            Err(error_reporter::user_err("Terminal not found"))
         }
     }
 
@@ -712,6 +757,144 @@ impl TerminalManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Writer that fails every write the way a dead ConPTY pipe does on
+    /// Windows (os error 232 maps to ErrorKind::BrokenPipe).
+    struct BrokenPipeWriter;
+
+    impl Write for BrokenPipeWriter {
+        fn write(&mut self, _buf: &[u8]) -> std::io::Result<usize> {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::BrokenPipe,
+                "The pipe is being closed. (os error 232)",
+            ))
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    fn insert_test_terminal(
+        mgr: &mut TerminalManager,
+        id: &str,
+        status: TerminalStatus,
+        writer: Box<dyn Write + Send>,
+    ) {
+        let pty_pair = native_pty_system()
+            .openpty(PtySize { rows: 30, cols: 120, pixel_width: 0, pixel_height: 0 })
+            .expect("openpty failed in test");
+        // The Terminal struct owns its child handle (close() kills it); spawn
+        // a trivial short-lived process to fill the field.
+        #[cfg(target_os = "windows")]
+        let cmd = {
+            let mut c = CommandBuilder::new("cmd.exe");
+            c.arg("/C");
+            c.arg("exit");
+            c
+        };
+        #[cfg(not(target_os = "windows"))]
+        let cmd = CommandBuilder::new("true");
+        let child = pty_pair
+            .slave
+            .spawn_command(cmd)
+            .expect("spawn test child failed");
+        mgr.terminals.insert(
+            id.to_string(),
+            Terminal {
+                config: TerminalConfig {
+                    id: id.to_string(),
+                    label: "test".to_string(),
+                    nickname: None,
+                    profile_id: None,
+                    working_directory: String::new(),
+                    claude_args: vec![],
+                    env_vars: HashMap::new(),
+                    created_at: Utc::now(),
+                    status,
+                    color_tag: None,
+                    claude_session_id: None,
+                },
+                pty_pair,
+                writer,
+                child,
+                reader_handle: None,
+                last_input_at: None,
+            },
+        );
+    }
+
+    #[test]
+    fn write_is_noop_when_terminal_stopped() {
+        let mut mgr = TerminalManager::new();
+        // BrokenPipeWriter errors on any write attempt, so Ok proves the
+        // Stopped guard skipped the write entirely.
+        insert_test_terminal(&mut mgr, "t", TerminalStatus::Stopped, Box::new(BrokenPipeWriter));
+        assert_eq!(mgr.write("t", b"hello"), Ok(()));
+    }
+
+    #[test]
+    fn write_broken_pipe_marks_stopped_and_returns_ok() {
+        // The child died but the reader thread hasn't flipped status yet -
+        // the write hits the dead pipe. That's the process-exit race, not a
+        // bug worth a telemetry event (fingerprint 6c5825d1).
+        let mut mgr = TerminalManager::new();
+        insert_test_terminal(&mut mgr, "t", TerminalStatus::Running, Box::new(BrokenPipeWriter));
+        assert_eq!(mgr.write("t", b"hello"), Ok(()));
+        assert_eq!(mgr.terminals.get("t").unwrap().config.status, TerminalStatus::Stopped);
+    }
+
+    #[test]
+    fn write_non_pipe_error_still_surfaces() {
+        struct DeniedWriter;
+        impl Write for DeniedWriter {
+            fn write(&mut self, _buf: &[u8]) -> std::io::Result<usize> {
+                Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied, "denied"))
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let mut mgr = TerminalManager::new();
+        insert_test_terminal(&mut mgr, "t", TerminalStatus::Running, Box::new(DeniedWriter));
+        assert!(mgr.write("t", b"hello").is_err());
+    }
+
+    #[test]
+    fn arg_validation_errors_are_tagged_as_user_errors() {
+        // Validation failures are user input problems, not defects - they
+        // must carry the user_err marker so wrap_cmd skips telemetry.
+        let mut mgr = TerminalManager::new();
+        let (tx, _rx) = mpsc::channel(1);
+        let err = mgr
+            .create_terminal(
+                "l".into(),
+                String::new(),
+                vec!["--flag&&evil".into()],
+                HashMap::new(),
+                None,
+                None,
+                tx,
+                None,
+                None,
+                false,
+                None,
+            )
+            .unwrap_err();
+        assert!(crate::error_reporter::is_user_error(&err));
+
+        let (tx2, _rx2) = mpsc::channel(1);
+        let err = mgr
+            .create_script_terminal("l".into(), String::new(), "bad;name".into(), tx2)
+            .unwrap_err();
+        assert!(crate::error_reporter::is_user_error(&err));
+    }
+
+    #[test]
+    fn resize_is_noop_when_terminal_stopped() {
+        let mut mgr = TerminalManager::new();
+        insert_test_terminal(&mut mgr, "t", TerminalStatus::Stopped, Box::new(BrokenPipeWriter));
+        assert_eq!(mgr.resize("t", 172, 31), Ok(()));
+    }
 
     #[test]
     fn write_returns_ok_when_terminal_missing() {

@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { Search, Copy, Check, ChevronDown, ChevronRight, Rocket, Folder, GitBranch, Code, Bug, Terminal, Star } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { toast } from '../store/toastStore';
+import { copyText } from '../lib/clipboard';
+import { reportInvokeFailure } from '../lib/errorReporter';
 
 interface Hint {
   title: string;
@@ -32,7 +34,9 @@ export function HintsPanel() {
   const [copiedCommand, setCopiedCommand] = useState<string | null>(null);
 
   useEffect(() => {
-    invoke<HintCategory[]>('get_hints').then(setCategories);
+    invoke<HintCategory[]>('get_hints')
+      .then(setCategories)
+      .catch((err) => reportInvokeFailure('get_hints', err));
   }, []);
 
   const filteredCategories = categories.map(cat => ({
@@ -44,9 +48,14 @@ export function HintsPanel() {
   })).filter(cat => cat.hints.length > 0);
 
   const copyToClipboard = async (command: string) => {
-    await navigator.clipboard.writeText(command);
-    setCopiedCommand(command);
-    toast.success('Copied', command);
+    // copyText survives WebView2's focus gating; bare navigator.clipboard
+    // rejects with NotAllowedError whenever the document isn't focused.
+    if (await copyText(command)) {
+      setCopiedCommand(command);
+      toast.success('Copied', command);
+    } else {
+      toast.error('Copy failed', 'Could not write to the clipboard.');
+    }
   };
 
   // Clear copied state after timeout

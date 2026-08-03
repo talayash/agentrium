@@ -3,6 +3,9 @@ import { motion } from 'framer-motion';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
+import { toast } from '../store/toastStore';
+import { copyText } from '../lib/clipboard';
+import { reportInvokeFailure } from '../lib/errorReporter';
 import {
   Terminal,
   Settings,
@@ -180,7 +183,13 @@ export function CommandPalette() {
             description: hint.description,
             category: 'Hints',
             icon: Copy,
-            action: () => { navigator.clipboard.writeText(hint.command); closeCommandPalette(); },
+            action: () => {
+              // copyText survives WebView2 focus gating (bare navigator.clipboard doesn't).
+              copyText(hint.command).then((ok) => {
+                if (!ok) toast.error('Copy failed', 'Could not write to the clipboard.');
+              });
+              closeCommandPalette();
+            },
           });
         });
       });
@@ -197,7 +206,12 @@ export function CommandPalette() {
           category: 'Snippets',
           icon: Send,
           action: () => {
-            if (activeTerminalId) writeToTerminal(activeTerminalId, snippet.content);
+            if (activeTerminalId) {
+              writeToTerminal(activeTerminalId, snippet.content).catch((err) => {
+                toast.error('Insert failed', 'Could not send the snippet to the terminal.');
+                reportInvokeFailure('write_to_terminal', err);
+              });
+            }
             closeCommandPalette();
           },
         });

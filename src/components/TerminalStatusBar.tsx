@@ -3,6 +3,8 @@ import { RotateCw, Square, ClipboardCopy, Clock, FolderOpen, Check, ClipboardPas
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
 import { captureClaudeInput } from '../lib/terminalInput';
+import { toast } from '../store/toastStore';
+import { reportInvokeFailure } from '../lib/errorReporter';
 import { Tooltip } from './ui/Tooltip';
 
 interface TerminalStatusBarProps {
@@ -46,14 +48,22 @@ export function TerminalStatusBar({ terminalId }: TerminalStatusBarProps) {
   }, [instance?.config.created_at, instance?.config.status]);
 
   const handleInterrupt = useCallback(() => {
-    writeToTerminal(terminalId, '\x03');
+    writeToTerminal(terminalId, '\x03').catch((err) => {
+      reportInvokeFailure('write_to_terminal', err);
+    });
   }, [terminalId, writeToTerminal]);
 
   const handleRestart = useCallback(async () => {
     if (!instance) return;
     const { label, working_directory, claude_args, env_vars, color_tag, nickname } = instance.config;
-    await closeTerminal(terminalId);
-    await createTerminal(label, working_directory, claude_args, env_vars, color_tag || undefined, nickname || undefined);
+    try {
+      await closeTerminal(terminalId);
+      await createTerminal(label, working_directory, claude_args, env_vars, color_tag || undefined, nickname || undefined);
+    } catch (err) {
+      // A failure here can leave the user with no terminal at all - never silent.
+      toast.error('Restart failed', 'Could not restart the terminal.');
+      reportInvokeFailure('restart_terminal', err);
+    }
   }, [instance, terminalId, closeTerminal, createTerminal]);
 
   const handleCopyOutput = useCallback(async () => {

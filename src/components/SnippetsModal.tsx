@@ -4,6 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
 import { toast } from '../store/toastStore';
+import { reportInvokeFailure } from '../lib/errorReporter';
 import { Modal } from './ui/Modal';
 import { Button } from './ui/Button';
 import { ListRow } from './ui/ListRow';
@@ -114,7 +115,13 @@ export function SnippetsModal() {
   const handleInsert = async () => {
     const content = editing ? editContent : selectedSnippet?.content;
     if (!content || !activeTerminalId) return;
-    await writeToTerminal(activeTerminalId, content);
+    try {
+      await writeToTerminal(activeTerminalId, content);
+    } catch (err) {
+      toast.error('Insert Failed', 'Could not send the snippet to the terminal.');
+      reportInvokeFailure('write_to_terminal', err);
+      return;
+    }
     toast.success('Snippet Inserted', 'Content sent to terminal.');
     closeSnippetsModal();
   };

@@ -55,7 +55,10 @@ pub async fn report_error(payload: FrontendErrorPayload) -> Result<(), String> {
 
 #[command]
 pub fn set_error_reporting_enabled(enabled: bool) -> Result<(), String> {
-    error_reporter::set_enabled(enabled);
+    // Persisted so the next process start honors the choice before the
+    // frontend has mounted (startup crashes are reported - or not - per the
+    // user's last known consent).
+    error_reporter::set_enabled_persist(enabled);
     Ok(())
 }
 
@@ -409,6 +412,10 @@ pub async fn create_terminal(
                 Some(&config.working_directory),
             ) {
                 eprintln!("Failed to insert session history: {}", e);
+                error_reporter::report_bg(
+                    "insert_session_history",
+                    format!("Failed to insert session history: {}", e),
+                );
             }
         }
 
@@ -424,7 +431,13 @@ pub async fn create_terminal(
                     "id": id,
                     "data": data,
                 })) {
+                    // Breaking here permanently freezes this terminal's output,
+                    // so it must be visible in telemetry, not just stderr.
                     eprintln!("Failed to emit terminal-output: {}", e);
+                    error_reporter::report_bg(
+                        "emit_terminal_output",
+                        format!("Failed to emit terminal-output: {}", e),
+                    );
                     break;
                 }
             }
@@ -432,11 +445,20 @@ pub async fn create_terminal(
             // Terminal process exited - update status, session history, and notify frontend
             // Note: the terminal may have already been removed by close_terminal(), so ignore errors
             {
-                if let Ok(mut manager) = tokio::time::timeout(
+                match tokio::time::timeout(
                     std::time::Duration::from_secs(2),
                     terminals_arc.lock(),
                 ).await {
-                    let _ = manager.update_status(&terminal_id, crate::terminal::TerminalStatus::Stopped);
+                    Ok(mut manager) => {
+                        let _ = manager.update_status(&terminal_id, crate::terminal::TerminalStatus::Stopped);
+                    }
+                    Err(_) => {
+                        // Lock starved for 2s: the tab stays "running" forever.
+                        error_reporter::report_bg(
+                            "terminal_status_lock_timeout",
+                            "2s timeout acquiring TerminalManager lock to mark terminal Stopped".to_string(),
+                        );
+                    }
                 }
             }
             // Drop accumulated telemetry on the natural process-exit path too -
@@ -450,6 +472,10 @@ pub async fn create_terminal(
                 let db = db_arc.lock().await;
                 if let Err(e) = db.update_session_ended(&terminal_id, &chrono::Utc::now().to_rfc3339()) {
                     eprintln!("Failed to update session ended for {}: {}", terminal_id, e);
+                    error_reporter::report_bg(
+                        "update_session_ended",
+                        format!("Failed to update session ended: {}", e),
+                    );
                 }
             }
 
@@ -457,6 +483,10 @@ pub async fn create_terminal(
                 "id": terminal_id,
             })) {
                 eprintln!("Failed to emit terminal-finished: {}", e);
+                error_reporter::report_bg(
+                    "emit_terminal_finished",
+                    format!("Failed to emit terminal-finished: {}", e),
+                );
             }
         });
 
@@ -532,9 +562,12 @@ pub async fn get_terminals(
 /// logic to hit-test the drop point against each window's outer bounds
 /// (which `outerPosition()`/`outerSize()` also report in physical pixels).
 #[command]
-pub fn get_cursor_position(app: AppHandle) -> Result<(f64, f64), String> {
-    let pos = app.cursor_position().map_err(|e| e.to_string())?;
-    Ok((pos.x, pos.y))
+pub async fn get_cursor_position(app: AppHandle) -> Result<(f64, f64), String> {
+    wrap_cmd("get_cursor_position", async move {
+        let pos = app.cursor_position().map_err(|e| e.to_string())?;
+        Ok((pos.x, pos.y))
+    })
+    .await
 }
 
 #[command]
@@ -2079,7 +2112,7 @@ pub async fn git_commit(
     wrap_cmd("git_commit", async move {
         validate_path_is_trusted(&state, &path).await?;
         if message.trim().is_empty() {
-            return Err("Commit message cannot be empty".to_string());
+            return Err(error_reporter::user_err("Commit message cannot be empty"));
         }
         // Run from the repo root so auto-stage covers the whole repo even when
         // `path` is a subdirectory (add -u/-A are cwd-scoped).
@@ -2091,7 +2124,9 @@ pub async fn git_commit(
             AutoStageMode::None => {
                 let status = run_git(&root, &["diff", "--cached", "--name-only"])?;
                 if status.trim().is_empty() && !amend {
-                    return Err("Nothing is staged - stage files first or choose 'stage all'".to_string());
+                    return Err(error_reporter::user_err(
+                        "Nothing is staged - stage files first or choose 'stage all'",
+                    ));
                 }
             }
             AutoStageMode::Tracked => { run_git(&root, &["add", "-u"])?; }
@@ -2354,7 +2389,7 @@ pub async fn git_push(
         let remotes_raw = run_git(&path, &["remote"])?;
         let known: Vec<&str> = remotes_raw.lines().map(|l| l.trim()).collect();
         if !known.iter().any(|r| *r == remote.as_str()) {
-            return Err(format!("Unknown remote: {}", remote));
+            return Err(error_reporter::user_err(format!("Unknown remote: {}", remote)));
         }
 
         let mut args: Vec<String> = vec!["push".into()];
@@ -2371,7 +2406,11 @@ pub async fn git_push(
         args.push(format!("HEAD:{}", remote_branch));
 
         let str_args: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-        run_git(&path, &str_args).map(|_| ())
+        // Push failures are overwhelmingly environment/user conditions (auth,
+        // non-fast-forward, no network) - surface to the UI, skip telemetry.
+        run_git(&path, &str_args)
+            .map(|_| ())
+            .map_err(error_reporter::user_err)
     })
     .await
 }
@@ -3988,12 +4027,14 @@ pub async fn git_pull_branch(
                 // pull and an orphan stash. Best-effort - if pop conflicts, the
                 // stash stays in the list and the user can recover manually.
                 let _ = run_git(&path, &["stash", "pop"]);
-                return Err(format!(
+                // Pull failures (conflicts, no upstream, network) are user/
+                // environment conditions - surface to the UI, skip telemetry.
+                return Err(error_reporter::user_err(format!(
                     "Pull failed; your changes were restored from auto-stash.\n\n{}",
                     pull_err
-                ));
+                )));
             }
-            return Err(pull_err);
+            return Err(error_reporter::user_err(pull_err));
         }
 
         // Surface the combined output so the UI can show "Already up to date." or merge summary.
@@ -4103,17 +4144,33 @@ pub async fn create_script_terminal(
                     "data": data,
                 })) {
                     eprintln!("Failed to emit terminal-output: {}", e);
+                    error_reporter::report_bg(
+                        "emit_terminal_output",
+                        format!("Failed to emit terminal-output: {}", e),
+                    );
                     break;
                 }
             }
-            if let Ok(mut manager) = tokio::time::timeout(
+            match tokio::time::timeout(
                 std::time::Duration::from_secs(2),
                 terminals_arc.lock(),
             ).await {
-                let _ = manager.update_status(&terminal_id, crate::terminal::TerminalStatus::Stopped);
+                Ok(mut manager) => {
+                    let _ = manager.update_status(&terminal_id, crate::terminal::TerminalStatus::Stopped);
+                }
+                Err(_) => {
+                    error_reporter::report_bg(
+                        "terminal_status_lock_timeout",
+                        "2s timeout acquiring TerminalManager lock to mark terminal Stopped".to_string(),
+                    );
+                }
             }
             if let Err(e) = app_clone.emit("terminal-finished", serde_json::json!({ "id": terminal_id })) {
                 eprintln!("Failed to emit terminal-finished: {}", e);
+                error_reporter::report_bg(
+                    "emit_terminal_finished",
+                    format!("Failed to emit terminal-finished: {}", e),
+                );
             }
         });
 
@@ -4154,17 +4211,33 @@ pub async fn create_shell_terminal(
                     "data": data,
                 })) {
                     eprintln!("Failed to emit terminal-output: {}", e);
+                    error_reporter::report_bg(
+                        "emit_terminal_output",
+                        format!("Failed to emit terminal-output: {}", e),
+                    );
                     break;
                 }
             }
-            if let Ok(mut manager) = tokio::time::timeout(
+            match tokio::time::timeout(
                 std::time::Duration::from_secs(2),
                 terminals_arc.lock(),
             ).await {
-                let _ = manager.update_status(&terminal_id, crate::terminal::TerminalStatus::Stopped);
+                Ok(mut manager) => {
+                    let _ = manager.update_status(&terminal_id, crate::terminal::TerminalStatus::Stopped);
+                }
+                Err(_) => {
+                    error_reporter::report_bg(
+                        "terminal_status_lock_timeout",
+                        "2s timeout acquiring TerminalManager lock to mark terminal Stopped".to_string(),
+                    );
+                }
             }
             if let Err(e) = app_clone.emit("terminal-finished", serde_json::json!({ "id": terminal_id })) {
                 eprintln!("Failed to emit terminal-finished: {}", e);
+                error_reporter::report_bg(
+                    "emit_terminal_finished",
+                    format!("Failed to emit terminal-finished: {}", e),
+                );
             }
         });
 
@@ -4334,25 +4407,30 @@ pub async fn read_text_file(
         validate_path_is_trusted(&state, &path).await?;
 
         let meta = std::fs::metadata(&path).map_err(|e| format!("Failed to stat file: {}", e))?;
+        // Directory / too-large / binary / non-UTF-8 are all expected outcomes
+        // of the user clicking a file in the tree, not defects: user_err them
+        // so they surface in the UI without hitting telemetry.
         if meta.is_dir() {
-            return Err("Path is a directory".to_string());
+            return Err(error_reporter::user_err("Path is a directory"));
         }
         const MAX_BYTES: u64 = 5 * 1024 * 1024; // 5 MB
         if meta.len() > MAX_BYTES {
-            return Err(format!(
+            return Err(error_reporter::user_err(format!(
                 "File is too large to edit in-app ({} bytes, max {}).",
                 meta.len(),
                 MAX_BYTES
-            ));
+            )));
         }
 
         let bytes = std::fs::read(&path).map_err(|e| format!("Failed to read file: {}", e))?;
         // Quick binary sniff: any NUL byte in the first 8 KB → binary.
         let sniff_len = bytes.len().min(8192);
         if bytes[..sniff_len].contains(&0u8) {
-            return Err("File appears to be binary and cannot be edited as text.".to_string());
+            return Err(error_reporter::user_err(
+                "File appears to be binary and cannot be edited as text.",
+            ));
         }
-        String::from_utf8(bytes).map_err(|_| "File is not valid UTF-8.".to_string())
+        String::from_utf8(bytes).map_err(|_| error_reporter::user_err("File is not valid UTF-8."))
     })
     .await
 }
@@ -4370,7 +4448,7 @@ pub async fn write_text_file(
 
         let meta = std::fs::metadata(&path).map_err(|e| format!("Failed to stat file: {}", e))?;
         if meta.is_dir() {
-            return Err("Path is a directory".to_string());
+            return Err(error_reporter::user_err("Path is a directory"));
         }
         std::fs::write(&path, content.as_bytes()).map_err(|e| format!("Failed to write file: {}", e))?;
         Ok(())

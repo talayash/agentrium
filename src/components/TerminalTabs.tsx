@@ -4,6 +4,8 @@ import { X, Plus, Grid3X3, SplitSquareHorizontal, RotateCw, GitBranch, ChevronLe
 import appIconUrl from '../assets/app-icon.png';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
+import { toast } from '../store/toastStore';
+import { reportInvokeFailure } from '../lib/errorReporter';
 import { Button } from './ui/Button';
 import { TerminalView } from './TerminalView';
 import { TerminalGrid } from './TerminalGrid';
@@ -103,6 +105,8 @@ export function TerminalTabs() {
     const instance = terminals.get(terminalId);
     if (!instance) return;
     const { label, working_directory, claude_args, env_vars, color_tag, nickname } = instance.config;
+    // createTerminal rethrows on spawn failure - catch or the duplicate
+    // silently never appears and the rejection goes unhandled.
     createTerminal(
       label,
       working_directory,
@@ -110,7 +114,10 @@ export function TerminalTabs() {
       env_vars,
       color_tag ?? undefined,
       nickname ?? undefined,
-    );
+    ).catch((err) => {
+      toast.error('Duplicate failed', 'Could not start the new terminal.');
+      reportInvokeFailure('create_terminal', err);
+    });
   };
 
   // Tab scroll overflow detection
@@ -268,7 +275,10 @@ export function TerminalTabs() {
                     // Middle-click (mouse wheel) closes the tab - same as VS Code.
                     if (e.button === 1) {
                       e.preventDefault();
-                      closeTerminal(terminal.id);
+                      closeTerminal(terminal.id).catch((err) => {
+                        toast.error('Close failed', 'Could not close the terminal.');
+                        reportInvokeFailure('close_terminal', err);
+                      });
                     }
                   }}
                   className={`group relative flex items-center gap-2 px-3 h-9 text-[12px] cursor-pointer select-none transition-all duration-150 ${
@@ -382,7 +392,10 @@ export function TerminalTabs() {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          closeTerminal(terminal.id);
+                          closeTerminal(terminal.id).catch((err) => {
+                            toast.error('Close failed', 'Could not close the terminal.');
+                            reportInvokeFailure('close_terminal', err);
+                          });
                         }}
                         className="p-0.5 rounded hover:bg-white/[0.08] text-text-tertiary hover:text-text-secondary"
                       >

@@ -14,6 +14,7 @@ import { useAppStore } from '../store/appStore';
 import { toast } from '../store/toastStore';
 import { resolveTerminalTheme } from '../lib/terminalThemes';
 import { copyText, readClipboardText } from '../lib/clipboard';
+import { reportInvokeFailure } from '../lib/errorReporter';
 import { isVisibilityHidden } from '../utils/dragDrop';
 import { TerminalSearch } from './TerminalSearch';
 import { TerminalStatusBar } from './TerminalStatusBar';
@@ -296,7 +297,9 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
         }
         if (e.type === 'keydown') {
           e.preventDefault();
-          writeToTerminal(terminalId, '\x16');
+          writeToTerminal(terminalId, '\x16').catch((err) => {
+            console.error(`Failed to write to terminal ${terminalId}:`, err); reportInvokeFailure('write_to_terminal', err);
+          });
         }
         return false;
       }
@@ -308,7 +311,9 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
       if (isCtrl && !e.shiftKey && key === 'z') {
         if (e.type === 'keydown') {
           e.preventDefault();
-          writeToTerminal(terminalId, '\x1f');
+          writeToTerminal(terminalId, '\x1f').catch((err) => {
+            console.error(`Failed to write to terminal ${terminalId}:`, err); reportInvokeFailure('write_to_terminal', err);
+          });
         }
         return false;
       }
@@ -329,7 +334,7 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
       if (bypassDetectOnce) {
         bypassDetectOnce = false;
         writeToTerminal(terminalId, data).catch((err) => {
-          console.error(`Failed to write to terminal ${terminalId}:`, err);
+          console.error(`Failed to write to terminal ${terminalId}:`, err); reportInvokeFailure('write_to_terminal', err);
         });
         return;
       }
@@ -339,7 +344,7 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
       const app = useAppStore.getState();
       if (!isLikelyPaste || !app.pasteAutoDetectEnabled) {
         writeToTerminal(terminalId, data).catch((err) => {
-          console.error(`Failed to write to terminal ${terminalId}:`, err);
+          console.error(`Failed to write to terminal ${terminalId}:`, err); reportInvokeFailure('write_to_terminal', err);
         });
         return;
       }
@@ -348,7 +353,7 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
       const lines = data.split('\n').length;
       if (bytes < app.pasteAutoDetectThresholdBytes && lines < app.pasteAutoDetectThresholdLines) {
         writeToTerminal(terminalId, data).catch((err) => {
-          console.error(`Failed to write to terminal ${terminalId}:`, err);
+          console.error(`Failed to write to terminal ${terminalId}:`, err); reportInvokeFailure('write_to_terminal', err);
         });
         return;
       }
@@ -378,7 +383,7 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
               onClick: () => {
                 bypassDetectOnce = true;
                 writeToTerminal(terminalId, data).catch((err) => {
-                  console.error(`Failed to write to terminal ${terminalId}:`, err);
+                  console.error(`Failed to write to terminal ${terminalId}:`, err); reportInvokeFailure('write_to_terminal', err);
                 });
               },
             },
@@ -388,7 +393,7 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
               onClick: () => {
                 useAppStore.getState().setPasteAutoDetectEnabled(false);
                 writeToTerminal(terminalId, data).catch((err) => {
-                  console.error(`Failed to write to terminal ${terminalId}:`, err);
+                  console.error(`Failed to write to terminal ${terminalId}:`, err); reportInvokeFailure('write_to_terminal', err);
                 });
               },
             },
@@ -399,7 +404,9 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
 
     const resizeObserver = new ResizeObserver(() => {
       fitAddon.fit();
-      resizeTerminal(terminalId, terminal.cols, terminal.rows);
+      resizeTerminal(terminalId, terminal.cols, terminal.rows).catch((err) => {
+        console.error(`Failed to resize terminal ${terminalId}:`, err); reportInvokeFailure('resize_terminal', err);
+      });
     });
     resizeObserver.observe(containerRef.current);
 
@@ -459,7 +466,9 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
     // Refit + push new dimensions to the PTY whenever cell metrics may have
     // changed. fit() is a no-op if cols/rows didn't actually shift.
     fitAddonRef.current?.fit();
-    resizeTerminal(terminalId, terminal.cols, terminal.rows);
+    resizeTerminal(terminalId, terminal.cols, terminal.rows).catch((err) => {
+      console.error(`Failed to resize terminal ${terminalId}:`, err); reportInvokeFailure('resize_terminal', err);
+    });
   }, [fontFamily, fontSize, lineHeight, cursorStyle, cursorBlink, themeName, accentColorHex, terminalId, resizeTerminal]);
 
   // Scrollbar visibility. The native xterm scrollbar (`.xterm-viewport`) is
@@ -549,7 +558,7 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
           if (paths.length === 0) return;
           const text = paths.map(formatDroppedPath).join(' ') + ' ';
           useTerminalStore.getState().writeToTerminal(terminalId, text).catch((err) => {
-            console.error(`Failed to write dropped paths to terminal ${terminalId}:`, err);
+            console.error(`Failed to write dropped paths to terminal ${terminalId}:`, err); reportInvokeFailure('write_to_terminal', err);
           });
           terminalRef.current?.focus();
         }

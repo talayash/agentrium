@@ -4,6 +4,7 @@ import { useTerminalStore } from '../store/terminalStore';
 import { usePreviewStore } from '../store/previewStore';
 import { toast } from '../store/toastStore';
 import { captureClaudeInput } from '../lib/terminalInput';
+import { reportInvokeFailure } from '../lib/errorReporter';
 
 /**
  * Return true when the focused element is an editable surface that is NOT
@@ -152,7 +153,12 @@ export function useKeyboardShortcuts() {
       if (ctrl && e.key === 'w') {
         e.preventDefault();
         const activeId = activeIdRef.current;
-        if (activeId) useTerminalStore.getState().closeTerminal(activeId);
+        if (activeId) {
+          useTerminalStore.getState().closeTerminal(activeId).catch((err) => {
+            toast.error('Close failed', 'Could not close the terminal.');
+            reportInvokeFailure('close_terminal', err);
+          });
+        }
       }
 
       // Duplicate active terminal: Ctrl+Shift+D
@@ -163,6 +169,8 @@ export function useKeyboardShortcuts() {
           const instance = terminalsRef.current.get(activeId);
           if (instance) {
             const { label, working_directory, claude_args, env_vars, color_tag, nickname } = instance.config;
+            // createTerminal rethrows on spawn failure - without this catch the
+            // duplicate silently doesn't appear and the rejection goes unhandled.
             useTerminalStore.getState().createTerminal(
               label,
               working_directory,
@@ -170,7 +178,10 @@ export function useKeyboardShortcuts() {
               env_vars,
               color_tag ?? undefined,
               nickname ?? undefined,
-            );
+            ).catch((err) => {
+              toast.error('Duplicate failed', 'Could not start the new terminal.');
+              reportInvokeFailure('create_terminal', err);
+            });
           }
         }
       }

@@ -142,7 +142,11 @@ If not using `/publish`, the same steps can be done manually:
 
 ## Key Patterns
 
-- **Error handling in Rust**: Commands return `Result<T, String>` — errors are string-mapped via `.map_err(|e| e.to_string())`
+- **Error handling in Rust**: Commands return `Result<T, String>` — errors are string-mapped via `.map_err(|e| e.to_string())`. Every `#[command]` body is wrapped in `wrap_cmd("name", ...)`, which reports `Err` results to telemetry. Errors caused by user input or environment (validation, git push/pull rejections, file-too-large) must be returned via `error_reporter::user_err(...)` — the UI still sees the plain message, but telemetry is skipped. Background threads/tasks outside `wrap_cmd` report real failures via `error_reporter::report_bg(kind, message)`; use `report_blocking` only when the process is about to exit (panic hook, shutdown path).
+- **Error handling in the frontend** (pick by call-site type, never `console.error`-only — that silently deletes telemetry the global `unhandledrejection` handler would have produced):
+  - *User-initiated action* → `.catch(err => { toast.error(...); reportInvokeFailure('<command_name>', err); })` from `src/lib/errorReporter.ts`. A silent failure here is a user-facing bug.
+  - *Background poller / best-effort cleanup* → `.catch(() => {})` with a one-line comment saying why it's safe to swallow.
+  - *Clipboard* → always `copyText()` / `readClipboardText()` from `src/lib/clipboard.ts`, never bare `navigator.clipboard` (WebView2 focus gating).
 - **Tauri events**: Backend emits `terminal-output` (with `{id, data}`) and `terminal-finished` (with `{id}`)
 - **Frontend invoke pattern**: `invoke<ReturnType>('command_name', { param })` from `@tauri-apps/api/core`
 - **Window**: Frameless (`decorations: false`, `transparent: true`) with custom `TitleBar` component

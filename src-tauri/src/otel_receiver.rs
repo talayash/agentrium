@@ -277,6 +277,12 @@ pub fn start(app: tauri::AppHandle) -> std::io::Result<(u16, Arc<Mutex<MetricsAg
                         use tauri::Emitter;
                         if let Err(e) = app.emit("terminal-metrics", &merged) {
                             eprintln!("Failed to emit terminal-metrics: {}", e);
+                            // Cost tracking silently stops updating when this
+                            // fails; 60s dedup in the reporter bounds the volume.
+                            crate::error_reporter::report_bg(
+                                "emit_terminal_metrics",
+                                format!("Failed to emit terminal-metrics: {}", e),
+                            );
                         }
                     }
                 }
@@ -288,6 +294,11 @@ pub fn start(app: tauri::AppHandle) -> std::io::Result<(u16, Arc<Mutex<MetricsAg
             let _ = request.respond(response);
         }
         eprintln!("[otel_receiver] accept loop exited - telemetry collection stopped");
+        // Permanent loss of cost tracking for the rest of the session.
+        crate::error_reporter::report_bg(
+            "otel_receiver_stopped",
+            "OTLP accept loop exited - cost tracking stopped for this session".to_string(),
+        );
     });
 
     Ok((port, agg))
