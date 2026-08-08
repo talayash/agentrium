@@ -32,6 +32,7 @@ import { SessionTimeline } from './components/SessionTimeline';
 import { MemoryEditor } from './components/MemoryEditor';
 import { StatusBar } from './components/StatusBar';
 import { ToastContainer } from './components/ToastContainer';
+import { History } from 'lucide-react';
 import { getWindowMode } from './lib/windowMode';
 import { DragPreview } from './components/DragPreview';
 import { WebviewWindow, getAllWebviewWindows } from '@tauri-apps/api/webviewWindow';
@@ -745,7 +746,8 @@ function App() {
         <>
           {!isDetached && <AutoUpdater />}
 
-          {/* Restore Banner (F3) — main window only */}
+          {/* Restore Banner (F3) — main window only. Slimmer, icon-led,
+              inline-notification style matching IntelliJ's "did you mean" bar. */}
           <AnimatePresence>
             {!isDetached && showRestoreBanner && pendingRestoreConfigs && (
               <motion.div
@@ -753,13 +755,20 @@ function App() {
                 animate={{ height: 'auto', opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}
                 transition={{ duration: 0.2 }}
-                className="bg-accent-primary/10 border-b border-accent-primary/20 overflow-hidden"
+                className="bg-elevation-1 border-b border-[var(--ij-divider)] overflow-hidden"
               >
-                <div className="flex items-center justify-between px-4 py-2.5">
-                  <p className="text-text-primary text-[13px]">
-                    Restore {pendingRestoreConfigs.length} terminal{pendingRestoreConfigs.length !== 1 ? 's' : ''} from your previous session?
+                <div className="flex items-center gap-3 px-3 py-1.5">
+                  <div className="w-5 h-5 rounded-full bg-accent-primary/15 flex items-center justify-center text-accent-primary flex-shrink-0">
+                    <History size={11} strokeWidth={2.25} />
+                  </div>
+                  <p className="text-text-primary text-[12px] flex-1">
+                    Restore{' '}
+                    <span className="font-semibold text-accent-primary">
+                      {pendingRestoreConfigs.length} terminal{pendingRestoreConfigs.length !== 1 ? 's' : ''}
+                    </span>
+                    {' '}from your previous session?
                   </p>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1">
                     <Button variant="primary" size="sm" onClick={handleRestore}>
                       Restore
                     </Button>
