@@ -13,6 +13,12 @@ export interface WorktreeDetectResult {
   main_repo_path: string | null;
   current_branch: string | null;
   worktree_root: string | null;
+  /** Count of files with staged/unstaged/untracked changes. 0 = clean tree. */
+  dirty_count: number | null;
+  /** Commits ahead of upstream. null = no upstream tracked. */
+  ahead: number | null;
+  /** Commits behind upstream. null = no upstream tracked. */
+  behind: number | null;
 }
 
 export interface PushCommit {

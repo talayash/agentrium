@@ -320,6 +320,13 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
         await invoke('purge_pastes', { terminalId: id }).catch(() => {});
       }
       usePasteStore.getState().clearForTerminal(id);
+      // Ghost-pin GC: if this terminal was pinned, drop the id from the
+      // persisted pinnedTabIds so it doesn't leak forever. Without this,
+      // right-click → Pin → Close leaves the id in localStorage across
+      // sessions and pinnedTabIds grows unbounded. The startup GC in
+      // App.tsx catches the restart case; this covers the live case.
+      useAppStore.getState().unpinTab(id);
+      if (childId) useAppStore.getState().unpinTab(childId);
     } catch {
       // ignore - cleanup is best-effort
     }

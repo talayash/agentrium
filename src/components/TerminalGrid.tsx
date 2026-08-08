@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, memo, useCallback, useMemo } from 'react';
 import { AnimatePresence } from 'framer-motion';
-import { X, Maximize2, Minimize2, Plus, Grid3X3, LayoutGrid, Columns, Rows, Square, Layers } from 'lucide-react';
+import { X, Maximize2, Minimize2, Plus, Grid3X3, LayoutGrid, Columns, Rows, Square, Layers, Pin } from 'lucide-react';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore, GridLayout } from '../store/appStore';
 import { TerminalView } from './TerminalView';
@@ -43,6 +43,8 @@ interface TerminalCellProps {
 const TerminalCell = memo(function TerminalCell({ terminalId, index, isFocused, onFocus, onRemove, onMaximize }: TerminalCellProps) {
   const { terminals } = useTerminalStore();
   const { swapGridPositions, replaceInGrid } = useAppStore();
+  const pinnedTabIds = useAppStore((s) => s.pinnedTabIds);
+  const isPinned = pinnedTabIds.includes(terminalId);
   const [dropOver, setDropOver] = useState(false);
   const terminal = terminals.get(terminalId);
 
@@ -114,16 +116,34 @@ const TerminalCell = memo(function TerminalCell({ terminalId, index, isFocused, 
         </div>
       )}
 
-      {/* Cell Header */}
-      <div className={`flex items-center justify-between px-3 h-7 border-b ${
+      {/* Cell Header — sketch: pin + name + status dot + maximize + close */}
+      <div className={`flex items-center justify-between px-3 h-7 border-b gap-2 ${
         isFocused ? 'bg-accent-primary/10 border-accent-primary/40' : 'bg-bg-secondary border-border'
       }`}>
-        <span className={`text-[11px] truncate font-medium cursor-grab ${
-          isFocused ? 'text-text-primary' : 'text-text-secondary'
-        }`}>
-          {terminal.config.nickname || terminal.config.label}
-        </span>
-        <div className="flex items-center gap-0.5">
+        <div className="flex items-center gap-1.5 min-w-0 flex-1">
+          {isPinned && (
+            <Pin size={10} strokeWidth={2} className="text-accent-primary flex-shrink-0" />
+          )}
+          <span className={`text-[11px] truncate font-medium cursor-grab ${
+            isFocused ? 'text-text-primary' : 'text-text-secondary'
+          }`}>
+            {terminal.config.nickname || terminal.config.label}
+          </span>
+          {/* Status dot — pulses when running (matches sketch's cell head) */}
+          <span
+            className={`inline-block w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+              terminal.config.status === 'Running'
+                ? 'bg-success ct-working-dot'
+                : terminal.config.status === 'Idle'
+                ? 'bg-warning'
+                : terminal.config.status === 'Error'
+                ? 'bg-error'
+                : 'bg-text-tertiary'
+            }`}
+            title={terminal.config.status}
+          />
+        </div>
+        <div className="flex items-center gap-0.5 flex-shrink-0">
           <button
             onClick={(e) => {
               e.stopPropagation();

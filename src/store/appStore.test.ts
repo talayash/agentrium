@@ -80,6 +80,8 @@ function resetAppStore() {
     // Appearance & Behavior (NEW v1.22.0)
     themeMode: 'dark',
     uiDensity: 'comfortable',
+    tabHeight: 'medium',
+    colorfulFolderIcons: false,
     accentColorHex: '#3574F0',
     uiFontScale: 1.0,
     uiReduceMotion: false,
@@ -370,6 +372,8 @@ describe('appStore - persist partialize', () => {
     // Appearance & Behavior (NEW v1.22.0)
     'themeMode',
     'uiDensity',
+    'tabHeight',
+    'colorfulFolderIcons',
     'accentColorHex',
     'uiFontScale',
     'uiReduceMotion',
@@ -405,6 +409,8 @@ describe('appStore - persist partialize', () => {
     // Claude (NEW v1.22.0)
     'claudeDefaultModel',
     'claudeBinaryPathOverride',
+    // Pinned tabs (Phase 4a)
+    'pinnedTabIds',
   ].sort();
 
   it('persists exactly the allow-listed keys, and no transient ones', () => {

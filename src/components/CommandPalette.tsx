@@ -6,11 +6,15 @@ import { useTerminalStore } from '../store/terminalStore';
 import { toast } from '../store/toastStore';
 import { copyText } from '../lib/clipboard';
 import { reportInvokeFailure } from '../lib/errorReporter';
+import { fuzzyMatch, frecencyScore } from '../lib/paletteMatching';
+import { PALETTE_SOURCES, type PaletteItem } from '../lib/paletteSources';
+import { HighlightedText } from './palette/HighlightedText';
 import {
   Terminal,
   Settings,
   PanelLeft,
   LayoutGrid,
+  LayoutList,
   Lightbulb,
   FolderOpen,
   User,
@@ -37,23 +41,6 @@ interface Snippet {
   created_at: string;
 }
 
-interface PaletteItem {
-  id: string;
-  // Stable key for frecency tracking. Empty string = not tracked (terminals,
-  // whose ids are ephemeral and must not leak into persisted usage).
-  frecencyKey: string;
-  label: string;
-  description: string;
-  category: string;
-  icon?: LucideIcon;
-  shortcut?: string;
-  // Tailwind bg-* class for a presence dot (terminal status). Color is
-  // supplementary - the status is also spelled out in the description so we
-  // never convey it by color alone.
-  statusColor?: string;
-  action: () => void;
-}
-
 // Terminal status → presence-dot color.
 const STATUS_DOT: Record<string, string> = {
   Running: 'bg-success',
@@ -62,44 +49,35 @@ const STATUS_DOT: Record<string, string> = {
   Stopped: 'bg-text-tertiary',
 };
 
-// Frecency = frequency + recency. A small recency bump keeps recently-used
-// items near the top without letting a one-off click outrank a daily habit.
-function frecencyScore(u?: { count: number; lastUsedTs: number }): number {
-  if (!u) return 0;
-  const age = Date.now() - u.lastUsedTs;
-  const HOUR = 3_600_000;
-  const DAY = 24 * HOUR;
-  const recency = age < HOUR ? 8 : age < DAY ? 4 : age < 7 * DAY ? 2 : 1;
-  return u.count + recency;
-}
-
-function fuzzyMatch(text: string, query: string): { matches: boolean; score: number } {
-  const lower = text.toLowerCase();
-  const q = query.toLowerCase();
-
-  // Exact substring match (highest score)
-  const subIdx = lower.indexOf(q);
-  if (subIdx !== -1) {
-    // Prefer matches at the start
-    return { matches: true, score: 100 - subIdx };
-  }
-
-  // Character-by-character fuzzy match
-  let qi = 0;
-  let score = 0;
-  let lastMatchIdx = -1;
-  for (let i = 0; i < lower.length && qi < q.length; i++) {
-    if (lower[i] === q[qi]) {
-      qi++;
-      // Bonus for consecutive matches
-      score += lastMatchIdx === i - 1 ? 3 : 1;
-      lastMatchIdx = i;
-    }
-  }
-  if (qi === q.length) {
-    return { matches: true, score };
-  }
-  return { matches: false, score: 0 };
+// Filter chip in the source strip. Rendered inline in CommandPalette;
+// pulled out so both the "All" chip and the per-source chips can share
+// styling.
+function ChipButton({
+  label,
+  icon: Icon,
+  active,
+  onClick,
+}: {
+  label: string;
+  icon: LucideIcon;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`inline-flex items-center gap-1.5 h-6 px-2 rounded-full text-[11px] transition-colors whitespace-nowrap ${
+        active
+          ? 'bg-accent-primary text-white'
+          : 'bg-elevation-2 text-text-secondary hover:bg-elevation-3 hover:text-text-primary'
+      }`}
+    >
+      <Icon size={11} strokeWidth={2} />
+      {label}
+    </button>
+  );
 }
 
 export function CommandPalette() {
@@ -111,11 +89,17 @@ export function CommandPalette() {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [hints, setHints] = useState<HintCategory[]>([]);
   const [snippets, setSnippets] = useState<Snippet[]>([]);
+  // Chip-strip filter. 'all' means no chip filter is active; a source id
+  // (e.g. 'terminals') restricts results to that source. Typed prefix chars
+  // still take precedence — see `wantSource` below.
+  const [activeSourceId, setActiveSourceId] = useState<string>('all');
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     inputRef.current?.focus();
+    // Reset chip filter each time the palette is (re)opened.
+    setActiveSourceId('all');
     invoke<HintCategory[]>('get_hints').then(setHints).catch(() => {});
     invoke<Snippet[]>('get_snippets').then(setSnippets).catch(() => {});
   }, []);
@@ -136,8 +120,23 @@ export function CommandPalette() {
   const items = useMemo<PaletteItem[]>(() => {
     const result: PaletteItem[] = [];
 
+    // Should the given source contribute items right now?
+    // - Typed prefix wins (backward compat with muscle memory).
+    // - '>' historically surfaced BOTH Commands and Hints together, so we
+    //   preserve that pairing even though the chip strip treats them as two
+    //   separate sources.
+    // - Otherwise, if a chip is active, filter to that source.
+    // - Else show every source.
+    const wantSource = (sourceId: string) => {
+      if (prefixMode !== 'all') {
+        return prefixMode === sourceId || (prefixMode === 'commands' && sourceId === 'hints');
+      }
+      if (activeSourceId !== 'all') return activeSourceId === sourceId;
+      return true;
+    };
+
     // Terminals
-    if (prefixMode === 'all' || prefixMode === 'terminals') {
+    if (wantSource('terminals')) {
       terminals.forEach((instance) => {
         const config = instance.config;
         result.push({
@@ -154,7 +153,7 @@ export function CommandPalette() {
     }
 
     // Actions
-    if (prefixMode === 'all' || prefixMode === 'commands') {
+    if (wantSource('commands')) {
       const actions: { label: string; description: string; icon: LucideIcon; shortcut?: string; action: () => void }[] = [
         { label: 'New Terminal', description: 'Create a new terminal instance', icon: Plus, shortcut: 'Ctrl+Shift+N', action: () => { useAppStore.getState().openNewTerminalModal(); closeCommandPalette(); } },
         { label: 'Toggle Sidebar', description: 'Show or hide the sidebar', icon: PanelLeft, shortcut: 'Ctrl+B', action: () => { useAppStore.getState().toggleSidebar(); closeCommandPalette(); } },
@@ -173,7 +172,7 @@ export function CommandPalette() {
     }
 
     // Hints
-    if (prefixMode === 'all' || prefixMode === 'commands') {
+    if (wantSource('hints')) {
       hints.forEach((cat) => {
         cat.hints.forEach((hint, i) => {
           result.push({
@@ -196,7 +195,7 @@ export function CommandPalette() {
     }
 
     // Snippets
-    if (prefixMode === 'all' || prefixMode === 'snippets') {
+    if (wantSource('snippets')) {
       snippets.forEach((snippet) => {
         result.push({
           id: `snippet-${snippet.id}`,
@@ -219,10 +218,20 @@ export function CommandPalette() {
     }
 
     return result;
-  }, [terminals, hints, snippets, activeTerminalId, closeCommandPalette, setActiveTerminal, writeToTerminal, prefixMode]);
+  }, [terminals, hints, snippets, activeTerminalId, closeCommandPalette, setActiveTerminal, writeToTerminal, prefixMode, activeSourceId]);
 
-  const filtered = useMemo(() => {
-    if (!effectiveQuery) return items;
+  // Task C: each surviving result also carries the match positions for
+  // label + description so the renderer can highlight the matched chars.
+  interface FilteredItem {
+    item: PaletteItem;
+    labelPositions: number[];
+    descPositions: number[];
+  }
+
+  const filtered = useMemo<FilteredItem[]>(() => {
+    if (!effectiveQuery) {
+      return items.map(item => ({ item, labelPositions: [], descPositions: [] }));
+    }
     return items
       .map(item => {
         const labelMatch = fuzzyMatch(item.label, effectiveQuery);
@@ -231,12 +240,29 @@ export function CommandPalette() {
         // Nudge frequently/recently used matches up without overriding a strong
         // textual match (fuzzy scores dominate; the boost only breaks ties).
         const boost = item.frecencyKey ? frecencyScore(paletteUsage[item.frecencyKey]) * 1.5 : 0;
-        return { item, matches: labelMatch.matches || descMatch.matches, score: bestScore + boost };
+        return {
+          item,
+          matches: labelMatch.matches || descMatch.matches,
+          score: bestScore + boost,
+          labelPositions: labelMatch.matches ? labelMatch.positions : [],
+          descPositions: descMatch.matches ? descMatch.positions : [],
+        };
       })
       .filter(r => r.matches)
       .sort((a, b) => b.score - a.score)
-      .map(r => r.item);
+      .map(({ item, labelPositions, descPositions }) => ({ item, labelPositions, descPositions }));
   }, [items, effectiveQuery, paletteUsage]);
+
+  // Task C: keep grouped/flatItems as PaletteItem[] (they're used all over the
+  // render pass) and stash positions in a side-map keyed by item id. When the
+  // query is empty every list is [], so highlighting is a no-op automatically.
+  const positionsMap = useMemo(() => {
+    const m = new Map<string, { label: number[]; desc: number[] }>();
+    for (const f of filtered) {
+      m.set(f.item.id, { label: f.labelPositions, desc: f.descPositions });
+    }
+    return m;
+  }, [filtered]);
 
   // Recent group (empty query only): tracked items ordered by last use.
   const recentItems = useMemo(() => {
@@ -256,7 +282,7 @@ export function CommandPalette() {
     if (recentItems.length) groups.push({ category: 'Recent', items: recentItems });
     const recentKeys = new Set(recentItems.map(i => i.frecencyKey));
     const catMap = new Map<string, PaletteItem[]>();
-    for (const item of filtered) {
+    for (const { item } of filtered) {
       if (!effectiveQuery && item.frecencyKey && recentKeys.has(item.frecencyKey)) continue;
       const arr = catMap.get(item.category) || [];
       arr.push(item);
@@ -282,6 +308,19 @@ export function CommandPalette() {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    // Ctrl+Tab cycles the chip filter forward; Ctrl+Shift+Tab cycles back.
+    // Order matches the chip strip: All → Terminals → Commands → Hints → Snippets → All.
+    // Plain Tab is left alone so the input keeps its default behavior.
+    if (e.key === 'Tab' && e.ctrlKey) {
+      e.preventDefault();
+      const ids = ['all', ...PALETTE_SOURCES.map((s) => s.id)];
+      const currentIdx = Math.max(0, ids.indexOf(activeSourceId));
+      const nextIdx = e.shiftKey
+        ? (currentIdx - 1 + ids.length) % ids.length
+        : (currentIdx + 1) % ids.length;
+      setActiveSourceId(ids[nextIdx]);
+      return;
+    }
     if (e.key === 'Escape') {
       closeCommandPalette();
     } else if (e.key === 'ArrowDown') {
@@ -346,6 +385,46 @@ export function CommandPalette() {
             </div>
           </div>
 
+          {/* Source filter chips */}
+          <div
+            role="group"
+            aria-label="Filter by source"
+            className="px-3 pt-2 pb-2 flex items-center gap-1 border-b border-border overflow-x-auto scrollbar-none"
+          >
+            <ChipButton
+              label="All"
+              icon={LayoutList}
+              active={activeSourceId === 'all' && prefixMode === 'all'}
+              onClick={() => {
+                // Clicking "All" clears the chip filter and also strips any
+                // typed prefix char so users don't get "stuck" in a mode
+                // they can't see.
+                setActiveSourceId('all');
+                if (prefixMode !== 'all') setQuery(query.slice(1).trimStart());
+              }}
+            />
+            {PALETTE_SOURCES.map((src) => {
+              // Highlight the chip when either (a) it's the active chip and
+              // no typed prefix is fighting it, or (b) the typed prefix
+              // matches this source — so muscle-memory users still see
+              // which source their prefix maps to.
+              const active =
+                (activeSourceId === src.id && prefixMode === 'all') ||
+                prefixMode === src.id;
+              return (
+                <ChipButton
+                  key={src.id}
+                  label={src.label}
+                  icon={src.icon}
+                  active={active}
+                  onClick={() =>
+                    setActiveSourceId(activeSourceId === src.id ? 'all' : src.id)
+                  }
+                />
+              );
+            })}
+          </div>
+
           {/* Results */}
           <div ref={listRef} className="max-h-[50vh] overflow-y-auto p-1.5">
             {grouped.map((group) => (
@@ -382,8 +461,18 @@ export function CommandPalette() {
                         </div>
                       )}
                       <div className="flex-1 min-w-0">
-                        <p className="text-[12px] font-medium truncate">{item.label}</p>
-                        <p className="text-text-tertiary text-[11px] truncate">{item.description}</p>
+                        <p className="text-[12px] font-medium truncate">
+                          <HighlightedText
+                            text={item.label}
+                            positions={positionsMap.get(item.id)?.label ?? []}
+                          />
+                        </p>
+                        <p className="text-text-tertiary text-[11px] truncate">
+                          <HighlightedText
+                            text={item.description}
+                            positions={positionsMap.get(item.id)?.desc ?? []}
+                          />
+                        </p>
                       </div>
                       {item.shortcut && (
                         <kbd className="shrink-0 text-[10px] text-text-tertiary bg-elevation-2 px-1.5 py-0.5 rounded border border-border font-mono">
@@ -407,6 +496,7 @@ export function CommandPalette() {
           <div className="px-3 py-2 border-t border-border flex items-center gap-4 text-[10px] text-text-tertiary">
             <span><kbd className="px-1 py-0.5 bg-elevation-2 rounded border border-border font-mono">↑↓</kbd> navigate</span>
             <span><kbd className="px-1 py-0.5 bg-elevation-2 rounded border border-border font-mono">↵</kbd> select</span>
+            <span><kbd className="px-1 py-0.5 bg-elevation-2 rounded border border-border font-mono">Ctrl+Tab</kbd> cycle sources</span>
             <span><kbd className="px-1 py-0.5 bg-elevation-2 rounded border border-border font-mono">esc</kbd> close</span>
           </div>
         </div>

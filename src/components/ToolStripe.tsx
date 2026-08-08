@@ -67,37 +67,36 @@ export function ToolStripe({ side }: { side: Side }) {
   const toggleHints = useAppStore((s) => s.toggleHints);
   const openSettings = useAppStore((s) => s.openSettings);
 
-  const top: StripeItem[] =
-    side === 'left'
-      ? [{ id: 'project', label: 'Project', shortcut: 'Ctrl+B', Icon: PanelLeft, active: sidebarOpen, onClick: toggleSidebar }]
-      : [
-          { id: 'changes', label: 'Git', shortcut: 'F2', Icon: FileDiff, active: changesOpen, onClick: toggleChanges },
-          { id: 'teams', label: 'Agent Teams', shortcut: 'F4', Icon: Users, active: orchestrationOpen, onClick: toggleOrchestration },
-          { id: 'hints', label: 'Commands', shortcut: 'F1', Icon: Lightbulb, active: hintsOpen, onClick: toggleHints },
-          { id: 'preview', label: 'Preview', shortcut: 'Ctrl+Alt+P', Icon: Monitor, active: previewOpen, onClick: togglePreview },
-        ];
+  // Consolidated rail (matches the sketch): all tool-window toggles live in
+  // the LEFT stripe stacked vertically, Settings pinned to the bottom.
+  // The right-side ToolStripe is now a no-op so App.tsx doesn't need to
+  // change; that side simply doesn't render anything.
+  if (side === 'right') return null;
 
-  const bottom: StripeItem[] =
-    side === 'left'
-      ? [{ id: 'settings', label: 'Settings', shortcut: 'Ctrl+,', Icon: Settings, active: settingsOpen, onClick: openSettings }]
-      : [];
+  const top: StripeItem[] = [
+    { id: 'project', label: 'Project',      shortcut: 'Ctrl+B',      Icon: PanelLeft, active: sidebarOpen,        onClick: toggleSidebar },
+    { id: 'changes', label: 'Git',          shortcut: 'F2',          Icon: FileDiff,  active: changesOpen,        onClick: toggleChanges },
+    { id: 'teams',   label: 'Agent Teams',  shortcut: 'F4',          Icon: Users,     active: orchestrationOpen,  onClick: toggleOrchestration },
+    { id: 'hints',   label: 'Commands',     shortcut: 'F1',          Icon: Lightbulb, active: hintsOpen,          onClick: toggleHints },
+    { id: 'preview', label: 'Preview',      shortcut: 'Ctrl+Alt+P',  Icon: Monitor,   active: previewOpen,        onClick: togglePreview },
+  ];
 
-  const edgeBorder = side === 'left' ? 'border-r' : 'border-l';
+  const bottom: StripeItem[] = [
+    { id: 'settings', label: 'Settings', shortcut: 'Ctrl+,', Icon: Settings, active: settingsOpen, onClick: openSettings },
+  ];
 
   return (
-    <div className={`w-[var(--w-rail)] flex-shrink-0 h-full bg-elevation-1 ${edgeBorder} border-[var(--ij-divider)] flex flex-col py-1`}>
+    <div className="w-[var(--w-rail)] flex-shrink-0 h-full bg-elevation-1 border-r border-[var(--ij-divider)] flex flex-col py-1">
       <div className="flex flex-col">
         {top.map((it) => (
-          <StripeButton key={it.id} item={it} side={side} />
+          <StripeButton key={it.id} item={it} side="left" />
         ))}
       </div>
-      {bottom.length > 0 && (
-        <div className="mt-auto flex flex-col">
-          {bottom.map((it) => (
-            <StripeButton key={it.id} item={it} side={side} />
-          ))}
-        </div>
-      )}
+      <div className="mt-auto flex flex-col">
+        {bottom.map((it) => (
+          <StripeButton key={it.id} item={it} side="left" />
+        ))}
+      </div>
     </div>
   );
 }

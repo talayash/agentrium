@@ -1704,6 +1704,13 @@ pub struct WorktreeDetectResult {
     pub main_repo_path: Option<String>,
     pub current_branch: Option<String>,
     pub worktree_root: Option<String>,
+    /// Count of files with modifications (staged or unstaged, incl. untracked
+    /// via `--porcelain`). 0 = clean tree. None = not populated / not a repo.
+    pub dirty_count: Option<u32>,
+    /// Commits ahead of upstream. None = no upstream tracked or not populated.
+    pub ahead: Option<u32>,
+    /// Commits behind upstream. None = no upstream tracked or not populated.
+    pub behind: Option<u32>,
 }
 
 /// Validate that a path belongs to (or is under) an active terminal's working directory.
@@ -1753,6 +1760,9 @@ pub async fn get_worktree_info(
                 main_repo_path: None,
                 current_branch: None,
                 worktree_root: None,
+                dirty_count: None,
+                ahead: None,
+                behind: None,
             });
         }
 
@@ -1771,6 +1781,9 @@ pub async fn get_worktree_info(
                 main_repo_path: None,
                 current_branch: None,
                 worktree_root: None,
+                dirty_count: None,
+                ahead: None,
+                behind: None,
             });
         }
 
@@ -1834,12 +1847,45 @@ pub async fn get_worktree_info(
             })
             .flatten();
 
+        // Working-tree cleanliness — count of modified/staged/untracked files
+        // via `--porcelain=v1` (stable, machine-readable). Empty output = clean.
+        let dirty_count = git_command(&["status", "--porcelain=v1"])
+            .current_dir(&path)
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| {
+                String::from_utf8_lossy(&o.stdout)
+                    .lines()
+                    .filter(|l| !l.is_empty())
+                    .count() as u32
+            });
+
+        // Ahead/behind vs upstream — `rev-list --left-right --count HEAD...@{u}`
+        // emits "<ahead>\t<behind>". Fails silently when no upstream is tracked.
+        let (ahead, behind) = git_command(&["rev-list", "--left-right", "--count", "HEAD...@{u}"])
+            .current_dir(&path)
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .and_then(|o| {
+                let s = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                let mut parts = s.split_whitespace();
+                let a = parts.next()?.parse::<u32>().ok()?;
+                let b = parts.next()?.parse::<u32>().ok()?;
+                Some((Some(a), Some(b)))
+            })
+            .unwrap_or((None, None));
+
         Ok(WorktreeDetectResult {
             is_git_repo: true,
             is_worktree,
             main_repo_path,
             current_branch,
             worktree_root: toplevel,
+            dirty_count,
+            ahead,
+            behind,
         })
     })
     .await

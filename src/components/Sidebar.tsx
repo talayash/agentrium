@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react';
-import { ChevronsLeft, ChevronsRight, FolderTree } from 'lucide-react';
+import { ChevronsLeft, ChevronsRight, FolderTree, Plus, MoreHorizontal } from 'lucide-react';
 import { useAppStore } from '../store/appStore';
 import { computeSidebarSectionStyles } from '../lib/sidebarLayout';
 import { FileTreePanel } from './FileTreePanel';
@@ -90,14 +90,32 @@ export function Sidebar() {
           </>
         }
         actions={
-          <Tooltip label="Collapse Sidebar">
-            <button
-              onClick={toggleSidebarCollapse}
-              className="w-6 h-6 flex items-center justify-center rounded-[4px] hover:bg-white/[0.06] text-text-tertiary hover:text-text-secondary transition-colors"
-            >
-              <ChevronsLeft size={13} strokeWidth={1.75} />
-            </button>
-          </Tooltip>
+          <>
+            <Tooltip label="New Terminal" shortcut="Ctrl+Shift+N">
+              <button
+                onClick={() => useAppStore.getState().openNewTerminalModal()}
+                className="w-6 h-6 flex items-center justify-center rounded-[4px] hover:bg-white/[0.06] text-text-tertiary hover:text-text-secondary transition-colors"
+              >
+                <Plus size={13} strokeWidth={2} />
+              </button>
+            </Tooltip>
+            <Tooltip label="More options">
+              <button
+                onClick={() => useAppStore.getState().openCommandPalette()}
+                className="w-6 h-6 flex items-center justify-center rounded-[4px] hover:bg-white/[0.06] text-text-tertiary hover:text-text-secondary transition-colors"
+              >
+                <MoreHorizontal size={13} strokeWidth={1.75} />
+              </button>
+            </Tooltip>
+            <Tooltip label="Collapse Sidebar">
+              <button
+                onClick={toggleSidebarCollapse}
+                className="w-6 h-6 flex items-center justify-center rounded-[4px] hover:bg-white/[0.06] text-text-tertiary hover:text-text-secondary transition-colors"
+              >
+                <ChevronsLeft size={13} strokeWidth={1.75} />
+              </button>
+            </Tooltip>
+          </>
         }
       />
 

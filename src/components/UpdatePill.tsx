@@ -50,11 +50,15 @@ export function UpdatePill() {
             useUpdaterStore.setState({ bannerDismissedVersion: null, bannerSnoozedUntil: null });
             void downloadAndInstall();
           }}
-          className="no-drag flex items-center gap-1.5 h-6 px-2 rounded-full bg-success/15 text-success ring-1 ring-inset ring-success/30 hover:bg-success/25 transition-colors text-[11px] font-medium max-w-[180px]"
+          className="no-drag flex items-center gap-1.5 h-6 px-2.5 rounded-full text-white text-[11px] font-medium max-w-[180px] transition-all hover:brightness-110"
+          style={{
+            background: 'linear-gradient(180deg, var(--accent-secondary), var(--accent-primary))',
+            boxShadow: '0 1px 2px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.14)',
+          }}
         >
-          <Download size={11} strokeWidth={2} className="flex-shrink-0" />
+          <Download size={11} strokeWidth={2.25} className="flex-shrink-0" />
           <span className="truncate">
-            Update <span className="opacity-70">·</span> v{version}
+            Update <span className="opacity-80">·</span> v{version}
           </span>
         </motion.button>
         </Tooltip>

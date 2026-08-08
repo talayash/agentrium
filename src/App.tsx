@@ -32,10 +32,13 @@ import { SessionTimeline } from './components/SessionTimeline';
 import { MemoryEditor } from './components/MemoryEditor';
 import { StatusBar } from './components/StatusBar';
 import { ToastContainer } from './components/ToastContainer';
+import { History } from 'lucide-react';
+import { setColorfulFolderIcons } from './utils/fileIcons';
 import { getWindowMode } from './lib/windowMode';
 import { DragPreview } from './components/DragPreview';
 import { WebviewWindow, getAllWebviewWindows } from '@tauri-apps/api/webviewWindow';
 import { installTransferReceiver, requestTransfer, restoreDetachedWindow } from './lib/tabTransfer';
+import { filterLivePins } from './lib/pinnedTabs';
 import { keyOf, upsertEntry, removeEntry, getDetachedEntries, currentGeometry } from './lib/windowLayout';
 import { planRestoreModes } from './lib/restorePlan';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -55,6 +58,7 @@ import {
   applyDensity,
   applyReduceMotion,
   applyUiFontScale,
+  applyTabHeight,
 } from './lib/accentTheme';
 import { listen } from '@tauri-apps/api/event';
 import type { TerminalMetricsPayload } from './lib/sessionMetrics';
@@ -147,16 +151,20 @@ function App() {
   // v1.22.0 - apply theme/density/accent/motion/scale on store change.
   const themeMode = useAppStore((s) => s.themeMode);
   const uiDensity = useAppStore((s) => s.uiDensity);
+  const tabHeight = useAppStore((s) => s.tabHeight);
+  const colorfulFolderIcons = useAppStore((s) => s.colorfulFolderIcons);
   const accentColorHex = useAppStore((s) => s.accentColorHex);
   const uiReduceMotion = useAppStore((s) => s.uiReduceMotion);
   const uiFontScale = useAppStore((s) => s.uiFontScale);
   useEffect(() => {
     applyThemeMode(themeMode);
     applyDensity(uiDensity);
+    applyTabHeight(tabHeight);
     applyAccentColor(accentColorHex);
     applyReduceMotion(uiReduceMotion);
     applyUiFontScale(uiFontScale);
-  }, [themeMode, uiDensity, accentColorHex, uiReduceMotion, uiFontScale]);
+    setColorfulFolderIcons(colorfulFolderIcons);
+  }, [themeMode, uiDensity, tabHeight, accentColorHex, uiReduceMotion, uiFontScale, colorfulFolderIcons]);
 
   // Follow the OS "reduce motion" setting (WCAG 2.2 SC 2.3.3) on startup and
   // whenever it changes - but only until the user makes an explicit choice in
@@ -221,6 +229,29 @@ function App() {
   // openFiles / lspEnabled changes and wires diagnostics events to Monaco.
   useEffect(() => {
     initLsp();
+  }, []);
+
+  // Ghost-pin GC. Session restore is user-triggered (banner click) and
+  // restored terminals get fresh UUIDs from Uuid::new_v4() in Rust, so 100%
+  // of persisted pinned ids are ghosts after app restart. The mount pass
+  // below catches:
+  //   - the "user dismisses the restore banner" case (no terminals ever
+  //     get the old ids)
+  //   - the detached-window adoption case
+  //   - the "session save was empty" case
+  // The restore-completion pass at the end of `handleRestore` catches the
+  // "user restored terminals" case, where new terminals have been added
+  // with fresh ids and every persisted pin is now a ghost.
+  // Ghost pins are silently ignored by the tab-order helpers, so this is
+  // purely a persistence-hygiene fix — the pinnedTabIds array would
+  // otherwise grow unbounded across sessions.
+  useEffect(() => {
+    const { pinnedTabIds, unpinTab } = useAppStore.getState();
+    const live = useTerminalStore.getState().terminals;
+    const survivors = new Set(filterLivePins(pinnedTabIds, live.keys()));
+    for (const id of pinnedTabIds) {
+      if (!survivors.has(id)) unpinTab(id);
+    }
   }, []);
 
   // Telemetry heartbeat - fire on startup then every 5 minutes
@@ -672,6 +703,18 @@ function App() {
       console.error('Failed to restore detached windows:', err);
     }
 
+    // Ghost-pin GC after restore. Restored terminals got fresh UUIDs above,
+    // so every id in pinnedTabIds from the previous session is now a ghost.
+    // Drop them so the persisted list doesn't grow unbounded across sessions.
+    // (Mirrors the mount-time GC — this pass catches the case where restore
+    // actually created terminals with new ids that never match the old pins.)
+    const { pinnedTabIds, unpinTab } = useAppStore.getState();
+    const live = useTerminalStore.getState().terminals;
+    const survivors = new Set(filterLivePins(pinnedTabIds, live.keys()));
+    for (const id of pinnedTabIds) {
+      if (!survivors.has(id)) unpinTab(id);
+    }
+
     toast.success('Session Restored', `${pendingRestoreConfigs.length} terminal${pendingRestoreConfigs.length !== 1 ? 's' : ''} restored.`);
     setShowRestoreBanner(false);
     setPendingRestoreConfigs(null);
@@ -709,7 +752,8 @@ function App() {
         <>
           {!isDetached && <AutoUpdater />}
 
-          {/* Restore Banner (F3) — main window only */}
+          {/* Restore Banner (F3) — main window only. Slimmer, icon-led,
+              inline-notification style matching IntelliJ's "did you mean" bar. */}
           <AnimatePresence>
             {!isDetached && showRestoreBanner && pendingRestoreConfigs && (
               <motion.div
@@ -717,13 +761,20 @@ function App() {
                 animate={{ height: 'auto', opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}
                 transition={{ duration: 0.2 }}
-                className="bg-accent-primary/10 border-b border-accent-primary/20 overflow-hidden"
+                className="bg-elevation-1 border-b border-[var(--ij-divider)] overflow-hidden"
               >
-                <div className="flex items-center justify-between px-4 py-2.5">
-                  <p className="text-text-primary text-[13px]">
-                    Restore {pendingRestoreConfigs.length} terminal{pendingRestoreConfigs.length !== 1 ? 's' : ''} from your previous session?
+                <div className="flex items-center gap-3 px-3 py-1.5">
+                  <div className="w-5 h-5 rounded-full bg-accent-primary/15 flex items-center justify-center text-accent-primary flex-shrink-0">
+                    <History size={11} strokeWidth={2.25} />
+                  </div>
+                  <p className="text-text-primary text-[12px] flex-1">
+                    Restore{' '}
+                    <span className="font-semibold text-accent-primary">
+                      {pendingRestoreConfigs.length} terminal{pendingRestoreConfigs.length !== 1 ? 's' : ''}
+                    </span>
+                    {' '}from your previous session?
                   </p>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1">
                     <Button variant="primary" size="sm" onClick={handleRestore}>
                       Restore
                     </Button>

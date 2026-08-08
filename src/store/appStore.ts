@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { invoke } from '@tauri-apps/api/core';
 import type { TerminalThemeName } from '../lib/terminalThemes';
+import { MAX_GRID_TERMINALS } from '../lib/gridEmptyCells';
+import { addPin, removePin, togglePin } from '../lib/pinnedTabs';
 
 export type TerminalCursorStyle = 'bar' | 'block' | 'underline';
 export type TerminalScrollbarMode = 'auto-hide' | 'always' | 'hidden';
@@ -14,6 +16,7 @@ export const DEFAULT_TERMINAL_FONT_SIZE = 14;
 
 // IntelliJ overhaul (v1.22.0) - appearance + behavior settings.
 export type UiDensity = 'compact' | 'comfortable' | 'spacious';
+export type TabHeight = 'small' | 'medium' | 'large';
 export type ThemeMode = 'dark' | 'light' | 'auto';
 export type AutoStageMode = 'none' | 'tracked' | 'all';
 export type MergeStrategy = 'merge' | 'rebase' | 'ff-only';
@@ -98,6 +101,13 @@ interface AppState {
   // Appearance & Behavior (NEW v1.22.0)
   themeMode: ThemeMode;
   uiDensity: UiDensity;
+  /** Editor/terminal tab strip height. IntelliJ New UI offers Small/Medium/
+   *  Large; we mirror those (24/28/32px). Consumed via --h-tab CSS var
+   *  written by accentTheme.applyTabHeight(). */
+  tabHeight: TabHeight;
+  /** When true, folder icons in the file tree get per-name color variants
+   *  (material-icon-theme). Default is uniform yellow (matches sketch). */
+  colorfulFolderIcons: boolean;
   accentColorHex: string;
   uiFontScale: number;
   uiReduceMotion: boolean;
@@ -171,6 +181,15 @@ interface AppState {
   gridTerminalIds: string[];
   gridLayout: GridLayout;
   gridFocusedIndex: number | null;
+
+  // Pinned tabs — persist by id so relaunched sessions stay pinned across app restarts.
+  // Terminals themselves are ephemeral; pins are just intent-preserving metadata.
+  // Bulk close actions (Close Others, Close All But Pinned) live in the tab
+  // context-menu logic, not the store — see Task D.
+  pinnedTabIds: string[];
+  pinTab: (id: string) => void;
+  unpinTab: (id: string) => void;
+  toggleTabPin: (id: string) => void;
 
   // Command Palette (F1)
   commandPaletteOpen: boolean;
@@ -276,6 +295,8 @@ interface AppState {
   // Appearance & Behavior setters (NEW v1.22.0)
   setThemeMode: (mode: ThemeMode) => void;
   setUiDensity: (density: UiDensity) => void;
+  setTabHeight: (h: TabHeight) => void;
+  setColorfulFolderIcons: (v: boolean) => void;
   setAccentColorHex: (hex: string) => void;
   setUiFontScale: (scale: number) => void;
   setUiReduceMotion: (enabled: boolean) => void;
@@ -487,6 +508,8 @@ export const useAppStore = create<AppState>()(
       // Appearance & Behavior defaults (NEW v1.22.0)
       themeMode: 'dark' as ThemeMode,
       uiDensity: 'comfortable' as UiDensity,
+      tabHeight: 'medium' as TabHeight,
+      colorfulFolderIcons: false,
       accentColorHex: DEFAULT_ACCENT_COLOR,
       uiFontScale: DEFAULT_UI_FONT_SCALE,
       uiReduceMotion: false,
@@ -558,6 +581,10 @@ export const useAppStore = create<AppState>()(
       gridTerminalIds: [],
       gridLayout: '1x1',
       gridFocusedIndex: null,
+
+      // Pinned tabs — id list only; terminals themselves remain ephemeral in
+      // terminalStore. See src/lib/pinnedTabs.ts for the pure helpers.
+      pinnedTabIds: [],
 
       // Command Palette (F1)
       commandPaletteOpen: false,
@@ -658,6 +685,8 @@ export const useAppStore = create<AppState>()(
       // Numeric setters clamp; string setters validate shape and fall back.
       setThemeMode: (mode) => set({ themeMode: mode }),
       setUiDensity: (density) => set({ uiDensity: density }),
+      setTabHeight: (h) => set({ tabHeight: h }),
+      setColorfulFolderIcons: (v) => set({ colorfulFolderIcons: v }),
       setAccentColorHex: (hex) => {
         const ok = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(hex);
         set({ accentColorHex: ok ? hex : DEFAULT_ACCENT_COLOR });
@@ -901,7 +930,7 @@ export const useAppStore = create<AppState>()(
       setGridMode: (enabled) => set({ gridMode: enabled }),
       addToGrid: (terminalId) => set((state) => {
         if (state.gridTerminalIds.includes(terminalId)) return state;
-        if (state.gridTerminalIds.length >= 8) return state;
+        if (state.gridTerminalIds.length >= MAX_GRID_TERMINALS) return state;
         const newIds = [...state.gridTerminalIds, terminalId];
         return {
           gridTerminalIds: newIds,
@@ -919,8 +948,8 @@ export const useAppStore = create<AppState>()(
         };
       }),
       setGridTerminals: (terminalIds) => set({
-        gridTerminalIds: terminalIds.slice(0, 8),
-        gridLayout: getOptimalLayout(Math.min(terminalIds.length, 8)),
+        gridTerminalIds: terminalIds.slice(0, MAX_GRID_TERMINALS),
+        gridLayout: getOptimalLayout(Math.min(terminalIds.length, MAX_GRID_TERMINALS)),
       }),
       setGridLayout: (layout) => set({ gridLayout: layout }),
       setGridFocusedIndex: (index) => set({ gridFocusedIndex: index }),
@@ -943,6 +972,12 @@ export const useAppStore = create<AppState>()(
         newIds[index] = terminalId;
         return { gridTerminalIds: newIds };
       }),
+
+      // Pinned-tab actions. Delegate to the pure helpers in src/lib/pinnedTabs.ts
+      // so the toggling logic is unit-tested independently of Zustand hydration.
+      pinTab: (id) => set((s) => ({ pinnedTabIds: addPin(s.pinnedTabIds, id) })),
+      unpinTab: (id) => set((s) => ({ pinnedTabIds: removePin(s.pinnedTabIds, id) })),
+      toggleTabPin: (id) => set((s) => ({ pinnedTabIds: togglePin(s.pinnedTabIds, id) })),
 
       // Command Palette actions (F1)
       recordPaletteUse: (key) =>
@@ -1105,6 +1140,8 @@ export const useAppStore = create<AppState>()(
         // Appearance & Behavior (NEW v1.22.0)
         themeMode: state.themeMode,
         uiDensity: state.uiDensity,
+        tabHeight: state.tabHeight,
+        colorfulFolderIcons: state.colorfulFolderIcons,
         accentColorHex: state.accentColorHex,
         uiFontScale: state.uiFontScale,
         uiReduceMotion: state.uiReduceMotion,
@@ -1144,6 +1181,15 @@ export const useAppStore = create<AppState>()(
         // Claude (NEW v1.22.0)
         claudeDefaultModel: state.claudeDefaultModel,
         claudeBinaryPathOverride: state.claudeBinaryPathOverride,
+
+        // Pinned tabs (Phase 4a). Persist pinned-tab intent WITHIN a session
+        // so refreshes / new detached windows preserve the pin state.
+        // Restored terminals get fresh UUIDs (Uuid::new_v4() in Rust), so
+        // pins do NOT survive app restart — see the startup GC in App.tsx
+        // that drops ghost ids after session restore populates the store.
+        // A stable-key persistence pass (using working_directory +
+        // claude_session_id) is queued as a follow-up.
+        pinnedTabIds: state.pinnedTabIds,
       }),
     }
   )

@@ -1,3 +1,6 @@
+/** Hard cap on how many terminals can be placed in grid mode. */
+export const MAX_GRID_TERMINALS = 8;
+
 /**
  * Compute how many empty "add terminal" cells to render in the grid.
  *
@@ -14,6 +17,6 @@ export function computeEmptyCellCount(params: {
   maxTotal?: number;
 }): number {
   const total = params.layoutCols * params.layoutRows;
-  const cap = params.maxTotal ?? 8;
+  const cap = params.maxTotal ?? MAX_GRID_TERMINALS;
   return Math.max(0, Math.min(total - params.filledCount, cap - params.filledCount));
 }

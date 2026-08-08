@@ -1,7 +1,16 @@
 // Runtime CSS-variable manipulation for theme / density / accent / reduce-motion / font scale.
 // All callers go through these helpers - components never write to documentElement.style directly.
 
-import type { ThemeMode, UiDensity } from '../store/appStore';
+import type { ThemeMode, UiDensity, TabHeight } from '../store/appStore';
+
+/** Pixel heights for each user-selectable tab-strip size. Mirrors IntelliJ's
+ *  Small/Medium/Large editor tab options. Medium (28px) is the default;
+ *  24px "Small" is snugger for laptops, 32px "Large" more clickable. */
+export const TAB_HEIGHT_PX: Record<TabHeight, number> = {
+  small: 24,
+  medium: 28,
+  large: 32,
+};
 
 export function applyAccentColor(hex: string): void {
   const rgb = hexToRgb(hex);
@@ -14,10 +23,13 @@ export function applyAccentColor(hex: string): void {
   const lift = (c: number) => Math.min(255, Math.round(c + (255 - c) * 0.08));
   const sR = lift(r), sG = lift(g), sB = lift(b);
   root.style.setProperty('--accent-secondary', `#${toHex(sR)}${toHex(sG)}${toHex(sB)}`);
-  root.style.setProperty('--accent-glow', `rgba(${r}, ${g}, ${b}, 0.18)`);
   root.style.setProperty('--ij-stripe', hex);
   root.style.setProperty('--ij-tab-underline', hex);
   root.style.setProperty('--border-focus', `rgba(${r}, ${g}, ${b}, 0.55)`);
+  // Shadow-glow tokens consumed by Tailwind's shadow-glow-sm / shadow-glow-md.
+  // Distinct from --accent-glow (0.18) — different consumers, different alphas.
+  root.style.setProperty('--accent-glow-sm', `rgba(${r}, ${g}, ${b}, 0.14)`);
+  root.style.setProperty('--accent-glow-md', `rgba(${r}, ${g}, ${b}, 0.22)`);
 }
 
 export function applyThemeMode(mode: ThemeMode): void {
@@ -70,6 +82,14 @@ export function applyThemeMode(mode: ThemeMode): void {
 
 export function applyDensity(density: UiDensity): void {
   document.documentElement.setAttribute('data-density', density);
+}
+
+/**
+ * Override the --h-tab CSS var based on the user's Tab Height setting.
+ * TerminalTabs consumes it via h-[var(--h-tab)] so tabs resize instantly.
+ */
+export function applyTabHeight(h: TabHeight): void {
+  document.documentElement.style.setProperty('--h-tab', `${TAB_HEIGHT_PX[h]}px`);
 }
 
 export function applyReduceMotion(enabled: boolean): void {

@@ -1,12 +1,11 @@
-import { useMemo, useState, useCallback, useRef, useEffect } from 'react';
+import { useMemo, useState, useCallback, useRef, useEffect, useLayoutEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Plus, Grid3X3, SplitSquareHorizontal, RotateCw, GitBranch, ChevronLeft, ChevronRight, Copy, File as FileIcon } from 'lucide-react';
+import { X, Plus, Grid3X3, SplitSquareHorizontal, RotateCw, GitBranch, ChevronLeft, ChevronRight, ChevronDown, Copy, File as FileIcon, Pin, PinOff, Search as SearchIcon, SlidersHorizontal } from 'lucide-react';
 import appIconUrl from '../assets/app-icon.png';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
 import { toast } from '../store/toastStore';
 import { reportInvokeFailure } from '../lib/errorReporter';
-import { Button } from './ui/Button';
 import { TerminalView } from './TerminalView';
 import { TerminalGrid } from './TerminalGrid';
 import { SplitView } from './SplitView';
@@ -20,9 +19,18 @@ import { useNowTick } from '../hooks/useNowTick';
 import { useTabDrag } from '../hooks/useTabDrag';
 import { getWindowMode } from '../lib/windowMode';
 import { getLastOutputAt } from '../lib/terminalActivity';
+import { orderTabsPinnedFirst } from '../lib/pinnedTabOrder';
+import { estimateTabWidth, computeTabOverflow } from '../lib/tabOverflow';
+import { idsToCloseForOthers, idsToCloseForAllButPinned } from '../lib/closeTabActions';
 import { StateDot } from './StateDot';
 import { Tooltip } from './ui/Tooltip';
 import type { SessionState } from '../lib/terminalState';
+
+interface TabContextMenuState {
+  x: number;
+  y: number;
+  terminalId: string;
+}
 
 function fileBasename(p: string): string {
   const trimmed = p.replace(/[\\/]+$/, '');
@@ -38,9 +46,19 @@ function formatCost(usd: number): string {
 
 const isMac = navigator.platform.toUpperCase().includes('MAC');
 
+// Width reserved for the "Show Hidden Tabs" chevron in the tab-strip overflow
+// calculation. Approx: ChevronDown 13px + 4px gap + badge (min 15px, growing
+// with digit count) + 2*8px horizontal padding + 1px left border = ~49px.
+// Rounded up to 50 so `computeTabOverflow` doesn't shove the last tab under
+// the chevron by a hair.
+const CHEVRON_WIDTH = 50;
+
 export function TerminalTabs() {
-  const { terminals, activeTerminalId, closeTerminal, unreadTerminalIds, gitInfoCache, scriptChildren, closeScript } = useTerminalStore();
+  const { terminals, activeTerminalId, closeTerminal, unreadTerminalIds, gitInfoCache, scriptChildren, closeScript, setActiveTerminal } = useTerminalStore();
   const { openNewTerminalModal, gridMode, toggleGridMode, addToGrid, gridTerminalIds, splitMode, splitTerminalIds, splitOrientation, splitRatio, setSplitOrientation, setSplitRatio, clearSplit, setSplitTerminals, setSplitMode, openFiles, activeFilePath, setActiveFilePath, closeFileTab, showFileTree, showTabActivity } = useAppStore();
+  const pinnedTabIds = useAppStore((s) => s.pinnedTabIds);
+  const toggleTabPin = useAppStore((s) => s.toggleTabPin);
+  const [contextMenu, setContextMenu] = useState<TabContextMenuState | null>(null);
   const now = useNowTick();
   const terminalStates = useTerminalStore((s) => s.terminalStates);
   const justFinishedAt = useTerminalStore((s) => s.justFinishedAt);
@@ -56,12 +74,26 @@ export function TerminalTabs() {
   // Script-child terminals are rendered below their parent and bottom-pane
   // shells are rendered in BottomTerminalPane - neither belongs in the main
   // tab bar.
+  //
+  // Pinned tabs are re-ordered to the front of the strip via
+  // `orderTabsPinnedFirst` while the terminal store's insertion order stays
+  // untouched — pinning is a render-only concern. Drag-reorder still writes to
+  // the store via `reorderTerminals`, and the pinned-first partition is
+  // re-applied on next render, so dragging can't move a tab across the
+  // pinned/unpinned boundary visually.
   const terminalList = useMemo(
-    () =>
-      Array.from(terminals.values())
+    () => {
+      const configs = Array.from(terminals.values())
         .filter((t) => !t.scriptParentId && !t.isShellTerminal)
-        .map((t) => t.config),
-    [terminals]
+        .map((t) => t.config);
+      if (pinnedTabIds.length === 0) return configs;
+      const byId = new Map(configs.map((c) => [c.id, c] as const));
+      const orderedIds = orderTabsPinnedFirst(configs.map((c) => c.id), pinnedTabIds);
+      return orderedIds
+        .map((id) => byId.get(id))
+        .filter((c): c is NonNullable<typeof c> => c != null);
+    },
+    [terminals, pinnedTabIds]
   );
 
   // Slide-aside preview order: while dragging, the dragged tab(s) are pulled out
@@ -100,6 +132,50 @@ export function TerminalTabs() {
     }
   };
 
+  // Wrap `closeTerminal` in the same toast-on-failure / telemetry pattern the
+  // rest of the tab strip already uses (see the × button, middle-click close).
+  // Used by the context menu's Close / Close Others / Close All But Pinned.
+  const closeTerminalWithReport = useCallback((id: string) => {
+    closeTerminal(id).catch((err) => {
+      toast.error('Close failed', 'Could not close the terminal.');
+      reportInvokeFailure('close_terminal', err);
+    });
+  }, [closeTerminal]);
+
+  const openTabContextMenu = useCallback((e: React.MouseEvent, terminalId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Clamp against the viewport so the menu doesn't overflow when the
+    // right-click lands near the right or bottom edge. Numbers mirror the
+    // SessionsPanel pattern — a slight over-estimate is fine, the CSS
+    // min-width keeps the menu readable.
+    const margin = 4;
+    const menuWidth = 220;
+    const menuHeight = 200;
+    const x = Math.min(e.clientX, window.innerWidth - menuWidth - margin);
+    const y = Math.min(e.clientY, window.innerHeight - menuHeight - margin);
+    setContextMenu({ x: Math.max(margin, x), y: Math.max(margin, y), terminalId });
+  }, []);
+
+  // Close the tab context menu on outside click / Escape.
+  useEffect(() => {
+    if (!contextMenu) return;
+    const close = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && target.closest('[data-context-menu="terminal-tabs"]')) return;
+      setContextMenu(null);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setContextMenu(null);
+    };
+    document.addEventListener('mousedown', close);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', close);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [contextMenu]);
+
   const { createTerminal } = useTerminalStore();
   const handleDuplicate = (terminalId: string) => {
     const instance = terminals.get(terminalId);
@@ -121,9 +197,90 @@ export function TerminalTabs() {
   };
 
   // Tab scroll overflow detection
-  const tabsContainerRef = useRef<HTMLUListElement>(null);
+  const tabsContainerRef = useRef<HTMLUListElement | null>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
+
+  // Phase 4b Task B: tab-strip overflow measurement.
+  // `hiddenTabIds` holds the ids the strip can't fit, so Task C's chevron
+  // dropdown can surface them. `chevronWidth` is now the measured
+  // `CHEVRON_WIDTH` constant defined at the top of this module.
+  const stripRef = useRef<HTMLUListElement | null>(null);
+  const [hiddenTabIds, setHiddenTabIds] = useState<string[]>([]);
+  const hiddenSet = useMemo(() => new Set(hiddenTabIds), [hiddenTabIds]);
+
+  // Phase 4b Task C: hidden-tabs chevron dropdown state.
+  const [hiddenMenuOpen, setHiddenMenuOpen] = useState(false);
+  const chevronRef = useRef<HTMLButtonElement | null>(null);
+
+  // Close the "Show Hidden Tabs" dropdown on outside click / Escape. Mirrors
+  // the pattern used by the tab-context-menu dismiss above; the chevron
+  // button itself is excluded so its own onClick (which toggles the menu)
+  // still fires cleanly.
+  useEffect(() => {
+    if (!hiddenMenuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      const target = e.target as Node | null;
+      if (chevronRef.current?.contains(target)) return;
+      const menu = document.querySelector('[data-hidden-tabs-menu]');
+      if (menu?.contains(target)) return;
+      setHiddenMenuOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setHiddenMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [hiddenMenuOpen]);
+
+  useLayoutEffect(() => {
+    const strip = stripRef.current;
+    if (!strip) return;
+
+    const measure = () => {
+      const el = stripRef.current;
+      if (!el) return;
+      const containerWidth = el.clientWidth;
+
+      const tabIds = terminalList.map((t) => t.id);
+      const tabWidths = terminalList.map((t) =>
+        estimateTabWidth(t.nickname || t.label, {
+          isPinned: pinnedTabIds.includes(t.id),
+          hasStatusDot: t.status === 'Running' || t.status === 'Idle',
+        })
+      );
+
+      const result = computeTabOverflow({
+        tabIds,
+        activeId: activeTerminalId,
+        tabWidths,
+        containerWidth,
+        chevronWidth: CHEVRON_WIDTH,
+        // Approx. two 28px controls (+, grid toggle) + gaps + divider slack.
+        // Adjust when the real controls are stabilized.
+        reservedRight: 96,
+      });
+
+      setHiddenTabIds((prev) => {
+        if (
+          prev.length === result.hidden.length &&
+          prev.every((id, i) => id === result.hidden[i])
+        ) {
+          return prev;
+        }
+        return result.hidden;
+      });
+    };
+
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(strip);
+    return () => ro.disconnect();
+  }, [terminalList, pinnedTabIds, activeTerminalId]);
 
   const checkScroll = useCallback(() => {
     const el = tabsContainerRef.current;
@@ -171,7 +328,7 @@ export function TerminalTabs() {
     return (
       <div className="h-full flex flex-col">
         {/* Split Toolbar */}
-        <div className="h-9 bg-elevation-1 border-b border-[var(--ij-divider)] flex items-center justify-between px-3">
+        <div className="h-[var(--h-tab)] bg-elevation-1 border-b border-[var(--ij-divider)] flex items-center justify-between px-3">
           <div className="flex items-center gap-2">
             <SplitSquareHorizontal size={13} className="text-accent-primary" strokeWidth={1.75} />
             <span className="text-text-primary text-[12px] font-medium">Split View</span>
@@ -220,7 +377,7 @@ export function TerminalTabs() {
   return (
     <div className="h-full flex flex-col">
       {/* Tab Bar - IntelliJ editor tabs */}
-      <div className="h-9 bg-elevation-1 border-b border-[var(--ij-divider)] flex items-center justify-between px-0.5">
+      <div className="h-[var(--h-tab)] bg-elevation-1 border-b border-[var(--ij-divider)] flex items-center justify-between px-0.5">
         <div className="relative flex items-center flex-1 min-w-0">
           {canScrollLeft && (
             <button
@@ -231,12 +388,19 @@ export function TerminalTabs() {
             </button>
           )}
           <ul
-            ref={tabsContainerRef}
+            ref={(node) => {
+              tabsContainerRef.current = node;
+              stripRef.current = node;
+            }}
             data-tab-strip
             className="flex items-center overflow-x-auto scrollbar-none list-none m-0 p-0"
           >
             <AnimatePresence initial={false}>
             {renderList.map((terminal, index) => {
+              // Phase 4b Task B: overflow-hidden tabs drop from the render but
+              // stay in the enumeration so `index` still matches the drag/drop
+              // model. Task C will surface them via a chevron dropdown.
+              if (hiddenSet.has(terminal.id)) return null;
               const instance = terminals.get(terminal.id);
               const model = instance?.model;
               const isWorktree = instance?.isWorktree;
@@ -281,7 +445,7 @@ export function TerminalTabs() {
                       });
                     }
                   }}
-                  className={`group relative flex items-center gap-2 px-3 h-9 text-[12px] cursor-pointer select-none transition-all duration-150 ${
+                  className={`group relative flex items-center gap-2 px-3 h-[var(--h-tab)] text-[12px] cursor-pointer select-none transition-all duration-150 ${
                     splitDropTargetId === terminal.id
                       ? 'bg-accent-primary/12 text-accent-primary'
                       : isActiveTab
@@ -341,6 +505,9 @@ export function TerminalTabs() {
                     <Tooltip label={`Loop: ${loopInfo.interval}`}>
                       <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse flex-shrink-0" />
                     </Tooltip>
+                  )}
+                  {pinnedTabIds.includes(terminal.id) && (
+                    <Pin size={10} className="text-accent-primary flex-shrink-0" />
                   )}
                   <span className="max-w-[120px] truncate">{terminal.nickname || terminal.label}</span>
                   {gitInfoCache.get(terminal.id)?.current_branch && (
@@ -410,6 +577,31 @@ export function TerminalTabs() {
             </AnimatePresence>
           </ul>
 
+          {/* Phase 4b Task C: "Show Hidden Tabs" chevron. Rendered only when
+              the strip overflowed (Task B's `hiddenTabIds`). Clicking opens a
+              floating dropdown below the button with the hidden tabs; picking
+              one calls `setActiveTerminal`, which triggers Task A's
+              computeTabOverflow to swap it into the visible list on the next
+              layout pass. */}
+          {hiddenTabIds.length > 0 && (
+            <button
+              ref={chevronRef}
+              onClick={(e) => {
+                e.stopPropagation();
+                setHiddenMenuOpen((v) => !v);
+              }}
+              className="no-drag h-[var(--h-tab)] px-2 flex items-center gap-1 text-text-secondary hover:bg-white/[0.06] hover:text-text-primary transition-colors border-l border-[var(--ij-divider-soft)] flex-shrink-0"
+              title="Show hidden tabs"
+              aria-label={`Show ${hiddenTabIds.length} hidden tab${hiddenTabIds.length === 1 ? '' : 's'}`}
+              aria-expanded={hiddenMenuOpen}
+            >
+              <ChevronDown size={13} strokeWidth={2} />
+              <span className="text-[10px] font-semibold px-[5px] h-[15px] min-w-[15px] flex items-center justify-center rounded-full bg-accent-primary text-white">
+                {hiddenTabIds.length}
+              </span>
+            </button>
+          )}
+
           {/* File tabs - rendered inline next to terminal tabs, VS Code style */}
           {openFiles.length > 0 && (
             <>
@@ -433,7 +625,7 @@ export function TerminalTabs() {
                         }
                         closeFileTab(tab.path);
                       }}
-                      className={`group relative flex items-center gap-1.5 px-3 h-9 text-[12px] transition-colors flex-shrink-0 ${
+                      className={`group relative flex items-center gap-1.5 px-3 h-[var(--h-tab)] text-[12px] transition-colors flex-shrink-0 ${
                         isActive
                           ? 'bg-elevation-0 text-text-primary'
                           : 'hover:bg-white/[0.045] text-text-secondary'
@@ -577,53 +769,279 @@ export function TerminalTabs() {
           </div>
         )}
         {!activeTerminalId && !activeFilePath && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center text-text-secondary">
-              <img
-                src={appIconUrl}
-                alt=""
-                className="w-12 h-12 rounded-[8px] mb-5 select-none shadow-[0_2px_12px_rgba(0,0,0,0.35)]"
-                draggable={false}
-                style={{ imageRendering: 'pixelated' }}
-              />
-              <p className="text-[13px] text-text-primary font-medium mb-1">No active terminal</p>
-              <p className="text-[12px] text-text-tertiary mb-5 flex items-center">
-                <span className="mr-1.5">Press</span>
-                <kbd className="px-1.5 py-0.5 rounded bg-elevation-2 text-text-secondary text-[11px] font-sans border border-[var(--ij-divider-soft)]">
-                  {isMac ? '⌘' : 'Ctrl'}
-                </kbd>
-                <span className="mx-1 text-text-tertiary/60">+</span>
-                <kbd className="px-1.5 py-0.5 rounded bg-elevation-2 text-text-secondary text-[11px] font-sans border border-[var(--ij-divider-soft)]">
-                  {isMac ? '⇧' : 'Shift'}
-                </kbd>
-                <span className="mx-1 text-text-tertiary/60">+</span>
-                <kbd className="px-1.5 py-0.5 rounded bg-elevation-2 text-text-secondary text-[11px] font-sans border border-[var(--ij-divider-soft)]">
-                  N
-                </kbd>
-                <span className="ml-2">to start one</span>
-              </p>
-              <div className="flex gap-2">
-                <Button
-                  variant="primary"
-                  onClick={handleNewTab}
-                  icon={<Plus size={14} strokeWidth={2.25} />}
-                >
-                  New Terminal
-                </Button>
-                {terminalList.length > 0 && (
-                  <Button
-                    variant="secondary"
-                    onClick={toggleGridMode}
-                    icon={<Grid3X3 size={14} strokeWidth={1.75} />}
+            <div className="absolute inset-0 flex flex-col items-center justify-center text-text-secondary p-8">
+              <div className="w-full max-w-[560px] flex flex-col items-center">
+                {/* Hero header — sketch's "welcome" moment */}
+                <img
+                  src={appIconUrl}
+                  alt=""
+                  className="w-14 h-14 rounded-[10px] mb-5 select-none shadow-[0_4px_20px_rgba(0,0,0,0.4)] ring-1 ring-white/[0.05]"
+                  draggable={false}
+                  style={{ imageRendering: 'pixelated' }}
+                />
+                <h1 className="text-[length:var(--text-h1)] font-semibold text-text-primary mb-1.5 tracking-tight">
+                  Welcome to ClaudeTerminal
+                </h1>
+                <p className="text-[13px] text-text-tertiary mb-8 text-center max-w-[420px]">
+                  Manage multiple Claude Code sessions from a single native window.
+                  Start a new terminal, or press{' '}
+                  <kbd className="px-1.5 py-0.5 rounded bg-elevation-2 text-text-secondary text-[11px] font-sans border border-[var(--ij-divider-soft)] mx-0.5">
+                    {isMac ? '⌘' : 'Ctrl'}
+                  </kbd>
+                  <kbd className="px-1.5 py-0.5 rounded bg-elevation-2 text-text-secondary text-[11px] font-sans border border-[var(--ij-divider-soft)] mx-0.5">
+                    P
+                  </kbd>
+                  {' '}for Search Everywhere.
+                </p>
+
+                {/* Action cards — sketch's "New Project / Open Project" pattern */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full mb-6">
+                  <button
+                    onClick={handleNewTab}
+                    className="group flex flex-col items-start gap-2 p-4 bg-elevation-1 border border-[var(--ij-divider-soft)] rounded-lg hover:border-accent-primary/60 hover:bg-elevation-2 hover:shadow-glow-md transition-all text-left"
                   >
-                    Grid View
-                  </Button>
-                )}
+                    <div className="w-9 h-9 rounded-md bg-accent-primary/12 flex items-center justify-center text-accent-primary group-hover:bg-accent-primary/20 transition-colors">
+                      <Plus size={18} strokeWidth={2.25} />
+                    </div>
+                    <div>
+                      <div className="text-[13px] font-medium text-text-primary">New Terminal</div>
+                      <div className="text-[11.5px] text-text-tertiary mt-0.5">
+                        Start a Claude Code session in any folder
+                      </div>
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => useAppStore.getState().openCommandPalette()}
+                    className="group flex flex-col items-start gap-2 p-4 bg-elevation-1 border border-[var(--ij-divider-soft)] rounded-lg hover:border-accent-primary/60 hover:bg-elevation-2 hover:shadow-glow-md transition-all text-left"
+                  >
+                    <div className="w-9 h-9 rounded-md bg-elevation-3 flex items-center justify-center text-text-secondary group-hover:text-accent-primary transition-colors">
+                      <SearchIcon size={16} strokeWidth={2} />
+                    </div>
+                    <div>
+                      <div className="text-[13px] font-medium text-text-primary">Search Everywhere</div>
+                      <div className="text-[11.5px] text-text-tertiary mt-0.5">
+                        Find sessions, actions, hints, and snippets
+                      </div>
+                    </div>
+                  </button>
+
+                  {terminalList.length > 0 && (
+                    <button
+                      onClick={toggleGridMode}
+                      className="group flex flex-col items-start gap-2 p-4 bg-elevation-1 border border-[var(--ij-divider-soft)] rounded-lg hover:border-accent-primary/60 hover:bg-elevation-2 hover:shadow-glow-md transition-all text-left"
+                    >
+                      <div className="w-9 h-9 rounded-md bg-elevation-3 flex items-center justify-center text-text-secondary group-hover:text-accent-primary transition-colors">
+                        <Grid3X3 size={16} strokeWidth={2} />
+                      </div>
+                      <div>
+                        <div className="text-[13px] font-medium text-text-primary">Grid View</div>
+                        <div className="text-[11.5px] text-text-tertiary mt-0.5">
+                          Watch up to 8 sessions side-by-side
+                        </div>
+                      </div>
+                    </button>
+                  )}
+
+                  <button
+                    onClick={() => useAppStore.getState().openSettings()}
+                    className="group flex flex-col items-start gap-2 p-4 bg-elevation-1 border border-[var(--ij-divider-soft)] rounded-lg hover:border-accent-primary/60 hover:bg-elevation-2 hover:shadow-glow-md transition-all text-left"
+                  >
+                    <div className="w-9 h-9 rounded-md bg-elevation-3 flex items-center justify-center text-text-secondary group-hover:text-accent-primary transition-colors">
+                      <SlidersHorizontal size={16} strokeWidth={2} />
+                    </div>
+                    <div>
+                      <div className="text-[13px] font-medium text-text-primary">Preferences</div>
+                      <div className="text-[11.5px] text-text-tertiary mt-0.5">
+                        Theme, accent, density, keybindings
+                      </div>
+                    </div>
+                  </button>
+                </div>
+
+                {/* Keyboard shortcut list — IDE-style discovery */}
+                <div className="w-full grid grid-cols-2 gap-x-6 gap-y-1.5 text-[11px]">
+                  <div className="flex items-center justify-between text-text-tertiary">
+                    <span>Search Everywhere</span>
+                    <span className="flex items-center gap-0.5">
+                      <kbd className="px-1 py-0.5 rounded bg-elevation-2 text-text-secondary font-sans border border-[var(--ij-divider-soft)] text-[10px]">
+                        {isMac ? '⌘' : 'Ctrl'}
+                      </kbd>
+                      <span className="text-text-tertiary/60">+</span>
+                      <kbd className="px-1 py-0.5 rounded bg-elevation-2 text-text-secondary font-sans border border-[var(--ij-divider-soft)] text-[10px]">P</kbd>
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-text-tertiary">
+                    <span>New Terminal</span>
+                    <span className="flex items-center gap-0.5">
+                      <kbd className="px-1 py-0.5 rounded bg-elevation-2 text-text-secondary font-sans border border-[var(--ij-divider-soft)] text-[10px]">
+                        {isMac ? '⌘' : 'Ctrl'}
+                      </kbd>
+                      <span className="text-text-tertiary/60">+</span>
+                      <kbd className="px-1 py-0.5 rounded bg-elevation-2 text-text-secondary font-sans border border-[var(--ij-divider-soft)] text-[10px]">
+                        {isMac ? '⇧' : 'Shift'}
+                      </kbd>
+                      <span className="text-text-tertiary/60">+</span>
+                      <kbd className="px-1 py-0.5 rounded bg-elevation-2 text-text-secondary font-sans border border-[var(--ij-divider-soft)] text-[10px]">N</kbd>
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-text-tertiary">
+                    <span>Toggle Sidebar</span>
+                    <span className="flex items-center gap-0.5">
+                      <kbd className="px-1 py-0.5 rounded bg-elevation-2 text-text-secondary font-sans border border-[var(--ij-divider-soft)] text-[10px]">
+                        {isMac ? '⌘' : 'Ctrl'}
+                      </kbd>
+                      <span className="text-text-tertiary/60">+</span>
+                      <kbd className="px-1 py-0.5 rounded bg-elevation-2 text-text-secondary font-sans border border-[var(--ij-divider-soft)] text-[10px]">B</kbd>
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-text-tertiary">
+                    <span>Toggle Grid</span>
+                    <span className="flex items-center gap-0.5">
+                      <kbd className="px-1 py-0.5 rounded bg-elevation-2 text-text-secondary font-sans border border-[var(--ij-divider-soft)] text-[10px]">
+                        {isMac ? '⌘' : 'Ctrl'}
+                      </kbd>
+                      <span className="text-text-tertiary/60">+</span>
+                      <kbd className="px-1 py-0.5 rounded bg-elevation-2 text-text-secondary font-sans border border-[var(--ij-divider-soft)] text-[10px]">G</kbd>
+                    </span>
+                  </div>
+                </div>
               </div>
             </div>
         )}
       </div>
 
+      {hiddenMenuOpen && chevronRef.current && (() => {
+        const rect = chevronRef.current.getBoundingClientRect();
+        const menuWidth = 240;
+        // Anchor to the chevron's right edge so the menu extends leftward
+        // (mirrors Chrome/Edge's overflow tab menu). Clamp against viewport
+        // edges so the menu never renders off-screen on a narrow window.
+        const left = Math.max(4, rect.right - menuWidth);
+        const top = rect.bottom + 4;
+        const clampedTop = Math.min(top, window.innerHeight - 200 - 4);
+        const clampedLeft = Math.min(Math.max(4, left), window.innerWidth - menuWidth - 4);
+        return (
+          <div
+            data-hidden-tabs-menu
+            className="fixed z-[80] bg-bg-elevated ring-1 ring-white/[0.08] rounded-md shadow-elevation-4 py-1 min-w-[240px] max-h-[320px] overflow-y-auto"
+            style={{ left: clampedLeft, top: clampedTop }}
+            onClick={(e) => e.stopPropagation()}
+            role="menu"
+          >
+            <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider font-semibold text-text-tertiary border-b border-[var(--ij-divider-soft)]">
+              Hidden Tabs ({hiddenTabIds.length})
+            </div>
+            {hiddenTabIds.map((id) => {
+              const t = terminalList.find((x) => x.id === id);
+              if (!t) return null;
+              const isPinned = pinnedTabIds.includes(id);
+              return (
+                <button
+                  key={id}
+                  role="menuitem"
+                  onClick={() => {
+                    setActiveTerminal(id);
+                    setHiddenMenuOpen(false);
+                  }}
+                  onContextMenu={(e) => {
+                    // Right-click on a hidden tab reaches the same actions as
+                    // a visible tab (Pin/Unpin/Close/Close Others/Close All
+                    // But Pinned) — otherwise users would have to activate a
+                    // hidden tab first, defeating the dropdown's purpose.
+                    setHiddenMenuOpen(false);
+                    openTabContextMenu(e, id);
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] text-text-primary hover:bg-white/[0.06] text-left"
+                >
+                  {isPinned && <Pin size={10} className="text-accent-primary flex-shrink-0" />}
+                  <span className="truncate">{t.nickname || t.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        );
+      })()}
+
+      {contextMenu && (() => {
+        const ctxId = contextMenu.terminalId;
+        const isPinned = pinnedTabIds.includes(ctxId);
+        // Terminal-store insertion order is the source of truth for "all
+        // terminals" — we deliberately don't reuse `terminalList` here (which
+        // has the pinned-first re-order applied), because bulk-close acts on
+        // the store, not on the rendered ordering. Filter out script-child /
+        // shell terminals for the same reason `terminalList` does: those are
+        // rendered elsewhere and shouldn't be touched by the tab-strip menu.
+        const allTabIds = Array.from(terminals.values())
+          .filter((t) => !t.scriptParentId && !t.isShellTerminal)
+          .map((t) => t.config.id);
+        return (
+          <div
+            role="menu"
+            data-context-menu="terminal-tabs"
+            className="fixed z-[80] min-w-[220px] bg-bg-elevated ring-1 ring-white/[0.08] rounded-md py-1 select-none"
+            style={{ left: contextMenu.x, top: contextMenu.y }}
+          >
+            <TabMenuItem
+              icon={isPinned ? <PinOff size={13} strokeWidth={1.75} /> : <Pin size={13} strokeWidth={1.75} />}
+              label={isPinned ? 'Unpin' : 'Pin'}
+              onClick={() => { setContextMenu(null); toggleTabPin(ctxId); }}
+            />
+            <div className="my-1 border-t border-white/[0.06]" />
+            <TabMenuItem
+              icon={<X size={13} strokeWidth={1.75} />}
+              label="Close"
+              onClick={() => { setContextMenu(null); closeTerminalWithReport(ctxId); }}
+            />
+            <TabMenuItem
+              icon={<X size={13} strokeWidth={1.75} />}
+              label="Close Others"
+              disabled={allTabIds.length <= 1}
+              onClick={() => {
+                setContextMenu(null);
+                idsToCloseForOthers(allTabIds, ctxId).forEach(closeTerminalWithReport);
+              }}
+            />
+            <TabMenuItem
+              icon={<X size={13} strokeWidth={1.75} />}
+              label="Close All But Pinned"
+              disabled={idsToCloseForAllButPinned(allTabIds, pinnedTabIds).length === 0}
+              onClick={() => {
+                setContextMenu(null);
+                idsToCloseForAllButPinned(allTabIds, pinnedTabIds).forEach(closeTerminalWithReport);
+              }}
+            />
+          </div>
+        );
+      })()}
+
       <BottomTerminalPane />
     </div>
+  );
+}
+
+interface TabMenuItemProps {
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+}
+
+function TabMenuItem({ icon, label, onClick, disabled }: TabMenuItemProps) {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      disabled={disabled}
+      onClick={onClick}
+      className={`w-full flex items-center gap-2.5 px-3 py-1.5 text-left text-[12px] transition-colors ${
+        disabled
+          ? 'text-text-tertiary/50 cursor-not-allowed'
+          : 'text-text-primary hover:bg-white/[0.06]'
+      }`}
+    >
+      <span className={disabled ? 'opacity-50' : 'text-text-tertiary'}>{icon}</span>
+      <span className="flex-1">{label}</span>
+    </button>
   );
 }

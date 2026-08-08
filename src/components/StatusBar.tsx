@@ -1,8 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { getVersion } from '@tauri-apps/api/app';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
+import { useNowTick } from '../hooks/useNowTick';
+import { getLastOutputAt } from '../lib/terminalActivity';
 import {
   Terminal,
   Cpu,
@@ -11,6 +13,11 @@ import {
   ArrowDownCircle,
   Columns,
   LayoutGrid,
+  GitBranch,
+  GitFork,
+  Check,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react';
 import { Tooltip } from './ui/Tooltip';
 import { ProgressStripe } from './ui/ProgressStripe';
@@ -36,7 +43,7 @@ const STATUS_DOT_COLORS: Record<string, string> = {
 };
 
 export function StatusBar() {
-  const { terminals, activeTerminalId } = useTerminalStore();
+  const { terminals, activeTerminalId, gitInfoCache } = useTerminalStore();
   const {
     toggleSidebar,
     gridMode,
@@ -48,6 +55,27 @@ export function StatusBar() {
   const unreadCount = useAppStore((s) => s.unreadNotificationCount);
   const clearUnread = useAppStore((s) => s.clearUnreadNotifications);
   const globalBusy = useAppStore((s) => s.globalBusy);
+  const activeGitInfo = activeTerminalId ? gitInfoCache.get(activeTerminalId) : null;
+  const now = useNowTick();
+
+  // "Last event" ticker — sketch showed "last event: 12s ago" in the status
+  // bar. Walk every terminal's last-output timestamp and format the most
+  // recent one. Rendered only when there's a terminal AND we've seen output
+  // within the last hour (otherwise it becomes stale-looking).
+  const lastEventLabel = useMemo(() => {
+    let latest = 0;
+    for (const id of terminals.keys()) {
+      const t = getLastOutputAt(id);
+      if (t && t > latest) latest = t;
+    }
+    if (latest === 0) return null;
+    const ageMs = now - latest;
+    if (ageMs < 0) return null;
+    if (ageMs > 60 * 60_000) return null; // >1h old — hide (stale signal)
+    if (ageMs < 3_000) return 'just now';
+    if (ageMs < 60_000) return `${Math.round(ageMs / 1000)}s ago`;
+    return `${Math.round(ageMs / 60_000)}m ago`;
+  }, [terminals, now]);
 
   const [appVersion, setAppVersion] = useState('');
   const [claudeVersion, setClaudeVersion] = useState<string | null>(null);
@@ -81,7 +109,7 @@ export function StatusBar() {
           <ProgressStripe />
         </div>
       )}
-      <div className="h-[22px] flex items-center justify-between pl-2 pr-1 bg-elevation-1 border-t border-[var(--ij-divider)] text-[11px] select-none">
+      <div className="h-[var(--h-status)] flex items-center justify-between pl-2 pr-1 bg-elevation-1 border-t border-[var(--ij-divider)] text-[11px] select-none">
       {/* Left side */}
       <div className="flex items-center gap-0.5">
         {/* Terminal count */}
@@ -92,9 +120,13 @@ export function StatusBar() {
         >
           <Terminal size={11} strokeWidth={1.75} />
           <span>
-            {runningCount > 0
-              ? `${runningCount}/${terminalCount} running`
-              : `${terminalCount} terminal${terminalCount !== 1 ? 's' : ''}`}
+            {terminalCount} terminal{terminalCount !== 1 ? 's' : ''}
+            {runningCount > 0 && (
+              <span className="text-text-tertiary/70"> · </span>
+            )}
+            {runningCount > 0 && (
+              <span className="text-success">{runningCount} running</span>
+            )}
           </span>
         </button>
         </Tooltip>
@@ -114,6 +146,63 @@ export function StatusBar() {
         )}
 
         {activeTerminal && <span className="text-text-tertiary/50 px-1">·</span>}
+
+        {/* Last-event ticker — sketch's "last event: 12s ago" widget. */}
+        {lastEventLabel && (
+          <>
+            <span className="text-text-tertiary text-[11px] px-1.5">
+              last event: <span className="text-text-secondary">{lastEventLabel}</span>
+            </span>
+            <span className="text-text-tertiary/50 px-1">·</span>
+          </>
+        )}
+
+        {/* Git branch chip (active terminal's repo). Sketch showed a
+            prominent branch pill in the status bar; matches IntelliJ's
+            bottom-right branch widget. */}
+        {activeGitInfo?.is_git_repo && activeGitInfo.current_branch && (
+          <>
+            <Tooltip
+              label={
+                activeGitInfo.is_worktree
+                  ? `Worktree · ${activeGitInfo.current_branch}`
+                  : `Branch · ${activeGitInfo.current_branch}`
+              }
+              side="top"
+            >
+              <div className="flex items-center gap-1.5 h-[18px] px-1.5 rounded-[3px] text-text-secondary hover:bg-white/[0.06] hover:text-text-primary transition-colors cursor-default">
+                {activeGitInfo.is_worktree
+                  ? <GitFork size={10} strokeWidth={1.75} className="text-accent-secondary" />
+                  : <GitBranch size={10} strokeWidth={1.75} className="text-accent-secondary" />}
+                <span className="font-mono truncate max-w-[140px]">
+                  {activeGitInfo.current_branch}
+                </span>
+                {/* Clean-state indicator — sketch's "up to date" checkmark. */}
+                {activeGitInfo.dirty_count === 0 && (activeGitInfo.ahead ?? 0) === 0 && (activeGitInfo.behind ?? 0) === 0 && (
+                  <Check size={9} strokeWidth={2.5} className="text-success" />
+                )}
+                {/* Dirty count when there ARE modifications. */}
+                {activeGitInfo.dirty_count !== null && activeGitInfo.dirty_count > 0 && (
+                  <span className="text-warning font-medium tabular-nums text-[10px]">
+                    {activeGitInfo.dirty_count}Δ
+                  </span>
+                )}
+                {/* Ahead/behind vs upstream. */}
+                {activeGitInfo.ahead !== null && activeGitInfo.ahead > 0 && (
+                  <span className="inline-flex items-center text-text-secondary tabular-nums text-[10px]">
+                    <ArrowUp size={8} strokeWidth={2.5} />{activeGitInfo.ahead}
+                  </span>
+                )}
+                {activeGitInfo.behind !== null && activeGitInfo.behind > 0 && (
+                  <span className="inline-flex items-center text-text-secondary tabular-nums text-[10px]">
+                    <ArrowDown size={8} strokeWidth={2.5} />{activeGitInfo.behind}
+                  </span>
+                )}
+              </div>
+            </Tooltip>
+            <span className="text-text-tertiary/50 px-1">·</span>
+          </>
+        )}
 
         {/* Grid/Split indicator */}
         <Tooltip label={gridMode ? 'Exit grid mode' : 'Enter grid mode'} side="top">
