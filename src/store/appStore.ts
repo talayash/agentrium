@@ -1165,8 +1165,13 @@ export const useAppStore = create<AppState>()(
         claudeDefaultModel: state.claudeDefaultModel,
         claudeBinaryPathOverride: state.claudeBinaryPathOverride,
 
-        // Pinned tabs (Phase 4a) — id list survives restarts so users don't
-        // have to re-pin sessions after a crash / restore-session flow.
+        // Pinned tabs (Phase 4a). Persist pinned-tab intent WITHIN a session
+        // so refreshes / new detached windows preserve the pin state.
+        // Restored terminals get fresh UUIDs (Uuid::new_v4() in Rust), so
+        // pins do NOT survive app restart — see the startup GC in App.tsx
+        // that drops ghost ids after session restore populates the store.
+        // A stable-key persistence pass (using working_directory +
+        // claude_session_id) is queued as a follow-up.
         pinnedTabIds: state.pinnedTabIds,
       }),
     }

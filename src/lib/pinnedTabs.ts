@@ -23,3 +23,15 @@ export function removePin(pinnedIds: string[], id: string): string[] {
 export function togglePin(pinnedIds: string[], id: string): string[] {
   return pinnedIds.includes(id) ? removePin(pinnedIds, id) : addPin(pinnedIds, id);
 }
+
+/**
+ * Drop any pinned ids that don't map to a currently-live terminal. Used by
+ * the startup GC in App.tsx after session restore, since restored terminals
+ * get fresh UUIDs (`Uuid::new_v4()` in Rust) and 100% of persisted pinned
+ * ids are ghosts after app restart. Order is preserved so the surviving
+ * pins keep their relative positions.
+ */
+export function filterLivePins(pinnedIds: string[], liveIds: Iterable<string>): string[] {
+  const live = new Set(liveIds);
+  return pinnedIds.filter((id) => live.has(id));
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addPin, removePin, togglePin } from './pinnedTabs';
+import { addPin, filterLivePins, removePin, togglePin } from './pinnedTabs';
 
 describe('pinnedTabs helpers', () => {
   it('addPin adds id if not present, no-op if already pinned', () => {
@@ -32,5 +32,37 @@ describe('pinnedTabs helpers', () => {
     // Pinned → unpinned.
     expect(togglePin(['a', 'b'], 'a')).toEqual(['b']);
     expect(togglePin(['a'], 'a')).toEqual([]);
+  });
+
+  describe('filterLivePins', () => {
+    it('returns unchanged list when all pins are live', () => {
+      expect(filterLivePins(['a', 'b', 'c'], ['a', 'b', 'c', 'd'])).toEqual(['a', 'b', 'c']);
+    });
+
+    it('returns [] when all pins are ghosts (restart case)', () => {
+      // After app restart every persisted pinned id is a ghost because
+      // restored terminals get fresh UUIDs from Uuid::new_v4() in Rust.
+      expect(filterLivePins(['old-1', 'old-2'], ['new-1', 'new-2'])).toEqual([]);
+    });
+
+    it('keeps only live ids and preserves original order', () => {
+      expect(filterLivePins(['a', 'ghost', 'b', 'gone', 'c'], ['c', 'a', 'b']))
+        .toEqual(['a', 'b', 'c']);
+    });
+
+    it('returns [] when pins are empty', () => {
+      expect(filterLivePins([], ['a', 'b'])).toEqual([]);
+    });
+
+    it('returns [] when live set is empty', () => {
+      expect(filterLivePins(['a', 'b'], [])).toEqual([]);
+    });
+
+    it('accepts a Map keys iterator (terminals.keys())', () => {
+      // The startup GC feeds it useTerminalStore.getState().terminals.keys(),
+      // so verify the Iterable<string> signature actually works with a Map.
+      const terminals = new Map<string, unknown>([['a', {}], ['c', {}]]);
+      expect(filterLivePins(['a', 'ghost', 'c'], terminals.keys())).toEqual(['a', 'c']);
+    });
   });
 });
