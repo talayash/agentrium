@@ -17,7 +17,6 @@ describe('accentTheme', () => {
     expect(style.getPropertyValue('--accent-primary')).toBe('#FF00AA');
     expect(style.getPropertyValue('--ij-stripe')).toBe('#FF00AA');
     expect(style.getPropertyValue('--ij-tab-underline')).toBe('#FF00AA');
-    expect(style.getPropertyValue('--accent-glow')).toContain('255, 0, 170');
   });
 
   it('applyAccentColor handles 3-digit hex', () => {

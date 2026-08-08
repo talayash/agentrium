@@ -386,7 +386,11 @@ export function CommandPalette() {
           </div>
 
           {/* Source filter chips */}
-          <div className="px-3 pt-2 pb-2 flex items-center gap-1 border-b border-border overflow-x-auto scrollbar-none">
+          <div
+            role="group"
+            aria-label="Filter by source"
+            className="px-3 pt-2 pb-2 flex items-center gap-1 border-b border-border overflow-x-auto scrollbar-none"
+          >
             <ChipButton
               label="All"
               icon={LayoutList}

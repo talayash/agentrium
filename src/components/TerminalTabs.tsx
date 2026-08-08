@@ -945,6 +945,14 @@ export function TerminalTabs() {
                     setActiveTerminal(id);
                     setHiddenMenuOpen(false);
                   }}
+                  onContextMenu={(e) => {
+                    // Right-click on a hidden tab reaches the same actions as
+                    // a visible tab (Pin/Unpin/Close/Close Others/Close All
+                    // But Pinned) — otherwise users would have to activate a
+                    // hidden tab first, defeating the dropdown's purpose.
+                    setHiddenMenuOpen(false);
+                    openTabContextMenu(e, id);
+                  }}
                   className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] text-text-primary hover:bg-white/[0.06] text-left"
                 >
                   {isPinned && <Pin size={10} className="text-accent-primary flex-shrink-0" />}

@@ -61,7 +61,7 @@ interface SectionProps { title: string; description?: string; children: ReactNod
 export function PageHeader({ title, description }: { title: string; description?: string }) {
   return (
     <header className="mb-4">
-      <h2 className="text-text-primary text-[16px] font-semibold">{title}</h2>
+      <h2 className="text-text-primary text-[length:var(--text-h2)] font-semibold">{title}</h2>
       {description && <p className="text-text-tertiary text-[12px] mt-1">{description}</p>}
     </header>
   );

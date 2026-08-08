@@ -23,7 +23,6 @@ export function applyAccentColor(hex: string): void {
   const lift = (c: number) => Math.min(255, Math.round(c + (255 - c) * 0.08));
   const sR = lift(r), sG = lift(g), sB = lift(b);
   root.style.setProperty('--accent-secondary', `#${toHex(sR)}${toHex(sG)}${toHex(sB)}`);
-  root.style.setProperty('--accent-glow', `rgba(${r}, ${g}, ${b}, 0.18)`);
   root.style.setProperty('--ij-stripe', hex);
   root.style.setProperty('--ij-tab-underline', hex);
   root.style.setProperty('--border-focus', `rgba(${r}, ${g}, ${b}, 0.55)`);

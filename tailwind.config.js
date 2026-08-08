@@ -18,7 +18,6 @@ export default {
         // Accent — IntelliJ blue
         'accent-primary': '#3574F0',
         'accent-secondary': '#548AF7',
-        'accent-glow': 'rgba(53, 116, 240, 0.18)',
         // Borders
         'border': '#1E1F22',
         'border-light': '#393B40',
