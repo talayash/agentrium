@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback, useRef, useEffect } from 'react';
+import { useMemo, useState, useCallback, useRef, useEffect, useLayoutEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Plus, Grid3X3, SplitSquareHorizontal, RotateCw, GitBranch, ChevronLeft, ChevronRight, Copy, File as FileIcon, Pin, PinOff } from 'lucide-react';
 import appIconUrl from '../assets/app-icon.png';
@@ -21,6 +21,7 @@ import { useTabDrag } from '../hooks/useTabDrag';
 import { getWindowMode } from '../lib/windowMode';
 import { getLastOutputAt } from '../lib/terminalActivity';
 import { orderTabsPinnedFirst } from '../lib/pinnedTabOrder';
+import { estimateTabWidth, computeTabOverflow } from '../lib/tabOverflow';
 import { idsToCloseForOthers, idsToCloseForAllButPinned } from '../lib/closeTabActions';
 import { StateDot } from './StateDot';
 import { Tooltip } from './ui/Tooltip';
@@ -190,9 +191,65 @@ export function TerminalTabs() {
   };
 
   // Tab scroll overflow detection
-  const tabsContainerRef = useRef<HTMLUListElement>(null);
+  const tabsContainerRef = useRef<HTMLUListElement | null>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
+
+  // Phase 4b Task B: tab-strip overflow measurement.
+  // `hiddenTabIds` holds the ids the strip can't fit, so they can be exposed via
+  // the "Show Hidden Tabs" chevron dropdown (Task C wires the UI; this task
+  // just populates the set so overflow tabs silently drop from the render).
+  // The chevron/reserved constants are best-guess placeholders — Task C will
+  // tune `chevronWidth` when the real button lands.
+  const stripRef = useRef<HTMLUListElement | null>(null);
+  const [hiddenTabIds, setHiddenTabIds] = useState<string[]>([]);
+  const hiddenSet = useMemo(() => new Set(hiddenTabIds), [hiddenTabIds]);
+
+  useLayoutEffect(() => {
+    const strip = stripRef.current;
+    if (!strip) return;
+
+    const measure = () => {
+      const el = stripRef.current;
+      if (!el) return;
+      const containerWidth = el.clientWidth;
+
+      const tabIds = terminalList.map((t) => t.id);
+      const tabWidths = terminalList.map((t) =>
+        estimateTabWidth(t.nickname || t.label, {
+          isPinned: pinnedTabIds.includes(t.id),
+          hasStatusDot: t.status === 'Running' || t.status === 'Idle',
+        })
+      );
+
+      const result = computeTabOverflow({
+        tabIds,
+        activeId: activeTerminalId,
+        tabWidths,
+        containerWidth,
+        // Placeholder — Task C will replace with the measured chevron width.
+        chevronWidth: 40,
+        // Placeholder — approx. two 28px controls (+, grid toggle) + gaps +
+        // divider slack. Adjust when the real controls are stabilized.
+        reservedRight: 96,
+      });
+
+      setHiddenTabIds((prev) => {
+        if (
+          prev.length === result.hidden.length &&
+          prev.every((id, i) => id === result.hidden[i])
+        ) {
+          return prev;
+        }
+        return result.hidden;
+      });
+    };
+
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(strip);
+    return () => ro.disconnect();
+  }, [terminalList, pinnedTabIds, activeTerminalId]);
 
   const checkScroll = useCallback(() => {
     const el = tabsContainerRef.current;
@@ -300,12 +357,19 @@ export function TerminalTabs() {
             </button>
           )}
           <ul
-            ref={tabsContainerRef}
+            ref={(node) => {
+              tabsContainerRef.current = node;
+              stripRef.current = node;
+            }}
             data-tab-strip
             className="flex items-center overflow-x-auto scrollbar-none list-none m-0 p-0"
           >
             <AnimatePresence initial={false}>
             {renderList.map((terminal, index) => {
+              // Phase 4b Task B: overflow-hidden tabs drop from the render but
+              // stay in the enumeration so `index` still matches the drag/drop
+              // model. Task C will surface them via a chevron dropdown.
+              if (hiddenSet.has(terminal.id)) return null;
               const instance = terminals.get(terminal.id);
               const model = instance?.model;
               const isWorktree = instance?.isWorktree;
