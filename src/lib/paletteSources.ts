@@ -1,9 +1,8 @@
 // Palette source registry — types + fixed-order array for the command
-// palette's Search Everywhere upgrade (Phase 5). This file only defines the
-// shape; Task B populates PALETTE_SOURCES and rewrites CommandPalette to
-// consume it.
+// palette's Search Everywhere upgrade (Phase 5). The chip strip in
+// CommandPalette iterates PALETTE_SOURCES to render one chip per source.
 
-import type { LucideIcon } from 'lucide-react';
+import { Terminal, Command, Lightbulb, Scissors, type LucideIcon } from 'lucide-react';
 
 /** A single result item in the command palette. */
 export interface PaletteItem {
@@ -41,6 +40,14 @@ export interface PaletteSource {
 
 /**
  * Static registry of sources in the order they appear in the chip strip.
- * When a source is added, Task B (filter chips) auto-picks it up.
+ * The chip strip renders "All" first, followed by these sources in order.
+ * `prefix` mirrors the typed-prefix modes the palette accepts for
+ * backward compatibility (users who learned '>', '@', '#' still get the
+ * matching chip highlighted).
  */
-export const PALETTE_SOURCES: PaletteSource[] = [];
+export const PALETTE_SOURCES: PaletteSource[] = [
+  { id: 'terminals', label: 'Terminals', icon: Terminal, prefix: '@', category: 'Terminals' },
+  { id: 'commands',  label: 'Commands',  icon: Command,  prefix: '>', category: 'Commands' },
+  { id: 'hints',     label: 'Hints',     icon: Lightbulb,             category: 'Hints' },
+  { id: 'snippets',  label: 'Snippets',  icon: Scissors, prefix: '#', category: 'Snippets' },
+];
