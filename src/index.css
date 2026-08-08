@@ -174,6 +174,23 @@
   --text-body: 13px;
   --text-title: 14px;
 
+  /* Typography — IntelliJ New UI header scale (Inter, relative to 13px body) */
+  --text-h1: 18px;   /* +5 bold — modal titles, wizard headers */
+  --text-h2: 16px;   /* +3 bold — section headers */
+
+  /* Layout dimension tokens (Phase-3 consumers: TitleBar, Sidebar, TerminalGrid) */
+  --h-header: 40px;  /* Merged main window header */
+  --h-tab:    32px;  /* Editor/terminal tab strip */
+  --h-status: 24px;  /* Status bar */
+  --w-rail:   48px;  /* Collapsed sidebar / tool-window stripe */
+  --w-panel:  260px; /* Expanded sidebar panel */
+
+  /* Semantic colors — theme-aware. Dark defaults here; light overrides live
+     in accentTheme.applyThemeMode(). */
+  --success: #5FAD65;   /* ExpUI Green7 (dark) — desaturated so it doesn't fight ANSI green in Claude output */
+  --warning: #D6AE58;   /* ExpUI Yellow6 (dark) */
+  --error:   #DB5C5C;   /* ExpUI Red7 (dark) — matches current */
+
   /* Focus ring. --border-focus is normally (re)set by applyAccentColor();
      this default keeps focus-visible visible on first paint before that runs. */
   --focus-ring-width: 2px;

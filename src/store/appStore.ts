@@ -44,7 +44,7 @@ export interface FileTabState {
 
 interface AppState {
   sidebarOpen: boolean;
-  sidebarCollapsed: boolean;  // true = icon rail (48px), false = full width (280px)
+  sidebarCollapsed: boolean;  // widths driven by --w-rail / --w-panel tokens
   hintsOpen: boolean;
   changesOpen: boolean;
   settingsOpen: boolean;

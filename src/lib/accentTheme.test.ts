@@ -52,4 +52,32 @@ describe('accentTheme', () => {
     applyUiFontScale(1.1);
     expect(document.documentElement.style.getPropertyValue('--ui-font-scale')).toBe('1.1');
   });
+
+  it('applyThemeMode("light") sets semantic color overrides (success/warning/error)', () => {
+    applyThemeMode('light');
+    const style = document.documentElement.style;
+    expect(style.getPropertyValue('--success')).toBe('#208A3C');
+    expect(style.getPropertyValue('--warning')).toBe('#FFAF0F');
+    expect(style.getPropertyValue('--error')).toBe('#DB3B4B');
+  });
+
+  it('applyThemeMode("dark") removes semantic color overrides so :root defaults win', () => {
+    // Prime the overrides via light mode first.
+    applyThemeMode('light');
+    applyThemeMode('dark');
+    const style = document.documentElement.style;
+    expect(style.getPropertyValue('--success')).toBe('');
+    expect(style.getPropertyValue('--warning')).toBe('');
+    expect(style.getPropertyValue('--error')).toBe('');
+  });
+
+  it('applyThemeMode restores/removes semantic overrides cleanly across light -> dark -> light', () => {
+    applyThemeMode('light');
+    applyThemeMode('dark');
+    applyThemeMode('light');
+    const style = document.documentElement.style;
+    expect(style.getPropertyValue('--success')).toBe('#208A3C');
+    expect(style.getPropertyValue('--warning')).toBe('#FFAF0F');
+    expect(style.getPropertyValue('--error')).toBe('#DB3B4B');
+  });
 });

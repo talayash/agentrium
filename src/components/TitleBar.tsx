@@ -23,20 +23,9 @@ import { ToolsMenu } from './titlebar/ToolsMenu';
 import { SessionWidget } from './titlebar/SessionWidget';
 import { Tooltip } from './ui/Tooltip';
 import { ListRow } from './ui/ListRow';
+import { pickBreadcrumb } from '../lib/breadcrumb';
 
 const isMac = navigator.platform.toUpperCase().includes('MAC');
-
-function pickBreadcrumb(path: string | undefined): { project: string; sub: string | null } {
-  if (!path) return { project: 'No terminal', sub: null };
-  // Normalise slashes and trim trailing separators
-  const clean = path.replace(/\\/g, '/').replace(/\/+$/, '');
-  const parts = clean.split('/').filter(Boolean);
-  if (parts.length === 0) return { project: clean || '/', sub: null };
-  if (parts.length === 1) return { project: parts[0], sub: null };
-  const project = parts[parts.length - 1];
-  const parent = parts[parts.length - 2];
-  return { project, sub: parent };
-}
 
 export function TitleBar() {
   const {
@@ -151,7 +140,7 @@ export function TitleBar() {
   return (
     <div
       onMouseDown={(e) => { if (e.buttons === 1 && (e.target as HTMLElement).closest('.no-drag') === null) appWindow.startDragging(); }}
-      className="h-9 bg-elevation-1 flex items-center justify-between pl-2 pr-0 border-b border-[var(--ij-divider)] drag-region select-none"
+      className="h-[var(--h-header)] bg-elevation-1 flex items-center justify-between pl-2 pr-0 border-b border-[var(--ij-divider)] drag-region select-none"
     >
       {/* Left cluster - traffic lights (mac), sidebar toggle */}
       <div className="flex items-center gap-1 min-w-0">
@@ -326,6 +315,12 @@ export function TitleBar() {
 
           <div className="w-px h-4 bg-[var(--ij-divider-soft)] mx-1" />
 
+          <Tooltip label="Search Everywhere" shortcut="Ctrl+P">
+            <button onClick={openCommandPalette} className={toolBtn(false)}>
+              <SearchIcon size={15} strokeWidth={2} />
+            </button>
+          </Tooltip>
+
           <Tooltip label="Settings" shortcut="Ctrl+,">
             <button onClick={openSettings} className={toolBtn(false)}>
               <Settings size={15} strokeWidth={2} />
@@ -337,21 +332,21 @@ export function TitleBar() {
           <div className="flex items-stretch no-drag">
             <button
               onClick={() => appWindow.minimize()}
-              className="w-[46px] h-9 flex items-center justify-center hover:bg-white/[0.06] text-text-secondary transition-colors"
+              className="w-[46px] h-[var(--h-header)] flex items-center justify-center hover:bg-white/[0.06] text-text-secondary transition-colors"
               aria-label="Minimize"
             >
               <Minus size={12} strokeWidth={1.75} />
             </button>
             <button
               onClick={() => appWindow.toggleMaximize()}
-              className="w-[46px] h-9 flex items-center justify-center hover:bg-white/[0.06] text-text-secondary transition-colors"
+              className="w-[46px] h-[var(--h-header)] flex items-center justify-center hover:bg-white/[0.06] text-text-secondary transition-colors"
               aria-label="Maximize"
             >
               <Square size={11} strokeWidth={1.75} />
             </button>
             <button
               onClick={() => appWindow.close()}
-              className="w-[46px] h-9 flex items-center justify-center hover:bg-[#E04545] text-text-secondary hover:text-white transition-colors"
+              className="w-[46px] h-[var(--h-header)] flex items-center justify-center hover:bg-[#E04545] text-text-secondary hover:text-white transition-colors"
               aria-label="Close"
             >
               <X size={13} strokeWidth={2} />

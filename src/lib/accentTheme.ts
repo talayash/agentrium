@@ -43,6 +43,11 @@ export function applyThemeMode(mode: ThemeMode): void {
     root.style.setProperty('--text-primary', '39 40 46');     // #27282E
     root.style.setProperty('--text-secondary', '92 96 107');  // #5C606B
     root.style.setProperty('--text-tertiary', '107 111 121'); // #6B6F79
+    // Semantic overrides — ExpUI Green4/Yellow4/Red4 (vivid on light bg).
+    // Dark defaults live in index.css :root.
+    root.style.setProperty('--success', '#208A3C');
+    root.style.setProperty('--warning', '#FFAF0F');
+    root.style.setProperty('--error',   '#DB3B4B');
   } else {
     root.style.removeProperty('--elevation-0');
     root.style.removeProperty('--elevation-1');
@@ -56,6 +61,10 @@ export function applyThemeMode(mode: ThemeMode): void {
     root.style.removeProperty('--text-primary');
     root.style.removeProperty('--text-secondary');
     root.style.removeProperty('--text-tertiary');
+    // Fall back to :root defaults for semantic colors.
+    root.style.removeProperty('--success');
+    root.style.removeProperty('--warning');
+    root.style.removeProperty('--error');
   }
 }
 

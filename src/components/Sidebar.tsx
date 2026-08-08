@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { ChevronsLeft, ChevronsRight, FolderTree } from 'lucide-react';
 import { useAppStore } from '../store/appStore';
+import { computeSidebarSectionStyles } from '../lib/sidebarLayout';
 import { FileTreePanel } from './FileTreePanel';
 import { SessionsPanel } from './SessionsPanel';
 import { Tooltip } from './ui/Tooltip';
@@ -53,7 +54,7 @@ export function Sidebar() {
     return (
       <div
         className="h-full bg-elevation-1 border-r border-[var(--ij-divider)] flex flex-col items-center py-2 gap-0.5"
-        style={{ width: 48 }}
+        style={{ width: 'var(--w-rail)' }}
       >
         <Tooltip label="Expand Sidebar" side="right">
           <button
@@ -67,25 +68,17 @@ export function Sidebar() {
     );
   }
 
-  // Layout rules for the stacked Sessions / Explorer sections:
-  // - A collapsed section is auto-sized to just its header (flex-shrink-0).
-  // - When both are expanded, they share space by `sessionsHeightRatio`; a
-  //   thin drag handle between them updates the ratio live.
-  // - When one is collapsed and the other isn't, the expanded one takes all
-  //   remaining space.
+  // Layout rules for the stacked Sessions / Explorer sections live in
+  // `lib/sidebarLayout.ts` (unit-tested). `showFileTree` gating stays here
+  // because it's a store lookup; we pass the resolved boolean into the helper.
   const sessionsExpanded = !sessionsCollapsed;
   const explorerExpanded = !explorerCollapsed && showFileTree;
   const bothExpanded = sessionsExpanded && explorerExpanded;
-  const sessionsStyle: React.CSSProperties = !sessionsExpanded
-    ? { flex: '0 0 auto' }
-    : bothExpanded
-    ? { flex: `${sessionsHeightRatio} 1 0`, minHeight: 80 }
-    : { flex: '1 1 0' };
-  const explorerStyle: React.CSSProperties = !explorerExpanded
-    ? { flex: '0 0 auto' }
-    : bothExpanded
-    ? { flex: `${1 - sessionsHeightRatio} 1 0`, minHeight: 80 }
-    : { flex: '1 1 0' };
+  const { sessionsStyle, explorerStyle } = computeSidebarSectionStyles({
+    sessionsExpanded,
+    explorerExpanded,
+    sessionsHeightRatio,
+  });
 
   return (
     <div className="h-full bg-elevation-1 border-r border-[var(--ij-divider)] flex flex-col">

@@ -695,7 +695,10 @@ function App() {
   }
 
   return (
-    <div className="h-screen w-screen bg-bg-primary flex flex-col overflow-hidden rounded-[4px] ring-1 ring-black/60">
+    <div
+      className="h-screen w-screen bg-bg-primary flex flex-col overflow-hidden rounded-[4px]"
+      style={{ boxShadow: '0 0 0 1px var(--ij-divider)' }}
+    >
       <AnimatePresence>
         {showSetup && (
           <SetupWizard onComplete={() => setShowSetup(false)} />
@@ -742,7 +745,7 @@ function App() {
               {sidebarOpen && (
                 <div
                   className="h-full overflow-hidden transition-all duration-200 ease-out"
-                  style={{ width: sidebarCollapsed ? 48 : 280 }}
+                  style={{ width: sidebarCollapsed ? 'var(--w-rail)' : 'var(--w-panel)' }}
                 >
                   <Sidebar />
                 </div>
