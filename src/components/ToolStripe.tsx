@@ -85,7 +85,7 @@ export function ToolStripe({ side }: { side: Side }) {
   const edgeBorder = side === 'left' ? 'border-r' : 'border-l';
 
   return (
-    <div className={`w-10 flex-shrink-0 h-full bg-elevation-1 ${edgeBorder} border-[var(--ij-divider)] flex flex-col py-1`}>
+    <div className={`w-[var(--w-rail)] flex-shrink-0 h-full bg-elevation-1 ${edgeBorder} border-[var(--ij-divider)] flex flex-col py-1`}>
       <div className="flex flex-col">
         {top.map((it) => (
           <StripeButton key={it.id} item={it} side={side} />

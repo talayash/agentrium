@@ -745,7 +745,7 @@ function App() {
               {sidebarOpen && (
                 <div
                   className="h-full overflow-hidden transition-all duration-200 ease-out"
-                  style={{ width: sidebarCollapsed ? 48 : 280 }}
+                  style={{ width: sidebarCollapsed ? 'var(--w-rail)' : 'var(--w-panel)' }}
                 >
                   <Sidebar />
                 </div>
