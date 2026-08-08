@@ -36,6 +36,7 @@ import { getWindowMode } from './lib/windowMode';
 import { DragPreview } from './components/DragPreview';
 import { WebviewWindow, getAllWebviewWindows } from '@tauri-apps/api/webviewWindow';
 import { installTransferReceiver, requestTransfer, restoreDetachedWindow } from './lib/tabTransfer';
+import { filterLivePins } from './lib/pinnedTabs';
 import { keyOf, upsertEntry, removeEntry, getDetachedEntries, currentGeometry } from './lib/windowLayout';
 import { planRestoreModes } from './lib/restorePlan';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -221,6 +222,29 @@ function App() {
   // openFiles / lspEnabled changes and wires diagnostics events to Monaco.
   useEffect(() => {
     initLsp();
+  }, []);
+
+  // Ghost-pin GC. Session restore is user-triggered (banner click) and
+  // restored terminals get fresh UUIDs from Uuid::new_v4() in Rust, so 100%
+  // of persisted pinned ids are ghosts after app restart. The mount pass
+  // below catches:
+  //   - the "user dismisses the restore banner" case (no terminals ever
+  //     get the old ids)
+  //   - the detached-window adoption case
+  //   - the "session save was empty" case
+  // The restore-completion pass at the end of `handleRestore` catches the
+  // "user restored terminals" case, where new terminals have been added
+  // with fresh ids and every persisted pin is now a ghost.
+  // Ghost pins are silently ignored by the tab-order helpers, so this is
+  // purely a persistence-hygiene fix — the pinnedTabIds array would
+  // otherwise grow unbounded across sessions.
+  useEffect(() => {
+    const { pinnedTabIds, unpinTab } = useAppStore.getState();
+    const live = useTerminalStore.getState().terminals;
+    const survivors = new Set(filterLivePins(pinnedTabIds, live.keys()));
+    for (const id of pinnedTabIds) {
+      if (!survivors.has(id)) unpinTab(id);
+    }
   }, []);
 
   // Telemetry heartbeat - fire on startup then every 5 minutes
@@ -670,6 +694,18 @@ function App() {
       }
     } catch (err) {
       console.error('Failed to restore detached windows:', err);
+    }
+
+    // Ghost-pin GC after restore. Restored terminals got fresh UUIDs above,
+    // so every id in pinnedTabIds from the previous session is now a ghost.
+    // Drop them so the persisted list doesn't grow unbounded across sessions.
+    // (Mirrors the mount-time GC — this pass catches the case where restore
+    // actually created terminals with new ids that never match the old pins.)
+    const { pinnedTabIds, unpinTab } = useAppStore.getState();
+    const live = useTerminalStore.getState().terminals;
+    const survivors = new Set(filterLivePins(pinnedTabIds, live.keys()));
+    for (const id of pinnedTabIds) {
+      if (!survivors.has(id)) unpinTab(id);
     }
 
     toast.success('Session Restored', `${pendingRestoreConfigs.length} terminal${pendingRestoreConfigs.length !== 1 ? 's' : ''} restored.`);
