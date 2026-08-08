@@ -1,6 +1,6 @@
 import { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Plus, Grid3X3, SplitSquareHorizontal, RotateCw, GitBranch, ChevronLeft, ChevronRight, Copy, File as FileIcon, Pin } from 'lucide-react';
+import { X, Plus, Grid3X3, SplitSquareHorizontal, RotateCw, GitBranch, ChevronLeft, ChevronRight, Copy, File as FileIcon, Pin, PinOff } from 'lucide-react';
 import appIconUrl from '../assets/app-icon.png';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
@@ -21,9 +21,16 @@ import { useTabDrag } from '../hooks/useTabDrag';
 import { getWindowMode } from '../lib/windowMode';
 import { getLastOutputAt } from '../lib/terminalActivity';
 import { orderTabsPinnedFirst } from '../lib/pinnedTabOrder';
+import { idsToCloseForOthers, idsToCloseForAllButPinned } from '../lib/closeTabActions';
 import { StateDot } from './StateDot';
 import { Tooltip } from './ui/Tooltip';
 import type { SessionState } from '../lib/terminalState';
+
+interface TabContextMenuState {
+  x: number;
+  y: number;
+  terminalId: string;
+}
 
 function fileBasename(p: string): string {
   const trimmed = p.replace(/[\\/]+$/, '');
@@ -43,6 +50,8 @@ export function TerminalTabs() {
   const { terminals, activeTerminalId, closeTerminal, unreadTerminalIds, gitInfoCache, scriptChildren, closeScript } = useTerminalStore();
   const { openNewTerminalModal, gridMode, toggleGridMode, addToGrid, gridTerminalIds, splitMode, splitTerminalIds, splitOrientation, splitRatio, setSplitOrientation, setSplitRatio, clearSplit, setSplitTerminals, setSplitMode, openFiles, activeFilePath, setActiveFilePath, closeFileTab, showFileTree, showTabActivity } = useAppStore();
   const pinnedTabIds = useAppStore((s) => s.pinnedTabIds);
+  const toggleTabPin = useAppStore((s) => s.toggleTabPin);
+  const [contextMenu, setContextMenu] = useState<TabContextMenuState | null>(null);
   const now = useNowTick();
   const terminalStates = useTerminalStore((s) => s.terminalStates);
   const justFinishedAt = useTerminalStore((s) => s.justFinishedAt);
@@ -115,6 +124,50 @@ export function TerminalTabs() {
       setSplitMode(true);
     }
   };
+
+  // Wrap `closeTerminal` in the same toast-on-failure / telemetry pattern the
+  // rest of the tab strip already uses (see the × button, middle-click close).
+  // Used by the context menu's Close / Close Others / Close All But Pinned.
+  const closeTerminalWithReport = useCallback((id: string) => {
+    closeTerminal(id).catch((err) => {
+      toast.error('Close failed', 'Could not close the terminal.');
+      reportInvokeFailure('close_terminal', err);
+    });
+  }, [closeTerminal]);
+
+  const openTabContextMenu = useCallback((e: React.MouseEvent, terminalId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Clamp against the viewport so the menu doesn't overflow when the
+    // right-click lands near the right or bottom edge. Numbers mirror the
+    // SessionsPanel pattern — a slight over-estimate is fine, the CSS
+    // min-width keeps the menu readable.
+    const margin = 4;
+    const menuWidth = 220;
+    const menuHeight = 200;
+    const x = Math.min(e.clientX, window.innerWidth - menuWidth - margin);
+    const y = Math.min(e.clientY, window.innerHeight - menuHeight - margin);
+    setContextMenu({ x: Math.max(margin, x), y: Math.max(margin, y), terminalId });
+  }, []);
+
+  // Close the tab context menu on outside click / Escape.
+  useEffect(() => {
+    if (!contextMenu) return;
+    const close = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && target.closest('[data-context-menu="terminal-tabs"]')) return;
+      setContextMenu(null);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setContextMenu(null);
+    };
+    document.addEventListener('mousedown', close);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', close);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [contextMenu]);
 
   const { createTerminal } = useTerminalStore();
   const handleDuplicate = (terminalId: string) => {
@@ -297,6 +350,7 @@ export function TerminalTabs() {
                       });
                     }
                   }}
+                  onContextMenu={(e) => openTabContextMenu(e, terminal.id)}
                   className={`group relative flex items-center gap-2 px-3 h-9 text-[12px] cursor-pointer select-none transition-all duration-150 ${
                     splitDropTargetId === terminal.id
                       ? 'bg-accent-primary/12 text-accent-primary'
@@ -642,7 +696,85 @@ export function TerminalTabs() {
         )}
       </div>
 
+      {contextMenu && (() => {
+        const ctxId = contextMenu.terminalId;
+        const isPinned = pinnedTabIds.includes(ctxId);
+        // Terminal-store insertion order is the source of truth for "all
+        // terminals" — we deliberately don't reuse `terminalList` here (which
+        // has the pinned-first re-order applied), because bulk-close acts on
+        // the store, not on the rendered ordering. Filter out script-child /
+        // shell terminals for the same reason `terminalList` does: those are
+        // rendered elsewhere and shouldn't be touched by the tab-strip menu.
+        const allTabIds = Array.from(terminals.values())
+          .filter((t) => !t.scriptParentId && !t.isShellTerminal)
+          .map((t) => t.config.id);
+        return (
+          <div
+            role="menu"
+            data-context-menu="terminal-tabs"
+            className="fixed z-[80] min-w-[220px] bg-bg-elevated ring-1 ring-white/[0.08] rounded-md py-1 select-none"
+            style={{ left: contextMenu.x, top: contextMenu.y }}
+          >
+            <TabMenuItem
+              icon={isPinned ? <PinOff size={13} strokeWidth={1.75} /> : <Pin size={13} strokeWidth={1.75} />}
+              label={isPinned ? 'Unpin' : 'Pin'}
+              onClick={() => { setContextMenu(null); toggleTabPin(ctxId); }}
+            />
+            <div className="my-1 border-t border-white/[0.06]" />
+            <TabMenuItem
+              icon={<X size={13} strokeWidth={1.75} />}
+              label="Close"
+              onClick={() => { setContextMenu(null); closeTerminalWithReport(ctxId); }}
+            />
+            <TabMenuItem
+              icon={<X size={13} strokeWidth={1.75} />}
+              label="Close Others"
+              disabled={allTabIds.length <= 1}
+              onClick={() => {
+                setContextMenu(null);
+                idsToCloseForOthers(allTabIds, ctxId).forEach(closeTerminalWithReport);
+              }}
+            />
+            <TabMenuItem
+              icon={<X size={13} strokeWidth={1.75} />}
+              label="Close All But Pinned"
+              disabled={idsToCloseForAllButPinned(allTabIds, pinnedTabIds).length === 0}
+              onClick={() => {
+                setContextMenu(null);
+                idsToCloseForAllButPinned(allTabIds, pinnedTabIds).forEach(closeTerminalWithReport);
+              }}
+            />
+          </div>
+        );
+      })()}
+
       <BottomTerminalPane />
     </div>
+  );
+}
+
+interface TabMenuItemProps {
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+}
+
+function TabMenuItem({ icon, label, onClick, disabled }: TabMenuItemProps) {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      disabled={disabled}
+      onClick={onClick}
+      className={`w-full flex items-center gap-2.5 px-3 py-1.5 text-left text-[12px] transition-colors ${
+        disabled
+          ? 'text-text-tertiary/50 cursor-not-allowed'
+          : 'text-text-primary hover:bg-white/[0.06]'
+      }`}
+    >
+      <span className={disabled ? 'opacity-50' : 'text-text-tertiary'}>{icon}</span>
+      <span className="flex-1">{label}</span>
+    </button>
   );
 }
