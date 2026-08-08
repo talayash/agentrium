@@ -405,6 +405,8 @@ describe('appStore - persist partialize', () => {
     // Claude (NEW v1.22.0)
     'claudeDefaultModel',
     'claudeBinaryPathOverride',
+    // Pinned tabs (Phase 4a)
+    'pinnedTabIds',
   ].sort();
 
   it('persists exactly the allow-listed keys, and no transient ones', () => {

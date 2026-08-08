@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { invoke } from '@tauri-apps/api/core';
 import type { TerminalThemeName } from '../lib/terminalThemes';
+import { addPin, removePin, togglePin } from '../lib/pinnedTabs';
 
 export type TerminalCursorStyle = 'bar' | 'block' | 'underline';
 export type TerminalScrollbarMode = 'auto-hide' | 'always' | 'hidden';
@@ -171,6 +172,15 @@ interface AppState {
   gridTerminalIds: string[];
   gridLayout: GridLayout;
   gridFocusedIndex: number | null;
+
+  // Pinned tabs — persist by id so relaunched sessions stay pinned across app restarts.
+  // Terminals themselves are ephemeral; pins are just intent-preserving metadata.
+  // Bulk close actions (Close Others, Close All But Pinned) live in the tab
+  // context-menu logic, not the store — see Task D.
+  pinnedTabIds: string[];
+  pinTab: (id: string) => void;
+  unpinTab: (id: string) => void;
+  toggleTabPin: (id: string) => void;
 
   // Command Palette (F1)
   commandPaletteOpen: boolean;
@@ -559,6 +569,10 @@ export const useAppStore = create<AppState>()(
       gridLayout: '1x1',
       gridFocusedIndex: null,
 
+      // Pinned tabs — id list only; terminals themselves remain ephemeral in
+      // terminalStore. See src/lib/pinnedTabs.ts for the pure helpers.
+      pinnedTabIds: [],
+
       // Command Palette (F1)
       commandPaletteOpen: false,
       paletteUsage: {},
@@ -944,6 +958,12 @@ export const useAppStore = create<AppState>()(
         return { gridTerminalIds: newIds };
       }),
 
+      // Pinned-tab actions. Delegate to the pure helpers in src/lib/pinnedTabs.ts
+      // so the toggling logic is unit-tested independently of Zustand hydration.
+      pinTab: (id) => set((s) => ({ pinnedTabIds: addPin(s.pinnedTabIds, id) })),
+      unpinTab: (id) => set((s) => ({ pinnedTabIds: removePin(s.pinnedTabIds, id) })),
+      toggleTabPin: (id) => set((s) => ({ pinnedTabIds: togglePin(s.pinnedTabIds, id) })),
+
       // Command Palette actions (F1)
       recordPaletteUse: (key) =>
         set((s) => {
@@ -1144,6 +1164,10 @@ export const useAppStore = create<AppState>()(
         // Claude (NEW v1.22.0)
         claudeDefaultModel: state.claudeDefaultModel,
         claudeBinaryPathOverride: state.claudeBinaryPathOverride,
+
+        // Pinned tabs (Phase 4a) — id list survives restarts so users don't
+        // have to re-pin sessions after a crash / restore-session flow.
+        pinnedTabIds: state.pinnedTabIds,
       }),
     }
   )
