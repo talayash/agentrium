@@ -1,6 +1,6 @@
 import { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Plus, Grid3X3, SplitSquareHorizontal, RotateCw, GitBranch, ChevronLeft, ChevronRight, Copy, File as FileIcon } from 'lucide-react';
+import { X, Plus, Grid3X3, SplitSquareHorizontal, RotateCw, GitBranch, ChevronLeft, ChevronRight, Copy, File as FileIcon, Pin } from 'lucide-react';
 import appIconUrl from '../assets/app-icon.png';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
@@ -20,6 +20,7 @@ import { useNowTick } from '../hooks/useNowTick';
 import { useTabDrag } from '../hooks/useTabDrag';
 import { getWindowMode } from '../lib/windowMode';
 import { getLastOutputAt } from '../lib/terminalActivity';
+import { orderTabsPinnedFirst } from '../lib/pinnedTabOrder';
 import { StateDot } from './StateDot';
 import { Tooltip } from './ui/Tooltip';
 import type { SessionState } from '../lib/terminalState';
@@ -41,6 +42,7 @@ const isMac = navigator.platform.toUpperCase().includes('MAC');
 export function TerminalTabs() {
   const { terminals, activeTerminalId, closeTerminal, unreadTerminalIds, gitInfoCache, scriptChildren, closeScript } = useTerminalStore();
   const { openNewTerminalModal, gridMode, toggleGridMode, addToGrid, gridTerminalIds, splitMode, splitTerminalIds, splitOrientation, splitRatio, setSplitOrientation, setSplitRatio, clearSplit, setSplitTerminals, setSplitMode, openFiles, activeFilePath, setActiveFilePath, closeFileTab, showFileTree, showTabActivity } = useAppStore();
+  const pinnedTabIds = useAppStore((s) => s.pinnedTabIds);
   const now = useNowTick();
   const terminalStates = useTerminalStore((s) => s.terminalStates);
   const justFinishedAt = useTerminalStore((s) => s.justFinishedAt);
@@ -56,12 +58,26 @@ export function TerminalTabs() {
   // Script-child terminals are rendered below their parent and bottom-pane
   // shells are rendered in BottomTerminalPane - neither belongs in the main
   // tab bar.
+  //
+  // Pinned tabs are re-ordered to the front of the strip via
+  // `orderTabsPinnedFirst` while the terminal store's insertion order stays
+  // untouched — pinning is a render-only concern. Drag-reorder still writes to
+  // the store via `reorderTerminals`, and the pinned-first partition is
+  // re-applied on next render, so dragging can't move a tab across the
+  // pinned/unpinned boundary visually.
   const terminalList = useMemo(
-    () =>
-      Array.from(terminals.values())
+    () => {
+      const configs = Array.from(terminals.values())
         .filter((t) => !t.scriptParentId && !t.isShellTerminal)
-        .map((t) => t.config),
-    [terminals]
+        .map((t) => t.config);
+      if (pinnedTabIds.length === 0) return configs;
+      const byId = new Map(configs.map((c) => [c.id, c] as const));
+      const orderedIds = orderTabsPinnedFirst(configs.map((c) => c.id), pinnedTabIds);
+      return orderedIds
+        .map((id) => byId.get(id))
+        .filter((c): c is NonNullable<typeof c> => c != null);
+    },
+    [terminals, pinnedTabIds]
   );
 
   // Slide-aside preview order: while dragging, the dragged tab(s) are pulled out
@@ -341,6 +357,9 @@ export function TerminalTabs() {
                     <Tooltip label={`Loop: ${loopInfo.interval}`}>
                       <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse flex-shrink-0" />
                     </Tooltip>
+                  )}
+                  {pinnedTabIds.includes(terminal.id) && (
+                    <Pin size={10} className="text-accent-primary flex-shrink-0" />
                   )}
                   <span className="max-w-[120px] truncate">{terminal.nickname || terminal.label}</span>
                   {gitInfoCache.get(terminal.id)?.current_branch && (
