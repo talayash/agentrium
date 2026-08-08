@@ -1,12 +1,11 @@
 import { useMemo, useState, useCallback, useRef, useEffect, useLayoutEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Plus, Grid3X3, SplitSquareHorizontal, RotateCw, GitBranch, ChevronLeft, ChevronRight, ChevronDown, Copy, File as FileIcon, Pin, PinOff } from 'lucide-react';
+import { X, Plus, Grid3X3, SplitSquareHorizontal, RotateCw, GitBranch, ChevronLeft, ChevronRight, ChevronDown, Copy, File as FileIcon, Pin, PinOff, Search as SearchIcon, SlidersHorizontal } from 'lucide-react';
 import appIconUrl from '../assets/app-icon.png';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
 import { toast } from '../store/toastStore';
 import { reportInvokeFailure } from '../lib/errorReporter';
-import { Button } from './ui/Button';
 import { TerminalView } from './TerminalView';
 import { TerminalGrid } from './TerminalGrid';
 import { SplitView } from './SplitView';
@@ -771,47 +770,143 @@ export function TerminalTabs() {
           </div>
         )}
         {!activeTerminalId && !activeFilePath && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center text-text-secondary">
-              <img
-                src={appIconUrl}
-                alt=""
-                className="w-12 h-12 rounded-[8px] mb-5 select-none shadow-[0_2px_12px_rgba(0,0,0,0.35)]"
-                draggable={false}
-                style={{ imageRendering: 'pixelated' }}
-              />
-              <p className="text-[13px] text-text-primary font-medium mb-1">No active terminal</p>
-              <p className="text-[12px] text-text-tertiary mb-5 flex items-center">
-                <span className="mr-1.5">Press</span>
-                <kbd className="px-1.5 py-0.5 rounded bg-elevation-2 text-text-secondary text-[11px] font-sans border border-[var(--ij-divider-soft)]">
-                  {isMac ? '⌘' : 'Ctrl'}
-                </kbd>
-                <span className="mx-1 text-text-tertiary/60">+</span>
-                <kbd className="px-1.5 py-0.5 rounded bg-elevation-2 text-text-secondary text-[11px] font-sans border border-[var(--ij-divider-soft)]">
-                  {isMac ? '⇧' : 'Shift'}
-                </kbd>
-                <span className="mx-1 text-text-tertiary/60">+</span>
-                <kbd className="px-1.5 py-0.5 rounded bg-elevation-2 text-text-secondary text-[11px] font-sans border border-[var(--ij-divider-soft)]">
-                  N
-                </kbd>
-                <span className="ml-2">to start one</span>
-              </p>
-              <div className="flex gap-2">
-                <Button
-                  variant="primary"
-                  onClick={handleNewTab}
-                  icon={<Plus size={14} strokeWidth={2.25} />}
-                >
-                  New Terminal
-                </Button>
-                {terminalList.length > 0 && (
-                  <Button
-                    variant="secondary"
-                    onClick={toggleGridMode}
-                    icon={<Grid3X3 size={14} strokeWidth={1.75} />}
+            <div className="absolute inset-0 flex flex-col items-center justify-center text-text-secondary p-8">
+              <div className="w-full max-w-[560px] flex flex-col items-center">
+                {/* Hero header — sketch's "welcome" moment */}
+                <img
+                  src={appIconUrl}
+                  alt=""
+                  className="w-14 h-14 rounded-[10px] mb-5 select-none shadow-[0_4px_20px_rgba(0,0,0,0.4)] ring-1 ring-white/[0.05]"
+                  draggable={false}
+                  style={{ imageRendering: 'pixelated' }}
+                />
+                <h1 className="text-[length:var(--text-h1)] font-semibold text-text-primary mb-1.5 tracking-tight">
+                  Welcome to ClaudeTerminal
+                </h1>
+                <p className="text-[13px] text-text-tertiary mb-8 text-center max-w-[420px]">
+                  Manage multiple Claude Code sessions from a single native window.
+                  Start a new terminal, or press{' '}
+                  <kbd className="px-1.5 py-0.5 rounded bg-elevation-2 text-text-secondary text-[11px] font-sans border border-[var(--ij-divider-soft)] mx-0.5">
+                    {isMac ? '⌘' : 'Ctrl'}
+                  </kbd>
+                  <kbd className="px-1.5 py-0.5 rounded bg-elevation-2 text-text-secondary text-[11px] font-sans border border-[var(--ij-divider-soft)] mx-0.5">
+                    P
+                  </kbd>
+                  {' '}for Search Everywhere.
+                </p>
+
+                {/* Action cards — sketch's "New Project / Open Project" pattern */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full mb-6">
+                  <button
+                    onClick={handleNewTab}
+                    className="group flex flex-col items-start gap-2 p-4 bg-elevation-1 border border-[var(--ij-divider-soft)] rounded-lg hover:border-accent-primary/60 hover:bg-elevation-2 hover:shadow-glow-md transition-all text-left"
                   >
-                    Grid View
-                  </Button>
-                )}
+                    <div className="w-9 h-9 rounded-md bg-accent-primary/12 flex items-center justify-center text-accent-primary group-hover:bg-accent-primary/20 transition-colors">
+                      <Plus size={18} strokeWidth={2.25} />
+                    </div>
+                    <div>
+                      <div className="text-[13px] font-medium text-text-primary">New Terminal</div>
+                      <div className="text-[11.5px] text-text-tertiary mt-0.5">
+                        Start a Claude Code session in any folder
+                      </div>
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => useAppStore.getState().openCommandPalette()}
+                    className="group flex flex-col items-start gap-2 p-4 bg-elevation-1 border border-[var(--ij-divider-soft)] rounded-lg hover:border-accent-primary/60 hover:bg-elevation-2 hover:shadow-glow-md transition-all text-left"
+                  >
+                    <div className="w-9 h-9 rounded-md bg-elevation-3 flex items-center justify-center text-text-secondary group-hover:text-accent-primary transition-colors">
+                      <SearchIcon size={16} strokeWidth={2} />
+                    </div>
+                    <div>
+                      <div className="text-[13px] font-medium text-text-primary">Search Everywhere</div>
+                      <div className="text-[11.5px] text-text-tertiary mt-0.5">
+                        Find sessions, actions, hints, and snippets
+                      </div>
+                    </div>
+                  </button>
+
+                  {terminalList.length > 0 && (
+                    <button
+                      onClick={toggleGridMode}
+                      className="group flex flex-col items-start gap-2 p-4 bg-elevation-1 border border-[var(--ij-divider-soft)] rounded-lg hover:border-accent-primary/60 hover:bg-elevation-2 hover:shadow-glow-md transition-all text-left"
+                    >
+                      <div className="w-9 h-9 rounded-md bg-elevation-3 flex items-center justify-center text-text-secondary group-hover:text-accent-primary transition-colors">
+                        <Grid3X3 size={16} strokeWidth={2} />
+                      </div>
+                      <div>
+                        <div className="text-[13px] font-medium text-text-primary">Grid View</div>
+                        <div className="text-[11.5px] text-text-tertiary mt-0.5">
+                          Watch up to 8 sessions side-by-side
+                        </div>
+                      </div>
+                    </button>
+                  )}
+
+                  <button
+                    onClick={() => useAppStore.getState().openSettings()}
+                    className="group flex flex-col items-start gap-2 p-4 bg-elevation-1 border border-[var(--ij-divider-soft)] rounded-lg hover:border-accent-primary/60 hover:bg-elevation-2 hover:shadow-glow-md transition-all text-left"
+                  >
+                    <div className="w-9 h-9 rounded-md bg-elevation-3 flex items-center justify-center text-text-secondary group-hover:text-accent-primary transition-colors">
+                      <SlidersHorizontal size={16} strokeWidth={2} />
+                    </div>
+                    <div>
+                      <div className="text-[13px] font-medium text-text-primary">Preferences</div>
+                      <div className="text-[11.5px] text-text-tertiary mt-0.5">
+                        Theme, accent, density, keybindings
+                      </div>
+                    </div>
+                  </button>
+                </div>
+
+                {/* Keyboard shortcut list — IDE-style discovery */}
+                <div className="w-full grid grid-cols-2 gap-x-6 gap-y-1.5 text-[11px]">
+                  <div className="flex items-center justify-between text-text-tertiary">
+                    <span>Search Everywhere</span>
+                    <span className="flex items-center gap-0.5">
+                      <kbd className="px-1 py-0.5 rounded bg-elevation-2 text-text-secondary font-sans border border-[var(--ij-divider-soft)] text-[10px]">
+                        {isMac ? '⌘' : 'Ctrl'}
+                      </kbd>
+                      <span className="text-text-tertiary/60">+</span>
+                      <kbd className="px-1 py-0.5 rounded bg-elevation-2 text-text-secondary font-sans border border-[var(--ij-divider-soft)] text-[10px]">P</kbd>
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-text-tertiary">
+                    <span>New Terminal</span>
+                    <span className="flex items-center gap-0.5">
+                      <kbd className="px-1 py-0.5 rounded bg-elevation-2 text-text-secondary font-sans border border-[var(--ij-divider-soft)] text-[10px]">
+                        {isMac ? '⌘' : 'Ctrl'}
+                      </kbd>
+                      <span className="text-text-tertiary/60">+</span>
+                      <kbd className="px-1 py-0.5 rounded bg-elevation-2 text-text-secondary font-sans border border-[var(--ij-divider-soft)] text-[10px]">
+                        {isMac ? '⇧' : 'Shift'}
+                      </kbd>
+                      <span className="text-text-tertiary/60">+</span>
+                      <kbd className="px-1 py-0.5 rounded bg-elevation-2 text-text-secondary font-sans border border-[var(--ij-divider-soft)] text-[10px]">N</kbd>
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-text-tertiary">
+                    <span>Toggle Sidebar</span>
+                    <span className="flex items-center gap-0.5">
+                      <kbd className="px-1 py-0.5 rounded bg-elevation-2 text-text-secondary font-sans border border-[var(--ij-divider-soft)] text-[10px]">
+                        {isMac ? '⌘' : 'Ctrl'}
+                      </kbd>
+                      <span className="text-text-tertiary/60">+</span>
+                      <kbd className="px-1 py-0.5 rounded bg-elevation-2 text-text-secondary font-sans border border-[var(--ij-divider-soft)] text-[10px]">B</kbd>
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-text-tertiary">
+                    <span>Toggle Grid</span>
+                    <span className="flex items-center gap-0.5">
+                      <kbd className="px-1 py-0.5 rounded bg-elevation-2 text-text-secondary font-sans border border-[var(--ij-divider-soft)] text-[10px]">
+                        {isMac ? '⌘' : 'Ctrl'}
+                      </kbd>
+                      <span className="text-text-tertiary/60">+</span>
+                      <kbd className="px-1 py-0.5 rounded bg-elevation-2 text-text-secondary font-sans border border-[var(--ij-divider-soft)] text-[10px]">G</kbd>
+                    </span>
+                  </div>
+                </div>
               </div>
             </div>
         )}

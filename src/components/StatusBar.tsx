@@ -11,6 +11,8 @@ import {
   ArrowDownCircle,
   Columns,
   LayoutGrid,
+  GitBranch,
+  GitFork,
 } from 'lucide-react';
 import { Tooltip } from './ui/Tooltip';
 import { ProgressStripe } from './ui/ProgressStripe';
@@ -36,7 +38,7 @@ const STATUS_DOT_COLORS: Record<string, string> = {
 };
 
 export function StatusBar() {
-  const { terminals, activeTerminalId } = useTerminalStore();
+  const { terminals, activeTerminalId, gitInfoCache } = useTerminalStore();
   const {
     toggleSidebar,
     gridMode,
@@ -48,6 +50,7 @@ export function StatusBar() {
   const unreadCount = useAppStore((s) => s.unreadNotificationCount);
   const clearUnread = useAppStore((s) => s.clearUnreadNotifications);
   const globalBusy = useAppStore((s) => s.globalBusy);
+  const activeGitInfo = activeTerminalId ? gitInfoCache.get(activeTerminalId) : null;
 
   const [appVersion, setAppVersion] = useState('');
   const [claudeVersion, setClaudeVersion] = useState<string | null>(null);
@@ -114,6 +117,32 @@ export function StatusBar() {
         )}
 
         {activeTerminal && <span className="text-text-tertiary/50 px-1">·</span>}
+
+        {/* Git branch chip (active terminal's repo). Sketch showed a
+            prominent branch pill in the status bar; matches IntelliJ's
+            bottom-right branch widget. */}
+        {activeGitInfo?.is_git_repo && activeGitInfo.current_branch && (
+          <>
+            <Tooltip
+              label={
+                activeGitInfo.is_worktree
+                  ? `Worktree · ${activeGitInfo.current_branch}`
+                  : `Branch · ${activeGitInfo.current_branch}`
+              }
+              side="top"
+            >
+              <div className="flex items-center gap-1.5 h-[18px] px-1.5 rounded-[3px] text-text-secondary hover:bg-white/[0.06] hover:text-text-primary transition-colors cursor-default">
+                {activeGitInfo.is_worktree
+                  ? <GitFork size={10} strokeWidth={1.75} className="text-accent-secondary" />
+                  : <GitBranch size={10} strokeWidth={1.75} className="text-accent-secondary" />}
+                <span className="font-mono truncate max-w-[140px]">
+                  {activeGitInfo.current_branch}
+                </span>
+              </div>
+            </Tooltip>
+            <span className="text-text-tertiary/50 px-1">·</span>
+          </>
+        )}
 
         {/* Grid/Split indicator */}
         <Tooltip label={gridMode ? 'Exit grid mode' : 'Enter grid mode'} side="top">
