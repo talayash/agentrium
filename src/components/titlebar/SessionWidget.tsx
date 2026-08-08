@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { ChevronDown, GitBranch, GitFork, Plus } from 'lucide-react';
+import { ChevronDown, GitBranch, GitFork, Plus, Play } from 'lucide-react';
 import { useTerminalStore } from '../../store/terminalStore';
 import { useAppStore } from '../../store/appStore';
 import { StateDot } from '../StateDot';
@@ -88,7 +88,19 @@ export function SessionWidget() {
           }`}
         >
           <span className="relative inline-flex items-center">
-            <StateDot state={activeState} size={7} />
+            {/* Sketch showed a play icon for the run/session widget. Colored
+                by session state so the icon carries the same signal as the
+                previous StateDot (green/amber/red/gray). */}
+            <Play
+              size={10}
+              strokeWidth={2}
+              className={
+                activeState === 'busy' ? 'text-success fill-success' :
+                activeState === 'waiting' ? 'text-warning fill-warning' :
+                activeState === 'stopped' ? 'text-error fill-error' :
+                'text-text-tertiary fill-text-tertiary'
+              }
+            />
             {waitingElsewhere > 0 && (
               <span className="absolute -top-2 -right-2 min-w-[14px] h-[14px] px-[3px] rounded-full bg-amber-400 text-black text-[9px] font-bold leading-[14px] text-center">
                 {waitingElsewhere}
