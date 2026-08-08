@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware';
 import { invoke } from '@tauri-apps/api/core';
 import type { TerminalThemeName } from '../lib/terminalThemes';
 import { MAX_GRID_TERMINALS } from '../lib/gridEmptyCells';
+import { addPin, removePin, togglePin } from '../lib/pinnedTabs';
 
 export type TerminalCursorStyle = 'bar' | 'block' | 'underline';
 export type TerminalScrollbarMode = 'auto-hide' | 'always' | 'hidden';
