@@ -54,10 +54,11 @@ export function getFileIconUrl(filename: string): string {
 }
 
 export function getFolderIconUrl(folderName: string, expanded = false): string {
-  const fallback = expanded ? DEFAULT_FOLDER_OPEN_URL : DEFAULT_FOLDER_URL;
-  if (!folderName) return fallback;
-  const lower = folderName.toLowerCase();
-  const map = expanded ? manifest.folderNamesExpanded : manifest.folderNames;
-  const u = urlFor(map?.[lower]);
-  return u ?? fallback;
+  // Uniform yellow folder icons across the tree — matches the sketch's
+  // IntelliJ-inspired file tree. Material Icon Theme's per-folder-name
+  // color palette (green .git, orange .config, red .idea, etc.) was
+  // visually noisy against the app's mostly-monochrome chrome. If we
+  // later want per-name colored folders back, gate on a Setting.
+  void folderName; // signature retained for API stability
+  return expanded ? DEFAULT_FOLDER_OPEN_URL : DEFAULT_FOLDER_URL;
 }
