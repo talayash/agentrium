@@ -1,6 +1,6 @@
 import { useMemo, useState, useCallback, useRef, useEffect, useLayoutEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Plus, Grid3X3, SplitSquareHorizontal, RotateCw, GitBranch, ChevronLeft, ChevronRight, Copy, File as FileIcon, Pin, PinOff } from 'lucide-react';
+import { X, Plus, Grid3X3, SplitSquareHorizontal, RotateCw, GitBranch, ChevronLeft, ChevronRight, ChevronDown, Copy, File as FileIcon, Pin, PinOff } from 'lucide-react';
 import appIconUrl from '../assets/app-icon.png';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
@@ -47,8 +47,15 @@ function formatCost(usd: number): string {
 
 const isMac = navigator.platform.toUpperCase().includes('MAC');
 
+// Width reserved for the "Show Hidden Tabs" chevron in the tab-strip overflow
+// calculation. Approx: ChevronDown 13px + 4px gap + badge (min 15px, growing
+// with digit count) + 2*8px horizontal padding + 1px left border = ~49px.
+// Rounded up to 50 so `computeTabOverflow` doesn't shove the last tab under
+// the chevron by a hair.
+const CHEVRON_WIDTH = 50;
+
 export function TerminalTabs() {
-  const { terminals, activeTerminalId, closeTerminal, unreadTerminalIds, gitInfoCache, scriptChildren, closeScript } = useTerminalStore();
+  const { terminals, activeTerminalId, closeTerminal, unreadTerminalIds, gitInfoCache, scriptChildren, closeScript, setActiveTerminal } = useTerminalStore();
   const { openNewTerminalModal, gridMode, toggleGridMode, addToGrid, gridTerminalIds, splitMode, splitTerminalIds, splitOrientation, splitRatio, setSplitOrientation, setSplitRatio, clearSplit, setSplitTerminals, setSplitMode, openFiles, activeFilePath, setActiveFilePath, closeFileTab, showFileTree, showTabActivity } = useAppStore();
   const pinnedTabIds = useAppStore((s) => s.pinnedTabIds);
   const toggleTabPin = useAppStore((s) => s.toggleTabPin);
@@ -196,14 +203,40 @@ export function TerminalTabs() {
   const [canScrollRight, setCanScrollRight] = useState(false);
 
   // Phase 4b Task B: tab-strip overflow measurement.
-  // `hiddenTabIds` holds the ids the strip can't fit, so they can be exposed via
-  // the "Show Hidden Tabs" chevron dropdown (Task C wires the UI; this task
-  // just populates the set so overflow tabs silently drop from the render).
-  // The chevron/reserved constants are best-guess placeholders — Task C will
-  // tune `chevronWidth` when the real button lands.
+  // `hiddenTabIds` holds the ids the strip can't fit, so Task C's chevron
+  // dropdown can surface them. `chevronWidth` is now the measured
+  // `CHEVRON_WIDTH` constant defined at the top of this module.
   const stripRef = useRef<HTMLUListElement | null>(null);
   const [hiddenTabIds, setHiddenTabIds] = useState<string[]>([]);
   const hiddenSet = useMemo(() => new Set(hiddenTabIds), [hiddenTabIds]);
+
+  // Phase 4b Task C: hidden-tabs chevron dropdown state.
+  const [hiddenMenuOpen, setHiddenMenuOpen] = useState(false);
+  const chevronRef = useRef<HTMLButtonElement | null>(null);
+
+  // Close the "Show Hidden Tabs" dropdown on outside click / Escape. Mirrors
+  // the pattern used by the tab-context-menu dismiss above; the chevron
+  // button itself is excluded so its own onClick (which toggles the menu)
+  // still fires cleanly.
+  useEffect(() => {
+    if (!hiddenMenuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      const target = e.target as Node | null;
+      if (chevronRef.current?.contains(target)) return;
+      const menu = document.querySelector('[data-hidden-tabs-menu]');
+      if (menu?.contains(target)) return;
+      setHiddenMenuOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setHiddenMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [hiddenMenuOpen]);
 
   useLayoutEffect(() => {
     const strip = stripRef.current;
@@ -227,10 +260,9 @@ export function TerminalTabs() {
         activeId: activeTerminalId,
         tabWidths,
         containerWidth,
-        // Placeholder — Task C will replace with the measured chevron width.
-        chevronWidth: 40,
-        // Placeholder — approx. two 28px controls (+, grid toggle) + gaps +
-        // divider slack. Adjust when the real controls are stabilized.
+        chevronWidth: CHEVRON_WIDTH,
+        // Approx. two 28px controls (+, grid toggle) + gaps + divider slack.
+        // Adjust when the real controls are stabilized.
         reservedRight: 96,
       });
 
@@ -547,6 +579,31 @@ export function TerminalTabs() {
             </AnimatePresence>
           </ul>
 
+          {/* Phase 4b Task C: "Show Hidden Tabs" chevron. Rendered only when
+              the strip overflowed (Task B's `hiddenTabIds`). Clicking opens a
+              floating dropdown below the button with the hidden tabs; picking
+              one calls `setActiveTerminal`, which triggers Task A's
+              computeTabOverflow to swap it into the visible list on the next
+              layout pass. */}
+          {hiddenTabIds.length > 0 && (
+            <button
+              ref={chevronRef}
+              onClick={(e) => {
+                e.stopPropagation();
+                setHiddenMenuOpen((v) => !v);
+              }}
+              className="no-drag h-[var(--h-tab)] px-2 flex items-center gap-1 text-text-secondary hover:bg-white/[0.06] hover:text-text-primary transition-colors border-l border-[var(--ij-divider-soft)] flex-shrink-0"
+              title="Show hidden tabs"
+              aria-label={`Show ${hiddenTabIds.length} hidden tab${hiddenTabIds.length === 1 ? '' : 's'}`}
+              aria-expanded={hiddenMenuOpen}
+            >
+              <ChevronDown size={13} strokeWidth={2} />
+              <span className="text-[10px] font-semibold px-[5px] h-[15px] min-w-[15px] flex items-center justify-center rounded-full bg-accent-primary text-white">
+                {hiddenTabIds.length}
+              </span>
+            </button>
+          )}
+
           {/* File tabs - rendered inline next to terminal tabs, VS Code style */}
           {openFiles.length > 0 && (
             <>
@@ -759,6 +816,50 @@ export function TerminalTabs() {
             </div>
         )}
       </div>
+
+      {hiddenMenuOpen && chevronRef.current && (() => {
+        const rect = chevronRef.current.getBoundingClientRect();
+        const menuWidth = 240;
+        // Anchor to the chevron's right edge so the menu extends leftward
+        // (mirrors Chrome/Edge's overflow tab menu). Clamp against viewport
+        // edges so the menu never renders off-screen on a narrow window.
+        const left = Math.max(4, rect.right - menuWidth);
+        const top = rect.bottom + 4;
+        const clampedTop = Math.min(top, window.innerHeight - 200 - 4);
+        const clampedLeft = Math.min(Math.max(4, left), window.innerWidth - menuWidth - 4);
+        return (
+          <div
+            data-hidden-tabs-menu
+            className="fixed z-[80] bg-bg-elevated ring-1 ring-white/[0.08] rounded-md shadow-elevation-4 py-1 min-w-[240px] max-h-[320px] overflow-y-auto"
+            style={{ left: clampedLeft, top: clampedTop }}
+            onClick={(e) => e.stopPropagation()}
+            role="menu"
+          >
+            <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider font-semibold text-text-tertiary border-b border-[var(--ij-divider-soft)]">
+              Hidden Tabs ({hiddenTabIds.length})
+            </div>
+            {hiddenTabIds.map((id) => {
+              const t = terminalList.find((x) => x.id === id);
+              if (!t) return null;
+              const isPinned = pinnedTabIds.includes(id);
+              return (
+                <button
+                  key={id}
+                  role="menuitem"
+                  onClick={() => {
+                    setActiveTerminal(id);
+                    setHiddenMenuOpen(false);
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] text-text-primary hover:bg-white/[0.06] text-left"
+                >
+                  {isPinned && <Pin size={10} className="text-accent-primary flex-shrink-0" />}
+                  <span className="truncate">{t.nickname || t.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        );
+      })()}
 
       {contextMenu && (() => {
         const ctxId = contextMenu.terminalId;
