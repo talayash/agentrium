@@ -1,5 +1,22 @@
 [
   {
+    "version": "1.31.0",
+    "date": "2026-08-08",
+    "features": [
+      { "title": "Pinned tabs", "description": "Right-click any terminal tab to Pin it — pinned sessions stay at the front of the strip, get a Pin glyph, and survive 'Close Others' and 'Close All But Pinned' bulk actions. Middle-click still closes any tab." },
+      { "title": "Show Hidden Tabs", "description": "When the tab strip overflows, a chevron with a count badge appears at the right end. Click it to see the tabs that don't fit; picking one activates it and pops it back into view. Also right-clickable from inside the dropdown." },
+      { "title": "Tab height is yours to pick", "description": "Settings → Appearance → Tab height: Small (24px), Medium (28px, default), Large (32px). Matches IntelliJ's New UI editor tab sizing." },
+      { "title": "Search Everywhere with source chips", "description": "The command palette (Ctrl+P) now shows visible source-filter chips at the top — All / Terminals / Commands / Hints / Snippets. Ctrl+Tab cycles through them. Matched characters in results render in the accent color so you can see exactly why a fuzzy match ranked high." },
+      { "title": "Welcome hub replaces the empty state", "description": "First-launch and no-terminal states now show a proper welcome screen with hero, four action cards (New Terminal / Search Everywhere / Grid View / Preferences), and a keyboard-shortcut cheatsheet — less desert, more onboarding." },
+      { "title": "Status bar shows the actual state", "description": "New live 'last event: Xs ago' ticker; git branch chip with ✓ when clean, NΔ when modified, ↑N/↓N when ahead/behind upstream; 'N terminals · M running' count. Everything that used to live in the git dropdown is now visible at a glance." },
+      { "title": "Consolidated left tool rail", "description": "All tool-window toggles — Project, Git, Agent Teams, Commands, Preview — now stack vertically in one left rail. Settings pinned to the bottom. The right-side rail is gone, giving the editor its full width." },
+      { "title": "Cleaner file tree", "description": "Folder icons now render as uniform yellow by default — much calmer than the multi-color 'per-folder-name' palette. Prefer the colored ones? Flip 'Colorful folder icons' back on in Settings → Appearance." },
+      { "title": "Update pill actually looks like an update", "description": "The 'update available' pill in the titlebar is now a real gradient blue chip with an inset highlight, matching the design spec. Session widget in the titlebar gets a filled Play icon tinted by session state." },
+      { "title": "Grid cell polish", "description": "Grid mode cell headers now include the pin glyph (for pinned terminals) and a pulsing status dot alongside the maximize/close controls. Focused cells still glow in the accent color." },
+      { "title": "Under the hood", "description": "New pure-logic libs for tab overflow math, pinned-tab ordering, palette matching, and grid empty-cell math — 64 new tests covering these paths (363 total, all green). No new dependencies." }
+    ]
+  },
+  {
     "version": "1.30.0",
     "date": "2026-08-08",
     "features": [
