@@ -1,5 +1,17 @@
 [
   {
+    "version": "1.30.0",
+    "date": "2026-08-08",
+    "features": [
+      { "title": "Search Everywhere", "description": "A new Search Everywhere button (Ctrl+P) sits in the titlebar — the one-stop finder you'd hit in IntelliJ, ready to jump to any terminal, session, profile, or command from a single overlay." },
+      { "title": "Grid cells feel like cards", "description": "Terminals in grid mode gain a subtle card treatment — bordered, rounded, with just enough elevation to separate them from empty cells and from each other. The 4/6/8 grid layouts read cleaner at a glance." },
+      { "title": "Sidebar and header on the new token system", "description": "Rail width, panel width, and header height now flow from CSS custom properties (--w-rail, --w-panel, --h-header) instead of hard-coded pixels. Density and font-scale changes propagate consistently across the entire shell." },
+      { "title": "Refined theme tokens", "description": "New semantic color tokens (theme-aware for both light and dark modes), typography scales for headings, and layout dimensions form the foundation for the ongoing IntelliJ New UI refresh." },
+      { "title": "Telemetry: no more races on closed terminals", "description": "Writing to or resizing a terminal whose PTY had already exited could race and log noisy errors. That path is now guarded, and error coverage across the terminal command surface is much broader." },
+      { "title": "Under-the-hood modernization", "description": "Bumped Tauri to 2.11.5, rusqlite to 0.40 (newer SQLite bindings), Vite to 8, Vitest to 4, and moved CI to Node 22. Nothing you should notice — except things start faster and build faster." }
+    ]
+  },
+  {
     "version": "1.29.0",
     "date": "2026-07-23",
     "features": [
