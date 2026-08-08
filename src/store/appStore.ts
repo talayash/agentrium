@@ -15,6 +15,7 @@ export const DEFAULT_TERMINAL_FONT_SIZE = 14;
 
 // IntelliJ overhaul (v1.22.0) - appearance + behavior settings.
 export type UiDensity = 'compact' | 'comfortable' | 'spacious';
+export type TabHeight = 'small' | 'medium' | 'large';
 export type ThemeMode = 'dark' | 'light' | 'auto';
 export type AutoStageMode = 'none' | 'tracked' | 'all';
 export type MergeStrategy = 'merge' | 'rebase' | 'ff-only';
@@ -99,6 +100,10 @@ interface AppState {
   // Appearance & Behavior (NEW v1.22.0)
   themeMode: ThemeMode;
   uiDensity: UiDensity;
+  /** Editor/terminal tab strip height. IntelliJ New UI offers Small/Medium/
+   *  Large; we mirror those (24/28/32px). Consumed via --h-tab CSS var
+   *  written by accentTheme.applyTabHeight(). */
+  tabHeight: TabHeight;
   accentColorHex: string;
   uiFontScale: number;
   uiReduceMotion: boolean;
@@ -286,6 +291,7 @@ interface AppState {
   // Appearance & Behavior setters (NEW v1.22.0)
   setThemeMode: (mode: ThemeMode) => void;
   setUiDensity: (density: UiDensity) => void;
+  setTabHeight: (h: TabHeight) => void;
   setAccentColorHex: (hex: string) => void;
   setUiFontScale: (scale: number) => void;
   setUiReduceMotion: (enabled: boolean) => void;
@@ -497,6 +503,7 @@ export const useAppStore = create<AppState>()(
       // Appearance & Behavior defaults (NEW v1.22.0)
       themeMode: 'dark' as ThemeMode,
       uiDensity: 'comfortable' as UiDensity,
+      tabHeight: 'medium' as TabHeight,
       accentColorHex: DEFAULT_ACCENT_COLOR,
       uiFontScale: DEFAULT_UI_FONT_SCALE,
       uiReduceMotion: false,
@@ -672,6 +679,7 @@ export const useAppStore = create<AppState>()(
       // Numeric setters clamp; string setters validate shape and fall back.
       setThemeMode: (mode) => set({ themeMode: mode }),
       setUiDensity: (density) => set({ uiDensity: density }),
+      setTabHeight: (h) => set({ tabHeight: h }),
       setAccentColorHex: (hex) => {
         const ok = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(hex);
         set({ accentColorHex: ok ? hex : DEFAULT_ACCENT_COLOR });
@@ -1125,6 +1133,7 @@ export const useAppStore = create<AppState>()(
         // Appearance & Behavior (NEW v1.22.0)
         themeMode: state.themeMode,
         uiDensity: state.uiDensity,
+        tabHeight: state.tabHeight,
         accentColorHex: state.accentColorHex,
         uiFontScale: state.uiFontScale,
         uiReduceMotion: state.uiReduceMotion,

@@ -57,6 +57,7 @@ import {
   applyDensity,
   applyReduceMotion,
   applyUiFontScale,
+  applyTabHeight,
 } from './lib/accentTheme';
 import { listen } from '@tauri-apps/api/event';
 import type { TerminalMetricsPayload } from './lib/sessionMetrics';
@@ -149,16 +150,18 @@ function App() {
   // v1.22.0 - apply theme/density/accent/motion/scale on store change.
   const themeMode = useAppStore((s) => s.themeMode);
   const uiDensity = useAppStore((s) => s.uiDensity);
+  const tabHeight = useAppStore((s) => s.tabHeight);
   const accentColorHex = useAppStore((s) => s.accentColorHex);
   const uiReduceMotion = useAppStore((s) => s.uiReduceMotion);
   const uiFontScale = useAppStore((s) => s.uiFontScale);
   useEffect(() => {
     applyThemeMode(themeMode);
     applyDensity(uiDensity);
+    applyTabHeight(tabHeight);
     applyAccentColor(accentColorHex);
     applyReduceMotion(uiReduceMotion);
     applyUiFontScale(uiFontScale);
-  }, [themeMode, uiDensity, accentColorHex, uiReduceMotion, uiFontScale]);
+  }, [themeMode, uiDensity, tabHeight, accentColorHex, uiReduceMotion, uiFontScale]);
 
   // Follow the OS "reduce motion" setting (WCAG 2.2 SC 2.3.3) on startup and
   // whenever it changes - but only until the user makes an explicit choice in

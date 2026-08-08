@@ -1,7 +1,16 @@
 // Runtime CSS-variable manipulation for theme / density / accent / reduce-motion / font scale.
 // All callers go through these helpers - components never write to documentElement.style directly.
 
-import type { ThemeMode, UiDensity } from '../store/appStore';
+import type { ThemeMode, UiDensity, TabHeight } from '../store/appStore';
+
+/** Pixel heights for each user-selectable tab-strip size. Mirrors IntelliJ's
+ *  Small/Medium/Large editor tab options. Medium (28px) is the default;
+ *  24px "Small" is snugger for laptops, 32px "Large" more clickable. */
+export const TAB_HEIGHT_PX: Record<TabHeight, number> = {
+  small: 24,
+  medium: 28,
+  large: 32,
+};
 
 export function applyAccentColor(hex: string): void {
   const rgb = hexToRgb(hex);
@@ -70,6 +79,14 @@ export function applyThemeMode(mode: ThemeMode): void {
 
 export function applyDensity(density: UiDensity): void {
   document.documentElement.setAttribute('data-density', density);
+}
+
+/**
+ * Override the --h-tab CSS var based on the user's Tab Height setting.
+ * TerminalTabs consumes it via h-[var(--h-tab)] so tabs resize instantly.
+ */
+export function applyTabHeight(h: TabHeight): void {
+  document.documentElement.style.setProperty('--h-tab', `${TAB_HEIGHT_PX[h]}px`);
 }
 
 export function applyReduceMotion(enabled: boolean): void {

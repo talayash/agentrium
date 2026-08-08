@@ -80,6 +80,7 @@ function resetAppStore() {
     // Appearance & Behavior (NEW v1.22.0)
     themeMode: 'dark',
     uiDensity: 'comfortable',
+    tabHeight: 'medium',
     accentColorHex: '#3574F0',
     uiFontScale: 1.0,
     uiReduceMotion: false,
@@ -370,6 +371,7 @@ describe('appStore - persist partialize', () => {
     // Appearance & Behavior (NEW v1.22.0)
     'themeMode',
     'uiDensity',
+    'tabHeight',
     'accentColorHex',
     'uiFontScale',
     'uiReduceMotion',

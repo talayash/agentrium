@@ -5,6 +5,7 @@ import { registerSetting } from '../index';
 const cat = { group: 'appearance-behavior', page: 'appearance' } as const;
 registerSetting({ category: cat, id: 'theme',       label: 'Theme',          keywords: ['dark', 'light', 'auto'] });
 registerSetting({ category: cat, id: 'density',     label: 'Density',        keywords: ['compact', 'comfortable', 'spacious'] });
+registerSetting({ category: cat, id: 'tab-height',  label: 'Tab height',     keywords: ['tab', 'small', 'medium', 'large', 'strip'] });
 registerSetting({ category: cat, id: 'accent',      label: 'Accent color',   keywords: ['hex', 'color', 'stripe'] });
 registerSetting({ category: cat, id: 'font-scale',  label: 'UI font scale',  keywords: ['zoom', 'size', 'font'] });
 registerSetting({ category: cat, id: 'reduce-motion', label: 'Reduce motion',keywords: ['animation', 'a11y', 'accessibility'] });
@@ -17,6 +18,7 @@ const ACCENT_PRESETS = ['#3574F0', '#5FB865', '#C678DD', '#E3B341', '#DB5C5C'];
 export default function AppearancePage() {
   const themeMode = useAppStore((s) => s.themeMode);
   const uiDensity = useAppStore((s) => s.uiDensity);
+  const tabHeight = useAppStore((s) => s.tabHeight);
   const accentColorHex = useAppStore((s) => s.accentColorHex);
   const uiFontScale = useAppStore((s) => s.uiFontScale);
   const uiReduceMotion = useAppStore((s) => s.uiReduceMotion);
@@ -24,7 +26,7 @@ export default function AppearancePage() {
   const showTabActivity = useAppStore((s) => s.showTabActivity);
   const compactTitleBar = useAppStore((s) => s.compactTitleBar);
   const {
-    setThemeMode, setUiDensity, setAccentColorHex, setUiFontScale, setUiReduceMotion,
+    setThemeMode, setUiDensity, setTabHeight, setAccentColorHex, setUiFontScale, setUiReduceMotion,
     setShowStatusBar, setShowTabActivity, setCompactTitleBar,
   } = useAppStore.getState();
 
@@ -52,6 +54,17 @@ export default function AppearancePage() {
               { value: 'compact',     label: 'Compact' },
               { value: 'comfortable', label: 'Comfortable' },
               { value: 'spacious',    label: 'Spacious' },
+            ]}
+          />
+        </SettingRow>
+        <SettingRow label="Tab height" description="Terminal/editor tab strip height (24 / 28 / 32 px).">
+          <Segmented
+            value={tabHeight}
+            onChange={setTabHeight}
+            options={[
+              { value: 'small',  label: 'Small' },
+              { value: 'medium', label: 'Medium' },
+              { value: 'large',  label: 'Large' },
             ]}
           />
         </SettingRow>
