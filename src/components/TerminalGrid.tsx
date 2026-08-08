@@ -6,6 +6,7 @@ import { useAppStore, GridLayout } from '../store/appStore';
 import { TerminalView } from './TerminalView';
 import { setDragData, getDragData, isTerminalDrag } from '../utils/dragDrop';
 import { computeGridNavTarget } from '../lib/gridNav';
+import { computeEmptyCellCount } from '../lib/gridEmptyCells';
 
 // Grid layout configurations
 const GRID_CONFIGS: Record<GridLayout, { cols: number; rows: number }> = {
@@ -81,7 +82,7 @@ const TerminalCell = memo(function TerminalCell({ terminalId, index, isFocused, 
 
   if (!terminal) {
     return (
-      <div className="h-full flex items-center justify-center bg-bg-secondary border border-border rounded">
+      <div className="h-full flex items-center justify-center bg-bg-secondary border border-border rounded-md">
         <p className="text-text-tertiary text-[12px]">Terminal not found</p>
       </div>
     );
@@ -97,12 +98,12 @@ const TerminalCell = memo(function TerminalCell({ terminalId, index, isFocused, 
       onDragEnter={handleDragEnter}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      className={`relative h-full flex flex-col rounded overflow-hidden transition-all ${
+      className={`relative h-full flex flex-col rounded-md overflow-hidden transition-all ${
         dropOver
           ? 'ring-2 ring-accent-primary bg-accent-primary/5'
           : isFocused
-            ? 'ring-2 ring-accent-primary'
-            : 'ring-1 ring-border hover:ring-border-light'
+            ? 'ring-2 ring-accent-primary shadow-glow-md'
+            : 'ring-1 ring-border hover:ring-border-light hover:shadow-elevation-2'
       }`}
       onClick={onFocus}
     >
@@ -114,7 +115,7 @@ const TerminalCell = memo(function TerminalCell({ terminalId, index, isFocused, 
       )}
 
       {/* Cell Header */}
-      <div className={`flex items-center justify-between px-3 h-6 border-b ${
+      <div className={`flex items-center justify-between px-3 h-7 border-b ${
         isFocused ? 'bg-accent-primary/10 border-accent-primary/40' : 'bg-bg-secondary border-border'
       }`}>
         <span className={`text-[11px] truncate font-medium cursor-grab ${
@@ -168,10 +169,10 @@ function AddTerminalCell() {
 
   return (
     <div
-      className={`h-full flex flex-col items-center justify-center bg-[#131313] rounded transition-colors cursor-pointer group relative ${
+      className={`h-full flex flex-col items-center justify-center bg-[#131313] rounded-md transition-all cursor-pointer group relative ${
         dropOver
           ? 'ring-2 ring-accent-primary bg-accent-primary/5'
-          : 'ring-1 ring-border hover:ring-border-light'
+          : 'ring-1 ring-border hover:ring-border-light hover:shadow-elevation-2'
       }`}
       onClick={() => setShowPicker(true)}
       onDragOver={(e) => {
@@ -288,9 +289,11 @@ export function TerminalGrid() {
   }, [allTerminalIds, setGridTerminals]);
 
   const config = GRID_CONFIGS[gridLayout];
-  const totalCells = config.cols * config.rows;
-  const filledCells = gridTerminalIds.length;
-  const emptyCells = Math.max(0, Math.min(totalCells - filledCells, 8 - filledCells));
+  const emptyCells = computeEmptyCellCount({
+    layoutCols: config.cols,
+    layoutRows: config.rows,
+    filledCount: gridTerminalIds.length,
+  });
 
   // Move real keyboard focus to a pane's terminal so the user can type right
   // after navigating, without clicking.
