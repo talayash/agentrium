@@ -199,8 +199,8 @@
   /* Accent-derived shadow-glow tokens (Phase 2). Consumed by Tailwind's
      shadow-glow-sm / shadow-glow-md utilities. applyAccentColor() rewrites
      these from the user's chosen hex so focused surfaces glow in the current
-     accent instead of always-blue. --accent-glow (0.18) above is a distinct
-     token with different consumers — do not consolidate. */
+     accent instead of always-blue. --accent-glow (0.18), set elsewhere in
+     accentTheme.ts, is a distinct token — do not consolidate. */
   --accent-glow-sm: rgba(53, 116, 240, 0.14);
   --accent-glow-md: rgba(53, 116, 240, 0.22);
 }
