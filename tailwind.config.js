@@ -32,10 +32,11 @@ export default {
         'text-primary': 'rgb(var(--text-primary) / <alpha-value>)',
         'text-secondary': 'rgb(var(--text-secondary) / <alpha-value>)',
         'text-tertiary': 'rgb(var(--text-tertiary) / <alpha-value>)',
-        // Semantic — IntelliJ palette
-        'success': '#5FB865',
-        'warning': '#E3B341',
-        'error': '#DB5C5C',
+        // Semantic — IntelliJ palette (theme-aware via CSS vars; light overrides
+        // are applied by accentTheme.applyThemeMode()).
+        'success': 'var(--success)',
+        'warning': 'var(--warning)',
+        'error': 'var(--error)',
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],
