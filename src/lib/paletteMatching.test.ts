@@ -7,6 +7,7 @@ describe('fuzzyMatch', () => {
     expect(fuzzyMatch('Toggle Sidebar', 'toggle')).toEqual({
       matches: true,
       score: 100,
+      positions: [0, 1, 2, 3, 4, 5],
     });
   });
 
@@ -16,8 +17,16 @@ describe('fuzzyMatch', () => {
     const start = fuzzyMatch('toggle sidebar', 'toggle');
     const middle = fuzzyMatch('Sidebar toggle', 'toggle');
     expect(start.score).toBeGreaterThan(middle.score);
-    expect(start).toEqual({ matches: true, score: 100 });
-    expect(middle).toEqual({ matches: true, score: 100 - 'Sidebar '.length });
+    expect(start).toEqual({
+      matches: true,
+      score: 100,
+      positions: [0, 1, 2, 3, 4, 5],
+    });
+    expect(middle).toEqual({
+      matches: true,
+      score: 100 - 'Sidebar '.length,
+      positions: [8, 9, 10, 11, 12, 13],
+    });
   });
 
   it('falls back to character-by-character fuzzy matching when no substring hit', () => {
@@ -28,16 +37,25 @@ describe('fuzzyMatch', () => {
     expect(result.score).toBeGreaterThan(0);
     // Substring scores are triple-digit; fuzzy stays in single/low double.
     expect(result.score).toBeLessThan(100);
+    expect(result.positions).toEqual([0, 2, 4]);
   });
 
   it('returns matches:false when the query characters are not all present in order', () => {
-    expect(fuzzyMatch('Toggle Sidebar', 'zzz')).toEqual({ matches: false, score: 0 });
+    expect(fuzzyMatch('Toggle Sidebar', 'zzz')).toEqual({
+      matches: false,
+      score: 0,
+      positions: [],
+    });
   });
 
   it('treats an empty query as a match with score 0', () => {
     // Added for Phase 5 — lets callers pipe unfiltered input through the same
     // scoring path instead of guarding externally.
-    expect(fuzzyMatch('anything', '')).toEqual({ matches: true, score: 0 });
+    expect(fuzzyMatch('anything', '')).toEqual({
+      matches: true,
+      score: 0,
+      positions: [],
+    });
   });
 
   it('is case-insensitive for both text and query', () => {
@@ -53,6 +71,32 @@ describe('fuzzyMatch', () => {
     expect(consecutive.matches).toBe(true);
     expect(scattered.matches).toBe(true);
     expect(consecutive.score).toBeGreaterThan(scattered.score);
+  });
+
+  it('returns a contiguous positions run for a substring match at the start', () => {
+    // Task C addition: highlighting needs the exact indices, not just a boolean.
+    expect(fuzzyMatch('hello', 'hel').positions).toEqual([0, 1, 2]);
+  });
+
+  it('returns a contiguous positions run for a substring match in the middle', () => {
+    expect(fuzzyMatch('hello', 'llo').positions).toEqual([2, 3, 4]);
+  });
+
+  it('returns scattered positions for a character-by-character fuzzy match', () => {
+    // 'sch' in 'search' → s@0, c@4, h@5 (no substring, so falls through to
+    // per-char scanning; 'c' is the first 'c' after 's', 'h' is the first 'h'
+    // after that 'c').
+    const result = fuzzyMatch('search', 'sch');
+    expect(result.matches).toBe(true);
+    expect(result.positions).toEqual([0, 4, 5]);
+  });
+
+  it('returns empty positions when the query does not match', () => {
+    expect(fuzzyMatch('hello', 'xyz').positions).toEqual([]);
+  });
+
+  it('returns empty positions when the query is empty', () => {
+    expect(fuzzyMatch('hello', '').positions).toEqual([]);
   });
 });
 

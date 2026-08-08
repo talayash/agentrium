@@ -13,6 +13,10 @@ export interface PaletteUsage {
 export interface FuzzyMatchResult {
   matches: boolean;
   score: number;
+  /** Indices in `text` (lowercased for comparison) where each character of
+   * `query` matched. Empty when no match. For substring matches, positions
+   * is a contiguous run [start, start+1, ..., start+query.length-1]. */
+  positions: number[];
 }
 
 /**
@@ -20,13 +24,13 @@ export interface FuzzyMatchResult {
  * (100 - startIdx, so front matches beat middle matches). Character-by-
  * character fuzzy match falls back if no substring hit — consecutive
  * matches get a 3-point bonus, non-consecutive 1 point.
- * Empty query returns { matches: true, score: 0 }.
+ * Empty query returns { matches: true, score: 0, positions: [] }.
  */
 export function fuzzyMatch(text: string, query: string): FuzzyMatchResult {
   // Empty query: everything matches with a neutral score, so callers can
   // safely feed unfiltered input through the same pipeline.
   if (query.length === 0) {
-    return { matches: true, score: 0 };
+    return { matches: true, score: 0, positions: [] };
   }
 
   const lower = text.toLowerCase();
@@ -36,25 +40,29 @@ export function fuzzyMatch(text: string, query: string): FuzzyMatchResult {
   const subIdx = lower.indexOf(q);
   if (subIdx !== -1) {
     // Prefer matches at the start
-    return { matches: true, score: 100 - subIdx };
+    const positions: number[] = [];
+    for (let i = 0; i < q.length; i++) positions.push(subIdx + i);
+    return { matches: true, score: 100 - subIdx, positions };
   }
 
   // Character-by-character fuzzy match
   let qi = 0;
   let score = 0;
   let lastMatchIdx = -1;
+  const positions: number[] = [];
   for (let i = 0; i < lower.length && qi < q.length; i++) {
     if (lower[i] === q[qi]) {
       qi++;
       // Bonus for consecutive matches
       score += lastMatchIdx === i - 1 ? 3 : 1;
       lastMatchIdx = i;
+      positions.push(i);
     }
   }
   if (qi === q.length) {
-    return { matches: true, score };
+    return { matches: true, score, positions };
   }
-  return { matches: false, score: 0 };
+  return { matches: false, score: 0, positions: [] };
 }
 
 /**
