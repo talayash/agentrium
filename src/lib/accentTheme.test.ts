@@ -24,6 +24,21 @@ describe('accentTheme', () => {
     expect(document.documentElement.style.getPropertyValue('--ij-stripe')).toBe('#abc');
   });
 
+  it('applyAccentColor derives shadow-glow-sm/md vars from the chosen accent', () => {
+    // Default IntelliJ blue.
+    applyAccentColor('#3574F0');
+    let style = document.documentElement.style;
+    expect(style.getPropertyValue('--accent-glow-sm')).toBe('rgba(53, 116, 240, 0.14)');
+    expect(style.getPropertyValue('--accent-glow-md')).toBe('rgba(53, 116, 240, 0.22)');
+
+    // A distinct accent — verify the vars actually track the input, not a
+    // hardcoded blue.
+    applyAccentColor('#22A322');
+    style = document.documentElement.style;
+    expect(style.getPropertyValue('--accent-glow-sm')).toBe('rgba(34, 163, 34, 0.14)');
+    expect(style.getPropertyValue('--accent-glow-md')).toBe('rgba(34, 163, 34, 0.22)');
+  });
+
   it('applyThemeMode toggles the data-theme attribute and elevation tokens', () => {
     applyThemeMode('light');
     expect(document.documentElement.getAttribute('data-theme')).toBe('light');

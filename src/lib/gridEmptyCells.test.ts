@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { computeEmptyCellCount } from './gridEmptyCells';
+import { MAX_GRID_TERMINALS, computeEmptyCellCount } from './gridEmptyCells';
+
+describe('MAX_GRID_TERMINALS', () => {
+  it('is pinned at 8', () => {
+    // Pinning this value guards against accidental drift. If the grid cap
+    // legitimately changes, update this test intentionally alongside the
+    // matching literals in the other test cases below.
+    expect(MAX_GRID_TERMINALS).toBe(8);
+  });
+});
 
 describe('computeEmptyCellCount', () => {
   it('returns 4 empty cells for a 2x2 layout with 0 filled', () => {

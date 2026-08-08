@@ -328,7 +328,7 @@ export function TerminalTabs() {
     return (
       <div className="h-full flex flex-col">
         {/* Split Toolbar */}
-        <div className="h-9 bg-elevation-1 border-b border-[var(--ij-divider)] flex items-center justify-between px-3">
+        <div className="h-[var(--h-tab)] bg-elevation-1 border-b border-[var(--ij-divider)] flex items-center justify-between px-3">
           <div className="flex items-center gap-2">
             <SplitSquareHorizontal size={13} className="text-accent-primary" strokeWidth={1.75} />
             <span className="text-text-primary text-[12px] font-medium">Split View</span>
@@ -377,7 +377,7 @@ export function TerminalTabs() {
   return (
     <div className="h-full flex flex-col">
       {/* Tab Bar - IntelliJ editor tabs */}
-      <div className="h-9 bg-elevation-1 border-b border-[var(--ij-divider)] flex items-center justify-between px-0.5">
+      <div className="h-[var(--h-tab)] bg-elevation-1 border-b border-[var(--ij-divider)] flex items-center justify-between px-0.5">
         <div className="relative flex items-center flex-1 min-w-0">
           {canScrollLeft && (
             <button
@@ -445,8 +445,7 @@ export function TerminalTabs() {
                       });
                     }
                   }}
-                  onContextMenu={(e) => openTabContextMenu(e, terminal.id)}
-                  className={`group relative flex items-center gap-2 px-3 h-9 text-[12px] cursor-pointer select-none transition-all duration-150 ${
+                  className={`group relative flex items-center gap-2 px-3 h-[var(--h-tab)] text-[12px] cursor-pointer select-none transition-all duration-150 ${
                     splitDropTargetId === terminal.id
                       ? 'bg-accent-primary/12 text-accent-primary'
                       : isActiveTab
@@ -626,7 +625,7 @@ export function TerminalTabs() {
                         }
                         closeFileTab(tab.path);
                       }}
-                      className={`group relative flex items-center gap-1.5 px-3 h-9 text-[12px] transition-colors flex-shrink-0 ${
+                      className={`group relative flex items-center gap-1.5 px-3 h-[var(--h-tab)] text-[12px] transition-colors flex-shrink-0 ${
                         isActive
                           ? 'bg-elevation-0 text-text-primary'
                           : 'hover:bg-white/[0.045] text-text-secondary'

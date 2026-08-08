@@ -84,7 +84,7 @@ export function StatusBar() {
           <ProgressStripe />
         </div>
       )}
-      <div className="h-[22px] flex items-center justify-between pl-2 pr-1 bg-elevation-1 border-t border-[var(--ij-divider)] text-[11px] select-none">
+      <div className="h-[var(--h-status)] flex items-center justify-between pl-2 pr-1 bg-elevation-1 border-t border-[var(--ij-divider)] text-[11px] select-none">
       {/* Left side */}
       <div className="flex items-center gap-0.5">
         {/* Terminal count */}

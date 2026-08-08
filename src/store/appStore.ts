@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { invoke } from '@tauri-apps/api/core';
 import type { TerminalThemeName } from '../lib/terminalThemes';
-import { addPin, removePin, togglePin } from '../lib/pinnedTabs';
+import { MAX_GRID_TERMINALS } from '../lib/gridEmptyCells';
 
 export type TerminalCursorStyle = 'bar' | 'block' | 'underline';
 export type TerminalScrollbarMode = 'auto-hide' | 'always' | 'hidden';
@@ -923,7 +923,7 @@ export const useAppStore = create<AppState>()(
       setGridMode: (enabled) => set({ gridMode: enabled }),
       addToGrid: (terminalId) => set((state) => {
         if (state.gridTerminalIds.includes(terminalId)) return state;
-        if (state.gridTerminalIds.length >= 8) return state;
+        if (state.gridTerminalIds.length >= MAX_GRID_TERMINALS) return state;
         const newIds = [...state.gridTerminalIds, terminalId];
         return {
           gridTerminalIds: newIds,
@@ -941,8 +941,8 @@ export const useAppStore = create<AppState>()(
         };
       }),
       setGridTerminals: (terminalIds) => set({
-        gridTerminalIds: terminalIds.slice(0, 8),
-        gridLayout: getOptimalLayout(Math.min(terminalIds.length, 8)),
+        gridTerminalIds: terminalIds.slice(0, MAX_GRID_TERMINALS),
+        gridLayout: getOptimalLayout(Math.min(terminalIds.length, MAX_GRID_TERMINALS)),
       }),
       setGridLayout: (layout) => set({ gridLayout: layout }),
       setGridFocusedIndex: (index) => set({ gridFocusedIndex: index }),
