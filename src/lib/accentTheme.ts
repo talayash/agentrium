@@ -18,6 +18,10 @@ export function applyAccentColor(hex: string): void {
   root.style.setProperty('--ij-stripe', hex);
   root.style.setProperty('--ij-tab-underline', hex);
   root.style.setProperty('--border-focus', `rgba(${r}, ${g}, ${b}, 0.55)`);
+  // Shadow-glow tokens consumed by Tailwind's shadow-glow-sm / shadow-glow-md.
+  // Distinct from --accent-glow (0.18) — different consumers, different alphas.
+  root.style.setProperty('--accent-glow-sm', `rgba(${r}, ${g}, ${b}, 0.14)`);
+  root.style.setProperty('--accent-glow-md', `rgba(${r}, ${g}, ${b}, 0.22)`);
 }
 
 export function applyThemeMode(mode: ThemeMode): void {

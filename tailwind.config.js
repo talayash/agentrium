@@ -43,8 +43,10 @@ export default {
         mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
       },
       boxShadow: {
-        'glow-sm': '0 0 8px rgba(53, 116, 240, 0.14)',
-        'glow-md': '0 0 16px rgba(53, 116, 240, 0.22)',
+        // Accent-aware — derived vars are (re)set by applyAccentColor() so the
+        // glow follows the user's chosen accent instead of hardcoded blue.
+        'glow-sm': '0 0 8px var(--accent-glow-sm)',
+        'glow-md': '0 0 16px var(--accent-glow-md)',
         'elevation-2': '0 1px 2px rgba(0, 0, 0, 0.35)',
         'elevation-3': '0 4px 12px rgba(0, 0, 0, 0.45)',
         'elevation-4': '0 8px 28px rgba(0, 0, 0, 0.55)',
