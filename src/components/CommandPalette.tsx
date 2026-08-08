@@ -6,6 +6,8 @@ import { useTerminalStore } from '../store/terminalStore';
 import { toast } from '../store/toastStore';
 import { copyText } from '../lib/clipboard';
 import { reportInvokeFailure } from '../lib/errorReporter';
+import { fuzzyMatch, frecencyScore } from '../lib/paletteMatching';
+import type { PaletteItem } from '../lib/paletteSources';
 import {
   Terminal,
   Settings,
@@ -37,23 +39,6 @@ interface Snippet {
   created_at: string;
 }
 
-interface PaletteItem {
-  id: string;
-  // Stable key for frecency tracking. Empty string = not tracked (terminals,
-  // whose ids are ephemeral and must not leak into persisted usage).
-  frecencyKey: string;
-  label: string;
-  description: string;
-  category: string;
-  icon?: LucideIcon;
-  shortcut?: string;
-  // Tailwind bg-* class for a presence dot (terminal status). Color is
-  // supplementary - the status is also spelled out in the description so we
-  // never convey it by color alone.
-  statusColor?: string;
-  action: () => void;
-}
-
 // Terminal status → presence-dot color.
 const STATUS_DOT: Record<string, string> = {
   Running: 'bg-success',
@@ -61,46 +46,6 @@ const STATUS_DOT: Record<string, string> = {
   Error: 'bg-error',
   Stopped: 'bg-text-tertiary',
 };
-
-// Frecency = frequency + recency. A small recency bump keeps recently-used
-// items near the top without letting a one-off click outrank a daily habit.
-function frecencyScore(u?: { count: number; lastUsedTs: number }): number {
-  if (!u) return 0;
-  const age = Date.now() - u.lastUsedTs;
-  const HOUR = 3_600_000;
-  const DAY = 24 * HOUR;
-  const recency = age < HOUR ? 8 : age < DAY ? 4 : age < 7 * DAY ? 2 : 1;
-  return u.count + recency;
-}
-
-function fuzzyMatch(text: string, query: string): { matches: boolean; score: number } {
-  const lower = text.toLowerCase();
-  const q = query.toLowerCase();
-
-  // Exact substring match (highest score)
-  const subIdx = lower.indexOf(q);
-  if (subIdx !== -1) {
-    // Prefer matches at the start
-    return { matches: true, score: 100 - subIdx };
-  }
-
-  // Character-by-character fuzzy match
-  let qi = 0;
-  let score = 0;
-  let lastMatchIdx = -1;
-  for (let i = 0; i < lower.length && qi < q.length; i++) {
-    if (lower[i] === q[qi]) {
-      qi++;
-      // Bonus for consecutive matches
-      score += lastMatchIdx === i - 1 ? 3 : 1;
-      lastMatchIdx = i;
-    }
-  }
-  if (qi === q.length) {
-    return { matches: true, score };
-  }
-  return { matches: false, score: 0 };
-}
 
 export function CommandPalette() {
   const { closeCommandPalette } = useAppStore();
