@@ -1,0 +1,1083 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<title>ClaudeTerminal · IntelliJ New UI sketch</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* ============================================================
+     ClaudeTerminal — IntelliJ New UI sketch
+     Hex codes verbatim from JetBrains expUI_*.theme.json
+     Dimensions inferred; not published by JetBrains.
+     ============================================================ */
+
+  :root, [data-theme="dark"] {
+    --elevation-0: #1E1F22;
+    --elevation-1: #2B2D30;
+    --elevation-2: #393B40;
+    --elevation-3: #43454A;
+    --elevation-4: #4E5157;
+    --text-primary:   223 225 229;
+    --text-secondary: 156 158 166;
+    --text-tertiary:  108 111 118;
+    --text-emphasis:  255 255 255;
+    --border-hard: #1E1F22;
+    --border-soft: #43454A;
+    --divider-inner: rgba(255, 255, 255, 0.06);
+    --success: #5FAD65;
+    --warning: #D6AE58;
+    --error:   #DB5C5C;
+    --scrim: rgba(0, 0, 0, 0.55);
+    --page-bg: #101112;
+  }
+
+  [data-theme="light"] {
+    --elevation-0: #FFFFFF;
+    --elevation-1: #F7F8FA;
+    --elevation-2: #EBECF0;
+    --elevation-3: #DFE1E5;
+    --elevation-4: #D3D5DB;
+    --text-primary:   31 33 40;
+    --text-secondary: 89 92 100;
+    --text-tertiary:  130 133 141;
+    --text-emphasis:  0 0 0;
+    --border-hard: #D3D5DB;
+    --border-soft: #EBECF0;
+    --divider-inner: rgba(0, 0, 0, 0.05);
+    --success: #208A3C;
+    --warning: #FFAF0F;
+    --error:   #DB3B4B;
+    --scrim: rgba(0, 0, 0, 0.25);
+    --page-bg: #EDEEF1;
+  }
+
+  :root {
+    --accent-primary:   #3574F0;
+    --accent-secondary: #4A85F3;
+    --accent-glow:      rgba(53, 116, 240, 0.35);
+
+    --h-header: 40px;
+    --h-tab:    32px;
+    --h-status: 24px;
+    --w-rail:   48px;
+    --w-panel:  260px;
+
+    --dur-fast: 120ms;
+    --dur-base: 160ms;
+    --dur-slow: 220ms;
+    --ease-out: cubic-bezier(0.25, 0.1, 0.25, 1);
+
+    --fs-h1:   18px;
+    --fs-h2:   16px;
+    --fs-body: 13px;
+    --fs-meta: 12px;
+    --fs-cap:  11px;
+
+    --r-sm: 4px;
+    --r-md: 6px;
+    --r-lg: 8px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: var(--fs-body);
+    color: rgb(var(--text-primary));
+    background: var(--page-bg);
+    padding: 32px;
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    transition: background var(--dur-base) var(--ease-out);
+  }
+
+  svg { color: currentColor; flex-shrink: 0; }
+
+  /* ---------- Scaffold labels ---------- */
+  .sketch-caption {
+    position: fixed;
+    top: 20px; left: 24px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: rgb(var(--text-tertiary));
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    z-index: 20;
+  }
+  .theme-toggle {
+    position: fixed;
+    top: 20px; right: 24px;
+    background: var(--elevation-1);
+    color: rgb(var(--text-primary));
+    border: 1px solid var(--border-hard);
+    padding: 6px 12px;
+    border-radius: var(--r-md);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    display: inline-flex; align-items: center; gap: 6px;
+    z-index: 20;
+    transition: background var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out);
+  }
+  .theme-toggle:hover { background: var(--elevation-2); border-color: var(--border-soft); }
+
+  /* ---------- App shell ---------- */
+  .app {
+    width: min(1400px, 100%);
+    height: min(88vh, 880px);
+    background: var(--elevation-0);
+    border-radius: var(--r-lg);
+    border: 1px solid var(--border-hard);
+    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.2);
+    overflow: hidden;
+    display: grid;
+    grid-template-rows: var(--h-header) 1fr var(--h-status);
+    transition: background var(--dur-base) var(--ease-out), border-color var(--dur-base) var(--ease-out);
+  }
+
+  /* ---------- Header (merged single row) ---------- */
+  .header {
+    background: var(--elevation-1);
+    border-bottom: 1px solid var(--divider-inner);
+    display: flex;
+    align-items: center;
+    padding: 0 10px 0 12px;
+    gap: 8px;
+    user-select: none;
+  }
+  .traffic { display: flex; gap: 8px; margin-right: 10px; }
+  .traffic .dot { width: 12px; height: 12px; border-radius: 50%; }
+  .traffic .close { background: #FF5F57; }
+  .traffic .min   { background: #FEBC2E; }
+  .traffic .max   { background: #28C840; }
+
+  .breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: rgb(var(--text-secondary));
+    font-size: 13px;
+  }
+  .breadcrumb .sep { color: rgb(var(--text-tertiary)); opacity: 0.7; }
+  .breadcrumb .current { color: rgb(var(--text-primary)); font-weight: 500; }
+
+  .h-widget {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 26px;
+    padding: 0 10px;
+    border-radius: var(--r-md);
+    color: rgb(var(--text-secondary));
+    font-size: 12px;
+    cursor: default;
+    transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+  }
+  .h-widget:hover { background: var(--elevation-2); color: rgb(var(--text-primary)); }
+  .h-widget .chev { opacity: 0.6; }
+
+  .spacer { flex: 1; }
+
+  .update-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 3px 10px 3px 8px;
+    border-radius: 999px;
+    background: linear-gradient(180deg, var(--accent-secondary), var(--accent-primary));
+    color: #FFF;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: default;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  }
+
+  .ctrl {
+    width: 28px; height: 28px;
+    display: grid; place-items: center;
+    border-radius: var(--r-md);
+    color: rgb(var(--text-secondary));
+    cursor: default;
+    transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+  }
+  .ctrl:hover { background: var(--elevation-2); color: rgb(var(--text-primary)); }
+  .ctrl.danger:hover { background: var(--error); color: #FFF; }
+
+  /* ---------- Body layout ---------- */
+  .body {
+    display: grid;
+    grid-template-columns: var(--w-rail) var(--w-panel) 1fr;
+    min-height: 0;
+  }
+
+  /* ---------- Rail (tool-window stripe) ---------- */
+  .rail {
+    background: var(--elevation-1);
+    border-right: 1px solid var(--divider-inner);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 6px 0;
+    gap: 2px;
+  }
+  .rail-btn {
+    position: relative;
+    width: 32px; height: 32px;
+    display: grid; place-items: center;
+    border-radius: var(--r-md);
+    color: rgb(var(--text-secondary));
+    cursor: default;
+    transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+  }
+  .rail-btn:hover { background: var(--elevation-2); color: rgb(var(--text-primary)); }
+  .rail-btn.active {
+    background: var(--elevation-2);
+    color: rgb(var(--text-emphasis));
+  }
+  .rail-btn.active::before {
+    content: '';
+    position: absolute;
+    left: -8px; top: 8px; bottom: 8px;
+    width: 2px;
+    background: var(--accent-primary);
+    border-radius: 0 2px 2px 0;
+  }
+  .rail-sep { width: 20px; height: 1px; background: var(--divider-inner); margin: 4px 0; }
+  .rail-flex { flex: 1; }
+
+  /* ---------- Panel (expanded tool window) ---------- */
+  .panel {
+    background: var(--elevation-1);
+    border-right: 1px solid var(--divider-inner);
+    display: flex; flex-direction: column;
+    min-height: 0;
+  }
+  .panel-section { display: flex; flex-direction: column; min-height: 0; }
+  .panel-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 8px 4px 12px;
+    font-size: var(--fs-cap);
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: rgb(var(--text-tertiary));
+  }
+  .panel-head .actions { display: flex; gap: 2px; }
+  .panel-head .actions .ctrl { width: 20px; height: 20px; }
+  .panel-head .actions .ctrl svg { width: 12px; height: 12px; }
+
+  .tree {
+    padding: 0 4px 6px;
+    overflow: auto;
+    flex: 1;
+    min-height: 0;
+  }
+  .row {
+    display: flex; align-items: center;
+    gap: 6px;
+    height: 24px;
+    padding: 0 8px;
+    border-radius: var(--r-sm);
+    font-size: 13px;
+    color: rgb(var(--text-primary));
+    cursor: default;
+    position: relative;
+  }
+  .row:hover { background: var(--elevation-2); }
+  .row.selected { background: var(--accent-primary); color: #FFF; }
+  .row.selected .meta { color: rgba(255,255,255,0.75); }
+  .row .chev {
+    width: 10px; height: 10px;
+    color: rgb(var(--text-tertiary));
+    transition: transform var(--dur-fast) var(--ease-out);
+  }
+  .row .chev.open { transform: rotate(90deg); }
+  .row .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row .meta {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: rgb(var(--text-tertiary));
+  }
+  .row .badge {
+    font-size: 10px;
+    padding: 0 6px;
+    height: 15px;
+    display: inline-grid;
+    place-items: center;
+    background: var(--elevation-3);
+    border-radius: 8px;
+    color: rgb(var(--text-secondary));
+    font-weight: 500;
+  }
+  .row.i1 { padding-left: 22px; }
+  .row.i2 { padding-left: 40px; }
+
+  .split-h { height: 1px; background: var(--divider-inner); margin: 0 8px; }
+
+  /* status dots */
+  .dot-status {
+    position: relative;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .dot-status.sm { width: 6px; height: 6px; }
+  .dot-status.running   { background: var(--success); }
+  .dot-status.idle      { background: rgb(var(--text-tertiary)); }
+  .dot-status.err       { background: var(--error); }
+  .dot-status.running::after {
+    content: '';
+    position: absolute; inset: 0;
+    border-radius: 50%;
+    background: var(--success);
+    animation: pulse 1.6s ease-out infinite;
+    opacity: 0.55;
+  }
+  @keyframes pulse {
+    0%   { transform: scale(1);   opacity: 0.55; }
+    100% { transform: scale(2.6); opacity: 0; }
+  }
+
+  /* ---------- Main (tabs + grid) ---------- */
+  .main {
+    display: grid;
+    grid-template-rows: var(--h-tab) 1fr;
+    min-width: 0; min-height: 0;
+  }
+
+  .tabs {
+    background: var(--elevation-1);
+    border-bottom: 1px solid var(--divider-inner);
+    display: flex;
+    align-items: stretch;
+    padding: 0 4px;
+    overflow: hidden;
+    gap: 2px;
+  }
+  .tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 8px 0 12px;
+    height: 100%;
+    color: rgb(var(--text-secondary));
+    font-size: 13px;
+    cursor: default;
+    position: relative;
+    border-radius: var(--r-md) var(--r-md) 0 0;
+    transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+    min-width: 0;
+    max-width: 200px;
+  }
+  .tab:hover { background: var(--elevation-2); color: rgb(var(--text-primary)); }
+  .tab.active {
+    background: var(--elevation-0);
+    color: rgb(var(--text-emphasis));
+  }
+  .tab.active::before {
+    content: '';
+    position: absolute;
+    left: 0; right: 0; top: 0;
+    height: 2px;
+    background: var(--accent-primary);
+    border-radius: 2px 2px 0 0;
+  }
+  .tab .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tab .close {
+    width: 16px; height: 16px;
+    display: grid; place-items: center;
+    border-radius: var(--r-sm);
+    color: rgb(var(--text-tertiary));
+    opacity: 0;
+    transition: opacity var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out);
+  }
+  .tab:hover .close, .tab.active .close { opacity: 1; }
+  .tab .close:hover { background: var(--elevation-3); color: rgb(var(--text-primary)); }
+  .tab .pin { color: var(--accent-primary); }
+
+  .tab-spacer { flex: 1; }
+
+  .tab-hidden {
+    display: inline-flex; align-items: center; gap: 5px;
+    height: 24px; margin: 4px 4px 0 0;
+    padding: 0 8px;
+    border-radius: var(--r-md);
+    color: rgb(var(--text-secondary));
+    font-size: 12px;
+    cursor: default;
+    transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+  }
+  .tab-hidden:hover { background: var(--elevation-2); color: rgb(var(--text-primary)); }
+  .tab-hidden .count {
+    background: var(--accent-primary);
+    color: #FFF;
+    font-size: 10px; font-weight: 600;
+    padding: 0 5px;
+    height: 15px; min-width: 15px;
+    display: inline-grid; place-items: center;
+    border-radius: 8px;
+  }
+  .tab-plus {
+    width: 26px; height: 24px; margin: 4px 2px 0 0;
+    display: grid; place-items: center;
+    border-radius: var(--r-md);
+    color: rgb(var(--text-secondary));
+    cursor: default;
+    transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+  }
+  .tab-plus:hover { background: var(--elevation-2); color: rgb(var(--text-primary)); }
+
+  /* ---------- Grid ---------- */
+  .grid {
+    padding: 8px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap: 8px;
+    min-height: 0;
+    background: var(--elevation-0);
+  }
+  .cell {
+    background: var(--elevation-1);
+    border: 1px solid var(--divider-inner);
+    border-radius: var(--r-md);
+    overflow: hidden;
+    display: flex; flex-direction: column;
+    min-width: 0; min-height: 0;
+    transition:
+      border-color var(--dur-fast) var(--ease-out),
+      box-shadow   var(--dur-fast) var(--ease-out),
+      transform    var(--dur-fast) var(--ease-out);
+  }
+  .cell:hover { box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15); }
+  .cell.focused {
+    border-color: var(--accent-primary);
+    box-shadow:
+      0 0 0 1px var(--accent-primary),
+      0 8px 28px var(--accent-glow);
+  }
+  .cell-head {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 8px 6px 10px;
+    background: var(--elevation-2);
+    border-bottom: 1px solid var(--divider-inner);
+    min-height: 28px;
+  }
+  .cell-head .title {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    font-weight: 500;
+    color: rgb(var(--text-primary));
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .cell-head .ctrl { width: 20px; height: 20px; }
+  .cell-head .ctrl svg { width: 12px; height: 12px; }
+  .cell-body {
+    flex: 1;
+    padding: 10px 12px;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 12px;
+    line-height: 1.55;
+    color: rgb(var(--text-primary));
+    overflow: hidden;
+    min-height: 0;
+  }
+  .cell-body .prompt { color: var(--accent-secondary); font-weight: 500; }
+  .cell-body .out-i  { color: rgb(var(--text-secondary)); }
+  .cell-body .out-s  { color: var(--success); }
+  .cell-body .out-w  { color: var(--warning); }
+  .cell-body .out-e  { color: var(--error); }
+  .cell-body .out-d  { color: rgb(var(--text-tertiary)); }
+  .cell-body .hex    { color: var(--accent-secondary); }
+  .cell-body .cursor {
+    display: inline-block;
+    width: 7px; height: 14px;
+    background: rgb(var(--text-primary));
+    margin-left: 2px;
+    vertical-align: middle;
+    animation: blink 1s steps(2) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* ---------- Status bar ---------- */
+  .status {
+    background: var(--elevation-1);
+    border-top: 1px solid var(--divider-inner);
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
+    gap: 4px;
+    font-size: 12px;
+    color: rgb(var(--text-secondary));
+    user-select: none;
+  }
+  .status .item {
+    display: inline-flex; align-items: center;
+    gap: 5px;
+    padding: 0 6px;
+    height: 20px;
+    border-radius: var(--r-sm);
+    cursor: default;
+    transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+  }
+  .status .item:hover { background: var(--elevation-2); color: rgb(var(--text-primary)); }
+  .status .sep {
+    width: 1px; height: 12px;
+    background: var(--divider-inner);
+    margin: 0 4px;
+  }
+  .status .bell {
+    color: var(--accent-primary);
+    position: relative;
+  }
+  .status .bell .n {
+    background: var(--accent-primary); color: #FFF;
+    font-size: 9px; font-weight: 700;
+    padding: 0 4px; min-width: 14px; height: 14px;
+    display: inline-grid; place-items: center;
+    border-radius: 7px;
+    margin-left: 2px;
+  }
+
+  /* ---------- Popup preview (a small floating dropdown) ---------- */
+  .popup-preview {
+    position: absolute;
+    top: calc(var(--h-header) + var(--h-tab) + 6px);
+    right: 68px;
+    width: 240px;
+    background: var(--elevation-2);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--r-md);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+    padding: 4px;
+    z-index: 5;
+    animation: popIn 0.24s var(--ease-out) both;
+    animation-delay: 0.6s;
+    opacity: 0;
+  }
+  @keyframes popIn {
+    from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+    to   { opacity: 1; transform: none; }
+  }
+  .pop-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 10px;
+    border-radius: var(--r-sm);
+    color: rgb(var(--text-primary));
+    font-size: 13px;
+    cursor: default;
+  }
+  .pop-item:hover, .pop-item.focused { background: var(--accent-primary); color: #FFF; }
+  .pop-item .kbd {
+    margin-left: auto;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: rgb(var(--text-tertiary));
+    background: var(--elevation-3);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+  .pop-item.focused .kbd { color: rgba(255,255,255,0.85); background: rgba(0,0,0,0.2); }
+  .pop-sep { height: 1px; background: var(--divider-inner); margin: 4px 6px; }
+  .pop-head {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: rgb(var(--text-tertiary));
+    padding: 6px 10px 2px;
+  }
+
+  /* ---------- Reveal choreography ---------- */
+  .fade-up { animation: fadeUp 0.5s var(--ease-out) both; }
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: none; }
+  }
+
+  /* Position wrapper so popup can absolute over app */
+  .app-wrapper { position: relative; width: 100%; display: grid; place-items: center; }
+</style>
+</head>
+<body>
+
+<div class="sketch-caption">ClaudeTerminal · IntelliJ New UI sketch · v1.30 proposal</div>
+<button class="theme-toggle" id="themeToggle" type="button">
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="4"/>
+    <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
+  </svg>
+  <span id="themeLabel">Dark</span>
+</button>
+
+<div class="app-wrapper">
+<div class="app">
+
+  <!-- ============ HEADER (merged single row) ============ -->
+  <div class="header">
+    <div class="traffic" aria-hidden="true">
+      <div class="dot close"></div><div class="dot min"></div><div class="dot max"></div>
+    </div>
+
+    <div class="breadcrumb">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+      </svg>
+      <span>claude-terminal</span>
+      <span class="sep">/</span>
+      <span>src</span>
+      <span class="sep">/</span>
+      <span class="current">components</span>
+    </div>
+
+    <div class="h-widget" style="margin-left: 8px;">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/>
+      </svg>
+      <span>master</span>
+      <svg class="chev" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="6 9 12 15 18 9"/>
+      </svg>
+    </div>
+
+    <div class="h-widget">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polygon points="5 3 19 12 5 21 5 3"/>
+      </svg>
+      <span>refactor-tabs</span>
+      <svg class="chev" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="6 9 12 15 18 9"/>
+      </svg>
+    </div>
+
+    <div class="spacer"></div>
+
+    <div class="update-pill" title="Update v1.30 available">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/><polyline points="12 7 12 12 16 14"/>
+      </svg>
+      <span>Update 1.30</span>
+    </div>
+
+    <div class="ctrl" title="Search Everywhere (Shift Shift)">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+    </div>
+    <div class="ctrl" title="Settings">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+      </svg>
+    </div>
+    <div class="ctrl" title="Minimize">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <line x1="5" y1="12" x2="19" y2="12"/>
+      </svg>
+    </div>
+    <div class="ctrl" title="Maximize">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+      </svg>
+    </div>
+    <div class="ctrl danger" title="Close">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/>
+      </svg>
+    </div>
+  </div>
+
+  <!-- ============ BODY ============ -->
+  <div class="body">
+
+    <!-- Rail: tool-window stripe -->
+    <div class="rail">
+      <div class="rail-btn active" title="File tree">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+        </svg>
+      </div>
+      <div class="rail-btn" title="Sessions">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
+          <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
+        </svg>
+      </div>
+      <div class="rail-btn" title="Git changes">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/>
+        </svg>
+      </div>
+      <div class="rail-btn" title="Search everywhere">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+      </div>
+      <div class="rail-sep"></div>
+      <div class="rail-btn" title="Hints">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.74V17a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2v-2.26A7 7 0 0 0 12 2z"/>
+        </svg>
+      </div>
+      <div class="rail-btn" title="File changes">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+          <line x1="9" y1="15" x2="15" y2="15"/>
+        </svg>
+      </div>
+
+      <div class="rail-flex"></div>
+
+      <div class="rail-btn" title="Collapse sidebar">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="15 18 9 12 15 6"/>
+        </svg>
+      </div>
+    </div>
+
+    <!-- Panel: expanded tool window -->
+    <div class="panel">
+      <div class="panel-section" style="flex: 1;">
+        <div class="panel-head">
+          <span>Project</span>
+          <div class="actions">
+            <div class="ctrl" title="Refresh"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></div>
+            <div class="ctrl" title="More"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></div>
+          </div>
+        </div>
+        <div class="tree">
+          <div class="row">
+            <svg class="chev open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="#EDA200" stroke="#EDA200" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+            <span class="name">src</span>
+          </div>
+          <div class="row i1">
+            <svg class="chev open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="#EDA200" stroke="#EDA200" stroke-width="1.5"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+            <span class="name">components</span>
+            <span class="badge">14</span>
+          </div>
+          <div class="row i2 selected">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <span class="name">TerminalTabs.tsx</span>
+          </div>
+          <div class="row i2">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <span class="name">Sidebar.tsx</span>
+          </div>
+          <div class="row i2">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <span class="name">TitleBar.tsx</span>
+          </div>
+          <div class="row i2">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <span class="name">TerminalGrid.tsx</span>
+          </div>
+          <div class="row i1">
+            <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="#EDA200" stroke="#EDA200" stroke-width="1.5"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+            <span class="name">store</span>
+          </div>
+          <div class="row i1">
+            <svg style="width:10px"></svg>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <span class="name">App.tsx</span>
+          </div>
+          <div class="row i1">
+            <svg style="width:10px"></svg>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <span class="name">index.css</span>
+            <span class="meta">M</span>
+          </div>
+          <div class="row">
+            <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="#EDA200" stroke="#EDA200" stroke-width="1.5"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+            <span class="name">src-tauri</span>
+          </div>
+          <div class="row">
+            <svg style="width:10px"></svg>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <span class="name">package.json</span>
+          </div>
+          <div class="row">
+            <svg style="width:10px"></svg>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <span class="name">README.md</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="split-h"></div>
+
+      <div class="panel-section" style="flex-shrink: 0; max-height: 240px; overflow: hidden;">
+        <div class="panel-head">
+          <span>Sessions</span>
+          <div class="actions">
+            <div class="ctrl" title="New session"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></div>
+          </div>
+        </div>
+        <div class="tree" style="flex: none; padding-bottom: 8px;">
+          <div class="row">
+            <div class="dot-status running"></div>
+            <span class="name">refactor-tabs</span>
+            <span class="meta">4h</span>
+          </div>
+          <div class="row">
+            <div class="dot-status running"></div>
+            <span class="name">stripe-sidebar</span>
+            <span class="meta">2h</span>
+          </div>
+          <div class="row">
+            <div class="dot-status idle"></div>
+            <span class="name">tokens-lockdown</span>
+            <span class="meta">1d</span>
+          </div>
+          <div class="row">
+            <div class="dot-status idle"></div>
+            <span class="name">merged-header</span>
+            <span class="meta">1d</span>
+          </div>
+          <div class="row">
+            <div class="dot-status err"></div>
+            <span class="name">grid-tiles</span>
+            <span class="meta">3d</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main -->
+    <div class="main">
+
+      <!-- Tabs -->
+      <div class="tabs">
+        <div class="tab active">
+          <svg class="pin" width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M16 4v4l2 2v2h-5v6l-1 4-1-4v-6H6v-2l2-2V4z"/></svg>
+          <span class="name">refactor-tabs</span>
+          <div class="dot-status running sm"></div>
+          <div class="close">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
+          </div>
+        </div>
+        <div class="tab">
+          <svg class="pin" width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M16 4v4l2 2v2h-5v6l-1 4-1-4v-6H6v-2l2-2V4z"/></svg>
+          <span class="name">stripe-sidebar</span>
+          <div class="dot-status running sm"></div>
+          <div class="close">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
+          </div>
+        </div>
+        <div class="tab">
+          <span class="name">tokens-lockdown</span>
+          <div class="dot-status idle sm"></div>
+          <div class="close">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
+          </div>
+        </div>
+        <div class="tab">
+          <span class="name">merged-header</span>
+          <div class="dot-status idle sm"></div>
+          <div class="close">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
+          </div>
+        </div>
+
+        <div class="tab-spacer"></div>
+
+        <div class="tab-hidden" title="Show Hidden Tabs" id="hiddenPeek">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+          <span class="count">3</span>
+        </div>
+        <div class="tab-plus" title="New Terminal">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </div>
+        <div class="tab-plus" title="Toggle grid">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        </div>
+      </div>
+
+      <!-- Grid -->
+      <div class="grid">
+
+        <div class="cell focused fade-up" style="animation-delay: 0.05s">
+          <div class="cell-head">
+            <div class="title">
+              <svg class="pin" width="10" height="10" viewBox="0 0 24 24" fill="var(--accent-primary)"><path d="M16 4v4l2 2v2h-5v6l-1 4-1-4v-6H6v-2l2-2V4z"/></svg>
+              refactor-tabs
+              <div class="dot-status running sm"></div>
+            </div>
+            <div class="ctrl" title="Maximize"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></div>
+            <div class="ctrl" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></div>
+          </div>
+          <div class="cell-body">
+            <div><span class="prompt">›</span> claude "add pinned tab semantics to TerminalTabs.tsx"</div>
+            <div class="out-i">✱ Reading TerminalTabs.tsx (312 lines)</div>
+            <div class="out-i">✱ Found tab state in appStore.ts:47</div>
+            <div class="out-s">✓ Added <span class="out-i">pinnedTabIds: Set&lt;string&gt;</span> to store</div>
+            <div class="out-s">✓ Sorted pinned tabs to front of strip</div>
+            <div class="out-s">✓ Right-click menu wired (Pin / Unpin / Close Others)</div>
+            <div class="out-i">✱ Adding middle-click close…<span class="cursor"></span></div>
+          </div>
+        </div>
+
+        <div class="cell fade-up" style="animation-delay: 0.12s">
+          <div class="cell-head">
+            <div class="title">
+              <svg class="pin" width="10" height="10" viewBox="0 0 24 24" fill="var(--accent-primary)"><path d="M16 4v4l2 2v2h-5v6l-1 4-1-4v-6H6v-2l2-2V4z"/></svg>
+              stripe-sidebar
+              <div class="dot-status running sm"></div>
+            </div>
+            <div class="ctrl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></div>
+            <div class="ctrl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></div>
+          </div>
+          <div class="cell-body">
+            <div><span class="prompt">›</span> claude "convert Sidebar.tsx to icon rail + panel"</div>
+            <div class="out-i">✱ Refactored to 48px rail + 260px panel</div>
+            <div class="out-i">✱ Added drag-reorder via framer-motion layout</div>
+            <div class="out-w">⚠ Panel width now token: <span class="out-d">--w-panel</span></div>
+            <div class="out-s">✓ Icons at 20×20, monochrome (Lucide)</div>
+            <div class="out-s">✓ Focus indicator: 2px accent bar, left-anchored</div>
+            <div class="out-i">✱ Wiring optional-label mode…</div>
+          </div>
+        </div>
+
+        <div class="cell fade-up" style="animation-delay: 0.19s">
+          <div class="cell-head">
+            <div class="title">
+              tokens-lockdown
+              <div class="dot-status idle sm"></div>
+            </div>
+            <div class="ctrl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></div>
+            <div class="ctrl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></div>
+          </div>
+          <div class="cell-body">
+            <div><span class="prompt">›</span> claude "swap elevation ramp to ExpUI hex"</div>
+            <div class="out-d">--elevation-0: <span class="hex">#1E1F22</span>  <span class="out-s">✓</span></div>
+            <div class="out-d">--elevation-1: <span class="hex">#2B2D30</span>  <span class="out-s">✓</span></div>
+            <div class="out-d">--elevation-2: <span class="hex">#393B40</span>  <span class="out-s">✓</span></div>
+            <div class="out-d">--elevation-3: <span class="hex">#43454A</span>  <span class="out-s">✓</span></div>
+            <div class="out-d">--elevation-4: <span class="hex">#4E5157</span>  <span class="out-s">✓</span></div>
+            <div class="out-s">✓ index.css + accentTheme.ts + tailwind.config.js</div>
+            <div class="out-i">Session complete.</div>
+          </div>
+        </div>
+
+        <div class="cell fade-up" style="animation-delay: 0.26s">
+          <div class="cell-head">
+            <div class="title">
+              merged-header
+              <div class="dot-status idle sm"></div>
+            </div>
+            <div class="ctrl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></div>
+            <div class="ctrl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></div>
+          </div>
+          <div class="cell-body">
+            <div><span class="prompt">›</span> claude "consolidate TitleBar into single header row"</div>
+            <div class="out-i">✱ Height set to var(--h-header) = 40px</div>
+            <div class="out-i">✱ Widgets: breadcrumb ┆ git ┆ session</div>
+            <div class="out-i">✱ Right cluster: pill ┆ search ┆ settings ┆ ⛶</div>
+            <div class="out-s">✓ Removed secondary toolbar row</div>
+            <div class="out-s">✓ Reclaimed ~34px of vertical space</div>
+            <div class="out-i">Session complete.</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ STATUS BAR ============ -->
+  <div class="status">
+    <div class="item" title="Current branch">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/>
+      </svg>
+      master
+    </div>
+    <div class="item" title="Sync status" style="color: var(--success);">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="20 6 9 17 4 12"/>
+      </svg>
+      up to date
+    </div>
+    <div class="sep"></div>
+    <div class="item">4 terminals · 2 running</div>
+    <div class="item">last event: 12s ago</div>
+    <div class="spacer" style="flex: 1;"></div>
+    <div class="item">UTF-8</div>
+    <div class="item">CRLF</div>
+    <div class="item">v1.30.0</div>
+    <div class="sep"></div>
+    <div class="item bell" title="Notifications">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+      </svg>
+      <span class="n">2</span>
+    </div>
+  </div>
+
+  <!-- Peek: Search Everywhere popup preview (auto-appears) -->
+  <div class="popup-preview" id="popupPreview" aria-hidden="true">
+    <div class="pop-head">Search Everywhere · preview</div>
+    <div class="pop-item focused">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      New Terminal
+      <span class="kbd">⌘ T</span>
+    </div>
+    <div class="pop-item">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+      Toggle grid view
+      <span class="kbd">⌘ G</span>
+    </div>
+    <div class="pop-item">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
+      Rename session…
+    </div>
+    <div class="pop-sep"></div>
+    <div class="pop-head">Sessions</div>
+    <div class="pop-item">
+      <div class="dot-status running sm"></div>
+      refactor-tabs
+      <span class="kbd">1</span>
+    </div>
+    <div class="pop-item">
+      <div class="dot-status running sm"></div>
+      stripe-sidebar
+      <span class="kbd">2</span>
+    </div>
+    <div class="pop-item">
+      <div class="dot-status idle sm"></div>
+      tokens-lockdown
+      <span class="kbd">3</span>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<script>
+  const toggle = document.getElementById('themeToggle');
+  const label  = document.getElementById('themeLabel');
+  toggle.addEventListener('click', () => {
+    const isDark = document.documentElement.dataset.theme === 'dark';
+    document.documentElement.dataset.theme = isDark ? 'light' : 'dark';
+    label.textContent = isDark ? 'Light' : 'Dark';
+  });
+
+  // Toggle popup preview on hover-peek so users can dismiss/reopen
+  const peek = document.getElementById('hiddenPeek');
+  const pop  = document.getElementById('popupPreview');
+  let popShown = true;
+  peek.addEventListener('click', () => {
+    popShown = !popShown;
+    pop.style.display = popShown ? 'block' : 'none';
+  });
+</script>
+</body>
+</html>
