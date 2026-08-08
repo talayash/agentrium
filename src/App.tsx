@@ -33,6 +33,7 @@ import { MemoryEditor } from './components/MemoryEditor';
 import { StatusBar } from './components/StatusBar';
 import { ToastContainer } from './components/ToastContainer';
 import { History } from 'lucide-react';
+import { setColorfulFolderIcons } from './utils/fileIcons';
 import { getWindowMode } from './lib/windowMode';
 import { DragPreview } from './components/DragPreview';
 import { WebviewWindow, getAllWebviewWindows } from '@tauri-apps/api/webviewWindow';
@@ -151,6 +152,7 @@ function App() {
   const themeMode = useAppStore((s) => s.themeMode);
   const uiDensity = useAppStore((s) => s.uiDensity);
   const tabHeight = useAppStore((s) => s.tabHeight);
+  const colorfulFolderIcons = useAppStore((s) => s.colorfulFolderIcons);
   const accentColorHex = useAppStore((s) => s.accentColorHex);
   const uiReduceMotion = useAppStore((s) => s.uiReduceMotion);
   const uiFontScale = useAppStore((s) => s.uiFontScale);
@@ -161,7 +163,8 @@ function App() {
     applyAccentColor(accentColorHex);
     applyReduceMotion(uiReduceMotion);
     applyUiFontScale(uiFontScale);
-  }, [themeMode, uiDensity, tabHeight, accentColorHex, uiReduceMotion, uiFontScale]);
+    setColorfulFolderIcons(colorfulFolderIcons);
+  }, [themeMode, uiDensity, tabHeight, accentColorHex, uiReduceMotion, uiFontScale, colorfulFolderIcons]);
 
   // Follow the OS "reduce motion" setting (WCAG 2.2 SC 2.3.3) on startup and
   // whenever it changes - but only until the user makes an explicit choice in

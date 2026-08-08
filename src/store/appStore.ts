@@ -105,6 +105,9 @@ interface AppState {
    *  Large; we mirror those (24/28/32px). Consumed via --h-tab CSS var
    *  written by accentTheme.applyTabHeight(). */
   tabHeight: TabHeight;
+  /** When true, folder icons in the file tree get per-name color variants
+   *  (material-icon-theme). Default is uniform yellow (matches sketch). */
+  colorfulFolderIcons: boolean;
   accentColorHex: string;
   uiFontScale: number;
   uiReduceMotion: boolean;
@@ -293,6 +296,7 @@ interface AppState {
   setThemeMode: (mode: ThemeMode) => void;
   setUiDensity: (density: UiDensity) => void;
   setTabHeight: (h: TabHeight) => void;
+  setColorfulFolderIcons: (v: boolean) => void;
   setAccentColorHex: (hex: string) => void;
   setUiFontScale: (scale: number) => void;
   setUiReduceMotion: (enabled: boolean) => void;
@@ -505,6 +509,7 @@ export const useAppStore = create<AppState>()(
       themeMode: 'dark' as ThemeMode,
       uiDensity: 'comfortable' as UiDensity,
       tabHeight: 'medium' as TabHeight,
+      colorfulFolderIcons: false,
       accentColorHex: DEFAULT_ACCENT_COLOR,
       uiFontScale: DEFAULT_UI_FONT_SCALE,
       uiReduceMotion: false,
@@ -681,6 +686,7 @@ export const useAppStore = create<AppState>()(
       setThemeMode: (mode) => set({ themeMode: mode }),
       setUiDensity: (density) => set({ uiDensity: density }),
       setTabHeight: (h) => set({ tabHeight: h }),
+      setColorfulFolderIcons: (v) => set({ colorfulFolderIcons: v }),
       setAccentColorHex: (hex) => {
         const ok = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(hex);
         set({ accentColorHex: ok ? hex : DEFAULT_ACCENT_COLOR });
@@ -1135,6 +1141,7 @@ export const useAppStore = create<AppState>()(
         themeMode: state.themeMode,
         uiDensity: state.uiDensity,
         tabHeight: state.tabHeight,
+        colorfulFolderIcons: state.colorfulFolderIcons,
         accentColorHex: state.accentColorHex,
         uiFontScale: state.uiFontScale,
         uiReduceMotion: state.uiReduceMotion,
