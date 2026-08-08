@@ -315,7 +315,7 @@ export function TitleBar() {
 
           <div className="w-px h-4 bg-[var(--ij-divider-soft)] mx-1" />
 
-          <Tooltip label="Search Everywhere" shortcut="Shift Shift">
+          <Tooltip label="Search Everywhere" shortcut="Ctrl+P">
             <button onClick={openCommandPalette} className={toolBtn(false)}>
               <SearchIcon size={15} strokeWidth={2} />
             </button>
