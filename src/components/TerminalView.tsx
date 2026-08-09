@@ -212,6 +212,17 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
 
     fitAddon.fit();
 
+    // DIAG(pty-size): trace initial fit vs. PTY's hard-coded 120x30 spawn.
+    // Note: initial fit does NOT push size to PTY — it waits for ResizeObserver,
+    // which is the exact race window we're hunting for. Remove after fix.
+    {
+      const rect = containerRef.current.getBoundingClientRect();
+      const ts = new Date().toISOString().slice(11, 23);
+      console.log(
+        `[pty-size] ${ts} fit initial id=${terminalId} cols=${terminal.cols} rows=${terminal.rows} container=${Math.round(rect.width)}x${Math.round(rect.height)}px (PTY still at 120x30)`
+      );
+    }
+
     // Auto-focus so keyboard input works immediately without requiring a click
     terminal.focus();
 
@@ -403,7 +414,17 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
     });
 
     const resizeObserver = new ResizeObserver(() => {
+      const prevCols = terminal.cols;
+      const prevRows = terminal.rows;
       fitAddon.fit();
+      // DIAG(pty-size): only log when the fit actually changed cols/rows so we
+      // don't spam on every layout tick. Remove after fix.
+      if (terminal.cols !== prevCols || terminal.rows !== prevRows) {
+        const ts = new Date().toISOString().slice(11, 23);
+        console.log(
+          `[pty-size] ${ts} fit observer id=${terminalId} ${prevCols}x${prevRows}→${terminal.cols}x${terminal.rows}`
+        );
+      }
       resizeTerminal(terminalId, terminal.cols, terminal.rows).catch((err) => {
         console.error(`Failed to resize terminal ${terminalId}:`, err); reportInvokeFailure('resize_terminal', err);
       });
@@ -465,7 +486,16 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
     terminal.options.theme = resolveTerminalTheme(themeName, accentColorHex);
     // Refit + push new dimensions to the PTY whenever cell metrics may have
     // changed. fit() is a no-op if cols/rows didn't actually shift.
+    const prevCols = terminal.cols;
+    const prevRows = terminal.rows;
     fitAddonRef.current?.fit();
+    // DIAG(pty-size): remove after fix.
+    if (terminal.cols !== prevCols || terminal.rows !== prevRows) {
+      const ts = new Date().toISOString().slice(11, 23);
+      console.log(
+        `[pty-size] ${ts} fit fontchange id=${terminalId} ${prevCols}x${prevRows}→${terminal.cols}x${terminal.rows}`
+      );
+    }
     resizeTerminal(terminalId, terminal.cols, terminal.rows).catch((err) => {
       console.error(`Failed to resize terminal ${terminalId}:`, err); reportInvokeFailure('resize_terminal', err);
     });

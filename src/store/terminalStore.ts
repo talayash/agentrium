@@ -447,6 +447,10 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
   },
 
   resizeTerminal: async (id, cols, rows) => {
+    // DIAG(pty-size): trace the IPC gap between JS-side fit and Rust-side
+    // PTY resize. Remove after burn-in bug is resolved.
+    const ts = new Date().toISOString().slice(11, 23);
+    console.log(`[pty-size] ${ts} invoke resize id=${id} cols=${cols} rows=${rows}`);
     await invoke('resize_terminal', { id, cols, rows });
   },
 

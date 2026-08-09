@@ -177,6 +177,14 @@ impl TerminalManager {
             })
             .map_err(|e| format!("Failed to open pty: {}", e))?;
 
+        // DIAG(pty-size): trace initial PTY size vs. subsequent xterm resizes to
+        // catch the "burn" bug (ghost characters after /clear). Remove after fix.
+        eprintln!(
+            "[pty-size] {} create id={} cols=120 rows=30 (initial spawn)",
+            Utc::now().format("%H:%M:%S%.3f"),
+            id
+        );
+
         // Spawn claude directly so the process exits when claude finishes,
         // allowing the terminal-finished event to fire for notifications
         #[cfg(target_os = "windows")]
@@ -674,6 +682,14 @@ impl TerminalManager {
         if terminal.config.status == TerminalStatus::Stopped {
             return Ok(());
         }
+        // DIAG(pty-size): remove after burn-in bug is resolved.
+        eprintln!(
+            "[pty-size] {} resize id={} cols={} rows={}",
+            Utc::now().format("%H:%M:%S%.3f"),
+            id,
+            cols,
+            rows
+        );
         terminal
             .pty_pair
             .master
