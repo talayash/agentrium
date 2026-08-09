@@ -205,7 +205,15 @@ export function TerminalTabs() {
   // `hiddenTabIds` holds the ids the strip can't fit, so Task C's chevron
   // dropdown can surface them. `chevronWidth` is now the measured
   // `CHEVRON_WIDTH` constant defined at the top of this module.
-  const stripRef = useRef<HTMLUListElement | null>(null);
+  //
+  // The ref points at the *parent* of the ul (the flex-1 min-w-0 wrapper),
+  // not the ul itself. The ul has overflow-x-auto and no flex-grow, so its
+  // clientWidth is content-derived — measuring it makes the overflow
+  // decision depend on the previous overflow decision (feedback loop) and
+  // reports "no space" the moment we hide the last tab. The parent's width
+  // is set by the surrounding flex row and is stable across tab-visibility
+  // toggles.
+  const stripRef = useRef<HTMLDivElement | null>(null);
   const [hiddenTabIds, setHiddenTabIds] = useState<string[]>([]);
   const hiddenSet = useMemo(() => new Set(hiddenTabIds), [hiddenTabIds]);
 
@@ -260,9 +268,12 @@ export function TerminalTabs() {
         tabWidths,
         containerWidth,
         chevronWidth: CHEVRON_WIDTH,
-        // Approx. two 28px controls (+, grid toggle) + gaps + divider slack.
-        // Adjust when the real controls are stabilized.
-        reservedRight: 96,
+        // Space inside the measured flex-1 parent that isn't available for
+        // tabs: the "+" button (28px + ~4px margin ≈ 32). The chevron is
+        // reserved separately by `chevronWidth` when overflow triggers.
+        // The Grid toggle and Scripts menu live outside this parent, so
+        // they don't factor in.
+        reservedRight: 32,
       });
 
       setHiddenTabIds((prev) => {
@@ -378,7 +389,7 @@ export function TerminalTabs() {
     <div className="h-full flex flex-col">
       {/* Tab Bar - IntelliJ editor tabs */}
       <div className="h-[var(--h-tab)] bg-elevation-1 border-b border-[var(--ij-divider)] flex items-center justify-between px-0.5">
-        <div className="relative flex items-center flex-1 min-w-0">
+        <div ref={stripRef} className="relative flex items-center flex-1 min-w-0">
           {canScrollLeft && (
             <button
               onClick={() => scrollTabs('left')}
@@ -388,10 +399,7 @@ export function TerminalTabs() {
             </button>
           )}
           <ul
-            ref={(node) => {
-              tabsContainerRef.current = node;
-              stripRef.current = node;
-            }}
+            ref={tabsContainerRef}
             data-tab-strip
             className="flex items-center overflow-x-auto scrollbar-none list-none m-0 p-0"
           >

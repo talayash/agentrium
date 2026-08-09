@@ -118,9 +118,16 @@ export function computeTabOverflow(params: OverflowParams): OverflowResult {
   const visible = tabIds.slice(0, fitCount);
   const hidden = tabIds.slice(fitCount);
 
-  // Keep active tab visible: swap it into the last visible slot.
-  if (activeId && hidden.includes(activeId) && visible.length > 0) {
-    const newVisible = [...visible.slice(0, -1), activeId];
+  // Keep active tab visible. Normally swap it into the last visible slot;
+  // but if the prefix-fit loop couldn't fit *any* tab (every tab wider than
+  // the budget after reserving chevron space), fall through to showing the
+  // active tab alone. Without this fallback the strip renders empty — just
+  // the "N hidden" chevron badge with no visible tab — because a narrow tab
+  // strip plus a wide label produces budget > 0 but no tab that fits.
+  if (activeId && hidden.includes(activeId)) {
+    const newVisible = visible.length > 0
+      ? [...visible.slice(0, -1), activeId]
+      : [activeId];
     const visibleSet = new Set(newVisible);
     return {
       visible: newVisible,

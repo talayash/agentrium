@@ -119,6 +119,41 @@ describe('computeTabOverflow', () => {
     ).toEqual({ visible: ['b'], hidden: ['a', 'c'] });
   });
 
+  it('keeps the single active tab visible when it is wider than the budget', () => {
+    // Regression: with only one tab open in a narrow strip, the tab was
+    // wider than the budget so nothing fit, and the pre-fix active-swap
+    // required visible.length > 0 — so it never fired, leaving `visible`
+    // empty. The strip then rendered just the "1 hidden" chevron badge
+    // with no actual tab. The invariant is: if there is an activeId, at
+    // least the active tab must render.
+    expect(
+      computeTabOverflow({
+        tabIds: ['a'],
+        activeId: 'a',
+        tabWidths: [160],
+        containerWidth: 200,
+        chevronWidth: 50,
+        reservedRight: 96,
+      }),
+    ).toEqual({ visible: ['a'], hidden: [] });
+  });
+
+  it('keeps the active tab visible when no tab fits (multi-tab, wide labels)', () => {
+    // Same shape as the single-tab regression, but with siblings: every
+    // tab is wider than the budget so the prefix-fit loop finds nothing.
+    // Only the active tab is forced visible; the rest stay in `hidden`.
+    expect(
+      computeTabOverflow({
+        tabIds: ['a', 'b', 'c'],
+        activeId: 'b',
+        tabWidths: [160, 160, 160],
+        containerWidth: 200,
+        chevronWidth: 50,
+        reservedRight: 96,
+      }),
+    ).toEqual({ visible: ['b'], hidden: ['a', 'c'] });
+  });
+
   it('hides everything when budget is non-positive and no activeId is set', () => {
     expect(
       computeTabOverflow({
