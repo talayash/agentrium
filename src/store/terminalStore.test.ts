@@ -8,7 +8,7 @@ vi.mock('@tauri-apps/api/core', () => ({
 }));
 
 import type { TerminalConfig } from './terminalStore';
-import { useTerminalStore } from './terminalStore';
+import { useTerminalStore, __resetPendingOutputBuffersForTest } from './terminalStore';
 
 function makeConfig(id: string, overrides: Partial<TerminalConfig> = {}): TerminalConfig {
   return {
@@ -46,6 +46,10 @@ function seed(ids: string[], activeId: string | null = null) {
     bottomTerminalIds: [],
     activeBottomTerminalId: null,
   });
+  // Every handleTerminalOutput() call in the earlier cases queues bytes into
+  // the module-scoped pre-attach buffer. Clear it so setXterm-based tests
+  // don't inherit chunks from unrelated prior cases.
+  __resetPendingOutputBuffersForTest();
 }
 
 describe('terminalStore - unread set', () => {
@@ -231,6 +235,95 @@ describe('terminalStore - writeToTerminal chunking', () => {
     );
     expect(dataLengths.reduce((n, len) => n + len, 0)).toBe(big.length);
     expect(dataLengths.every((len) => len <= 60 * 1024)).toBe(true);
+  });
+});
+
+describe('terminalStore - pre-attach output buffer (issue #48)', () => {
+  beforeEach(() => {
+    seed([]);
+  });
+
+  it('buffers output when xterm is not yet attached, then replays on setXterm', () => {
+    seed(['a'], 'a');
+    // Simulate the spawn→attach race: the backend has started streaming
+    // (Claude Code's ANSI-heavy welcome banner) but TerminalView has not yet
+    // mounted, so xterm is still null.
+    const first = new Uint8Array([0x1b, 0x5b, 0x3f, 0x32, 0x35, 0x6c]); // ESC[?25l
+    const second = new Uint8Array([0x68, 0x69]); // "hi"
+    useTerminalStore.getState().handleTerminalOutput('a', first);
+    useTerminalStore.getState().handleTerminalOutput('a', second);
+
+    // Now the view mounts and attaches. setXterm must replay both chunks in
+    // arrival order so xterm's escape parser sees the ESC prefix before its
+    // continuation — otherwise ANSI parsing wedges and the tab looks blank.
+    const write = vi.fn();
+    useTerminalStore.getState().setXterm('a', { write } as never);
+
+    expect(write).toHaveBeenCalledTimes(2);
+    expect(write).toHaveBeenNthCalledWith(1, first);
+    expect(write).toHaveBeenNthCalledWith(2, second);
+  });
+
+  it('drains the pending buffer only once (no double-replay across attaches)', () => {
+    seed(['a'], 'a');
+    const chunk = new Uint8Array([0x41]); // "A"
+    useTerminalStore.getState().handleTerminalOutput('a', chunk);
+
+    const writeA = vi.fn();
+    useTerminalStore.getState().setXterm('a', { write: writeA } as never);
+    expect(writeA).toHaveBeenCalledTimes(1);
+
+    // A view-switch cycle (unmount then remount) must NOT re-emit the drained
+    // banner — otherwise every tab-switch replays Claude's welcome and the
+    // scrollback duplicates. carryOverBuffer handles the in-lifetime handoff.
+    useTerminalStore.getState().setXterm('a', null);
+    const writeB = vi.fn();
+    useTerminalStore.getState().setXterm('a', { write: writeB } as never);
+    expect(writeB).not.toHaveBeenCalled();
+  });
+
+  it('writes live output directly to xterm when one is attached (no buffering)', () => {
+    seed(['a'], 'a');
+    const write = vi.fn();
+    useTerminalStore.setState((state) => {
+      const next = new Map(state.terminals);
+      const inst = next.get('a')!;
+      next.set('a', { ...inst, xterm: { write } as never });
+      return { terminals: next };
+    });
+
+    const bytes = new Uint8Array([0x42]);
+    useTerminalStore.getState().handleTerminalOutput('a', bytes);
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(write).toHaveBeenCalledWith(bytes);
+
+    // After attach, the pending buffer must be empty — a later attach cycle
+    // shouldn't find any queued chunks.
+    useTerminalStore.setState((state) => {
+      const next = new Map(state.terminals);
+      const inst = next.get('a')!;
+      next.set('a', { ...inst, xterm: null });
+      return { terminals: next };
+    });
+    const write2 = vi.fn();
+    useTerminalStore.getState().setXterm('a', { write: write2 } as never);
+    expect(write2).not.toHaveBeenCalled();
+  });
+
+  it('closeTerminal clears any pre-attach buffer so a re-created id starts clean', async () => {
+    seed(['a'], 'a');
+    useTerminalStore.getState().handleTerminalOutput('a', new Uint8Array([0x58]));
+
+    invokeMock.mockClear();
+    invokeMock.mockResolvedValueOnce(undefined); // close_terminal returns void
+    await useTerminalStore.getState().closeTerminal('a');
+
+    // Re-seed the same id, then attach: nothing should be replayed from the
+    // previous life — that data belongs to a dead PTY.
+    seed(['a'], 'a');
+    const write = vi.fn();
+    useTerminalStore.getState().setXterm('a', { write } as never);
+    expect(write).not.toHaveBeenCalled();
   });
 });
 

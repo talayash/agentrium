@@ -13,6 +13,54 @@ import { detectFramework, type FrameworkHint } from '../lib/preview/framework';
 // (multi-hundred KB) don't hit "Write payload too large".
 const TERMINAL_WRITE_CHUNK_BYTES = 60 * 1024;
 
+// PTY output can arrive before the xterm instance is attached: the backend
+// starts streaming as soon as it spawns Claude Code (reader thread + mpsc
+// drainer), while the frontend still needs `await invoke` to resolve, `set()`
+// to add the terminal to the store, React to mount TerminalView, xterm to
+// initialize, and setXterm to register the ref. Anything in that window used
+// to be silently dropped by handleTerminalOutput, which broke ANSI escape
+// parsing and left new tabs showing a blank screen with a stray `[` (issue
+// #48). We buffer chunks here keyed by terminal id and drain them when
+// setXterm attaches the real xterm. Bounded so a runaway id (e.g. events for
+// a terminal that lives in another window) can't grow the buffer forever.
+const pendingOutputBuffers = new Map<string, Uint8Array[]>();
+const MAX_PENDING_OUTPUT_BYTES_PER_TERMINAL = 512 * 1024;
+
+function bufferPendingOutput(id: string, data: Uint8Array): void {
+  let chunks = pendingOutputBuffers.get(id);
+  const currentBytes = chunks?.reduce((n, c) => n + c.byteLength, 0) ?? 0;
+  if (currentBytes + data.byteLength > MAX_PENDING_OUTPUT_BYTES_PER_TERMINAL) {
+    return; // cap reached — drop rather than grow unbounded
+  }
+  if (!chunks) {
+    chunks = [];
+    pendingOutputBuffers.set(id, chunks);
+  }
+  chunks.push(data);
+}
+
+function drainPendingOutput(id: string, xterm: Terminal): void {
+  const chunks = pendingOutputBuffers.get(id);
+  if (!chunks) return;
+  pendingOutputBuffers.delete(id);
+  for (const chunk of chunks) {
+    try {
+      xterm.write(chunk);
+    } catch {
+      // xterm disposed mid-drain — the rest is unrecoverable, stop.
+      return;
+    }
+  }
+}
+
+/** Test-only: clear the pre-attach buffer. Vitest keeps module state across
+ *  test cases, so beforeEach hooks in terminalStore.test.ts call this to stop
+ *  leftover chunks from an earlier case leaking into the next replay. Not for
+ *  production use. */
+export function __resetPendingOutputBuffersForTest(): void {
+  pendingOutputBuffers.clear();
+}
+
 /**
  * Best-effort framework detection for the Preview panel. Reads the terminal's
  * cwd/package.json via the existing `list_package_scripts` IPC (no new Rust
@@ -333,6 +381,11 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
 
     await invoke('close_terminal', { id });
 
+    // Drop any pre-attach buffered output — the terminal is gone, so replay
+    // makes no sense and the entry would linger until process exit.
+    pendingOutputBuffers.delete(id);
+    if (childId) pendingOutputBuffers.delete(childId);
+
     set((state) => {
       const newTerminals = new Map(state.terminals);
       const instance = newTerminals.get(id);
@@ -486,6 +539,12 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       xterm.write(instance.carryOverBuffer);
     }
 
+    // Replay any PTY chunks that arrived before this xterm was attached (the
+    // spawn→attach race that used to leave issue-#48 tabs blank). Ordered
+    // after restoredOutput/carryOverBuffer so historical scrollback stays
+    // above the live stream — same ordering rule the reader thread enforces.
+    drainPendingOutput(id, xterm);
+
     set((state) => {
       const newTerminals = new Map(state.terminals);
       const inst = newTerminals.get(id);
@@ -524,6 +583,15 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       } catch {
         /* terminal disposed - drop this chunk */
       }
+    } else {
+      // No xterm attached yet (spawn→attach race on a brand-new tab, or the
+      // instance hasn't been added to state yet because `set()` from
+      // createTerminal is still queued behind this event). Buffer the chunk so
+      // setXterm can replay it once the view mounts. Fixes the "new terminal
+      // opens blank" bug (issue #48): a single dropped byte at the start of
+      // Claude Code's ANSI-heavy welcome banner wedged xterm's escape parser
+      // and left the whole tab looking empty.
+      bufferPendingOutput(id, data);
     }
     // Active-work indicator: record the timestamp in a plain Map (no Zustand
     // set() - that would defeat the streaming-rate optimization below).
@@ -708,6 +776,10 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
         newUnread.delete(id);
         newGitCache.delete(id);
         clearTerminalActivity(id);
+        // The tab is moving to another window; that window's store owns any
+        // replay from here on. Drop our copy so future events for this id
+        // (still fired globally by the shared backend) don't buffer forever.
+        pendingOutputBuffers.delete(id);
 
         // Drop any local script-child entry for this parent. We do NOT close
         // the child's PTY — detach never kills processes — but the child isn't
@@ -718,6 +790,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
           if (childInst?.xterm) childInst.xterm.dispose();
           newTerminals.delete(childId);
           newChildren.delete(id);
+          pendingOutputBuffers.delete(childId);
         }
       }
 
@@ -783,6 +856,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
     } catch {
       // Already closed - fall through to store cleanup.
     }
+    pendingOutputBuffers.delete(childId);
     set((state) => {
       const nextTerminals = new Map(state.terminals);
       const inst = nextTerminals.get(childId);
@@ -821,6 +895,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
     } catch {
       // Already gone - fall through to store cleanup.
     }
+    pendingOutputBuffers.delete(id);
     set((state) => {
       const nextTerminals = new Map(state.terminals);
       const inst = nextTerminals.get(id);
