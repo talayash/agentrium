@@ -443,23 +443,13 @@ pub async fn create_terminal(
             }
 
             // Terminal process exited - update status, session history, and notify frontend
-            // Note: the terminal may have already been removed by close_terminal(), so ignore errors
+            // Note: the terminal may have already been removed by close_terminal(), so ignore errors.
+            // Await the lock unbounded: no caller in this codebase holds the manager guard across
+            // an .await, so this can only queue behind bounded sync work (matching every other
+            // .terminals.lock().await site).
             {
-                match tokio::time::timeout(
-                    std::time::Duration::from_secs(2),
-                    terminals_arc.lock(),
-                ).await {
-                    Ok(mut manager) => {
-                        let _ = manager.update_status(&terminal_id, crate::terminal::TerminalStatus::Stopped);
-                    }
-                    Err(_) => {
-                        // Lock starved for 2s: the tab stays "running" forever.
-                        error_reporter::report_bg(
-                            "terminal_status_lock_timeout",
-                            "2s timeout acquiring TerminalManager lock to mark terminal Stopped".to_string(),
-                        );
-                    }
-                }
+                let mut manager = terminals_arc.lock().await;
+                let _ = manager.update_status(&terminal_id, crate::terminal::TerminalStatus::Stopped);
             }
             // Drop accumulated telemetry on the natural process-exit path too -
             // close_terminal() handles the user-close path, but a terminal that
@@ -4197,19 +4187,9 @@ pub async fn create_script_terminal(
                     break;
                 }
             }
-            match tokio::time::timeout(
-                std::time::Duration::from_secs(2),
-                terminals_arc.lock(),
-            ).await {
-                Ok(mut manager) => {
-                    let _ = manager.update_status(&terminal_id, crate::terminal::TerminalStatus::Stopped);
-                }
-                Err(_) => {
-                    error_reporter::report_bg(
-                        "terminal_status_lock_timeout",
-                        "2s timeout acquiring TerminalManager lock to mark terminal Stopped".to_string(),
-                    );
-                }
+            {
+                let mut manager = terminals_arc.lock().await;
+                let _ = manager.update_status(&terminal_id, crate::terminal::TerminalStatus::Stopped);
             }
             if let Err(e) = app_clone.emit("terminal-finished", serde_json::json!({ "id": terminal_id })) {
                 eprintln!("Failed to emit terminal-finished: {}", e);
@@ -4264,19 +4244,9 @@ pub async fn create_shell_terminal(
                     break;
                 }
             }
-            match tokio::time::timeout(
-                std::time::Duration::from_secs(2),
-                terminals_arc.lock(),
-            ).await {
-                Ok(mut manager) => {
-                    let _ = manager.update_status(&terminal_id, crate::terminal::TerminalStatus::Stopped);
-                }
-                Err(_) => {
-                    error_reporter::report_bg(
-                        "terminal_status_lock_timeout",
-                        "2s timeout acquiring TerminalManager lock to mark terminal Stopped".to_string(),
-                    );
-                }
+            {
+                let mut manager = terminals_arc.lock().await;
+                let _ = manager.update_status(&terminal_id, crate::terminal::TerminalStatus::Stopped);
             }
             if let Err(e) = app_clone.emit("terminal-finished", serde_json::json!({ "id": terminal_id })) {
                 eprintln!("Failed to emit terminal-finished: {}", e);
