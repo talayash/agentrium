@@ -1,5 +1,12 @@
 [
   {
+    "version": "1.31.1",
+    "date": "2026-08-09",
+    "features": [
+      { "title": "Fixed single-tab strip rendering", "description": "When a single terminal was open with a long label, the tab bar could show just the overflow badge with no visible tab. The overflow measurement now reads a stable container instead of the tab list itself, and the active tab is always kept visible even in a narrow strip." }
+    ]
+  },
+  {
     "version": "1.31.0",
     "date": "2026-08-08",
     "features": [
