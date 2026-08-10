@@ -1,5 +1,14 @@
 [
   {
+    "version": "1.31.2",
+    "date": "2026-08-10",
+    "features": [
+      { "title": "New terminals no longer open blank", "description": "Fixed a race where output arriving before the terminal view finished mounting was silently dropped — losing the start of Claude's welcome banner could wedge the renderer and leave the tab empty with a stray '[' character. Early output is now buffered and replayed once the terminal attaches." },
+      { "title": "Terminal exit status no longer gets stuck", "description": "Removed a false-positive 2-second lock timeout in the terminal exit handlers that could leave a finished terminal showing as 'Running' and fire spurious error telemetry under normal load." },
+      { "title": "Diagnostics for the ghost-character bug", "description": "Added timestamped [pty-size] logging on both the frontend and Rust sides to correlate PTY spawn, terminal fit, and resize timing — groundwork for fixing the stray characters some users see after /clear." }
+    ]
+  },
+  {
     "version": "1.31.1",
     "date": "2026-08-09",
     "features": [
