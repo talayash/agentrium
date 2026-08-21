@@ -170,8 +170,22 @@ pub fn list_pastes(cwd: &Path) -> Result<Vec<PasteEntry>, String> {
     Ok(entries.into_iter().map(|(_, e)| e).collect())
 }
 
+/// Maximum size of a paste file to read into memory. `.claudeterminal/pastes/`
+/// lives under the terminal cwd; if the file was replaced (externally or via a
+/// symlink swap) with something huge, reading it unbounded would OOM the app.
+/// 5 MB matches `read_text_file`'s cap and is well above any realistic paste.
+const MAX_PASTE_BYTES: u64 = 5 * 1024 * 1024;
+
 pub fn read_paste(cwd: &Path, file_name: &str) -> Result<String, String> {
     let path = safe_join(cwd, file_name)?;
+    let meta = fs::metadata(&path).map_err(|e| e.to_string())?;
+    if meta.len() > MAX_PASTE_BYTES {
+        return Err(format!(
+            "Paste file is too large ({} bytes, max {})",
+            meta.len(),
+            MAX_PASTE_BYTES
+        ));
+    }
     fs::read_to_string(&path).map_err(|e| e.to_string())
 }
 

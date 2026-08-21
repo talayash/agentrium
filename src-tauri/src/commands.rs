@@ -811,8 +811,11 @@ pub async fn update_claude_code() -> Result<String, String> {
 }
 
 #[command]
-pub fn get_hints() -> Vec<HintCategory> {
-    crate::config::get_default_hints()
+pub async fn get_hints() -> Result<Vec<HintCategory>, String> {
+    // Wrapped for consistency: every command flows through wrap_cmd so a
+    // future failure path (e.g. lazy-loaded hints from disk) reports to
+    // telemetry the same way as the rest. Currently infallible.
+    wrap_cmd("get_hints", async move { Ok(crate::config::get_default_hints()) }).await
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -2293,13 +2296,13 @@ pub async fn git_commit(
         }
 
         // Pass message via a temp file to avoid any shell-quoting concerns for
-        // multi-line or special-character messages.
+        // multi-line or special-character messages. Uuid-based filename so a
+        // local attacker can't pre-create the path as a symlink pointing
+        // elsewhere (the old millis-based name was predictable-enough to race
+        // on shared /tmp).
         let tmp = std::env::temp_dir().join(format!(
             "ct-commit-msg-{}.txt",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_millis())
-                .unwrap_or(0)
+            uuid::Uuid::new_v4()
         ));
         tokio::fs::write(&tmp, message.as_bytes()).await.map_err(|e| format!("Failed to write commit message: {}", e))?;
         let tmp_str = tmp.to_string_lossy().to_string();
@@ -2928,19 +2931,33 @@ pub async fn get_session_log(
             return Ok(None);
         }
 
-        // Read up to 512 KB
-        match tokio::fs::read(&canonical_path).await {
-            Ok(bytes) => {
-                let max_bytes = 512 * 1024;
-                let truncated = if bytes.len() > max_bytes {
-                    &bytes[bytes.len() - max_bytes..]
-                } else {
-                    &bytes
-                };
-                Ok(Some(String::from_utf8_lossy(truncated).into_owned()))
-            }
-            Err(_) => Ok(None),
+        // Read the last 512 KB via seek. The old code loaded the whole file
+        // then sliced the tail, which allocated the entire log — 500 MB logs
+        // would pin 500 MB per call. Now we seek to len - 512 KB and read
+        // only the tail.
+        const MAX_BYTES: u64 = 512 * 1024;
+        use tokio::io::{AsyncReadExt, AsyncSeekExt};
+        let mut file = match tokio::fs::File::open(&canonical_path).await {
+            Ok(f) => f,
+            Err(_) => return Ok(None),
+        };
+        let len = match file.metadata().await {
+            Ok(m) => m.len(),
+            Err(_) => return Ok(None),
+        };
+        if len > MAX_BYTES
+            && file
+                .seek(std::io::SeekFrom::Start(len - MAX_BYTES))
+                .await
+                .is_err()
+        {
+            return Ok(None);
         }
+        let mut bytes = Vec::with_capacity(len.min(MAX_BYTES) as usize);
+        if file.read_to_end(&mut bytes).await.is_err() {
+            return Ok(None);
+        }
+        Ok(Some(String::from_utf8_lossy(&bytes).into_owned()))
     })
     .await
 }
@@ -3235,9 +3252,13 @@ pub async fn summarize_session(log_path: String) -> Result<Option<String>, Strin
         };
         let log_content = String::from_utf8_lossy(truncated);
 
-        // Strip ANSI escape sequences
-        let ansi_re = regex::Regex::new(r"\x1b\[[0-9;]*[a-zA-Z]|\x1b\].*?\x07|\x1b\[.*?[A-Za-z]")
-            .unwrap();
+        // Strip ANSI escape sequences. Compile the pattern once — this handler
+        // is called on every terminal-finished event, and recompiling a 3-alt
+        // regex per call was a real per-call cost.
+        static ANSI_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+        let ansi_re = ANSI_RE.get_or_init(|| {
+            regex::Regex::new(r"\x1b\[[0-9;]*[a-zA-Z]|\x1b\].*?\x07|\x1b\[.*?[A-Za-z]").unwrap()
+        });
         let clean_content = ansi_re.replace_all(&log_content, "").to_string();
 
         if clean_content.trim().is_empty() {

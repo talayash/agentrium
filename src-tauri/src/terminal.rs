@@ -709,22 +709,26 @@ impl TerminalManager {
             // indefinitely even after the writer/PTY is dropped, so EOF alone
             // is not guaranteed - the reader thread (and the process itself)
             // would leak. Killing the child forces the read to unblock so the
-            // thread exits. `kill()` is non-blocking (TerminateProcess / SIGKILL),
-            // so it can't deadlock the mutex; we still don't join the reader.
+            // thread exits.
             let _ = terminal.child.kill();
-            // Dropping the terminal then drops the writer and PTY pair.
-            drop(terminal);
+            // Move the child + reader handle onto a detached reaper thread so
+            // wait() actually runs (avoids Unix zombies) and the reader thread
+            // completes before app exit (avoids leaked JoinHandles). Bounded
+            // so a stuck reader can't keep the reaper alive forever.
+            reap_terminal(terminal.child, terminal.reader_handle.take());
         }
         Ok(())
     }
 
     pub fn close_all(&mut self) {
-        // Kill every child so their reader threads unblock and no processes are
-        // orphaned, then clear. Reader threads still clean up asynchronously.
-        for terminal in self.terminals.values_mut() {
+        // Kill every child so their reader threads unblock, move each to a
+        // reaper, and clear. On app shutdown the reapers race the process
+        // exit — bounded joins mean we don't hang the shutdown.
+        let drained: Vec<Terminal> = self.terminals.drain().map(|(_, t)| t).collect();
+        for mut terminal in drained {
             let _ = terminal.child.kill();
+            reap_terminal(terminal.child, terminal.reader_handle.take());
         }
-        self.terminals.clear();
     }
 
     pub fn get_all_configs(&self) -> Vec<TerminalConfig> {
@@ -741,6 +745,8 @@ impl TerminalManager {
             Err(error_reporter::user_err("Terminal not found"))
         }
     }
+
+    // (See `reap_terminal` free function below.)
 
     pub fn update_status(&mut self, id: &str, status: TerminalStatus) -> Result<(), String> {
         if let Some(terminal) = self.terminals.get_mut(id) {
@@ -768,6 +774,42 @@ impl TerminalManager {
             terminal.config.claude_session_id = Some(session_id);
         }
     }
+}
+
+/// Detached cleanup for a closed terminal.
+///
+/// Historically `close()` killed the child but never `wait()`ed it and
+/// dropped the reader `JoinHandle` without joining — on Unix this left
+/// zombies; on Windows a stuck reader thread outlived the tab. Move the
+/// remaining teardown onto its own thread so the caller (holding the
+/// TerminalManager mutex) returns immediately, and cap the joins so a
+/// pathological reader can't keep the process alive on shutdown.
+fn reap_terminal(
+    mut child: Box<dyn Child + Send + Sync>,
+    reader_handle: Option<JoinHandle<()>>,
+) {
+    std::thread::spawn(move || {
+        // wait() reaps the process on Unix and returns the exit status on
+        // Windows. Errors are expected on already-dead children — just drop.
+        let _ = child.wait();
+        if let Some(h) = reader_handle {
+            // Join with a short deadline so a wedged read (Windows ConPTY
+            // pathological case) doesn't keep this thread alive forever.
+            // We give the reader 2s to notice EOF/kill and then detach.
+            let start = std::time::Instant::now();
+            const JOIN_DEADLINE: std::time::Duration = std::time::Duration::from_secs(2);
+            while !h.is_finished() {
+                if start.elapsed() > JOIN_DEADLINE {
+                    // Detach: dropping JoinHandle leaks the OS thread, but the
+                    // process is either single-terminal-closing (rare) or
+                    // shutting down (thread dies with process). Both are fine.
+                    return;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+            let _ = h.join();
+        }
+    });
 }
 
 #[cfg(test)]
