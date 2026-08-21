@@ -133,6 +133,11 @@ export function FileEditorView({ path }: FileEditorViewProps) {
           </div>
         ) : tab.mode === 'diff' ? (
           <DiffEditor
+            // Remount on file switch: DiffEditorWidget swaps its modified
+            // TextModel when modifiedModelPath changes, and if disposal races
+            // that async swap, Monaco throws "TextModel got disposed before
+            // DiffEditorWidget model got reset". A hard remount side-steps it.
+            key={path}
             height="100%"
             language={language}
             original={tab.headContent}

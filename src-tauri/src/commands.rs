@@ -1107,11 +1107,14 @@ pub async fn trash_path(state: State<'_, AppState>, path: String) -> Result<(), 
         validate_path(&path)?;
         let p = std::path::PathBuf::from(&path);
         if !p.exists() {
-            return Err("Path does not exist".to_string());
+            // Race with the filesystem (external delete, stale FileTree row) — user-visible, not a bug.
+            return Err(error_reporter::user_err("Path does not exist"));
         }
         // Only allow trashing paths under an active terminal's working directory.
         validate_path_is_trusted(&state, &path).await?;
-        trash::delete(&p).map_err(|e| e.to_string())
+        // trash::delete failures are environmental: file held by another process,
+        // Windows Recycle Bin confirmation cancelled, or OS aborted mid-op. Not defects.
+        trash::delete(&p).map_err(|e| error_reporter::user_err(e.to_string()))
     })
     .await
 }
