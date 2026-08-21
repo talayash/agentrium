@@ -1081,17 +1081,17 @@ pub async fn rename_path(
         let from_p = std::path::PathBuf::from(&from);
         let to_p = std::path::PathBuf::from(&to);
         if !from_p.exists() {
-            return Err("Source path does not exist".to_string());
+            return Err(error_reporter::user_err("Source path does not exist"));
         }
         // Confine to an active terminal's working directory. `to` shares
         // `from`'s parent (enforced below), so trusting the source is enough.
         validate_path_is_trusted(&state, &from).await?;
         if to_p.exists() {
-            return Err("A file with that name already exists".to_string());
+            return Err(error_reporter::user_err("A file with that name already exists"));
         }
         // Restrict rename to the same parent - moves use move_path instead.
         if from_p.parent() != to_p.parent() {
-            return Err("Rename target must be in the same folder".to_string());
+            return Err(error_reporter::user_err("Rename target must be in the same folder"));
         }
         std::fs::rename(&from_p, &to_p).map_err(|e| e.to_string())
     })
@@ -1153,7 +1153,7 @@ pub async fn move_into_dir(
         let src_canon = std::fs::canonicalize(&src).map_err(|e| e.to_string())?;
         let dst_dir_canon = std::fs::canonicalize(&dst_dir).map_err(|e| e.to_string())?;
         if dst_dir_canon == src_canon || dst_dir_canon.starts_with(&src_canon) {
-            return Err("Cannot move a folder into itself".to_string());
+            return Err(error_reporter::user_err("Cannot move a folder into itself"));
         }
         // Fall back to copy+delete when fs::rename can't cross volumes.
         if let Err(rename_err) = std::fs::rename(&src, &dst) {
@@ -1186,25 +1186,27 @@ pub async fn copy_into_dir(
         let src = std::path::PathBuf::from(&source);
         let dst_dir = std::path::PathBuf::from(&dest_dir);
         if !src.exists() {
-            return Err("Source does not exist".to_string());
+            return Err(error_reporter::user_err("Source does not exist"));
         }
         if !dst_dir.is_dir() {
-            return Err("Destination is not a folder".to_string());
+            return Err(error_reporter::user_err("Destination is not a folder"));
         }
         // Both endpoints must live under an active terminal's working directory.
         validate_path_is_trusted(&state, &source).await?;
         validate_path_is_trusted(&state, &dest_dir).await?;
         let name = src
             .file_name()
-            .ok_or_else(|| "Source has no file name".to_string())?;
+            .ok_or_else(|| error_reporter::user_err("Source has no file name"))?;
         let dst = dst_dir.join(name);
         if dst.exists() {
-            return Err("A file with that name already exists in the destination".to_string());
+            return Err(error_reporter::user_err(
+                "A file with that name already exists in the destination",
+            ));
         }
         let src_canon = std::fs::canonicalize(&src).map_err(|e| e.to_string())?;
         let dst_dir_canon = std::fs::canonicalize(&dst_dir).map_err(|e| e.to_string())?;
         if dst_dir_canon.starts_with(&src_canon) {
-            return Err("Cannot copy a folder into itself".to_string());
+            return Err(error_reporter::user_err("Cannot copy a folder into itself"));
         }
         let meta = std::fs::metadata(&src).map_err(|e| e.to_string())?;
         if meta.is_dir() {
@@ -1223,11 +1225,17 @@ pub async fn copy_into_dir(
 /// interpolation; the path is canonicalized so symlinks/relative inputs are
 /// resolved before we hand them to the native command.
 #[command]
-pub async fn reveal_in_file_manager(path: String) -> Result<(), String> {
+pub async fn reveal_in_file_manager(
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<(), String> {
     wrap_cmd("reveal_in_file_manager", async move {
         if path.is_empty() || path.contains('\0') {
-            return Err("Invalid path".to_string());
+            return Err(error_reporter::user_err("Invalid path"));
         }
+        // Confine to an active terminal's working directory so a rogue renderer
+        // extension can't invoke this to enumerate the filesystem via Explorer.
+        validate_path_is_trusted(&state, &path).await?;
         let canonical = std::fs::canonicalize(&path).map_err(|e| e.to_string())?;
         let meta = std::fs::metadata(&canonical).map_err(|e| e.to_string())?;
 
@@ -2306,7 +2314,7 @@ pub async fn get_push_preview(
             .trim()
             .to_string();
         if local_branch.is_empty() || local_branch == "HEAD" {
-            return Err("Cannot push from a detached HEAD".to_string());
+            return Err(error_reporter::user_err("Cannot push from a detached HEAD"));
         }
 
         // Configured remotes.
@@ -2582,7 +2590,11 @@ pub async fn checkout_branch(
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
             let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            return Err(if !stderr.is_empty() { stderr } else { stdout });
+            // git checkout failure is a user/environment condition (dirty tree,
+            // unknown branch, etc.) — surface to UI but skip telemetry.
+            return Err(error_reporter::user_err(
+                if !stderr.is_empty() { stderr } else { stdout },
+            ));
         }
         Ok(())
     })
@@ -2625,7 +2637,8 @@ pub async fn create_worktree(
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-            return Err(stderr);
+            // Branch already exists / worktree path taken / dirty index — user-caused.
+            return Err(error_reporter::user_err(stderr));
         }
 
         // Return the new worktree info by listing and finding the new one
@@ -2673,7 +2686,10 @@ pub async fn remove_worktree(
             .map_err(|e| format!("Failed to remove worktree: {}", e))?;
 
         if !output.status.success() {
-            return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+            // Worktree still has uncommitted changes / already gone — user-caused.
+            return Err(error_reporter::user_err(
+                String::from_utf8_lossy(&output.stderr).trim().to_string(),
+            ));
         }
 
         Ok(())
@@ -3101,8 +3117,17 @@ pub async fn summarize_session(log_path: String) -> Result<Option<String>, Strin
             return Ok(None);
         }
 
-        // Run claude -p to summarize
-        let mut cmd = shell_command("claude", &["-p", "--model", "haiku", "Summarize what was accomplished in this terminal session in 2-3 bullet points. Be concise."]);
+        // Run claude -p to summarize. Use tokio::process so we can bound the
+        // wait: a hung `claude -p` (network stall, model timeout) would
+        // otherwise block a tokio worker forever. `kill_on_drop(true)` means
+        // dropping the child on timeout also terminates the process.
+        use std::time::Duration;
+        use tokio::io::AsyncWriteExt;
+        let mut cmd: tokio::process::Command = shell_command(
+            "claude",
+            &["-p", "--model", "haiku", "Summarize what was accomplished in this terminal session in 2-3 bullet points. Be concise."],
+        ).into();
+        cmd.kill_on_drop(true);
         cmd.stdin(std::process::Stdio::piped());
         cmd.stdout(std::process::Stdio::piped());
         cmd.stderr(std::process::Stdio::piped());
@@ -3113,13 +3138,17 @@ pub async fn summarize_session(log_path: String) -> Result<Option<String>, Strin
         };
 
         if let Some(mut stdin) = child.stdin.take() {
-            use std::io::Write;
-            let _ = stdin.write_all(clean_content.as_bytes());
+            let _ = stdin.write_all(clean_content.as_bytes()).await;
+            // Closing the pipe signals EOF so claude can finish reading.
+            drop(stdin);
         }
 
-        let output = match child.wait_with_output() {
-            Ok(o) => o,
-            Err(_) => return Ok(None),
+        // 60s cap: haiku on a 100 KB log typically completes in <20s; longer
+        // means it's stuck. Timeout returns Ok(None) — the UI treats "no
+        // summary" as a silent skip, which is the right behaviour on hang.
+        let output = match tokio::time::timeout(Duration::from_secs(60), child.wait_with_output()).await {
+            Ok(Ok(o)) => o,
+            Ok(Err(_)) | Err(_) => return Ok(None),
         };
 
         if !output.status.success() {
@@ -4278,7 +4307,7 @@ pub async fn get_git_head_content(
         validate_path_is_trusted(&state, &path).await?;
         validate_git_pathspec(&file)?;
         if file.starts_with('-') {
-            return Err("Invalid file path".to_string());
+            return Err(error_reporter::user_err("Invalid file path"));
         }
         // git uses forward slashes in ref specs, even on Windows.
         let normalized = file.replace('\\', "/");
@@ -4308,7 +4337,7 @@ pub async fn git_discard_file(
     wrap_cmd("git_discard_file", async move {
         validate_path_is_trusted(&state, &path).await?;
         if file.is_empty() || file.starts_with('-') {
-            return Err("Invalid file path".to_string());
+            return Err(error_reporter::user_err("Invalid file path"));
         }
         // `file` is repo-root-relative (porcelain output) - resolve against the
         // root, not `path`, which may be a subdirectory of the repo.
@@ -4350,7 +4379,12 @@ pub async fn git_discard_file(
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
             let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            return Err(if !stderr.is_empty() { stderr } else if !stdout.is_empty() { stdout } else { "git checkout failed".into() });
+            // git checkout failure here is environmental (dirty index, lock held).
+            return Err(error_reporter::user_err(
+                if !stderr.is_empty() { stderr }
+                else if !stdout.is_empty() { stdout }
+                else { "git checkout failed".into() },
+            ));
         }
         Ok(())
     })
@@ -4465,11 +4499,21 @@ pub async fn write_text_file(
     wrap_cmd("write_text_file", async move {
         validate_path_is_trusted(&state, &path).await?;
 
-        let meta = std::fs::metadata(&path).map_err(|e| format!("Failed to stat file: {}", e))?;
+        // Resolve the path once and write via the canonical form. Between
+        // validation (which canonicalises) and the actual write, the input
+        // `path` string could be swapped for a symlink pointing outside the
+        // trusted tree — following the untrusted string would land the write
+        // on the swap target. Canonicalising here means we write to the
+        // already-resolved absolute path, closing that TOCTOU window.
+        let canonical = std::fs::canonicalize(&path)
+            .map_err(|e| format!("Failed to resolve path: {}", e))?;
+        let meta = std::fs::metadata(&canonical)
+            .map_err(|e| format!("Failed to stat file: {}", e))?;
         if meta.is_dir() {
             return Err(error_reporter::user_err("Path is a directory"));
         }
-        std::fs::write(&path, content.as_bytes()).map_err(|e| format!("Failed to write file: {}", e))?;
+        std::fs::write(&canonical, content.as_bytes())
+            .map_err(|e| format!("Failed to write file: {}", e))?;
         Ok(())
     })
     .await

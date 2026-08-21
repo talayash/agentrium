@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { RotateCw, Square, ClipboardCopy, Clock, FolderOpen, Check, ClipboardPaste, Pencil } from 'lucide-react';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
 import { captureClaudeInput } from '../lib/terminalInput';
 import { toast } from '../store/toastStore';
 import { reportInvokeFailure } from '../lib/errorReporter';
+import { copyText, readClipboardText } from '../lib/clipboard';
 import { Tooltip } from './ui/Tooltip';
 
 interface TerminalStatusBarProps {
@@ -66,6 +67,11 @@ export function TerminalStatusBar({ terminalId }: TerminalStatusBarProps) {
     }
   }, [instance, terminalId, closeTerminal, createTerminal]);
 
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => {
+    if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+  }, []);
+
   const handleCopyOutput = useCallback(async () => {
     if (!instance?.xterm) return;
     const buf = instance.xterm.buffer.active;
@@ -80,9 +86,14 @@ export function TerminalStatusBar({ terminalId }: TerminalStatusBarProps) {
     while (lines.length > 0 && lines[lines.length - 1].trim() === '') lines.pop();
     if (lines.length === 0) return;
 
-    await navigator.clipboard.writeText(lines.join('\n'));
+    const ok = await copyText(lines.join('\n'));
+    if (!ok) {
+      toast.error('Copy failed', 'Clipboard is unavailable');
+      return;
+    }
     setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+    if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+    copiedTimerRef.current = setTimeout(() => setCopied(false), 1500);
   }, [instance?.xterm]);
 
   if (!instance) return null;
@@ -157,7 +168,7 @@ export function TerminalStatusBar({ terminalId }: TerminalStatusBarProps) {
           <button
             onClick={async () => {
               let clipboardText = '';
-              try { clipboardText = await navigator.clipboard.readText(); } catch { /* ignore */ }
+              try { clipboardText = await readClipboardText(); } catch { /* clipboard may be unavailable — open drawer with empty seed */ }
               useAppStore.getState().openPasteDrawer({
                 content: clipboardText,
                 targetTerminalId: terminalId,

@@ -747,7 +747,7 @@ impl TerminalManager {
             terminal.config.status = status;
             Ok(())
         } else {
-            Err("Terminal not found".to_string())
+            Err(error_reporter::user_err("Terminal not found"))
         }
     }
 

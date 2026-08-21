@@ -5,6 +5,7 @@ import { usePreviewStore } from '../store/previewStore';
 import { toast } from '../store/toastStore';
 import { captureClaudeInput } from '../lib/terminalInput';
 import { reportInvokeFailure } from '../lib/errorReporter';
+import { readClipboardText } from '../lib/clipboard';
 
 /**
  * Return true when the focused element is an editable surface that is NOT
@@ -105,7 +106,7 @@ export function useKeyboardShortcuts() {
         const activeId = activeIdRef.current;
         (async () => {
           let clipboardText = '';
-          try { clipboardText = await navigator.clipboard.readText(); } catch { /* ignore */ }
+          try { clipboardText = await readClipboardText(); } catch { /* clipboard may be unavailable — open drawer with empty seed */ }
           useAppStore.getState().openPasteDrawer({
             content: clipboardText,
             targetTerminalId: activeId,

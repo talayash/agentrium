@@ -19,6 +19,7 @@ import { useAppStore } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
 import { getFileIconUrl, getFolderIconUrl } from '../utils/fileIcons';
 import { toast } from '../store/toastStore';
+import { copyText } from '../lib/clipboard';
 import { PanelHeader } from './ui/PanelHeader';
 import { ListRow } from './ui/ListRow';
 
@@ -352,23 +353,17 @@ export function FileTreePanel() {
   }, [createTerminal, defaultClaudeArgs, setPinnedRepoPath]);
 
   const doCopyPath = useCallback(async (path: string) => {
-    try {
-      await navigator.clipboard.writeText(path);
-      toast.success('Path copied', path);
-    } catch (err) {
-      toast.error('Copy failed', String(err));
-    }
+    const ok = await copyText(path);
+    if (ok) toast.success('Path copied', path);
+    else toast.error('Copy failed', 'Clipboard is unavailable');
   }, []);
 
   const doCopyRelativePath = useCallback(async (path: string) => {
     if (!rootPath) return;
     const rel = relativeToRoot(path, rootPath) || basename(path);
-    try {
-      await navigator.clipboard.writeText(rel);
-      toast.success('Relative path copied', rel);
-    } catch (err) {
-      toast.error('Copy failed', String(err));
-    }
+    const ok = await copyText(rel);
+    if (ok) toast.success('Relative path copied', rel);
+    else toast.error('Copy failed', 'Clipboard is unavailable');
   }, [rootPath]);
 
   const doPaste = useCallback(async (targetDir: string) => {

@@ -4,6 +4,7 @@ import { X, FileText, Brain, BookOpen, Save, RotateCw, ChevronRight } from 'luci
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from '../store/appStore';
 import { toast } from '../store/toastStore';
+import { reportInvokeFailure } from '../lib/errorReporter';
 
 interface ClaudeMdInfo {
   path: string;
@@ -56,7 +57,8 @@ export function MemoryEditor() {
       const files = await invoke<ClaudeMdInfo[]>('list_claude_md_files');
       setClaudeMdFiles(files);
     } catch (err) {
-      console.error('Failed to load CLAUDE.md files:', err);
+      setError(typeof err === 'string' ? err : 'Failed to load CLAUDE.md files');
+      reportInvokeFailure('list_claude_md_files', err);
     }
   };
 
@@ -65,7 +67,8 @@ export function MemoryEditor() {
       const files = await invoke<MemoryFileInfo[]>('list_memory_files', {});
       setMemoryFiles(files);
     } catch (err) {
-      console.error('Failed to load memory files:', err);
+      setError(typeof err === 'string' ? err : 'Failed to load memory files');
+      reportInvokeFailure('list_memory_files', err);
     }
   };
 

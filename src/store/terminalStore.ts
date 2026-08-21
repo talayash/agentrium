@@ -514,11 +514,14 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
     // whenever the PTY streams while the view is unmounted (e.g. grid/split).
     if (!xterm) {
       set((state) => {
+        const inst = state.terminals.get(id);
+        if (!inst) return state;
+        // Copy the instance rather than mutating in place: mutating the entry
+        // in the Map before set() commits leaves the OLD state's object with
+        // the new field, breaking Zustand's shallow-equality check for any
+        // selector still holding a reference to that snapshot.
         const newTerminals = new Map(state.terminals);
-        const inst = newTerminals.get(id);
-        if (inst) {
-          inst.xterm = null;
-        }
+        newTerminals.set(id, { ...inst, xterm: null });
         return { terminals: newTerminals };
       });
       return;
@@ -546,13 +549,13 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
     drainPendingOutput(id, xterm);
 
     set((state) => {
+      const inst = state.terminals.get(id);
+      if (!inst) return state;
+      // Copy-on-set (see setXterm(null) above for the rationale).
+      // Destructure the transient fields out so the new entry drops them.
+      const { restoredOutput: _r, carryOverBuffer: _c, ...rest } = inst;
       const newTerminals = new Map(state.terminals);
-      const inst = newTerminals.get(id);
-      if (inst) {
-        inst.xterm = xterm;
-        delete inst.restoredOutput; // Free memory
-        delete inst.carryOverBuffer; // Replayed - drop the snapshot
-      }
+      newTerminals.set(id, { ...rest, xterm });
       return { terminals: newTerminals };
     });
   },
@@ -562,11 +565,10 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       const inst = state.terminals.get(id);
       // No-op if the terminal is gone (permanently closed) - nothing to carry.
       if (!inst) return state;
+      // Copy-on-set: creating a new instance object so previous snapshots stay
+      // valid for selectors that captured them.
       const newTerminals = new Map(state.terminals);
-      const next = newTerminals.get(id);
-      if (next) {
-        next.carryOverBuffer = data;
-      }
+      newTerminals.set(id, { ...inst, carryOverBuffer: data });
       return { terminals: newTerminals };
     });
   },

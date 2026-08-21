@@ -100,6 +100,8 @@ export function CommandPalette() {
     inputRef.current?.focus();
     // Reset chip filter each time the palette is (re)opened.
     setActiveSourceId('all');
+    // Hints and snippets are best-effort — the palette is usable without them,
+    // so a load failure just leaves those sections empty.
     invoke<HintCategory[]>('get_hints').then(setHints).catch(() => {});
     invoke<Snippet[]>('get_snippets').then(setSnippets).catch(() => {});
   }, []);

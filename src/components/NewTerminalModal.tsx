@@ -7,6 +7,7 @@ import { useTerminalStore } from '../store/terminalStore';
 import { homeDir } from '@tauri-apps/api/path';
 import { open } from '@tauri-apps/plugin-dialog';
 import type { WorktreeInfo, WorktreeDetectResult } from '../types/git';
+import { reportInvokeFailure } from '../lib/errorReporter';
 import { Button } from './ui/Button';
 import { Modal } from './ui/Modal';
 import { ListRow } from './ui/ListRow';
@@ -318,8 +319,8 @@ export function NewTerminalModal() {
 
       closeNewTerminalModal();
     } catch (err) {
-      console.error('Failed to create terminal:', err);
       setError(String(err));
+      reportInvokeFailure('create_terminal', err);
     } finally {
       setIsCreating(false);
     }

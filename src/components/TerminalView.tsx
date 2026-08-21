@@ -166,7 +166,7 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
     const fitAddon = new FitAddon();
     const webLinksAddon = new WebLinksAddon((_event, uri) => {
       invoke('open_external_url', { url: uri }).catch((err) => {
-        console.error('Failed to open URL:', err);
+        reportInvokeFailure('open_external_url', err);
       });
     });
     const searchAddon = new SearchAddon();

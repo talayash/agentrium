@@ -53,6 +53,14 @@ pub fn scrub(input: &str) -> String {
     use std::sync::OnceLock;
     static WIN_USER: OnceLock<regex::Regex> = OnceLock::new();
     static FILE_URI_USER: OnceLock<regex::Regex> = OnceLock::new();
+    static UNIX_USER: OnceLock<regex::Regex> = OnceLock::new();
+    static UNIX_HOME: OnceLock<regex::Regex> = OnceLock::new();
+    static GITHUB_PAT_PREFIXED: OnceLock<regex::Regex> = OnceLock::new();
+    static GITHUB_PAT_NEW: OnceLock<regex::Regex> = OnceLock::new();
+    static ANTHROPIC_KEY: OnceLock<regex::Regex> = OnceLock::new();
+    static OPENAI_KEY: OnceLock<regex::Regex> = OnceLock::new();
+    static BEARER: OnceLock<regex::Regex> = OnceLock::new();
+    static NPM_AUTHTOKEN: OnceLock<regex::Regex> = OnceLock::new();
     // Match `C:\Users\<username>` where the username portion ends at the next path
     // separator, whitespace, or shell metacharacter. The terminator is NOT consumed,
     // so a trailing backslash, apostrophe, etc. remains intact in the output.
@@ -60,9 +68,38 @@ pub fn scrub(input: &str) -> String {
         .get_or_init(|| regex::Regex::new(r#"C:\\Users\\[^\\/\s'"<>|*?]+"#).unwrap());
     let uri = FILE_URI_USER
         .get_or_init(|| regex::Regex::new(r#"file:///C:/Users/[^/\s'"<>|*?]+"#).unwrap());
-    let step1 = win.replace_all(input, r"C:\Users\<user>");
-    let step2 = uri.replace_all(&step1, "file:///C:/Users/<user>");
-    step2.into_owned()
+    // Unix home paths. `/Users/` is macOS; `/home/` is Linux + most cloud distros.
+    let unix_users = UNIX_USER
+        .get_or_init(|| regex::Regex::new(r#"/Users/[^/\s'"<>|*?]+"#).unwrap());
+    let unix_home = UNIX_HOME
+        .get_or_init(|| regex::Regex::new(r#"/home/[^/\s'"<>|*?]+"#).unwrap());
+    // Common secret shapes. Order matters: match the more specific prefix
+    // (github_pat_, sk-ant-) before the broader family (sk-*), which would
+    // otherwise swallow the specific-prefixed key with a shorter replacement.
+    let gh_prefixed = GITHUB_PAT_PREFIXED
+        .get_or_init(|| regex::Regex::new(r"\b(?:ghp|ghs|gho|ghu|ghr)_[A-Za-z0-9]{20,}").unwrap());
+    let gh_new = GITHUB_PAT_NEW
+        .get_or_init(|| regex::Regex::new(r"\bgithub_pat_[A-Za-z0-9_]{22,}").unwrap());
+    let ant = ANTHROPIC_KEY
+        .get_or_init(|| regex::Regex::new(r"\bsk-ant-[A-Za-z0-9_-]{20,}").unwrap());
+    let openai = OPENAI_KEY
+        .get_or_init(|| regex::Regex::new(r"\bsk-[A-Za-z0-9_-]{20,}").unwrap());
+    let bearer = BEARER
+        .get_or_init(|| regex::Regex::new(r"(?i)Bearer\s+[A-Za-z0-9._~+/=-]{16,}").unwrap());
+    let npm_token = NPM_AUTHTOKEN
+        .get_or_init(|| regex::Regex::new(r"_authToken\s*=\s*\S+").unwrap());
+
+    let s = win.replace_all(input, r"C:\Users\<user>");
+    let s = uri.replace_all(&s, "file:///C:/Users/<user>");
+    let s = unix_users.replace_all(&s, "/Users/<user>");
+    let s = unix_home.replace_all(&s, "/home/<user>");
+    let s = gh_prefixed.replace_all(&s, "<github_token>");
+    let s = gh_new.replace_all(&s, "<github_token>");
+    let s = ant.replace_all(&s, "<anthropic_key>");
+    let s = openai.replace_all(&s, "<api_key>");
+    let s = bearer.replace_all(&s, "Bearer <token>");
+    let s = npm_token.replace_all(&s, "_authToken=<token>");
+    s.into_owned()
 }
 
 pub fn fingerprint(

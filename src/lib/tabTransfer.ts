@@ -210,7 +210,7 @@ export function installTransferReceiver(
           /* focus is best-effort */
         }
       } catch (err) {
-        console.error('[tabTransfer] adopt failed:', err);
+        reportError('tab_transfer_adopt', err instanceof Error ? err.message : String(err));
       }
     }),
   );

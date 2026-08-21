@@ -1,7 +1,7 @@
 import { Component, useEffect, useRef, useState } from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { reportError } from './lib/errorReporter';
+import { reportError, reportInvokeFailure } from './lib/errorReporter';
 import { TitleBar } from './components/TitleBar';
 import { Button } from './components/ui/Button';
 import { ToolStripe } from './components/ToolStripe';
@@ -211,7 +211,7 @@ function App() {
           openWhatsNew();
         }
       } catch (err) {
-        console.error('Failed to check version for What\'s New:', err);
+        reportInvokeFailure('get_version_whats_new', err);
       }
     };
 
@@ -302,7 +302,7 @@ function App() {
           visible: false,
         });
       } catch (err) {
-        console.error('Failed to create drag-preview overlay:', err);
+        reportInvokeFailure('drag_preview_create', err);
       }
     })();
     return () => {
@@ -450,7 +450,15 @@ function App() {
   };
 
   useEffect(() => {
-    const unlisten = listen<{ id: string; data: number[] }>('terminal-output', (event) => {
+    // Guard against a listen()/cleanup race: on effect re-run, cleanup fires
+    // before the previous listen()'s Promise resolves, and Tauri would then
+    // deliver events to both the old AND new handler until the first unlisten
+    // completes. The `cancelled` flag keeps the old handler inert during that
+    // overlap so terminal output isn't doubled.
+    let cancelled = false;
+    let unlistenFn: (() => void) | undefined;
+    listen<{ id: string; data: number[] }>('terminal-output', (event) => {
+      if (cancelled) return;
       const { id, data } = event.payload;
       handleTerminalOutput(id, new Uint8Array(data));
 
@@ -481,19 +489,31 @@ function App() {
           }
         }
       } catch { /* ignore decode errors */ }
+    }).then((fn) => {
+      if (cancelled) fn();
+      else unlistenFn = fn;
     });
 
     return () => {
-      unlisten.then(fn => fn());
+      cancelled = true;
+      unlistenFn?.();
     };
   }, [handleTerminalOutput, setLoopMode]);
 
   useEffect(() => {
-    const unlisten = listen<TerminalMetricsPayload>('terminal-metrics', (event) => {
+    // Same listen()/cleanup race guard as the terminal-output listener above.
+    let cancelled = false;
+    let unlistenFn: (() => void) | undefined;
+    listen<TerminalMetricsPayload>('terminal-metrics', (event) => {
+      if (cancelled) return;
       applyTerminalMetrics(event.payload);
+    }).then((fn) => {
+      if (cancelled) fn();
+      else unlistenFn = fn;
     });
     return () => {
-      unlisten.then((fn) => fn());
+      cancelled = true;
+      unlistenFn?.();
     };
   }, [applyTerminalMetrics]);
 
@@ -518,7 +538,11 @@ function App() {
   }, [terminalMetrics, sessionBudgetUsd, budgetWarnedIds, markBudgetWarned, notify]);
 
   useEffect(() => {
-    const unlisten = listen<{ id: string }>('terminal-finished', (event) => {
+    // Same listen()/cleanup race guard as the other event listeners above.
+    let cancelled = false;
+    let unlistenFn: (() => void) | undefined;
+    listen<{ id: string }>('terminal-finished', (event) => {
+      if (cancelled) return;
       const { id } = event.payload;
 
       // Get the current terminal name from the store (always up-to-date, even after renames)
@@ -566,13 +590,17 @@ function App() {
             setSessionSummary(id, summary);
           }
         } catch (err) {
-          console.error('Failed to summarize session:', err);
+          reportInvokeFailure('summarize_session', err);
         }
       })();
+    }).then((fn) => {
+      if (cancelled) fn();
+      else unlistenFn = fn;
     });
 
     return () => {
-      unlisten.then(fn => fn());
+      cancelled = true;
+      unlistenFn?.();
     };
   }, [notifyOnFinish, notify, updateTerminalStatus, setSessionSummary, isDetached]);
 
@@ -589,12 +617,15 @@ function App() {
         setPendingRestoreConfigs(configs);
         setShowRestoreBanner(true);
       } catch (err) {
-        console.error('Failed to check last session:', err);
+        reportInvokeFailure('get_last_session', err);
       }
     };
 
     checkLastSession();
-  }, [showSetup]);
+    // `restoreSession` and `isDetached` are read inside — must be in the deps
+    // so a Settings toggle for restoreSession triggers a re-check rather than
+    // running against the mount-time snapshot.
+  }, [showSetup, restoreSession, isDetached]);
 
   // Auto-save session every 30 seconds
   useEffect(() => {
@@ -603,7 +634,7 @@ function App() {
 
     const interval = setInterval(() => {
       invoke('save_session_for_restore').catch((err) => {
-        console.error('Failed to auto-save session:', err);
+        reportInvokeFailure('save_session_for_restore', err);
       });
     }, 30000);
 
@@ -682,7 +713,7 @@ function App() {
           keyToNewId[stableKey] = newId;
         }
       } catch (err) {
-        console.error('Failed to restore terminal:', config.label, err);
+        reportInvokeFailure('restore_terminal', err);
       }
     }
 

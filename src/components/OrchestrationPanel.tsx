@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { RefreshCw, Users, User, Crown, ExternalLink, ChevronDown, ChevronRight, ListTodo } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useTerminalStore } from '../store/terminalStore';
+import { reportInvokeFailure } from '../lib/errorReporter';
 
 interface TeamMember {
   agentId: string;
@@ -47,7 +48,10 @@ export function OrchestrationPanel() {
   const terminals = useTerminalStore((s) => s.terminals);
   const setActiveTerminal = useTerminalStore((s) => s.setActiveTerminal);
 
-  const fetchTeams = async () => {
+  // useCallback with expandedTeam in deps: without this, the polling interval
+  // below closes over the first-render fetchTeams (with a stale expandedTeam),
+  // and expanded-team task refreshes never actually see the current expansion.
+  const fetchTeams = useCallback(async () => {
     setLoading(true);
     try {
       const result = await invoke<TeamInfo[]>('get_active_teams');
@@ -63,15 +67,15 @@ export function OrchestrationPanel() {
             return next;
           });
         } catch {
-          // Task fetch failed silently
+          /* task list is best-effort — panel still renders the team without it */
         }
       }
     } catch (err) {
-      console.error('Failed to fetch teams:', err);
+      reportInvokeFailure('get_active_teams', err);
     } finally {
       setLoading(false);
     }
-  };
+  }, [expandedTeam]);
 
   const handleExpand = async (dirName: string) => {
     const newExpanded = expandedTeam === dirName ? null : dirName;
@@ -95,7 +99,7 @@ export function OrchestrationPanel() {
     fetchTeams();
     const interval = setInterval(fetchTeams, 3000);
     return () => clearInterval(interval);
-  }, [expandedTeam]);
+  }, [fetchTeams]);
 
   const findMatchingTerminal = (cwd: string): string | null => {
     const normalized = normalizePath(cwd);

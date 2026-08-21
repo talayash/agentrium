@@ -8,6 +8,7 @@ import { useTerminalStore } from '../store/terminalStore';
 import { usePasteStore, type PasteEntry } from '../store/pasteStore';
 import { detectKindClient, kindToExt } from '../lib/pasteKind';
 import { toast } from '../store/toastStore';
+import { copyText } from '../lib/clipboard';
 
 const EXTENSIONS: { value: string; label: string; lang: string }[] = [
   { value: 'json', label: '.json', lang: 'json' },
@@ -147,12 +148,10 @@ export function PasteAsFileDrawer() {
   const handleSaveOnly = async () => {
     const entry = await doWrite();
     if (!entry) return;
-    try {
-      await navigator.clipboard.writeText(entry.relative_path);
-    } catch {
-      // ignore - clipboard may be unavailable
-    }
-    toast.success('Saved · path copied', entry.relative_path);
+    const copied = await copyText(entry.relative_path);
+    // Report accurately: don't claim the path was copied if the clipboard write failed.
+    if (copied) toast.success('Saved · path copied', entry.relative_path);
+    else toast.success('Saved', entry.relative_path);
     closeDrawer();
   };
 
