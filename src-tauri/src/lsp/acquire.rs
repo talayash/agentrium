@@ -151,7 +151,7 @@ pub fn resolve(language: &str) -> Result<(ServerSpec, Resolution), String> {
 pub async fn install(language: &str) -> Result<(), String> {
     let spec = server_spec(language).ok_or_else(|| format!("unknown language {language}"))?;
     let dir = lsp_data_dir();
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    tokio::fs::create_dir_all(&dir).await.map_err(|e| e.to_string())?;
     if spec.npm_packages.is_empty() {
         install_rust_analyzer(&dir).await
     } else {

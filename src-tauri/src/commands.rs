@@ -620,6 +620,7 @@ pub async fn delete_profile(state: State<'_, AppState>, id: String) -> Result<()
 pub async fn get_claude_version() -> Result<String, String> {
     wrap_cmd("get_claude_version", async move {
         let output = run_claude(&["--version"])
+            .await
             .map_err(|e| e.to_string())?;
 
         if !output.status.success() {
@@ -636,13 +637,14 @@ pub async fn get_claude_version() -> Result<String, String> {
 /// Run `claude` with the given args. Prefers the cached absolute path resolved
 /// via an interactive login shell (so users with PATH set in `.zshrc` work);
 /// falls back to the shell-PATH lookup if resolution failed.
-fn run_claude(args: &[&str]) -> std::io::Result<std::process::Output> {
+async fn run_claude(args: &[&str]) -> std::io::Result<std::process::Output> {
     if let Some(path) = crate::claude_path::cached() {
-        let mut cmd = std::process::Command::new(&path);
+        let mut cmd = tokio::process::Command::new(&path);
         for a in args { cmd.arg(a); }
-        cmd.output()
+        cmd.output().await
     } else {
-        shell_command("claude", args).output()
+        let mut cmd: tokio::process::Command = shell_command("claude", args).into();
+        cmd.output().await
     }
 }
 
@@ -658,6 +660,7 @@ pub async fn check_claude_update() -> Result<UpdateCheckResult, String> {
     wrap_cmd("check_claude_update", async move {
         // Get current version
         let current_output = run_claude(&["--version"])
+            .await
             .map_err(|e| format!("Failed to get current version: {}", e))?;
 
         let current_stdout = String::from_utf8_lossy(&current_output.stdout);
@@ -723,8 +726,11 @@ async fn fetch_latest_claude_version() -> Result<String, String> {
 #[command]
 pub async fn update_claude_code() -> Result<String, String> {
     wrap_cmd("update_claude_code", async move {
-        let output = shell_command("npm", &["install", "-g", "@anthropic-ai/claude-code@latest"])
+        let mut cmd: tokio::process::Command =
+            shell_command("npm", &["install", "-g", "@anthropic-ai/claude-code@latest"]).into();
+        let output = cmd
             .output()
+            .await
             .map_err(|e| format!("Failed to run npm: {}", e))?;
 
         if output.status.success() {
@@ -913,7 +919,10 @@ fn has_semver_like(s: &str) -> bool {
 pub async fn check_system_requirements() -> Result<SystemStatus, String> {
     wrap_cmd("check_system_requirements", async move {
         // Check Node.js
-        let node_result = shell_command("node", &["--version"]).output();
+        let node_result = {
+            let mut cmd: tokio::process::Command = shell_command("node", &["--version"]).into();
+            cmd.output().await
+        };
 
         let (node_installed, node_version) = match node_result {
             Ok(output) if output.status.success() => {
@@ -924,7 +933,10 @@ pub async fn check_system_requirements() -> Result<SystemStatus, String> {
         };
 
         // Check npm
-        let npm_result = shell_command("npm", &["--version"]).output();
+        let npm_result = {
+            let mut cmd: tokio::process::Command = shell_command("npm", &["--version"]).into();
+            cmd.output().await
+        };
 
         let (npm_installed, npm_version) = match npm_result {
             Ok(output) if output.status.success() => {
@@ -936,7 +948,7 @@ pub async fn check_system_requirements() -> Result<SystemStatus, String> {
 
         // Check Claude Code via the resolved absolute path when available
         // (avoids any shell-PATH guessing). Falls back to the shell helper.
-        let claude_result = run_claude(&["--version"]);
+        let claude_result = run_claude(&["--version"]).await;
 
         let (claude_installed, claude_version) = match claude_result {
             Ok(output) if output.status.success() => {
@@ -961,8 +973,11 @@ pub async fn check_system_requirements() -> Result<SystemStatus, String> {
 #[command]
 pub async fn install_claude_code() -> Result<String, String> {
     wrap_cmd("install_claude_code", async move {
-        let output = shell_command("npm", &["install", "-g", "@anthropic-ai/claude-code"])
+        let mut cmd: tokio::process::Command =
+            shell_command("npm", &["install", "-g", "@anthropic-ai/claude-code"]).into();
+        let output = cmd
             .output()
+            .await
             .map_err(|e| e.to_string())?;
 
         if output.status.success() {
@@ -1418,9 +1433,10 @@ pub async fn get_terminal_changes(
         };
 
         // Check if it's a git repo and get branch name
-        let branch_output = git_command(&["rev-parse", "--abbrev-ref", "HEAD"])
+        let branch_output = git_cmd_async(&["rev-parse", "--abbrev-ref", "HEAD"])
             .current_dir(&working_directory)
-            .output();
+            .output()
+            .await;
 
         let (is_git_repo, branch) = match branch_output {
             Ok(output) if output.status.success() => {
@@ -1442,12 +1458,13 @@ pub async fn get_terminal_changes(
             });
         }
 
-        let repo_root = resolve_repo_root(&working_directory).ok();
+        let repo_root = resolve_repo_root(&working_directory).await.ok();
 
         // Get changed files
-        let status_output = git_command(&["status", "--porcelain"])
+        let status_output = git_cmd_async(&["status", "--porcelain"])
             .current_dir(&working_directory)
             .output()
+            .await
             .map_err(|e| format!("Failed to run git status: {}", e))?;
 
         if !status_output.status.success() {
@@ -1602,12 +1619,13 @@ pub async fn get_file_diff(
 
         // `file_path` is repo-root-relative (porcelain output) - all git ops and
         // file reads must resolve against the root, not the terminal's cwd.
-        let working_directory = resolve_repo_root(&working_directory)?;
+        let working_directory = resolve_repo_root(&working_directory).await?;
 
         // Run git status for this specific file to determine its status
-        let status_output = git_command(&["status", "--porcelain", "--", &file_path])
+        let status_output = git_cmd_async(&["status", "--porcelain", "--", &file_path])
             .current_dir(&working_directory)
             .output()
+            .await
             .map_err(|e| format!("Failed to run git status: {}", e))?;
 
         let status_str = String::from_utf8_lossy(&status_output.stdout).trim().to_string();
@@ -1627,9 +1645,10 @@ pub async fn get_file_diff(
             build_new_file_diff(&full_path, &file_path)
         } else if is_deleted_file {
             // For deleted files, show content from HEAD
-            let show_output = git_command(&["show", &format!("HEAD:{}", file_path)])
+            let show_output = git_cmd_async(&["show", &format!("HEAD:{}", file_path)])
                 .current_dir(&working_directory)
-                .output();
+                .output()
+                .await;
             match show_output {
                 Ok(output) if output.status.success() => {
                     let content = String::from_utf8_lossy(&output.stdout);
@@ -1654,18 +1673,20 @@ pub async fn get_file_diff(
             args.push("--");
             args.push(&file_path);
 
-            let diff_output = git_command(&args)
+            let diff_output = git_cmd_async(&args)
                 .current_dir(&working_directory)
                 .output()
+                .await
                 .map_err(|e| format!("Failed to run git diff: {}", e))?;
 
             let text = String::from_utf8_lossy(&diff_output.stdout).to_string();
 
             // If unstaged diff is empty, try staged diff (file might be fully staged)
             if text.trim().is_empty() && !staged {
-                let staged_output = git_command(&["diff", "--cached", "--", &file_path])
+                let staged_output = git_cmd_async(&["diff", "--cached", "--", &file_path])
                     .current_dir(&working_directory)
                     .output()
+                    .await
                     .map_err(|e| format!("Failed to run git diff --cached: {}", e))?;
                 String::from_utf8_lossy(&staged_output.stdout).to_string()
             } else {
@@ -1768,9 +1789,10 @@ pub async fn get_worktree_info(
         }
 
         // Check if inside a git work tree
-        let inside_wt = git_command(&["rev-parse", "--is-inside-work-tree"])
+        let inside_wt = git_cmd_async(&["rev-parse", "--is-inside-work-tree"])
             .current_dir(&path)
-            .output();
+            .output()
+            .await;
 
         let is_git_repo = matches!(inside_wt, Ok(ref o) if o.status.success()
             && String::from_utf8_lossy(&o.stdout).trim() == "true");
@@ -1789,24 +1811,27 @@ pub async fn get_worktree_info(
         }
 
         // Get worktree root (--show-toplevel)
-        let toplevel = git_command(&["rev-parse", "--show-toplevel"])
+        let toplevel = git_cmd_async(&["rev-parse", "--show-toplevel"])
             .current_dir(&path)
             .output()
+            .await
             .ok()
             .filter(|o| o.status.success())
             .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string());
 
         // Get git-dir and git-common-dir to detect if this is a linked worktree
-        let git_dir = git_command(&["rev-parse", "--git-dir"])
+        let git_dir = git_cmd_async(&["rev-parse", "--git-dir"])
             .current_dir(&path)
             .output()
+            .await
             .ok()
             .filter(|o| o.status.success())
             .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string());
 
-        let git_common_dir = git_command(&["rev-parse", "--git-common-dir"])
+        let git_common_dir = git_cmd_async(&["rev-parse", "--git-common-dir"])
             .current_dir(&path)
             .output()
+            .await
             .ok()
             .filter(|o| o.status.success())
             .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string());
@@ -1837,9 +1862,10 @@ pub async fn get_worktree_info(
         });
 
         // Get current branch
-        let current_branch = git_command(&["rev-parse", "--abbrev-ref", "HEAD"])
+        let current_branch = git_cmd_async(&["rev-parse", "--abbrev-ref", "HEAD"])
             .current_dir(&path)
             .output()
+            .await
             .ok()
             .filter(|o| o.status.success())
             .map(|o| {
@@ -1850,9 +1876,10 @@ pub async fn get_worktree_info(
 
         // Working-tree cleanliness — count of modified/staged/untracked files
         // via `--porcelain=v1` (stable, machine-readable). Empty output = clean.
-        let dirty_count = git_command(&["status", "--porcelain=v1"])
+        let dirty_count = git_cmd_async(&["status", "--porcelain=v1"])
             .current_dir(&path)
             .output()
+            .await
             .ok()
             .filter(|o| o.status.success())
             .map(|o| {
@@ -1864,9 +1891,10 @@ pub async fn get_worktree_info(
 
         // Ahead/behind vs upstream — `rev-list --left-right --count HEAD...@{u}`
         // emits "<ahead>\t<behind>". Fails silently when no upstream is tracked.
-        let (ahead, behind) = git_command(&["rev-list", "--left-right", "--count", "HEAD...@{u}"])
+        let (ahead, behind) = git_cmd_async(&["rev-list", "--left-right", "--count", "HEAD...@{u}"])
             .current_dir(&path)
             .output()
+            .await
             .ok()
             .filter(|o| o.status.success())
             .and_then(|o| {
@@ -1893,10 +1921,11 @@ pub async fn get_worktree_info(
 }
 
 /// Internal helper to list worktrees for a given path (no authorization check).
-fn list_worktrees_internal(path: &str) -> Result<Vec<WorktreeInfo>, String> {
-    let output = git_command(&["worktree", "list", "--porcelain"])
+async fn list_worktrees_internal(path: &str) -> Result<Vec<WorktreeInfo>, String> {
+    let output = git_cmd_async(&["worktree", "list", "--porcelain"])
         .current_dir(path)
         .output()
+        .await
         .map_err(|e| format!("Failed to run git worktree list: {}", e))?;
 
     if !output.status.success() {
@@ -1962,7 +1991,7 @@ pub async fn list_worktrees(
 ) -> Result<Vec<WorktreeInfo>, String> {
     wrap_cmd("list_worktrees", async move {
         validate_path_is_trusted(&state, &path).await?;
-        list_worktrees_internal(&path)
+        list_worktrees_internal(&path).await
     })
     .await
 }
@@ -1975,9 +2004,10 @@ pub async fn get_repo_branches(
     wrap_cmd("get_repo_branches", async move {
         validate_path_is_trusted(&state, &path).await?;
 
-        let output = git_command(&["branch", "--format=%(refname:short)"])
+        let output = git_cmd_async(&["branch", "--format=%(refname:short)"])
             .current_dir(&path)
             .output()
+            .await
             .map_err(|e| format!("Failed to list branches: {}", e))?;
 
         if !output.status.success() {
@@ -2003,10 +2033,21 @@ pub struct StashEntry {
     pub branch: Option<String>,
 }
 
-fn run_git(path: &str, args: &[&str]) -> Result<String, String> {
-    let out = git_command(args)
+/// Build a tokio::process::Command for git so async callers can .output().await
+/// without stalling a runtime worker. Same argv semantics as `git_command`.
+pub(crate) fn git_cmd_async(args: &[&str]) -> tokio::process::Command {
+    git_command(args).into()
+}
+
+async fn run_git(path: &str, args: &[&str]) -> Result<String, String> {
+    // tokio::process::Command runs the child on the async reactor so the
+    // handler doesn't stall a runtime worker while git is thinking. On big
+    // repos or slow disks a sync .output() would block every other IPC
+    // command sharing the worker; here git yields on the child pipes.
+    let out = git_cmd_async(args)
         .current_dir(path)
         .output()
+        .await
         .map_err(|e| format!("Failed to run git {}: {}", args.join(" "), e))?;
     if !out.status.success() {
         let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
@@ -2020,11 +2061,11 @@ fn run_git(path: &str, args: &[&str]) -> Result<String, String> {
 /// porcelain status reports root-relative paths while command-line pathspecs
 /// resolve against the cwd, so commands that take file lists must run from
 /// the root or they fail with "pathspec did not match" in subdirectories.
-fn resolve_repo_root(path: &str) -> Result<String, String> {
-    let out = run_git(path, &["rev-parse", "--show-toplevel"])?;
+async fn resolve_repo_root(path: &str) -> Result<String, String> {
+    let out = run_git(path, &["rev-parse", "--show-toplevel"]).await?;
     let root = out.trim().to_string();
     if root.is_empty() {
-        return Err("Not a git repository".to_string());
+        return Err(error_reporter::user_err("Not a git repository"));
     }
     Ok(root)
 }
@@ -2068,7 +2109,7 @@ pub async fn git_stage_files(
         validate_path_is_trusted(&state, &path).await?;
         validate_file_list(&files)?;
         // File paths are root-relative (porcelain output) - run from the root.
-        let root = resolve_repo_root(&path)?;
+        let root = resolve_repo_root(&path).await?;
         // Files named after Windows device names (nul, con, ...) cannot be read
         // by git ("short read while indexing nul") and would abort the whole
         // add. Stage everything else and report them clearly instead.
@@ -2079,7 +2120,7 @@ pub async fn git_stage_files(
             // `--` terminates options.
             let mut args: Vec<&str> = vec!["add", "--ignore-errors", "--"];
             for f in &addable { args.push(f); }
-            run_git(&root, &args)?;
+            run_git(&root, &args).await?;
         }
         if !reserved.is_empty() {
             let names: Vec<&str> = reserved.iter().map(|s| s.as_str()).collect();
@@ -2123,21 +2164,21 @@ pub async fn git_unstage_files(
         validate_path_is_trusted(&state, &path).await?;
         validate_file_list(&files)?;
         // File paths are root-relative (porcelain output) - run from the root.
-        let root = resolve_repo_root(&path)?;
+        let root = resolve_repo_root(&path).await?;
         // Use `git reset HEAD -- <file>` for broad git-version compatibility.
         // `git restore --staged` (2.23+) is the modern equivalent.
         let mut args: Vec<&str> = vec!["reset", "HEAD", "--"];
         for f in &files { args.push(f); }
         // `git reset` returns non-zero on no-op or initial-commit edge cases, but
         // the files do end up unstaged - we tolerate non-fatal stderr.
-        match run_git(&root, &args) {
+        match run_git(&root, &args).await {
             Ok(_) => Ok(()),
             Err(e) => {
                 // On a repo with no HEAD yet, use `git rm --cached` as fallback.
                 if e.contains("ambiguous argument 'HEAD'") || e.contains("unknown revision") {
                     let mut fb: Vec<&str> = vec!["rm", "--cached", "--"];
                     for f in &files { fb.push(f); }
-                    run_git(&root, &fb).map(|_| ())
+                    run_git(&root, &fb).await.map(|_| ())
                 } else {
                     Err(e)
                 }
@@ -2163,21 +2204,21 @@ pub async fn git_commit(
         }
         // Run from the repo root so auto-stage covers the whole repo even when
         // `path` is a subdirectory (add -u/-A are cwd-scoped).
-        let root = resolve_repo_root(&path)?;
+        let root = resolve_repo_root(&path).await?;
         // If the caller asks us to auto-stage, do so. Otherwise commit what's
         // already staged - and if nothing is staged, return a clear error.
         // An amend with nothing staged is still valid (message-only rewrite).
         match auto_stage {
             AutoStageMode::None => {
-                let status = run_git(&root, &["diff", "--cached", "--name-only"])?;
+                let status = run_git(&root, &["diff", "--cached", "--name-only"]).await?;
                 if status.trim().is_empty() && !amend {
                     return Err(error_reporter::user_err(
                         "Nothing is staged - stage files first or choose 'stage all'",
                     ));
                 }
             }
-            AutoStageMode::Tracked => { run_git(&root, &["add", "-u"])?; }
-            AutoStageMode::All => { run_git(&root, &["add", "-A"])?; }
+            AutoStageMode::Tracked => { run_git(&root, &["add", "-u"]).await?; }
+            AutoStageMode::All => { run_git(&root, &["add", "-A"]).await?; }
         }
 
         // Pass message via a temp file to avoid any shell-quoting concerns for
@@ -2197,7 +2238,7 @@ pub async fn git_commit(
         }
         args.push("-F");
         args.push(&tmp_str);
-        let res = run_git(&root, &args);
+        let res = run_git(&root, &args).await;
         let _ = std::fs::remove_file(&tmp);
         res.map(|_| ())
     })
@@ -2219,7 +2260,7 @@ pub async fn get_last_commit_info(
         validate_path_is_trusted(&state, &path).await?;
         // %s = subject, %B = raw body; separated by a unit separator so
         // multi-line messages parse unambiguously.
-        match run_git(&path, &["log", "-1", "--format=%s%x1f%B"]) {
+        match run_git(&path, &["log", "-1", "--format=%s%x1f%B"]).await {
             Ok(out) => {
                 let trimmed = out.trim_end();
                 if trimmed.is_empty() {
@@ -2310,7 +2351,7 @@ pub async fn get_push_preview(
         validate_path_is_trusted(&state, &path).await?;
 
         // Local HEAD branch - refuse detached HEAD.
-        let local_branch = run_git(&path, &["rev-parse", "--abbrev-ref", "HEAD"])?
+        let local_branch = run_git(&path, &["rev-parse", "--abbrev-ref", "HEAD"]).await?
             .trim()
             .to_string();
         if local_branch.is_empty() || local_branch == "HEAD" {
@@ -2318,14 +2359,14 @@ pub async fn get_push_preview(
         }
 
         // Configured remotes.
-        let remotes_raw = run_git(&path, &["remote"])?;
+        let remotes_raw = run_git(&path, &["remote"]).await?;
         let remotes: Vec<String> = remotes_raw
             .lines()
             .map(|l| l.trim().to_string())
             .filter(|l| !l.is_empty())
             .collect();
         if remotes.is_empty() {
-            return Err("Repository has no remotes configured".to_string());
+            return Err(error_reporter::user_err("Repository has no remotes configured"));
         }
 
         // Upstream lookup - non-fatal if missing.
@@ -2333,6 +2374,7 @@ pub async fn get_push_preview(
             &path,
             &["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
         )
+        .await
         .ok()
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty());
@@ -2363,10 +2405,11 @@ pub async fn get_push_preview(
         let log_format = "--format=%H\x1f%h\x1f%s\x1f%an\x1f%aI";
         let commits_raw = if has_upstream {
             let range = format!("{}/{}..HEAD", default_remote, default_remote_branch);
-            run_git(&path, &["log", &range, log_format]).unwrap_or_default()
+            run_git(&path, &["log", &range, log_format]).await.unwrap_or_default()
         } else {
             // Commits on this branch not present on any remote.
             run_git(&path, &["log", "HEAD", "--not", "--remotes", log_format])
+                .await
                 .unwrap_or_default()
         };
 
@@ -2396,6 +2439,7 @@ pub async fn get_push_preview(
         let behind = if has_upstream {
             let range = format!("HEAD..{}/{}", default_remote, default_remote_branch);
             run_git(&path, &["rev-list", "--count", &range])
+                .await
                 .ok()
                 .and_then(|s| s.trim().parse::<usize>().ok())
                 .unwrap_or(0)
@@ -2433,7 +2477,7 @@ pub async fn git_push(
         validate_ref_token(&remote_branch, "Remote branch")?;
 
         // Re-validate the remote against `git remote` - don't trust the frontend.
-        let remotes_raw = run_git(&path, &["remote"])?;
+        let remotes_raw = run_git(&path, &["remote"]).await?;
         let known: Vec<&str> = remotes_raw.lines().map(|l| l.trim()).collect();
         if !known.iter().any(|r| *r == remote.as_str()) {
             return Err(error_reporter::user_err(format!("Unknown remote: {}", remote)));
@@ -2456,6 +2500,7 @@ pub async fn git_push(
         // Push failures are overwhelmingly environment/user conditions (auth,
         // non-fast-forward, no network) - surface to the UI, skip telemetry.
         run_git(&path, &str_args)
+            .await
             .map(|_| ())
             .map_err(error_reporter::user_err)
     })
@@ -2477,13 +2522,13 @@ pub async fn git_stash_push(
             // Use a temp file via `-F`? `git stash push` doesn't support -F; use -m.
             // Reject control chars to keep cmd.exe happy on Windows.
             if m.chars().any(|c| c.is_control()) {
-                return Err("Stash message cannot contain control characters".to_string());
+                return Err(error_reporter::user_err("Stash message cannot contain control characters"));
             }
             args.push("-m".into());
             args.push(m.to_string());
         }
         let str_args: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-        run_git(&path, &str_args).map(|_| ())
+        run_git(&path, &str_args).await.map(|_| ())
     })
     .await
 }
@@ -2500,7 +2545,7 @@ pub async fn git_list_stashes(
         // A non-git terminal cwd is a valid state for the stash panel to query -
         // treat git's "not a git repository" as an empty list, same shape as
         // get_worktree_info uses for non-repo paths.
-        let out = match run_git(&path, &["stash", "list", "--format=%gd\x1f%s"]) {
+        let out = match run_git(&path, &["stash", "list", "--format=%gd\x1f%s"]).await {
             Ok(out) => out,
             Err(e) if e.contains("not a git repository") => return Ok(Vec::new()),
             Err(e) => return Err(e),
@@ -2533,7 +2578,7 @@ pub async fn git_stash_apply(
     wrap_cmd("git_stash_apply", async move {
         validate_path_is_trusted(&state, &path).await?;
         validate_stash_ref(&reference)?;
-        run_git(&path, &["stash", "apply", &reference]).map(|_| ())
+        run_git(&path, &["stash", "apply", &reference]).await.map(|_| ())
     })
     .await
 }
@@ -2547,7 +2592,7 @@ pub async fn git_stash_pop(
     wrap_cmd("git_stash_pop", async move {
         validate_path_is_trusted(&state, &path).await?;
         validate_stash_ref(&reference)?;
-        run_git(&path, &["stash", "pop", &reference]).map(|_| ())
+        run_git(&path, &["stash", "pop", &reference]).await.map(|_| ())
     })
     .await
 }
@@ -2561,7 +2606,7 @@ pub async fn git_stash_drop(
     wrap_cmd("git_stash_drop", async move {
         validate_path_is_trusted(&state, &path).await?;
         validate_stash_ref(&reference)?;
-        run_git(&path, &["stash", "drop", &reference]).map(|_| ())
+        run_git(&path, &["stash", "drop", &reference]).await.map(|_| ())
     })
     .await
 }
@@ -2583,9 +2628,10 @@ pub async fn checkout_branch(
         if branch.chars().any(|c| c.is_control() || c == ' ' || c == '~' || c == '^' || c == ':' || c == '?' || c == '*' || c == '[') {
             return Err("Invalid branch name".to_string());
         }
-        let output = git_command(&["checkout", &branch])
+        let output = git_cmd_async(&["checkout", &branch])
             .current_dir(&path)
             .output()
+            .await
             .map_err(|e| format!("Failed to run git checkout: {}", e))?;
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
@@ -2624,13 +2670,15 @@ pub async fn create_worktree(
         }
 
         let output = if create_branch {
-            git_command(&["worktree", "add", "-b", &branch, &worktree_path])
+            git_cmd_async(&["worktree", "add", "-b", &branch, &worktree_path])
                 .current_dir(&repo_path)
                 .output()
+                .await
         } else {
-            git_command(&["worktree", "add", &worktree_path, &branch])
+            git_cmd_async(&["worktree", "add", &worktree_path, &branch])
                 .current_dir(&repo_path)
                 .output()
+                .await
         };
 
         let output = output.map_err(|e| format!("Failed to create worktree: {}", e))?;
@@ -2642,7 +2690,7 @@ pub async fn create_worktree(
         }
 
         // Return the new worktree info by listing and finding the new one
-        let worktrees = list_worktrees_internal(&repo_path)?;
+        let worktrees = list_worktrees_internal(&repo_path).await?;
         let normalized_path = std::path::PathBuf::from(&worktree_path);
         let canonical = normalized_path.canonicalize().ok();
 
@@ -2680,9 +2728,10 @@ pub async fn remove_worktree(
             vec!["worktree", "remove", &worktree_path]
         };
 
-        let output = git_command(&args)
+        let output = git_cmd_async(&args)
             .current_dir(&repo_path)
             .output()
+            .await
             .map_err(|e| format!("Failed to remove worktree: {}", e))?;
 
         if !output.status.success() {
@@ -3723,10 +3772,20 @@ pub async fn scan_git_repos(
         let root = std::path::Path::new(&root_path)
             .canonicalize()
             .map_err(|e| format!("Invalid path: {}", e))?;
-        let mut results = Vec::new();
-        // max_depth 4 handles common monorepo layouts (apps/x, packages/y/z)
-        // limit 40 guards against runaway scans
-        scan_for_repos(&root, &root, 0, 4, &mut results, 40);
+        // The recursive walk fires ~4 sync git subprocesses per directory. Doing
+        // that on a runtime worker starves other IPC (terminal-output delivery
+        // stalls). spawn_blocking sends the whole walk to the blocking pool.
+        // Making the recursive helpers async instead would require boxed
+        // futures at every recursion — this is simpler and equivalent.
+        let results = tokio::task::spawn_blocking(move || {
+            let mut results = Vec::new();
+            // max_depth 4 handles common monorepo layouts (apps/x, packages/y/z)
+            // limit 40 guards against runaway scans
+            scan_for_repos(&root, &root, 0, 4, &mut results, 40);
+            results
+        })
+        .await
+        .map_err(|e| format!("Scan task failed: {}", e))?;
         Ok(results)
     })
     .await
@@ -3742,9 +3801,10 @@ pub async fn get_path_changes(
     wrap_cmd("get_path_changes", async move {
         validate_path_is_trusted(&state, &path).await?;
 
-        let branch_output = git_command(&["rev-parse", "--abbrev-ref", "HEAD"])
+        let branch_output = git_cmd_async(&["rev-parse", "--abbrev-ref", "HEAD"])
             .current_dir(&path)
-            .output();
+            .output()
+            .await;
 
         let (is_git_repo, branch) = match branch_output {
             Ok(output) if output.status.success() => {
@@ -3766,11 +3826,12 @@ pub async fn get_path_changes(
             });
         }
 
-        let repo_root = resolve_repo_root(&path).ok();
+        let repo_root = resolve_repo_root(&path).await.ok();
 
-        let status_output = git_command(&["status", "--porcelain"])
+        let status_output = git_cmd_async(&["status", "--porcelain"])
             .current_dir(&path)
             .output()
+            .await
             .map_err(|e| format!("Failed to run git status: {}", e))?;
 
         if !status_output.status.success() {
@@ -3853,11 +3914,12 @@ pub async fn get_path_file_diff(
         validate_git_pathspec(&file_path)?;
         // `file_path` is repo-root-relative (porcelain output) - resolve against
         // the root in case `path` is a subdirectory of the repo.
-        let path = resolve_repo_root(&path)?;
+        let path = resolve_repo_root(&path).await?;
 
-        let status_output = git_command(&["status", "--porcelain", "--", &file_path])
+        let status_output = git_cmd_async(&["status", "--porcelain", "--", &file_path])
             .current_dir(&path)
             .output()
+            .await
             .map_err(|e| format!("Failed to run git status: {}", e))?;
 
         let status_str = String::from_utf8_lossy(&status_output.stdout).trim().to_string();
@@ -3874,9 +3936,10 @@ pub async fn get_path_file_diff(
             let full_path = std::path::Path::new(&path).join(&file_path);
             build_new_file_diff(&full_path, &file_path)
         } else if is_deleted_file {
-            let show_output = git_command(&["show", &format!("HEAD:{}", file_path)])
+            let show_output = git_cmd_async(&["show", &format!("HEAD:{}", file_path)])
                 .current_dir(&path)
-                .output();
+                .output()
+                .await;
             match show_output {
                 Ok(output) if output.status.success() => {
                     let content = String::from_utf8_lossy(&output.stdout);
@@ -3896,16 +3959,18 @@ pub async fn get_path_file_diff(
             args.push("--");
             args.push(&file_path);
 
-            let diff_output = git_command(&args)
+            let diff_output = git_cmd_async(&args)
                 .current_dir(&path)
                 .output()
+                .await
                 .map_err(|e| format!("Failed to run git diff: {}", e))?;
 
             let text = String::from_utf8_lossy(&diff_output.stdout).to_string();
             if text.trim().is_empty() && !staged {
-                let staged_output = git_command(&["diff", "--cached", "--", &file_path])
+                let staged_output = git_cmd_async(&["diff", "--cached", "--", &file_path])
                     .current_dir(&path)
                     .output()
+                    .await
                     .map_err(|e| format!("Failed to run git diff --cached: {}", e))?;
                 String::from_utf8_lossy(&staged_output.stdout).to_string()
             } else {
@@ -3955,14 +4020,17 @@ pub async fn git_create_branch(
             args.push(b);
         }
 
-        let output = git_command(&args)
+        let output = git_cmd_async(&args)
             .current_dir(&path)
             .output()
+            .await
             .map_err(|e| format!("Failed to run git checkout -b: {}", e))?;
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
             let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            return Err(if !stderr.is_empty() { stderr } else { stdout });
+            return Err(error_reporter::user_err(
+                if !stderr.is_empty() { stderr } else { stdout },
+            ));
         }
         Ok(())
     })
@@ -3980,7 +4048,8 @@ pub async fn get_repo_remote_refs(
             "for-each-ref",
             "--format=%(refname:short)",
             "refs/remotes/",
-        ])?;
+        ])
+        .await?;
         let mut refs: Vec<String> = out
             .lines()
             .map(|l| l.trim().to_string())
@@ -3999,7 +4068,7 @@ pub async fn get_upstream_branch(
 ) -> Result<Option<String>, String> {
     wrap_cmd("get_upstream_branch", async move {
         validate_path_is_trusted(&state, &path).await?;
-        let output = git_command(&[
+        let output = git_cmd_async(&[
             "rev-parse",
             "--abbrev-ref",
             "--symbolic-full-name",
@@ -4007,6 +4076,7 @@ pub async fn get_upstream_branch(
         ])
         .current_dir(&path)
         .output()
+        .await
         .map_err(|e| format!("Failed to run git rev-parse: {}", e))?;
         if !output.status.success() {
             // No upstream configured - not an error, just absent
@@ -4054,7 +4124,7 @@ pub async fn git_pull_branch(
         // auto_stash, stash (including untracked) → pull → pop. Frontend uses
         // this for the "Stash & Pull" confirm flow.
         let auto_stash = auto_stash.unwrap_or(false);
-        let dirty = run_git(&path, &["status", "--porcelain"])?;
+        let dirty = run_git(&path, &["status", "--porcelain"]).await?;
         let is_dirty = !dirty.trim().is_empty();
         if is_dirty && !auto_stash {
             return Err(error_reporter::user_err(
@@ -4065,7 +4135,7 @@ pub async fn git_pull_branch(
         let stashed = if is_dirty {
             let ts = chrono::Utc::now().format("%Y%m%dT%H%M%SZ");
             let msg = format!("claude-terminal: auto-stash before pull {}", ts);
-            run_git(&path, &["stash", "push", "-u", "-m", &msg])?;
+            run_git(&path, &["stash", "push", "-u", "-m", &msg]).await?;
             true
         } else {
             false
@@ -4081,9 +4151,10 @@ pub async fn git_pull_branch(
         args.push(&remote);
         args.push(&branch);
 
-        let output = git_command(&args)
+        let output = git_cmd_async(&args)
             .current_dir(&path)
             .output()
+            .await
             .map_err(|e| format!("Failed to run git pull: {}", e))?;
         let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
@@ -4094,7 +4165,7 @@ pub async fn git_pull_branch(
                 // Restore the auto-stash so the user isn't left with both a failed
                 // pull and an orphan stash. Best-effort - if pop conflicts, the
                 // stash stays in the list and the user can recover manually.
-                let _ = run_git(&path, &["stash", "pop"]);
+                let _ = run_git(&path, &["stash", "pop"]).await;
                 // Pull failures (conflicts, no upstream, network) are user/
                 // environment conditions - surface to the UI, skip telemetry.
                 return Err(error_reporter::user_err(format!(
@@ -4115,9 +4186,10 @@ pub async fn git_pull_branch(
         };
 
         if stashed {
-            let pop = git_command(&["stash", "pop"])
+            let pop = git_cmd_async(&["stash", "pop"])
                 .current_dir(&path)
                 .output()
+                .await
                 .map_err(|e| format!("Failed to run git stash pop: {}", e))?;
             if !pop.status.success() {
                 let pop_err = String::from_utf8_lossy(&pop.stderr).trim().to_string();
@@ -4312,9 +4384,10 @@ pub async fn get_git_head_content(
         // git uses forward slashes in ref specs, even on Windows.
         let normalized = file.replace('\\', "/");
         let spec = format!("HEAD:{}", normalized);
-        let output = git_command(&["show", &spec])
+        let output = git_cmd_async(&["show", &spec])
             .current_dir(&path)
             .output()
+            .await
             .map_err(|e| format!("Failed to run git show: {}", e))?;
         if !output.status.success() {
             // File has no HEAD version - treat as empty (new/untracked file).
@@ -4341,7 +4414,7 @@ pub async fn git_discard_file(
         }
         // `file` is repo-root-relative (porcelain output) - resolve against the
         // root, not `path`, which may be a subdirectory of the repo.
-        let root = resolve_repo_root(&path)?;
+        let root = resolve_repo_root(&path).await?;
 
         if untracked {
             // Untracked files/directories aren't tracked by git - just remove from disk.
@@ -4372,9 +4445,10 @@ pub async fn git_discard_file(
         }
 
         // Tracked file - reset index + worktree for just this file to HEAD.
-        let output = git_command(&["checkout", "HEAD", "--", &file])
+        let output = git_cmd_async(&["checkout", "HEAD", "--", &file])
             .current_dir(&root)
             .output()
+            .await
             .map_err(|e| format!("Failed to run git checkout: {}", e))?;
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
