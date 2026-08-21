@@ -267,7 +267,7 @@ pub async fn create_terminal(
                 .data_dir()
                 .to_path_buf();
             let logs_dir = data_dir.join("logs");
-            std::fs::create_dir_all(&logs_dir).map_err(|e| e.to_string())?;
+            tokio::fs::create_dir_all(&logs_dir).await.map_err(|e| e.to_string())?;
             let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
             let filename = format!("{}_{}.log", uuid::Uuid::new_v4(), timestamp);
             logs_dir.join(filename).to_string_lossy().to_string()
@@ -1108,7 +1108,7 @@ pub async fn rename_path(
         if from_p.parent() != to_p.parent() {
             return Err(error_reporter::user_err("Rename target must be in the same folder"));
         }
-        std::fs::rename(&from_p, &to_p).map_err(|e| e.to_string())
+        tokio::fs::rename(&from_p, &to_p).await.map_err(|e| e.to_string())
     })
     .await
 }
@@ -1149,41 +1149,51 @@ pub async fn move_into_dir(
         let src = std::path::PathBuf::from(&source);
         let dst_dir = std::path::PathBuf::from(&dest_dir);
         if !src.exists() {
-            return Err("Source does not exist".to_string());
+            return Err(error_reporter::user_err("Source does not exist"));
         }
         if !dst_dir.is_dir() {
-            return Err("Destination is not a folder".to_string());
+            return Err(error_reporter::user_err("Destination is not a folder"));
         }
         // Both endpoints must live under an active terminal's working directory.
         validate_path_is_trusted(&state, &source).await?;
         validate_path_is_trusted(&state, &dest_dir).await?;
         let name = src
             .file_name()
-            .ok_or_else(|| "Source has no file name".to_string())?;
+            .ok_or_else(|| error_reporter::user_err("Source has no file name"))?;
         let dst = dst_dir.join(name);
         if dst.exists() {
-            return Err("A file with that name already exists in the destination".to_string());
+            return Err(error_reporter::user_err(
+                "A file with that name already exists in the destination",
+            ));
         }
-        // Block moving a folder into itself or its own subtree.
-        let src_canon = std::fs::canonicalize(&src).map_err(|e| e.to_string())?;
-        let dst_dir_canon = std::fs::canonicalize(&dst_dir).map_err(|e| e.to_string())?;
-        if dst_dir_canon == src_canon || dst_dir_canon.starts_with(&src_canon) {
-            return Err(error_reporter::user_err("Cannot move a folder into itself"));
-        }
-        // Fall back to copy+delete when fs::rename can't cross volumes.
-        if let Err(rename_err) = std::fs::rename(&src, &dst) {
-            let meta = std::fs::metadata(&src).map_err(|e| e.to_string())?;
-            if meta.is_dir() {
-                copy_dir_recursive(&src, &dst).map_err(|e| {
-                    format!("Move failed ({}); cross-volume copy also failed: {}", rename_err, e)
-                })?;
-                std::fs::remove_dir_all(&src).map_err(|e| e.to_string())?;
-            } else {
-                std::fs::copy(&src, &dst).map_err(|e| e.to_string())?;
-                std::fs::remove_file(&src).map_err(|e| e.to_string())?;
+        // Everything below is sync fs work — canonicalize, rename, and the
+        // cross-volume fallback copy+delete (which may recurse for a dir).
+        // Run it on the blocking pool so the tokio runtime keeps serving
+        // other IPC while a large tree copies.
+        tokio::task::spawn_blocking(move || -> Result<(), String> {
+            // Block moving a folder into itself or its own subtree.
+            let src_canon = std::fs::canonicalize(&src).map_err(|e| e.to_string())?;
+            let dst_dir_canon = std::fs::canonicalize(&dst_dir).map_err(|e| e.to_string())?;
+            if dst_dir_canon == src_canon || dst_dir_canon.starts_with(&src_canon) {
+                return Err(error_reporter::user_err("Cannot move a folder into itself"));
             }
-        }
-        Ok(())
+            // Fall back to copy+delete when fs::rename can't cross volumes.
+            if let Err(rename_err) = std::fs::rename(&src, &dst) {
+                let meta = std::fs::metadata(&src).map_err(|e| e.to_string())?;
+                if meta.is_dir() {
+                    copy_dir_recursive(&src, &dst).map_err(|e| {
+                        format!("Move failed ({}); cross-volume copy also failed: {}", rename_err, e)
+                    })?;
+                    std::fs::remove_dir_all(&src).map_err(|e| e.to_string())?;
+                } else {
+                    std::fs::copy(&src, &dst).map_err(|e| e.to_string())?;
+                    std::fs::remove_file(&src).map_err(|e| e.to_string())?;
+                }
+            }
+            Ok(())
+        })
+        .await
+        .map_err(|e| format!("Move task failed: {}", e))?
     })
     .await
 }
@@ -1218,18 +1228,23 @@ pub async fn copy_into_dir(
                 "A file with that name already exists in the destination",
             ));
         }
-        let src_canon = std::fs::canonicalize(&src).map_err(|e| e.to_string())?;
-        let dst_dir_canon = std::fs::canonicalize(&dst_dir).map_err(|e| e.to_string())?;
-        if dst_dir_canon.starts_with(&src_canon) {
-            return Err(error_reporter::user_err("Cannot copy a folder into itself"));
-        }
-        let meta = std::fs::metadata(&src).map_err(|e| e.to_string())?;
-        if meta.is_dir() {
-            copy_dir_recursive(&src, &dst).map_err(|e| e.to_string())?;
-        } else {
-            std::fs::copy(&src, &dst).map_err(|e| e.to_string())?;
-        }
-        Ok(())
+        // Sync fs work (canonicalize + copy, possibly recursive) — off-runtime.
+        tokio::task::spawn_blocking(move || -> Result<(), String> {
+            let src_canon = std::fs::canonicalize(&src).map_err(|e| e.to_string())?;
+            let dst_dir_canon = std::fs::canonicalize(&dst_dir).map_err(|e| e.to_string())?;
+            if dst_dir_canon.starts_with(&src_canon) {
+                return Err(error_reporter::user_err("Cannot copy a folder into itself"));
+            }
+            let meta = std::fs::metadata(&src).map_err(|e| e.to_string())?;
+            if meta.is_dir() {
+                copy_dir_recursive(&src, &dst).map_err(|e| e.to_string())?;
+            } else {
+                std::fs::copy(&src, &dst).map_err(|e| e.to_string())?;
+            }
+            Ok(())
+        })
+        .await
+        .map_err(|e| format!("Copy task failed: {}", e))?
     })
     .await
 }
@@ -1251,8 +1266,8 @@ pub async fn reveal_in_file_manager(
         // Confine to an active terminal's working directory so a rogue renderer
         // extension can't invoke this to enumerate the filesystem via Explorer.
         validate_path_is_trusted(&state, &path).await?;
-        let canonical = std::fs::canonicalize(&path).map_err(|e| e.to_string())?;
-        let meta = std::fs::metadata(&canonical).map_err(|e| e.to_string())?;
+        let canonical = tokio::fs::canonicalize(&path).await.map_err(|e| e.to_string())?;
+        let meta = tokio::fs::metadata(&canonical).await.map_err(|e| e.to_string())?;
 
         if meta.is_dir() {
             open::that(&canonical).map_err(|e| e.to_string())?;
@@ -1568,16 +1583,16 @@ fn validate_git_pathspec(file: &str) -> Result<(), String> {
 /// sniffing for binary the same way `read_text_file` does. Returns a short
 /// human-readable marker (not an error) when the file can't be previewed, so the
 /// diff pane degrades gracefully instead of reading an unbounded file into RAM.
-fn build_new_file_diff(full_path: &std::path::Path, file_path: &str) -> String {
+async fn build_new_file_diff(full_path: &std::path::Path, file_path: &str) -> String {
     const MAX_DIFF_FILE_BYTES: u64 = 5 * 1024 * 1024; // 5 MB, matches read_text_file
-    match std::fs::metadata(full_path) {
+    match tokio::fs::metadata(full_path).await {
         Ok(m) if m.len() > MAX_DIFF_FILE_BYTES => {
             return format!("File is too large to preview ({} bytes).", m.len());
         }
         Ok(_) => {}
         Err(_) => return String::from("Unable to read file contents"),
     }
-    let bytes = match std::fs::read(full_path) {
+    let bytes = match tokio::fs::read(full_path).await {
         Ok(b) => b,
         Err(_) => return String::from("Unable to read file contents"),
     };
@@ -1642,7 +1657,7 @@ pub async fn get_file_diff(
             // For untracked/new files, read the file and format as all-added
             // (size-capped + binary-sniffed - see build_new_file_diff).
             let full_path = std::path::Path::new(&working_directory).join(&file_path);
-            build_new_file_diff(&full_path, &file_path)
+            build_new_file_diff(&full_path, &file_path).await
         } else if is_deleted_file {
             // For deleted files, show content from HEAD
             let show_output = git_cmd_async(&["show", &format!("HEAD:{}", file_path)])
@@ -2230,7 +2245,7 @@ pub async fn git_commit(
                 .map(|d| d.as_millis())
                 .unwrap_or(0)
         ));
-        std::fs::write(&tmp, message.as_bytes()).map_err(|e| format!("Failed to write commit message: {}", e))?;
+        tokio::fs::write(&tmp, message.as_bytes()).await.map_err(|e| format!("Failed to write commit message: {}", e))?;
         let tmp_str = tmp.to_string_lossy().to_string();
         let mut args: Vec<&str> = vec!["commit"];
         if amend {
@@ -2239,7 +2254,7 @@ pub async fn git_commit(
         args.push("-F");
         args.push(&tmp_str);
         let res = run_git(&root, &args).await;
-        let _ = std::fs::remove_file(&tmp);
+        let _ = tokio::fs::remove_file(&tmp).await;
         res.map(|_| ())
     })
     .await
@@ -2768,20 +2783,20 @@ pub async fn read_log_file(path: String) -> Result<String, String> {
             .data_dir()
             .to_path_buf();
         let logs_dir = data_dir.join("logs");
-        let canonical_path = std::path::Path::new(&path)
-            .canonicalize()
+        let canonical_path = tokio::fs::canonicalize(&path)
+            .await
             .map_err(|e| format!("Invalid path: {}", e))?;
-        std::fs::create_dir_all(&logs_dir).map_err(|e| format!("Failed to create logs directory: {}", e))?;
-        let canonical_logs = logs_dir
-            .canonicalize()
+        tokio::fs::create_dir_all(&logs_dir).await.map_err(|e| format!("Failed to create logs directory: {}", e))?;
+        let canonical_logs = tokio::fs::canonicalize(&logs_dir)
+            .await
             .map_err(|e| format!("Failed to resolve logs directory: {}", e))?;
         if !canonical_path.starts_with(&canonical_logs) {
-            return Err("Access denied: path is not under logs directory".to_string());
+            return Err(error_reporter::user_err("Access denied: path is not under logs directory"));
         }
         // Cap at 2 MB - prevents DoS via huge/symlinked logs and matches
         // what the UI can reasonably render in a single read.
         const MAX_LOG_BYTES: usize = 2 * 1024 * 1024;
-        let bytes = std::fs::read(&canonical_path).map_err(|e| format!("Failed to read log file: {}", e))?;
+        let bytes = tokio::fs::read(&canonical_path).await.map_err(|e| format!("Failed to read log file: {}", e))?;
         let slice = if bytes.len() > MAX_LOG_BYTES {
             &bytes[bytes.len() - MAX_LOG_BYTES..]
         } else {
@@ -2806,11 +2821,11 @@ pub async fn delete_session_history(
                 .data_dir()
                 .to_path_buf();
             let logs_dir = data_dir.join("logs");
-            let _ = std::fs::create_dir_all(&logs_dir);
-            if let Ok(canonical_path) = std::path::Path::new(path).canonicalize() {
-                if let Ok(canonical_logs) = logs_dir.canonicalize() {
+            let _ = tokio::fs::create_dir_all(&logs_dir).await;
+            if let Ok(canonical_path) = tokio::fs::canonicalize(path).await {
+                if let Ok(canonical_logs) = tokio::fs::canonicalize(&logs_dir).await {
                     if canonical_path.starts_with(&canonical_logs) {
-                        let _ = std::fs::remove_file(&canonical_path);
+                        let _ = tokio::fs::remove_file(&canonical_path).await;
                     }
                 }
             }
@@ -2846,22 +2861,23 @@ pub async fn get_session_log(
             .data_dir()
             .to_path_buf();
         let logs_dir = data_dir.join("logs");
-        std::fs::create_dir_all(&logs_dir)
+        tokio::fs::create_dir_all(&logs_dir)
+            .await
             .map_err(|e| format!("Failed to create logs directory: {}", e))?;
 
-        let canonical_path = match std::path::Path::new(&path).canonicalize() {
+        let canonical_path = match tokio::fs::canonicalize(&path).await {
             Ok(p) => p,
             Err(_) => return Ok(None), // Log file may have been deleted
         };
-        let canonical_logs = logs_dir
-            .canonicalize()
+        let canonical_logs = tokio::fs::canonicalize(&logs_dir)
+            .await
             .map_err(|e| format!("Failed to resolve logs directory: {}", e))?;
         if !canonical_path.starts_with(&canonical_logs) {
             return Ok(None);
         }
 
         // Read up to 512 KB
-        match std::fs::read(&canonical_path) {
+        match tokio::fs::read(&canonical_path).await {
             Ok(bytes) => {
                 let max_bytes = 512 * 1024;
                 let truncated = if bytes.len() > max_bytes {
@@ -2943,15 +2959,17 @@ pub async fn read_claude_settings() -> Result<String, String> {
         if !settings_path.exists() {
             return Ok("{}".to_string());
         }
-        let meta = std::fs::metadata(&settings_path)
+        let meta = tokio::fs::metadata(&settings_path)
+            .await
             .map_err(|e| format!("Failed to stat settings.json: {}", e))?;
         if meta.len() > MAX_CLAUDE_SETTINGS_BYTES {
-            return Err(format!(
+            return Err(error_reporter::user_err(format!(
                 "settings.json is larger than allowed maximum ({} bytes)",
                 MAX_CLAUDE_SETTINGS_BYTES
-            ));
+            )));
         }
-        std::fs::read_to_string(&settings_path)
+        tokio::fs::read_to_string(&settings_path)
+            .await
             .map_err(|e| format!("Failed to read settings.json: {}", e))
     })
     .await
@@ -2970,8 +2988,9 @@ pub async fn write_claude_settings(content: String) -> Result<(), String> {
         serde_json::from_str::<serde_json::Value>(&content)
             .map_err(|e| format!("Invalid JSON: {}", e))?;
         let claude_dir = get_claude_dir()?;
-        std::fs::create_dir_all(&claude_dir).map_err(|e| e.to_string())?;
-        std::fs::write(claude_dir.join("settings.json"), &content)
+        tokio::fs::create_dir_all(&claude_dir).await.map_err(|e| e.to_string())?;
+        tokio::fs::write(claude_dir.join("settings.json"), &content)
+            .await
             .map_err(|e| format!("Failed to write settings.json: {}", e))
     })
     .await
@@ -2984,13 +3003,21 @@ pub async fn list_claude_agents() -> Result<Vec<String>, String> {
         if !agents_dir.exists() {
             return Ok(vec![]);
         }
-        let entries = std::fs::read_dir(&agents_dir).map_err(|e| e.to_string())?;
-        let mut names: Vec<String> = entries
-            .flatten()
-            .filter(|e| e.path().is_file())
-            .filter_map(|e| e.file_name().to_str().map(String::from))
-            .collect();
-        names.sort();
+        // read_dir + is_file() + file_name() is cheap sync work; wrap the
+        // whole listing in spawn_blocking rather than pulling in tokio_stream.
+        let agents_dir_cloned = agents_dir.clone();
+        let names = tokio::task::spawn_blocking(move || -> Result<Vec<String>, String> {
+            let entries = std::fs::read_dir(&agents_dir_cloned).map_err(|e| e.to_string())?;
+            let mut names: Vec<String> = entries
+                .flatten()
+                .filter(|e| e.path().is_file())
+                .filter_map(|e| e.file_name().to_str().map(String::from))
+                .collect();
+            names.sort();
+            Ok(names)
+        })
+        .await
+        .map_err(|e| format!("List agents task failed: {}", e))??;
         Ok(names)
     })
     .await
@@ -3002,9 +3029,9 @@ pub async fn read_claude_agent(name: String) -> Result<String, String> {
         validate_filename(&name)?;
         let path = get_claude_dir()?.join("agents").join(&name);
         if !path.exists() {
-            return Err(format!("Agent file not found: {}", name));
+            return Err(error_reporter::user_err(format!("Agent file not found: {}", name)));
         }
-        std::fs::read_to_string(&path).map_err(|e| e.to_string())
+        tokio::fs::read_to_string(&path).await.map_err(|e| e.to_string())
     })
     .await
 }
@@ -3014,8 +3041,8 @@ pub async fn write_claude_agent(name: String, content: String) -> Result<(), Str
     wrap_cmd("write_claude_agent", async move {
         validate_filename(&name)?;
         let agents_dir = get_claude_dir()?.join("agents");
-        std::fs::create_dir_all(&agents_dir).map_err(|e| e.to_string())?;
-        std::fs::write(agents_dir.join(&name), &content).map_err(|e| e.to_string())
+        tokio::fs::create_dir_all(&agents_dir).await.map_err(|e| e.to_string())?;
+        tokio::fs::write(agents_dir.join(&name), &content).await.map_err(|e| e.to_string())
     })
     .await
 }
@@ -3026,7 +3053,7 @@ pub async fn delete_claude_agent(name: String) -> Result<(), String> {
         validate_filename(&name)?;
         let path = get_claude_dir()?.join("agents").join(&name);
         if path.exists() {
-            std::fs::remove_file(&path).map_err(|e| e.to_string())?;
+            tokio::fs::remove_file(&path).await.map_err(|e| e.to_string())?;
         }
         Ok(())
     })
@@ -3040,13 +3067,19 @@ pub async fn list_claude_commands() -> Result<Vec<String>, String> {
         if !commands_dir.exists() {
             return Ok(vec![]);
         }
-        let entries = std::fs::read_dir(&commands_dir).map_err(|e| e.to_string())?;
-        let mut names: Vec<String> = entries
-            .flatten()
-            .filter(|e| e.path().is_file())
-            .filter_map(|e| e.file_name().to_str().map(String::from))
-            .collect();
-        names.sort();
+        let commands_dir_cloned = commands_dir.clone();
+        let names = tokio::task::spawn_blocking(move || -> Result<Vec<String>, String> {
+            let entries = std::fs::read_dir(&commands_dir_cloned).map_err(|e| e.to_string())?;
+            let mut names: Vec<String> = entries
+                .flatten()
+                .filter(|e| e.path().is_file())
+                .filter_map(|e| e.file_name().to_str().map(String::from))
+                .collect();
+            names.sort();
+            Ok(names)
+        })
+        .await
+        .map_err(|e| format!("List commands task failed: {}", e))??;
         Ok(names)
     })
     .await
@@ -3058,9 +3091,9 @@ pub async fn read_claude_command(name: String) -> Result<String, String> {
         validate_filename(&name)?;
         let path = get_claude_dir()?.join("commands").join(&name);
         if !path.exists() {
-            return Err(format!("Command file not found: {}", name));
+            return Err(error_reporter::user_err(format!("Command file not found: {}", name)));
         }
-        std::fs::read_to_string(&path).map_err(|e| e.to_string())
+        tokio::fs::read_to_string(&path).await.map_err(|e| e.to_string())
     })
     .await
 }
@@ -3070,8 +3103,8 @@ pub async fn write_claude_command(name: String, content: String) -> Result<(), S
     wrap_cmd("write_claude_command", async move {
         validate_filename(&name)?;
         let commands_dir = get_claude_dir()?.join("commands");
-        std::fs::create_dir_all(&commands_dir).map_err(|e| e.to_string())?;
-        std::fs::write(commands_dir.join(&name), &content).map_err(|e| e.to_string())
+        tokio::fs::create_dir_all(&commands_dir).await.map_err(|e| e.to_string())?;
+        tokio::fs::write(commands_dir.join(&name), &content).await.map_err(|e| e.to_string())
     })
     .await
 }
@@ -3082,7 +3115,7 @@ pub async fn delete_claude_command(name: String) -> Result<(), String> {
         validate_filename(&name)?;
         let path = get_claude_dir()?.join("commands").join(&name);
         if path.exists() {
-            std::fs::remove_file(&path).map_err(|e| e.to_string())?;
+            tokio::fs::remove_file(&path).await.map_err(|e| e.to_string())?;
         }
         Ok(())
     })
@@ -3131,21 +3164,21 @@ pub async fn summarize_session(log_path: String) -> Result<Option<String>, Strin
             .data_dir()
             .to_path_buf();
         let logs_dir = data_dir.join("logs");
-        std::fs::create_dir_all(&logs_dir).map_err(|e| format!("Failed to create logs directory: {}", e))?;
+        tokio::fs::create_dir_all(&logs_dir).await.map_err(|e| format!("Failed to create logs directory: {}", e))?;
 
-        let canonical_path = match std::path::Path::new(&log_path).canonicalize() {
+        let canonical_path = match tokio::fs::canonicalize(&log_path).await {
             Ok(p) => p,
             Err(_) => return Ok(None),
         };
-        let canonical_logs = logs_dir
-            .canonicalize()
+        let canonical_logs = tokio::fs::canonicalize(&logs_dir)
+            .await
             .map_err(|e| format!("Failed to resolve logs directory: {}", e))?;
         if !canonical_path.starts_with(&canonical_logs) {
-            return Err("Access denied: path is not under logs directory".to_string());
+            return Err(error_reporter::user_err("Access denied: path is not under logs directory"));
         }
 
         // Read log file content (capped at 100KB)
-        let bytes = match std::fs::read(&canonical_path) {
+        let bytes = match tokio::fs::read(&canonical_path).await {
             Ok(b) => b,
             Err(_) => return Ok(None),
         };
@@ -3275,55 +3308,63 @@ pub async fn get_team_tasks(team_name: String) -> Result<Vec<TaskInfo>, String> 
             return Ok(vec![]);
         }
 
-        let entries = std::fs::read_dir(&tasks_dir).map_err(|e| e.to_string())?;
-        let mut tasks = Vec::new();
+        // read_dir + per-file read_to_string + JSON parse for every task file
+        // — off-runtime so a directory with hundreds of tasks doesn't stall
+        // other IPC.
+        let tasks = tokio::task::spawn_blocking(move || -> Result<Vec<TaskInfo>, String> {
+            let entries = std::fs::read_dir(&tasks_dir).map_err(|e| e.to_string())?;
+            let mut tasks = Vec::new();
 
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if !path.is_file() {
-                continue;
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if !path.is_file() {
+                    continue;
+                }
+
+                // Skip .highwatermark and non-JSON files
+                let name = entry.file_name().to_string_lossy().to_string();
+                if name.starts_with('.') || !name.ends_with(".json") {
+                    continue;
+                }
+
+                let content = match std::fs::read_to_string(&path) {
+                    Ok(c) => c,
+                    Err(_) => continue,
+                };
+
+                let val: serde_json::Value = match serde_json::from_str(&content) {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
+
+                let id = val.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let subject = val.get("subject").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let status = val.get("status").and_then(|v| v.as_str()).unwrap_or("pending").to_string();
+                let owner = val.get("owner").and_then(|v| v.as_str()).map(String::from);
+                let active_form = val.get("activeForm").and_then(|v| v.as_str()).map(String::from);
+                let blocked_by: Vec<String> = val.get("blockedBy")
+                    .and_then(|v| v.as_array())
+                    .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                    .unwrap_or_default();
+
+                if !id.is_empty() {
+                    tasks.push(TaskInfo {
+                        id,
+                        subject,
+                        status,
+                        owner,
+                        blocked_by,
+                        active_form,
+                    });
+                }
             }
 
-            // Skip .highwatermark and non-JSON files
-            let name = entry.file_name().to_string_lossy().to_string();
-            if name.starts_with('.') || !name.ends_with(".json") {
-                continue;
-            }
-
-            let content = match std::fs::read_to_string(&path) {
-                Ok(c) => c,
-                Err(_) => continue,
-            };
-
-            let val: serde_json::Value = match serde_json::from_str(&content) {
-                Ok(v) => v,
-                Err(_) => continue,
-            };
-
-            let id = val.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            let subject = val.get("subject").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            let status = val.get("status").and_then(|v| v.as_str()).unwrap_or("pending").to_string();
-            let owner = val.get("owner").and_then(|v| v.as_str()).map(String::from);
-            let active_form = val.get("activeForm").and_then(|v| v.as_str()).map(String::from);
-            let blocked_by: Vec<String> = val.get("blockedBy")
-                .and_then(|v| v.as_array())
-                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
-                .unwrap_or_default();
-
-            if !id.is_empty() {
-                tasks.push(TaskInfo {
-                    id,
-                    subject,
-                    status,
-                    owner,
-                    blocked_by,
-                    active_form,
-                });
-            }
-        }
-
-        // Sort by id
-        tasks.sort_by(|a, b| a.id.cmp(&b.id));
+            // Sort by id
+            tasks.sort_by(|a, b| a.id.cmp(&b.id));
+            Ok(tasks)
+        })
+        .await
+        .map_err(|e| format!("get_team_tasks task failed: {}", e))??;
 
         Ok(tasks)
     })
@@ -3419,56 +3460,63 @@ pub async fn list_memory_files(project_path: Option<String>) -> Result<Vec<Memor
             return Ok(vec![]);
         }
 
-        let mut files = Vec::new();
-
-        let scan_project = |project_dir: &std::path::Path, files: &mut Vec<MemoryFileInfo>| {
-            let memory_dir = project_dir.join("memory");
-            if !memory_dir.exists() || !memory_dir.is_dir() {
-                return;
-            }
-            let project_name = project_dir
-                .file_name()
-                .unwrap_or_default()
-                .to_string_lossy()
-                .to_string();
-
-            if let Ok(entries) = std::fs::read_dir(&memory_dir) {
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    if path.is_file() {
-                        let name = entry.file_name().to_string_lossy().to_string();
-                        let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
-                        files.push(MemoryFileInfo {
-                            path: path.to_string_lossy().to_string(),
-                            name,
-                            project: project_name.clone(),
-                            size,
-                        });
-                    }
-                }
-            }
-        };
-
+        // Validate the specific-project path before entering the blocking task
+        // so the validation error (not-under-.claude) surfaces synchronously.
         if let Some(ref specific_project) = project_path {
-            // Scan only the specific project. Confine it to ~/.claude so a
-            // caller can't enumerate `<arbitrary>/memory` anywhere on disk
-            // (e.g. leaking file names/sizes from ~/.ssh).
             validate_claude_path(specific_project)?;
-            let target = std::path::Path::new(specific_project);
-            if target.exists() && target.is_dir() {
-                scan_project(target, &mut files);
-            }
-        } else {
-            // Scan all projects
-            if let Ok(entries) = std::fs::read_dir(&projects_dir) {
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    if path.is_dir() {
-                        scan_project(&path, &mut files);
+        }
+
+        // Nested read_dir + per-file metadata for every project — off-runtime.
+        let files = tokio::task::spawn_blocking(move || -> Vec<MemoryFileInfo> {
+            let mut files = Vec::new();
+            let scan_project = |project_dir: &std::path::Path, files: &mut Vec<MemoryFileInfo>| {
+                let memory_dir = project_dir.join("memory");
+                if !memory_dir.exists() || !memory_dir.is_dir() {
+                    return;
+                }
+                let project_name = project_dir
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string();
+
+                if let Ok(entries) = std::fs::read_dir(&memory_dir) {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        if path.is_file() {
+                            let name = entry.file_name().to_string_lossy().to_string();
+                            let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
+                            files.push(MemoryFileInfo {
+                                path: path.to_string_lossy().to_string(),
+                                name,
+                                project: project_name.clone(),
+                                size,
+                            });
+                        }
+                    }
+                }
+            };
+
+            if let Some(ref specific_project) = project_path {
+                let target = std::path::Path::new(specific_project);
+                if target.exists() && target.is_dir() {
+                    scan_project(target, &mut files);
+                }
+            } else {
+                // Scan all projects
+                if let Ok(entries) = std::fs::read_dir(&projects_dir) {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        if path.is_dir() {
+                            scan_project(&path, &mut files);
+                        }
                     }
                 }
             }
-        }
+            files
+        })
+        .await
+        .map_err(|e| format!("list_memory_files task failed: {}", e))?;
 
         Ok(files)
     })
@@ -3479,7 +3527,9 @@ pub async fn list_memory_files(project_path: Option<String>) -> Result<Vec<Memor
 pub async fn read_memory_file(path: String) -> Result<String, String> {
     wrap_cmd("read_memory_file", async move {
         validate_claude_path(&path)?;
-        std::fs::read_to_string(&path).map_err(|e| format!("Failed to read memory file: {}", e))
+        tokio::fs::read_to_string(&path)
+            .await
+            .map_err(|e| format!("Failed to read memory file: {}", e))
     })
     .await
 }
@@ -3490,9 +3540,11 @@ pub async fn write_memory_file(path: String, content: String) -> Result<(), Stri
         validate_claude_path(&path)?;
         // Ensure parent directory exists
         if let Some(parent) = std::path::Path::new(&path).parent() {
-            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+            tokio::fs::create_dir_all(parent).await.map_err(|e| e.to_string())?;
         }
-        std::fs::write(&path, &content).map_err(|e| format!("Failed to write memory file: {}", e))
+        tokio::fs::write(&path, &content)
+            .await
+            .map_err(|e| format!("Failed to write memory file: {}", e))
     })
     .await
 }
@@ -3513,25 +3565,32 @@ pub async fn list_claude_md_files() -> Result<Vec<ClaudeMdInfo>, String> {
             });
         }
 
-        // Project-level CLAUDE.md files in ~/.claude/projects/*/
+        // Project-level CLAUDE.md files in ~/.claude/projects/*/ — off-runtime.
         let projects_dir = claude_dir.join("projects");
         if projects_dir.exists() {
-            if let Ok(entries) = std::fs::read_dir(&projects_dir) {
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    if path.is_dir() {
-                        let md_path = path.join("CLAUDE.md");
-                        if md_path.exists() {
-                            let project_name = entry.file_name().to_string_lossy().to_string();
-                            files.push(ClaudeMdInfo {
-                                path: md_path.to_string_lossy().to_string(),
-                                scope: "project".to_string(),
-                                project_name: Some(project_name),
-                            });
+            let more = tokio::task::spawn_blocking(move || -> Vec<ClaudeMdInfo> {
+                let mut out = Vec::new();
+                if let Ok(entries) = std::fs::read_dir(&projects_dir) {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        if path.is_dir() {
+                            let md_path = path.join("CLAUDE.md");
+                            if md_path.exists() {
+                                let project_name = entry.file_name().to_string_lossy().to_string();
+                                out.push(ClaudeMdInfo {
+                                    path: md_path.to_string_lossy().to_string(),
+                                    scope: "project".to_string(),
+                                    project_name: Some(project_name),
+                                });
+                            }
                         }
                     }
                 }
-            }
+                out
+            })
+            .await
+            .map_err(|e| format!("list_claude_md_files task failed: {}", e))?;
+            files.extend(more);
         }
 
         Ok(files)
@@ -3584,48 +3643,56 @@ pub async fn get_active_teams() -> Result<Vec<TeamInfo>, String> {
             return Ok(vec![]);
         }
 
-        let entries = std::fs::read_dir(&teams_dir).map_err(|e| e.to_string())?;
-        let mut teams = Vec::new();
+        // Teams walk: read_dir + read_to_string (config.json) + read_to_string
+        // (.highwatermark) + JSON parse for every team. Off-runtime.
+        let home_cloned = home.clone();
+        let teams = tokio::task::spawn_blocking(move || -> Result<Vec<TeamInfo>, String> {
+            let entries = std::fs::read_dir(&teams_dir).map_err(|e| e.to_string())?;
+            let mut teams = Vec::new();
 
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if !path.is_dir() {
-                continue;
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if !path.is_dir() {
+                    continue;
+                }
+
+                let config_path = path.join("config.json");
+                if !config_path.exists() {
+                    continue;
+                }
+
+                let config_str = match std::fs::read_to_string(&config_path) {
+                    Ok(s) => s,
+                    Err(_) => continue,
+                };
+
+                let config: TeamConfig = match serde_json::from_str(&config_str) {
+                    Ok(c) => c,
+                    Err(_) => continue,
+                };
+
+                let dir_name = entry.file_name().to_string_lossy().to_string();
+
+                // Read task count from .highwatermark
+                let tasks_dir = std::path::Path::new(&home_cloned)
+                    .join(".claude")
+                    .join("tasks")
+                    .join(&dir_name);
+                let hwm_path = tasks_dir.join(".highwatermark");
+                let task_count = std::fs::read_to_string(&hwm_path)
+                    .ok()
+                    .and_then(|s| s.trim().parse::<u32>().ok());
+
+                teams.push(TeamInfo {
+                    dir_name,
+                    config,
+                    task_count,
+                });
             }
-
-            let config_path = path.join("config.json");
-            if !config_path.exists() {
-                continue;
-            }
-
-            let config_str = match std::fs::read_to_string(&config_path) {
-                Ok(s) => s,
-                Err(_) => continue,
-            };
-
-            let config: TeamConfig = match serde_json::from_str(&config_str) {
-                Ok(c) => c,
-                Err(_) => continue,
-            };
-
-            let dir_name = entry.file_name().to_string_lossy().to_string();
-
-            // Read task count from .highwatermark
-            let tasks_dir = std::path::Path::new(&home)
-                .join(".claude")
-                .join("tasks")
-                .join(&dir_name);
-            let hwm_path = tasks_dir.join(".highwatermark");
-            let task_count = std::fs::read_to_string(&hwm_path)
-                .ok()
-                .and_then(|s| s.trim().parse::<u32>().ok());
-
-            teams.push(TeamInfo {
-                dir_name,
-                config,
-                task_count,
-            });
-        }
+            Ok(teams)
+        })
+        .await
+        .map_err(|e| format!("get_active_teams task failed: {}", e))??;
 
         Ok(teams)
     })
@@ -3934,7 +4001,7 @@ pub async fn get_path_file_diff(
 
         let diff_text = if is_new_file {
             let full_path = std::path::Path::new(&path).join(&file_path);
-            build_new_file_diff(&full_path, &file_path)
+            build_new_file_diff(&full_path, &file_path).await
         } else if is_deleted_file {
             let show_output = git_cmd_async(&["show", &format!("HEAD:{}", file_path)])
                 .current_dir(&path)
@@ -4225,7 +4292,7 @@ pub async fn list_package_scripts(
         validate_path_is_trusted(&state, &cwd).await?;
 
         let pkg_path = std::path::Path::new(&cwd).join("package.json");
-        let bytes = match std::fs::read(&pkg_path) {
+        let bytes = match tokio::fs::read(&pkg_path).await {
             Ok(b) => b,
             Err(_) => return Ok(vec![]), // no package.json → no scripts, not an error
         };
@@ -4432,13 +4499,16 @@ pub async fn git_discard_file(
                     canonical_target.display()
                 ));
             }
-            let meta = std::fs::metadata(&canonical_target)
+            let meta = tokio::fs::metadata(&canonical_target)
+                .await
                 .map_err(|e| format!("Failed to stat '{}': {}", canonical_target.display(), e))?;
             if meta.is_dir() {
-                std::fs::remove_dir_all(&canonical_target)
+                tokio::fs::remove_dir_all(&canonical_target)
+                    .await
                     .map_err(|e| format!("Failed to delete directory: {}", e))?;
             } else {
-                std::fs::remove_file(&canonical_target)
+                tokio::fs::remove_file(&canonical_target)
+                    .await
                     .map_err(|e| format!("Failed to delete file: {}", e))?;
             }
             return Ok(());
@@ -4493,30 +4563,36 @@ pub async fn list_directory(
             return Ok(Vec::new());
         }
 
-        let mut entries: Vec<DirEntryInfo> = Vec::new();
-        let read_dir = std::fs::read_dir(&path).map_err(|e| format!("Failed to read directory: {}", e))?;
-        for entry in read_dir.flatten() {
-            let meta = match entry.metadata() {
-                Ok(m) => m,
-                Err(_) => continue,
-            };
-            let file_name = entry.file_name().to_string_lossy().to_string();
-            let full_path = entry.path().to_string_lossy().to_string();
-            entries.push(DirEntryInfo {
-                name: file_name,
-                path: full_path,
-                is_dir: meta.is_dir(),
-                is_symlink: meta.file_type().is_symlink(),
-                size: if meta.is_file() { meta.len() } else { 0 },
-            });
-        }
+        // read_dir + per-entry metadata for the whole directory — off-runtime.
+        let entries = tokio::task::spawn_blocking(move || -> Result<Vec<DirEntryInfo>, String> {
+            let mut entries: Vec<DirEntryInfo> = Vec::new();
+            let read_dir = std::fs::read_dir(&path).map_err(|e| format!("Failed to read directory: {}", e))?;
+            for entry in read_dir.flatten() {
+                let meta = match entry.metadata() {
+                    Ok(m) => m,
+                    Err(_) => continue,
+                };
+                let file_name = entry.file_name().to_string_lossy().to_string();
+                let full_path = entry.path().to_string_lossy().to_string();
+                entries.push(DirEntryInfo {
+                    name: file_name,
+                    path: full_path,
+                    is_dir: meta.is_dir(),
+                    is_symlink: meta.file_type().is_symlink(),
+                    size: if meta.is_file() { meta.len() } else { 0 },
+                });
+            }
 
-        // VS Code ordering: folders first, then files, each alphabetical (case-insensitive).
-        entries.sort_by(|a, b| match (a.is_dir, b.is_dir) {
-            (true, false) => std::cmp::Ordering::Less,
-            (false, true) => std::cmp::Ordering::Greater,
-            _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
-        });
+            // VS Code ordering: folders first, then files, each alphabetical (case-insensitive).
+            entries.sort_by(|a, b| match (a.is_dir, b.is_dir) {
+                (true, false) => std::cmp::Ordering::Less,
+                (false, true) => std::cmp::Ordering::Greater,
+                _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+            });
+            Ok(entries)
+        })
+        .await
+        .map_err(|e| format!("list_directory task failed: {}", e))??;
 
         Ok(entries)
     })
@@ -4533,7 +4609,7 @@ pub async fn read_text_file(
     wrap_cmd("read_text_file", async move {
         validate_path_is_trusted(&state, &path).await?;
 
-        let meta = std::fs::metadata(&path).map_err(|e| format!("Failed to stat file: {}", e))?;
+        let meta = tokio::fs::metadata(&path).await.map_err(|e| format!("Failed to stat file: {}", e))?;
         // Directory / too-large / binary / non-UTF-8 are all expected outcomes
         // of the user clicking a file in the tree, not defects: user_err them
         // so they surface in the UI without hitting telemetry.
@@ -4549,7 +4625,7 @@ pub async fn read_text_file(
             )));
         }
 
-        let bytes = std::fs::read(&path).map_err(|e| format!("Failed to read file: {}", e))?;
+        let bytes = tokio::fs::read(&path).await.map_err(|e| format!("Failed to read file: {}", e))?;
         // Quick binary sniff: any NUL byte in the first 8 KB → binary.
         let sniff_len = bytes.len().min(8192);
         if bytes[..sniff_len].contains(&0u8) {
@@ -4579,14 +4655,17 @@ pub async fn write_text_file(
         // trusted tree — following the untrusted string would land the write
         // on the swap target. Canonicalising here means we write to the
         // already-resolved absolute path, closing that TOCTOU window.
-        let canonical = std::fs::canonicalize(&path)
+        let canonical = tokio::fs::canonicalize(&path)
+            .await
             .map_err(|e| format!("Failed to resolve path: {}", e))?;
-        let meta = std::fs::metadata(&canonical)
+        let meta = tokio::fs::metadata(&canonical)
+            .await
             .map_err(|e| format!("Failed to stat file: {}", e))?;
         if meta.is_dir() {
             return Err(error_reporter::user_err("Path is a directory"));
         }
-        std::fs::write(&canonical, content.as_bytes())
+        tokio::fs::write(&canonical, content.as_bytes())
+            .await
             .map_err(|e| format!("Failed to write file: {}", e))?;
         Ok(())
     })
@@ -4811,47 +4890,56 @@ pub async fn search_in_files(
             });
         }
 
-        let root = std::path::PathBuf::from(&path)
-            .canonicalize()
+        let root = tokio::fs::canonicalize(&path)
+            .await
             .map_err(|e| format!("Invalid root: {}", e))?;
         if !root.is_dir() {
-            return Err("Search root is not a directory".to_string());
+            return Err(error_reporter::user_err("Search root is not a directory"));
         }
 
+        // Recursive tree walk with per-file read + substring scan — inherently
+        // sync-blocking and CPU-heavy. Run on the blocking pool so the tokio
+        // runtime keeps serving terminal-output events while a big repo scans.
         let query_lower = query.to_lowercase();
-        let mut results: Vec<FileSearchResult> = Vec::new();
-        let mut total_matches: u32 = 0;
-        let mut files_seen: u32 = 0;
+        let summary = tokio::task::spawn_blocking(move || -> SearchSummary {
+            let mut results: Vec<FileSearchResult> = Vec::new();
+            let mut total_matches: u32 = 0;
+            let mut files_seen: u32 = 0;
 
-        let completed = search_walk(
-            &root,
-            &root,
-            &query_lower,
-            &query,
-            case_sensitive,
-            include_file_contents,
-            &mut results,
-            &mut total_matches,
-            &mut files_seen,
-        );
+            let completed = search_walk(
+                &root,
+                &root,
+                &query_lower,
+                &query,
+                case_sensitive,
+                include_file_contents,
+                &mut results,
+                &mut total_matches,
+                &mut files_seen,
+            );
 
-        // Show files with content matches first, then filename-only matches.
-        results.sort_by(|a, b| {
-            let a_only_name = a.matches.is_empty();
-            let b_only_name = b.matches.is_empty();
-            match (a_only_name, b_only_name) {
-                (false, true) => std::cmp::Ordering::Less,
-                (true, false) => std::cmp::Ordering::Greater,
-                _ => a.relative_path.to_lowercase().cmp(&b.relative_path.to_lowercase()),
+            // Show files with content matches first, then filename-only matches.
+            results.sort_by(|a, b| {
+                let a_only_name = a.matches.is_empty();
+                let b_only_name = b.matches.is_empty();
+                match (a_only_name, b_only_name) {
+                    (false, true) => std::cmp::Ordering::Less,
+                    (true, false) => std::cmp::Ordering::Greater,
+                    _ => a.relative_path.to_lowercase().cmp(&b.relative_path.to_lowercase()),
+                }
+            });
+
+            SearchSummary {
+                total_files: results.len() as u32,
+                total_matches,
+                truncated: !completed,
+                results,
             }
-        });
-
-        Ok(SearchSummary {
-            total_files: results.len() as u32,
-            total_matches,
-            truncated: !completed,
-            results,
         })
+        .await
+        .map_err(|e| format!("Search task failed: {}", e))?;
+
+        Ok(summary)
     })
     .await
 }
