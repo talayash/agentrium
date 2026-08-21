@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.31.3",
+    "date": "2026-08-21",
+    "features": [
+      { "title": "Faster UI under load", "description": "Git operations, file-tree scans, in-repo search, and log reads no longer block the runtime — the UI stays responsive while big trees or slow disks are being read." },
+      { "title": "Fewer silent copy/paste failures on Windows", "description": "File-tree paths, terminal output, and paste-as-file now route through the reliable clipboard path (fixes WebView2 focus-gating races)." },
+      { "title": "Monaco diff editor no longer errors on file switch", "description": "Rapidly toggling between files in Diff mode used to throw \"TextModel got disposed before DiffEditorWidget model got reset\" in the console." },
+      { "title": "Log viewer streams the tail instead of loading whole files", "description": "Session logs are read via a seek to the last 512 KB — huge logs no longer allocate the full file into memory per view." },
+      { "title": "Telemetry redacts more secrets", "description": "GitHub PATs, Anthropic keys, Bearer tokens, npm auth tokens, and Unix home paths are now scrubbed before reports leave the app." }
+    ]
+  },
+  {
     "version": "1.31.2",
     "date": "2026-08-10",
     "features": [
