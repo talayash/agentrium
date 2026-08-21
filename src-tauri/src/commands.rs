@@ -62,6 +62,39 @@ pub fn set_error_reporting_enabled(enabled: bool) -> Result<(), String> {
     Ok(())
 }
 
+/// Run a sync rusqlite call off the tokio runtime.
+///
+/// Previously every DB access looked like `let db = state.db.lock().await;
+/// db.method()`, which used a `tokio::sync::Mutex`. That has two problems:
+/// (1) holding the guard across any subsequent `.await` in the handler
+/// serializes global DB access, and (2) the sync `rusqlite` call inside
+/// the guard blocks a tokio worker until it returns. Under load both
+/// stall unrelated IPC (including `terminal-output` event delivery).
+///
+/// This helper takes an `Arc<std::sync::Mutex<Database>>` (the sync flavor
+/// so it can't be held across `.await`) and runs `f` on the blocking pool
+/// — the lock is held only for the duration of the sync work, and the
+/// runtime workers stay free.
+async fn db_op<T, F>(
+    db_arc: &std::sync::Arc<std::sync::Mutex<crate::database::Database>>,
+    f: F,
+) -> Result<T, String>
+where
+    F: FnOnce(&crate::database::Database) -> Result<T, String> + Send + 'static,
+    T: Send + 'static,
+{
+    let db_arc = db_arc.clone();
+    tokio::task::spawn_blocking(move || {
+        // `unwrap_or_else(into_inner)` recovers from Mutex poisoning: SQLite
+        // is transactional, so a panic in a prior DB call left the connection
+        // in a well-defined state and the mutex is still safe to use.
+        let db = db_arc.lock().unwrap_or_else(|p| p.into_inner());
+        f(&db)
+    })
+    .await
+    .map_err(|e| format!("DB task failed: {}", e))?
+}
+
 async fn terminal_cwd(
     state: &State<'_, AppState>,
     terminal_id: &str,
@@ -153,8 +186,10 @@ pub async fn list_changelists(
     repo_path: String,
 ) -> Result<Vec<crate::changelists::ChangelistInfo>, String> {
     wrap_cmd("list_changelists", async move {
-        let db = state.db.lock().await;
-        crate::changelists::list_changelists(db.conn(), &repo_path)
+        db_op(&state.db, move |db| {
+            crate::changelists::list_changelists(db.conn(), &repo_path)
+        })
+        .await
     })
     .await
 }
@@ -166,8 +201,10 @@ pub async fn create_changelist(
     name: String,
 ) -> Result<i64, String> {
     wrap_cmd("create_changelist", async move {
-        let db = state.db.lock().await;
-        crate::changelists::create_changelist(db.conn(), &repo_path, &name)
+        db_op(&state.db, move |db| {
+            crate::changelists::create_changelist(db.conn(), &repo_path, &name)
+        })
+        .await
     })
     .await
 }
@@ -179,8 +216,10 @@ pub async fn rename_changelist(
     new_name: String,
 ) -> Result<(), String> {
     wrap_cmd("rename_changelist", async move {
-        let db = state.db.lock().await;
-        crate::changelists::rename_changelist(db.conn(), id, &new_name)
+        db_op(&state.db, move |db| {
+            crate::changelists::rename_changelist(db.conn(), id, &new_name)
+        })
+        .await
     })
     .await
 }
@@ -191,8 +230,10 @@ pub async fn delete_changelist(
     id: i64,
 ) -> Result<(), String> {
     wrap_cmd("delete_changelist", async move {
-        let db = state.db.lock().await;
-        crate::changelists::delete_changelist(db.conn(), id)
+        db_op(&state.db, move |db| {
+            crate::changelists::delete_changelist(db.conn(), id)
+        })
+        .await
     })
     .await
 }
@@ -205,10 +246,12 @@ pub async fn assign_files_to_changelist(
     changelist_id: Option<i64>,
 ) -> Result<(), String> {
     wrap_cmd("assign_files_to_changelist", async move {
-        let db = state.db.lock().await;
-        crate::changelists::assign_files_to_changelist(
-            db.conn(), &repo_path, &file_paths, changelist_id,
-        )
+        db_op(&state.db, move |db| {
+            crate::changelists::assign_files_to_changelist(
+                db.conn(), &repo_path, &file_paths, changelist_id,
+            )
+        })
+        .await
     })
     .await
 }
@@ -219,8 +262,10 @@ pub async fn get_changelist_assignments(
     repo_path: String,
 ) -> Result<Vec<(String, i64)>, String> {
     wrap_cmd("get_changelist_assignments", async move {
-        let db = state.db.lock().await;
-        crate::changelists::get_changelist_assignments(db.conn(), &repo_path)
+        db_op(&state.db, move |db| {
+            crate::changelists::get_changelist_assignments(db.conn(), &repo_path)
+        })
+        .await
     })
     .await
 }
@@ -334,8 +379,12 @@ pub async fn create_terminal(
                 }
                 // Persist to history so the Session Timeline can `--resume` it.
                 {
-                    let db = state.db.lock().await;
-                    let _ = db.update_session_claude_id(&config.id, &newest.id);
+                    let cfg_id = config.id.clone();
+                    let newest_id = newest.id.clone();
+                    let _ = db_op(&state.db, move |db| {
+                        db.update_session_claude_id(&cfg_id, &newest_id)
+                    })
+                    .await;
                 }
             }
         } else {
@@ -391,8 +440,12 @@ pub async fn create_terminal(
                             }
                             // Mirror onto the history row for later `--resume`.
                             {
-                                let db = db_for_detect.lock().await;
-                                let _ = db.update_session_claude_id(&detect_id, &session_id);
+                                let detect_id_c = detect_id.clone();
+                                let session_id_c = session_id.clone();
+                                let _ = db_op(&db_for_detect, move |db| {
+                                    db.update_session_claude_id(&detect_id_c, &session_id_c)
+                                })
+                                .await;
                             }
                             last_recorded = Some(session_id);
                         }
@@ -403,14 +456,22 @@ pub async fn create_terminal(
 
         // Insert session history entry
         {
-            let db = state.db.lock().await;
-            if let Err(e) = db.insert_session_history(
-                &config.id,
-                &config.label,
-                &config.created_at.to_rfc3339(),
-                Some(&log_path),
-                Some(&config.working_directory),
-            ) {
+            let cfg_id = config.id.clone();
+            let cfg_label = config.label.clone();
+            let cfg_created = config.created_at.to_rfc3339();
+            let cfg_cwd = config.working_directory.clone();
+            let log_path_c = log_path.clone();
+            let res = db_op(&state.db, move |db| {
+                db.insert_session_history(
+                    &cfg_id,
+                    &cfg_label,
+                    &cfg_created,
+                    Some(&log_path_c),
+                    Some(&cfg_cwd),
+                )
+            })
+            .await;
+            if let Err(e) = res {
                 eprintln!("Failed to insert session history: {}", e);
                 error_reporter::report_bg(
                     "insert_session_history",
@@ -459,8 +520,13 @@ pub async fn create_terminal(
                 agg.forget(&terminal_id);
             }
             {
-                let db = db_arc.lock().await;
-                if let Err(e) = db.update_session_ended(&terminal_id, &chrono::Utc::now().to_rfc3339()) {
+                let tid_c = terminal_id.clone();
+                let now = chrono::Utc::now().to_rfc3339();
+                let res = db_op(&db_arc, move |db| {
+                    db.update_session_ended(&tid_c, &now)
+                })
+                .await;
+                if let Err(e) = res {
                     eprintln!("Failed to update session ended for {}: {}", terminal_id, e);
                     error_reporter::report_bg(
                         "update_session_ended",
@@ -592,8 +658,7 @@ pub async fn save_profile(
     profile: ConfigProfile,
 ) -> Result<(), String> {
     wrap_cmd("save_profile", async move {
-        let db = state.db.lock().await;
-        db.save_profile(&profile)
+        db_op(&state.db, move |db| db.save_profile(&profile)).await
     })
     .await
 }
@@ -601,8 +666,7 @@ pub async fn save_profile(
 #[command]
 pub async fn get_profiles(state: State<'_, AppState>) -> Result<Vec<ConfigProfile>, String> {
     wrap_cmd("get_profiles", async move {
-        let db = state.db.lock().await;
-        db.get_profiles()
+        db_op(&state.db, |db| db.get_profiles()).await
     })
     .await
 }
@@ -610,8 +674,7 @@ pub async fn get_profiles(state: State<'_, AppState>) -> Result<Vec<ConfigProfil
 #[command]
 pub async fn delete_profile(state: State<'_, AppState>, id: String) -> Result<(), String> {
     wrap_cmd("delete_profile", async move {
-        let db = state.db.lock().await;
-        db.delete_profile(&id)
+        db_op(&state.db, move |db| db.delete_profile(&id)).await
     })
     .await
 }
@@ -1313,8 +1376,7 @@ pub async fn get_workspaces(
     state: State<'_, AppState>,
 ) -> Result<Vec<crate::database::WorkspaceInfo>, String> {
     wrap_cmd("get_workspaces", async move {
-        let db = state.db.lock().await;
-        db.get_workspaces()
+        db_op(&state.db, |db| db.get_workspaces()).await
     })
     .await
 }
@@ -1325,8 +1387,7 @@ pub async fn delete_workspace(
     name: String,
 ) -> Result<(), String> {
     wrap_cmd("delete_workspace", async move {
-        let db = state.db.lock().await;
-        db.delete_workspace(&name)
+        db_op(&state.db, move |db| db.delete_workspace(&name)).await
     })
     .await
 }
@@ -1338,8 +1399,7 @@ pub async fn save_workspace(
     terminals: Vec<crate::terminal::TerminalConfig>,
 ) -> Result<(), String> {
     wrap_cmd("save_workspace", async move {
-        let db = state.db.lock().await;
-        db.save_workspace(&name, &terminals)
+        db_op(&state.db, move |db| db.save_workspace(&name, &terminals)).await
     })
     .await
 }
@@ -1350,8 +1410,7 @@ pub async fn load_workspace(
     name: String,
 ) -> Result<Vec<crate::terminal::TerminalConfig>, String> {
     wrap_cmd("load_workspace", async move {
-        let db = state.db.lock().await;
-        db.load_workspace(&name)
+        db_op(&state.db, move |db| db.load_workspace(&name)).await
     })
     .await
 }
@@ -1363,8 +1422,7 @@ pub async fn save_session_for_restore(state: State<'_, AppState>) -> Result<(), 
             let terminals = state.terminals.lock().await;
             terminals.get_all_configs()
         };
-        let db = state.db.lock().await;
-        db.save_last_session(&configs)
+        db_op(&state.db, move |db| db.save_last_session(&configs)).await
     })
     .await
 }
@@ -1374,8 +1432,7 @@ pub async fn get_last_session(
     state: State<'_, AppState>,
 ) -> Result<Option<Vec<crate::terminal::TerminalConfig>>, String> {
     wrap_cmd("get_last_session", async move {
-        let db = state.db.lock().await;
-        let configs = db.load_last_session()?;
+        let configs = db_op(&state.db, |db| db.load_last_session()).await?;
         if let Some(ref cs) = configs {
             for c in cs {
                 eprintln!(
@@ -1392,8 +1449,7 @@ pub async fn get_last_session(
 #[command]
 pub async fn clear_last_session(state: State<'_, AppState>) -> Result<(), String> {
     wrap_cmd("clear_last_session", async move {
-        let db = state.db.lock().await;
-        db.clear_last_session()
+        db_op(&state.db, |db| db.clear_last_session()).await
     })
     .await
 }
@@ -2768,8 +2824,7 @@ pub async fn get_session_history(
     state: State<'_, AppState>,
 ) -> Result<Vec<SessionHistoryEntry>, String> {
     wrap_cmd("get_session_history", async move {
-        let db = state.db.lock().await;
-        db.get_session_history()
+        db_op(&state.db, |db| db.get_session_history()).await
     })
     .await
 }
@@ -2830,8 +2885,7 @@ pub async fn delete_session_history(
                 }
             }
         }
-        let db = state.db.lock().await;
-        db.delete_session_history_entry(id)
+        db_op(&state.db, move |db| db.delete_session_history_entry(id)).await
     })
     .await
 }
@@ -2845,10 +2899,8 @@ pub async fn get_session_log(
     terminal_id: String,
 ) -> Result<Option<String>, String> {
     wrap_cmd("get_session_log", async move {
-        let log_path = {
-            let db = state.db.lock().await;
-            db.get_log_path_for_terminal(&terminal_id)?
-        };
+        let tid_c = terminal_id.clone();
+        let log_path = db_op(&state.db, move |db| db.get_log_path_for_terminal(&tid_c)).await?;
 
         let path = match log_path {
             Some(p) => p,
@@ -2901,8 +2953,7 @@ pub async fn save_snippet(
     snippet: Snippet,
 ) -> Result<(), String> {
     wrap_cmd("save_snippet", async move {
-        let db = state.db.lock().await;
-        db.save_snippet(&snippet)
+        db_op(&state.db, move |db| db.save_snippet(&snippet)).await
     })
     .await
 }
@@ -2910,8 +2961,7 @@ pub async fn save_snippet(
 #[command]
 pub async fn get_snippets(state: State<'_, AppState>) -> Result<Vec<Snippet>, String> {
     wrap_cmd("get_snippets", async move {
-        let db = state.db.lock().await;
-        db.get_snippets()
+        db_op(&state.db, |db| db.get_snippets()).await
     })
     .await
 }
@@ -2919,8 +2969,7 @@ pub async fn get_snippets(state: State<'_, AppState>) -> Result<Vec<Snippet>, St
 #[command]
 pub async fn delete_snippet(state: State<'_, AppState>, id: String) -> Result<(), String> {
     wrap_cmd("delete_snippet", async move {
-        let db = state.db.lock().await;
-        db.delete_snippet(&id)
+        db_op(&state.db, move |db| db.delete_snippet(&id)).await
     })
     .await
 }
@@ -3127,8 +3176,7 @@ pub async fn delete_claude_command(name: String) -> Result<(), String> {
 #[command]
 pub async fn get_installation_id(state: State<'_, AppState>) -> Result<String, String> {
     wrap_cmd("get_installation_id", async move {
-        let db = state.db.lock().await;
-        db.get_or_create_installation_id()
+        db_op(&state.db, |db| db.get_or_create_installation_id()).await
     })
     .await
 }
@@ -3143,10 +3191,7 @@ pub async fn send_telemetry_heartbeat(
         if !enabled {
             return Ok(());
         }
-        let installation_id = {
-            let db = state.db.lock().await;
-            db.get_or_create_installation_id()?
-        };
+        let installation_id = db_op(&state.db, |db| db.get_or_create_installation_id()).await?;
         tokio::spawn(crate::telemetry::send_heartbeat(installation_id, app_version));
         Ok(())
     })
@@ -3254,8 +3299,7 @@ pub async fn save_session_summary(
     summary: String,
 ) -> Result<(), String> {
     wrap_cmd("save_session_summary", async move {
-        let db = state.db.lock().await;
-        db.save_session_summary(&terminal_id, &summary)
+        db_op(&state.db, move |db| db.save_session_summary(&terminal_id, &summary)).await
     })
     .await
 }
@@ -3266,8 +3310,7 @@ pub async fn get_session_summary(
     terminal_id: String,
 ) -> Result<Option<String>, String> {
     wrap_cmd("get_session_summary", async move {
-        let db = state.db.lock().await;
-        db.get_session_summary(&terminal_id)
+        db_op(&state.db, move |db| db.get_session_summary(&terminal_id)).await
     })
     .await
 }

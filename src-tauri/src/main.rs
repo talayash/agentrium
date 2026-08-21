@@ -19,7 +19,12 @@ use tokio::sync::Mutex;
 
 pub struct AppState {
     pub terminals: Arc<Mutex<terminal::TerminalManager>>,
-    pub db: Arc<Mutex<database::Database>>,
+    /// Database uses `std::sync::Mutex`, NOT `tokio::sync::Mutex`, so callers
+    /// don't hold the guard across `.await`. Every DB call runs inside a
+    /// `spawn_blocking` closure (see `commands::db_op`) — the mutex is held
+    /// only for the duration of the sync rusqlite call, on the blocking
+    /// pool, off the tokio runtime workers.
+    pub db: Arc<std::sync::Mutex<database::Database>>,
     /// Localhost port of the embedded OTLP metrics receiver (0 if disabled/failed).
     pub otel_port: u16,
     /// Shared aggregator so close_terminal can forget a terminal's metrics.
@@ -100,7 +105,7 @@ fn main() {
 
             app.manage(AppState {
                 terminals: Arc::new(Mutex::new(terminal_manager)),
-                db: Arc::new(Mutex::new(db)),
+                db: Arc::new(std::sync::Mutex::new(db)),
                 otel_port,
                 otel_agg,
                 lsp: Arc::new(Mutex::new(lsp_manager)),
@@ -266,7 +271,9 @@ fn main() {
                         manager.get_all_configs()
                     };
                     {
-                        let db = db.lock().await;
+                        // Sync lock — we're already inside block_on and the
+                        // process is about to exit; no need to yield the runtime.
+                        let db = db.lock().unwrap_or_else(|p| p.into_inner());
                         if let Err(e) = db.save_last_session(&configs) {
                             eprintln!("Failed to save last session on exit: {}", e);
                             // This is the user's whole workspace-restore state
