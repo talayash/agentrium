@@ -1,8 +1,20 @@
-//! Hunk-patch normalization and `git apply` wrapper.
+//! Hunk-patch normalization for `git apply`-compatible unified diffs.
 
 /// Prepend a minimal `diff --git` header to a raw hunk if the caller sent
 /// only the `@@ ...` region. Idempotent when the header is already present.
+///
+/// `file_path` must be a repository-relative POSIX-style path (no leading `/`,
+/// forward slashes). Absolute paths and backslash paths produce a `diff --git`
+/// header that `git apply` will reject.
 pub fn normalize_hunk_patch(file_path: &str, hunk_patch: &str) -> String {
+    debug_assert!(
+        !file_path.starts_with('/'),
+        "normalize_hunk_patch: file_path must be repo-relative, got {file_path}",
+    );
+    debug_assert!(
+        !file_path.contains('\\'),
+        "normalize_hunk_patch: file_path must use forward slashes, got {file_path}",
+    );
     let trimmed = hunk_patch.trim_start_matches('\n');
     if trimmed.starts_with("diff --git ") {
         return hunk_patch.to_string();
@@ -27,10 +39,14 @@ mod tests {
     fn adds_header_to_raw_hunk() {
         let patch = "@@ -1,3 +1,3 @@\n context\n-old\n+new\n";
         let out = normalize_hunk_patch("src/foo.rs", patch);
-        assert!(out.starts_with("diff --git a/src/foo.rs b/src/foo.rs\n"));
-        assert!(out.contains("--- a/src/foo.rs\n"));
-        assert!(out.contains("+++ b/src/foo.rs\n"));
-        assert!(out.ends_with("+new\n"));
+        let expected = "diff --git a/src/foo.rs b/src/foo.rs\n\
+                        --- a/src/foo.rs\n\
+                        +++ b/src/foo.rs\n\
+                        @@ -1,3 +1,3 @@\n \
+                        context\n\
+                        -old\n\
+                        +new\n";
+        assert_eq!(out, expected);
     }
 
     #[test]
@@ -41,9 +57,10 @@ mod tests {
     }
 
     #[test]
-    fn ensures_trailing_newline() {
+    fn ensures_trailing_newline_and_preserves_body() {
         let patch = "@@ -1,1 +1,1 @@\n-a\n+b";
         let out = normalize_hunk_patch("x", patch);
         assert!(out.ends_with('\n'));
+        assert!(out.contains("-a\n+b\n"));
     }
 }
