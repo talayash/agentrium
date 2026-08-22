@@ -6,6 +6,7 @@ mod config;
 mod database;
 mod telemetry;
 mod error_reporter;
+mod hunk_ops;
 mod claude_path;
 mod claude_session;
 mod pastes;
@@ -71,6 +72,11 @@ fn main() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let db = database::Database::new()?;
+            match db.cleanup_orphan_app_worktrees() {
+                Ok(0) => {}
+                Ok(n) => eprintln!("Cleaned {n} orphan app_worktrees row(s)"),
+                Err(e) => eprintln!("app_worktrees cleanup failed: {e}"),
+            }
             let installation_id = match db.get_or_create_installation_id() {
                 Ok(id) => id,
                 Err(e) => {
@@ -192,6 +198,12 @@ fn main() {
             commands::git_stash_drop,
             commands::create_worktree,
             commands::remove_worktree,
+            commands::get_app_worktree,
+            commands::record_app_worktree,
+            commands::merge_worktree_ff,
+            commands::squash_merge_worktree,
+            commands::discard_worktree,
+            commands::git_log_since_base,
             commands::get_session_history,
             commands::get_session_log,
             commands::read_log_file,
@@ -251,6 +263,7 @@ fn main() {
             commands::lsp_install_server,
             commands::lsp_restart_server,
             commands::lsp_server_log,
+            commands::apply_hunk,
         ])
         .on_window_event(|window, event| {
             // Only the main window owns the app lifecycle. Detached (tear-off)

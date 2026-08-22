@@ -7,6 +7,8 @@ import { toast } from '../store/toastStore';
 import { Button } from './ui/Button';
 import { Tooltip } from './ui/Tooltip';
 import { ChangelistSection, type MergedChange } from './ChangelistSection';
+import { HunkActionToast } from './HunkActionToast';
+import { useHunkUndoStore } from '../store/hunkUndoStore';
 import type { WorktreeInfo, PushPreview } from '../types/git';
 
 const DIRTY_TREE_PREFIX = 'Working tree has uncommitted changes';
@@ -140,6 +142,16 @@ export function FileChangesPanel() {
   // Files currently being staged/unstaged - keyed by "stage:path" or "unstage:path"
   const [stagingPaths, setStagingPaths] = useState<Set<string>>(new Set());
   const triggerChangesRefreshAction = useAppStore.getState().triggerChangesRefresh;
+
+  // When the hunk undo stack grows, a stage/discard just happened - refresh immediately.
+  const hunkStackSize = useHunkUndoStore((s) => s.stack.length);
+  const prevHunkStackRef = useRef(0);
+  useEffect(() => {
+    if (hunkStackSize > prevHunkStackRef.current) {
+      triggerChangesRefreshAction();
+    }
+    prevHunkStackRef.current = hunkStackSize;
+  }, [hunkStackSize, triggerChangesRefreshAction]);
 
   const fetchRepos = useCallback(async (cwd: string) => {
     setReposLoading(true);
@@ -747,6 +759,7 @@ export function FileChangesPanel() {
               pathOverride={usingSelectedRepo ? selectedRepoPath : null}
             />
           )}
+          <HunkActionToast />
         </div>
       </div>
 

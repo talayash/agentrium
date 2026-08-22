@@ -4,6 +4,15 @@ use rusqlite::{params, Connection};
 use directories::ProjectDirs;
 use serde::{Serialize, Deserialize};
 
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct AppWorktreeRow {
+    pub terminal_id: String,
+    pub worktree_path: String,
+    pub base_branch: String,
+    pub branch_name: String,
+    pub created_at: i64,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SessionHistoryEntry {
     pub id: i64,
@@ -131,6 +140,14 @@ impl Database {
                 PRIMARY KEY (repo_path, file_path)
             );
 
+            CREATE TABLE IF NOT EXISTS app_worktrees (
+                terminal_id   TEXT PRIMARY KEY,
+                worktree_path TEXT NOT NULL,
+                base_branch   TEXT NOT NULL,
+                branch_name   TEXT NOT NULL,
+                created_at    INTEGER NOT NULL
+            );
+
             CREATE INDEX IF NOT EXISTS idx_changelist_files_repo ON changelist_files(repo_path);
             CREATE INDEX IF NOT EXISTS idx_changelist_files_list ON changelist_files(changelist_id);
             ",
@@ -153,8 +170,10 @@ impl Database {
         // Same pattern for the profiles table: `preview_json` is nullable JSON
         // storing the profile's PreviewProfile (see config.rs). NULL means the
         // profile has no preview config, matching the Option<PreviewProfile>
-        // shape in Rust.
-        for column in ["preview_json TEXT"] {
+        // shape in Rust. `worktree_close_default` is the profile's default
+        // action for the worktree close modal, stored as the snake_case string
+        // form of the enum ("merge" | "squash" | "keep" | "discard") or NULL.
+        for column in ["preview_json TEXT", "worktree_close_default TEXT"] {
             let sql = format!("ALTER TABLE profiles ADD COLUMN {}", column);
             if let Err(e) = conn.execute(&sql, []) {
                 if !e.to_string().contains("duplicate column name") {
@@ -194,9 +213,19 @@ impl Database {
             ),
             None => None,
         };
+        // Enum -> snake_case string via serde. Strip the JSON quotes so the
+        // column stores the bare word ("merge" not "\"merge\"").
+        let worktree_close_default: Option<String> = match &profile.worktree_close_default {
+            Some(action) => {
+                let quoted = serde_json::to_string(action)
+                    .map_err(|e| format!("Failed to serialize worktree_close_default: {}", e))?;
+                Some(quoted.trim_matches('"').to_string())
+            }
+            None => None,
+        };
         self.conn.execute(
-            "INSERT OR REPLACE INTO profiles (id, name, description, working_directory, claude_args, env_vars, is_default, preview_json)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            "INSERT OR REPLACE INTO profiles (id, name, description, working_directory, claude_args, env_vars, is_default, preview_json, worktree_close_default)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             params![
                 profile.id,
                 profile.name,
@@ -206,6 +235,7 @@ impl Database {
                 env_vars_json,
                 profile.is_default as i32,
                 preview_json,
+                worktree_close_default,
             ],
         ).map_err(|e| e.to_string())?;
         Ok(())
@@ -213,7 +243,7 @@ impl Database {
 
     pub fn get_profiles(&self) -> Result<Vec<ConfigProfile>, String> {
         let mut stmt = self.conn
-            .prepare("SELECT id, name, description, working_directory, claude_args, env_vars, is_default, preview_json FROM profiles")
+            .prepare("SELECT id, name, description, working_directory, claude_args, env_vars, is_default, preview_json, worktree_close_default FROM profiles")
             .map_err(|e| e.to_string())?;
 
         let profiles = stmt.query_map([], |row| {
@@ -244,6 +274,26 @@ impl Database {
                 }),
                 None => None,
             };
+            // worktree_close_default is a nullable snake_case string. Parse
+            // it back into the enum; unknown values fall back to None with
+            // an eprintln so misconfigured rows don't crash startup.
+            let close_raw: Option<String> = row.get(8)?;
+            let worktree_close_default: Option<crate::config::WorktreeCloseAction> = match close_raw {
+                Some(raw) => {
+                    let quoted = format!("\"{}\"", raw);
+                    match serde_json::from_str::<crate::config::WorktreeCloseAction>(&quoted) {
+                        Ok(action) => Some(action),
+                        Err(e) => {
+                            eprintln!(
+                                "[profiles] unknown worktree_close_default '{}' for '{}' ({}): {}",
+                                raw, name, id, e
+                            );
+                            None
+                        }
+                    }
+                }
+                None => None,
+            };
             Ok(ConfigProfile {
                 id,
                 name,
@@ -253,6 +303,7 @@ impl Database {
                 env_vars,
                 is_default: row.get::<_, i32>(6)? != 0,
                 preview,
+                worktree_close_default,
             })
         }).map_err(|e| e.to_string())?;
 
@@ -513,6 +564,87 @@ impl Database {
             Err(e) => Err(e.to_string()),
         }
     }
+
+    // App worktree methods
+
+    pub fn insert_app_worktree(&self, row: &AppWorktreeRow) -> Result<(), String> {
+        self.conn.execute(
+            "INSERT OR REPLACE INTO app_worktrees
+             (terminal_id, worktree_path, base_branch, branch_name, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                row.terminal_id,
+                row.worktree_path,
+                row.base_branch,
+                row.branch_name,
+                row.created_at,
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn get_app_worktree(&self, terminal_id: &str) -> Result<Option<AppWorktreeRow>, String> {
+        let mut stmt = self.conn
+            .prepare(
+                "SELECT terminal_id, worktree_path, base_branch, branch_name, created_at
+                 FROM app_worktrees WHERE terminal_id = ?1",
+            )
+            .map_err(|e| e.to_string())?;
+        let mut rows = stmt.query([terminal_id]).map_err(|e| e.to_string())?;
+        match rows.next().map_err(|e| e.to_string())? {
+            Some(r) => Ok(Some(AppWorktreeRow {
+                terminal_id: r.get(0).map_err(|e| e.to_string())?,
+                worktree_path: r.get(1).map_err(|e| e.to_string())?,
+                base_branch: r.get(2).map_err(|e| e.to_string())?,
+                branch_name: r.get(3).map_err(|e| e.to_string())?,
+                created_at: r.get(4).map_err(|e| e.to_string())?,
+            })),
+            None => Ok(None),
+        }
+    }
+
+    pub fn delete_app_worktree(&self, terminal_id: &str) -> Result<(), String> {
+        self.conn
+            .execute("DELETE FROM app_worktrees WHERE terminal_id = ?1", [terminal_id])
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn list_app_worktrees(&self) -> Result<Vec<AppWorktreeRow>, String> {
+        let mut stmt = self.conn
+            .prepare(
+                "SELECT terminal_id, worktree_path, base_branch, branch_name, created_at
+                 FROM app_worktrees",
+            )
+            .map_err(|e| e.to_string())?;
+        let iter = stmt
+            .query_map([], |r| {
+                Ok(AppWorktreeRow {
+                    terminal_id: r.get(0)?,
+                    worktree_path: r.get(1)?,
+                    base_branch: r.get(2)?,
+                    branch_name: r.get(3)?,
+                    created_at: r.get(4)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        iter.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Startup cleanup: drop rows whose worktree_path no longer exists on disk.
+    /// Returns the number of rows removed.
+    pub fn cleanup_orphan_app_worktrees(&self) -> Result<usize, String> {
+        let all = self.list_app_worktrees()?;
+        let mut removed = 0usize;
+        for r in all {
+            if !std::path::Path::new(&r.worktree_path).exists() {
+                self.delete_app_worktree(&r.terminal_id)?;
+                removed += 1;
+            }
+        }
+        Ok(removed)
+    }
 }
 
 #[cfg(test)]
@@ -535,6 +667,7 @@ mod tests {
             env_vars: env,
             is_default: false,
             preview: None,
+            worktree_close_default: None,
         }
     }
 
@@ -784,5 +917,76 @@ mod tests {
         let b = db.get_or_create_installation_id().unwrap();
         assert_eq!(a, b);
         assert!(!a.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod app_worktrees_tests {
+    use super::*;
+
+    #[test]
+    fn insert_and_get() {
+        let db = Database::new_in_memory().unwrap();
+        let row = AppWorktreeRow {
+            terminal_id: "t1".into(),
+            worktree_path: "/tmp/wt-x".into(),
+            base_branch: "main".into(),
+            branch_name: "feat/x".into(),
+            created_at: 1234567890,
+        };
+        db.insert_app_worktree(&row).unwrap();
+
+        let got = db.get_app_worktree("t1").unwrap().unwrap();
+        assert_eq!(got.terminal_id, "t1");
+        assert_eq!(got.worktree_path, "/tmp/wt-x");
+        assert_eq!(got.base_branch, "main");
+        assert_eq!(got.branch_name, "feat/x");
+        assert_eq!(got.created_at, 1234567890);
+    }
+
+    #[test]
+    fn get_missing_returns_none() {
+        let db = Database::new_in_memory().unwrap();
+        assert!(db.get_app_worktree("nope").unwrap().is_none());
+    }
+
+    #[test]
+    fn delete_removes_row() {
+        let db = Database::new_in_memory().unwrap();
+        let row = AppWorktreeRow {
+            terminal_id: "t1".into(),
+            worktree_path: "/tmp/x".into(),
+            base_branch: "main".into(),
+            branch_name: "b".into(),
+            created_at: 0,
+        };
+        db.insert_app_worktree(&row).unwrap();
+        db.delete_app_worktree("t1").unwrap();
+        assert!(db.get_app_worktree("t1").unwrap().is_none());
+    }
+
+    #[test]
+    fn cleanup_removes_orphans_only() {
+        let db = Database::new_in_memory().unwrap();
+        let existing = tempfile::TempDir::new().unwrap();
+        db.insert_app_worktree(&AppWorktreeRow {
+            terminal_id: "t-alive".into(),
+            worktree_path: existing.path().to_string_lossy().into(),
+            base_branch: "main".into(),
+            branch_name: "a".into(),
+            created_at: 0,
+        }).unwrap();
+        db.insert_app_worktree(&AppWorktreeRow {
+            terminal_id: "t-dead".into(),
+            worktree_path: "/definitely/does/not/exist/xyzzy".into(),
+            base_branch: "main".into(),
+            branch_name: "b".into(),
+            created_at: 0,
+        }).unwrap();
+
+        let removed = db.cleanup_orphan_app_worktrees().unwrap();
+        assert_eq!(removed, 1);
+        assert!(db.get_app_worktree("t-alive").unwrap().is_some());
+        assert!(db.get_app_worktree("t-dead").unwrap().is_none());
     }
 }

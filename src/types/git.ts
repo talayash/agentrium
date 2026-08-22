@@ -41,3 +41,34 @@ export interface PushPreview {
 }
 
 export type PushMode = 'normal' | 'force_with_lease';
+
+export type HunkActionKind = 'stage' | 'discard';
+
+export interface HunkAction {
+  kind: HunkActionKind;
+  repoPath: string;
+  filePath: string;
+  hunkPatch: string;
+  atLine: number;   // header line number for toast label
+  timestamp: number;
+}
+
+export interface UndoResult {
+  ok: number;
+  failed: number;
+}
+
+export type WorktreeCloseAction = 'merge' | 'squash' | 'keep' | 'discard';
+
+export interface AppWorktreeRow {
+  terminal_id: string;
+  worktree_path: string;
+  base_branch: string;
+  branch_name: string;
+  created_at: number;
+}
+
+export interface MergeResult {
+  new_head_sha: string;
+  deleted_worktree_path: string;
+}

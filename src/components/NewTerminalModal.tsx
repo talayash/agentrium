@@ -72,6 +72,11 @@ export function NewTerminalModal() {
   const [creatingWorktree, setCreatingWorktree] = useState(false);
   const [worktreeError, setWorktreeError] = useState<string | null>(null);
   const detectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [createdWorktreeInfo, setCreatedWorktreeInfo] = useState<{
+    worktreePath: string;
+    baseBranch: string;
+    branchName: string;
+  } | null>(null);
 
   useEffect(() => {
     loadProfiles();
@@ -196,6 +201,11 @@ export function NewTerminalModal() {
       setWorkingDirectory(wt.path);
       setShowNewWorktreeForm(false);
       setNewBranchName('');
+      setCreatedWorktreeInfo({
+        worktreePath: wt.path,
+        baseBranch,
+        branchName: newBranchName,
+      });
     } catch (err) {
       setWorktreeError(String(err));
     } finally {
@@ -308,6 +318,20 @@ export function NewTerminalModal() {
           undefined,
           previewInit,
         );
+      }
+
+      if (createdWorktreeInfo && newTerminalId) {
+        try {
+          await invoke('record_app_worktree', {
+            terminalId: newTerminalId,
+            worktreePath: createdWorktreeInfo.worktreePath,
+            baseBranch: createdWorktreeInfo.baseBranch,
+            branchName: createdWorktreeInfo.branchName,
+          });
+        } catch (e) {
+          reportInvokeFailure('record_app_worktree', e);
+          // Don't fail terminal creation for this bookkeeping.
+        }
       }
 
       // Created from grid view → place the new terminal in the grid so it's

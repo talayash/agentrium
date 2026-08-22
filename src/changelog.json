@@ -1,5 +1,13 @@
 [
   {
+    "version": "unreleased",
+    "date": "2026-08-22",
+    "features": [
+      { "title": "Per-hunk accept and discard", "description": "Every hunk in the file changes panel now has ✓ and ✕ icon buttons in its header. ✓ stages just that hunk. ✕ discards it from the working tree. A bottom-of-panel toast holds a 5-second Undo for every action; rapid-fire actions coalesce into 'Undo all'. Rejecting a hunk larger than 20 lines requires a one-click inline confirm." },
+      { "title": "Worktree lifecycle on close", "description": "When you close a terminal that owns a worktree the app created, a modal now asks what to do with the branch: fast-forward merge into base, squash-merge with an editable auto-generated message, keep the worktree for later, or discard it. Conflicts abort and keep the worktree so you can resolve them your own way. A 'Remember for this profile' toggle stores your choice per profile." }
+    ]
+  },
+  {
     "version": "1.31.3",
     "date": "2026-08-21",
     "features": [
