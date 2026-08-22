@@ -6,6 +6,7 @@ mod config;
 mod database;
 mod telemetry;
 mod error_reporter;
+mod hunk_ops;
 mod claude_path;
 mod claude_session;
 mod pastes;
