@@ -82,6 +82,56 @@ pub async fn apply_hunk_patch(
     }
 }
 
+/// Run `git -C <path> <args>` and return stdout on success. Returns a
+/// user_err containing stderr on non-zero exit. Used by worktree lifecycle
+/// commands.
+pub async fn git_run(path: &str, args: &[&str]) -> Result<String, String> {
+    let mut cmd = TokioCommand::new("git");
+    cmd.arg("-C").arg(path).args(args);
+    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+
+    #[cfg(target_os = "windows")]
+    cmd.creation_flags(0x08000000);
+
+    let output = cmd.output().await.map_err(|e| {
+        crate::error_reporter::user_err(&format!("spawn git: {e}"))
+    })?;
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    } else {
+        Err(crate::error_reporter::user_err(&format!(
+            "git {} failed: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&output.stderr).trim()
+        )))
+    }
+}
+
+/// Resolve the main repo checkout path from an arbitrary worktree path.
+/// Uses `git -C <path> rev-parse --path-format=absolute --git-common-dir`
+/// then walks up one directory to reach the main worktree.
+///
+/// Returns Err with user_err on any failure.
+pub async fn resolve_main_repo_path(worktree_path: &str) -> Result<String, String> {
+    let common = git_run(
+        worktree_path,
+        &["rev-parse", "--path-format=absolute", "--git-common-dir"],
+    )
+    .await?
+    .trim()
+    .to_string();
+    // git-common-dir is <main>/.git (or the bare repo dir). Its parent is the
+    // main worktree checkout.
+    let p = std::path::PathBuf::from(&common);
+    let parent = p.parent().ok_or_else(|| {
+        crate::error_reporter::user_err(&format!(
+            "cannot derive main repo path from git-common-dir '{}'",
+            common
+        ))
+    })?;
+    Ok(parent.to_string_lossy().to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -230,5 +280,49 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(diff(d, true), "");
+    }
+
+    #[tokio::test]
+    async fn resolve_main_repo_from_worktree() {
+        let td = TempDir::new().unwrap();
+        let main = td.path().join("main");
+        std::fs::create_dir(&main).unwrap();
+        init_repo(&main);
+        write_and_commit(&main, "a.txt", "hi\n", "init");
+        run(&main, &["branch", "feat"]);
+
+        let wt = td.path().join("wt-feat");
+        run(&main, &["worktree", "add", wt.to_str().unwrap(), "feat"]);
+
+        let derived = super::resolve_main_repo_path(wt.to_str().unwrap())
+            .await
+            .expect("resolve");
+        let main_canon = std::fs::canonicalize(&main).unwrap();
+        let derived_canon = std::fs::canonicalize(&derived).unwrap();
+        assert_eq!(derived_canon, main_canon);
+    }
+
+    #[tokio::test]
+    async fn merge_ff_helper_flow_removes_worktree_and_advances_base() {
+        let td = TempDir::new().unwrap();
+        let main = td.path().join("main");
+        std::fs::create_dir(&main).unwrap();
+        init_repo(&main);
+        write_and_commit(&main, "a.txt", "one\n", "init");
+        // Create a feature branch commit via a worktree so main is untouched.
+        run(&main, &["branch", "feat"]);
+        let wt = td.path().join("wt-feat");
+        run(&main, &["worktree", "add", wt.to_str().unwrap(), "feat"]);
+        write_and_commit(&wt, "a.txt", "one\ntwo\n", "feat commit");
+
+        // Simulate what merge_worktree_ff does: checkout base, ff-only, remove.
+        super::git_run(main.to_str().unwrap(), &["checkout", "main"]).await.unwrap();
+        super::git_run(main.to_str().unwrap(), &["merge", "--ff-only", "feat"]).await.unwrap();
+        super::git_run(main.to_str().unwrap(), &["worktree", "remove", wt.to_str().unwrap()]).await.unwrap();
+
+        assert!(!wt.exists(), "worktree dir should be gone");
+        // Base should now include the feat commit's content.
+        let contents = std::fs::read_to_string(main.join("a.txt")).unwrap();
+        assert_eq!(contents.replace("\r\n", "\n"), "one\ntwo\n");
     }
 }

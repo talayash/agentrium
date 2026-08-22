@@ -2861,6 +2861,180 @@ pub async fn record_app_worktree(
     .await
 }
 
+// -- Worktree lifecycle: merge / squash / discard -------------------------
+
+#[derive(serde::Serialize)]
+pub struct MergeResult {
+    pub new_head_sha: String,
+    pub deleted_worktree_path: String,
+}
+
+#[command]
+pub async fn merge_worktree_ff(
+    state: State<'_, AppState>,
+    terminal_id: String,
+    worktree_path: String,
+    base_branch: String,
+) -> Result<MergeResult, String> {
+    wrap_cmd("merge_worktree_ff", async move {
+        let main = crate::hunk_ops::resolve_main_repo_path(&worktree_path).await?;
+
+        // Resolve worktree's branch by reading its HEAD symbolic ref.
+        let wt_branch = crate::hunk_ops::git_run(&worktree_path, &["symbolic-ref", "--short", "HEAD"])
+            .await
+            .map(|s| s.trim().to_string())?;
+        if wt_branch.is_empty() {
+            return Err(crate::error_reporter::user_err(
+                "Worktree is in a detached HEAD state; merge requires a branch.",
+            ));
+        }
+
+        // Optional fetch, best-effort.
+        let _ = crate::hunk_ops::git_run(&main, &["fetch", "--quiet"]).await;
+
+        // Refuse if main checkout is dirty.
+        let status = crate::hunk_ops::git_run(&main, &["status", "--porcelain"]).await?;
+        if !status.trim().is_empty() {
+            return Err(crate::error_reporter::user_err(&format!(
+                "Uncommitted changes in {}. Commit or stash them, then retry.",
+                main
+            )));
+        }
+
+        crate::hunk_ops::git_run(&main, &["checkout", &base_branch]).await?;
+        crate::hunk_ops::git_run(&main, &["merge", "--ff-only", &wt_branch]).await?;
+        crate::hunk_ops::git_run(&main, &["worktree", "remove", &worktree_path]).await?;
+
+        let new_head = crate::hunk_ops::git_run(&main, &["rev-parse", "HEAD"]).await?
+            .trim().to_string();
+
+        db_op(&state.db, move |db| {
+            db.delete_app_worktree(&terminal_id).map_err(|e| e.to_string())
+        })
+        .await?;
+
+        Ok(MergeResult {
+            new_head_sha: new_head,
+            deleted_worktree_path: worktree_path,
+        })
+    })
+    .await
+}
+
+#[command]
+pub async fn squash_merge_worktree(
+    state: State<'_, AppState>,
+    terminal_id: String,
+    worktree_path: String,
+    base_branch: String,
+    message: String,
+) -> Result<MergeResult, String> {
+    wrap_cmd("squash_merge_worktree", async move {
+        if message.trim().is_empty() {
+            return Err(crate::error_reporter::user_err(
+                "Squash message cannot be empty.",
+            ));
+        }
+        let main = crate::hunk_ops::resolve_main_repo_path(&worktree_path).await?;
+
+        let wt_branch = crate::hunk_ops::git_run(&worktree_path, &["symbolic-ref", "--short", "HEAD"])
+            .await
+            .map(|s| s.trim().to_string())?;
+        if wt_branch.is_empty() {
+            return Err(crate::error_reporter::user_err(
+                "Worktree is in a detached HEAD state; squash-merge requires a branch.",
+            ));
+        }
+
+        let _ = crate::hunk_ops::git_run(&main, &["fetch", "--quiet"]).await;
+
+        let status = crate::hunk_ops::git_run(&main, &["status", "--porcelain"]).await?;
+        if !status.trim().is_empty() {
+            return Err(crate::error_reporter::user_err(&format!(
+                "Uncommitted changes in {}. Commit or stash them, then retry.",
+                main
+            )));
+        }
+
+        crate::hunk_ops::git_run(&main, &["checkout", &base_branch]).await?;
+        crate::hunk_ops::git_run(&main, &["merge", "--squash", &wt_branch]).await?;
+        crate::hunk_ops::git_run(&main, &["commit", "-m", &message]).await?;
+        crate::hunk_ops::git_run(&main, &["worktree", "remove", &worktree_path]).await?;
+        let _ = crate::hunk_ops::git_run(&main, &["branch", "-D", &wt_branch]).await;
+
+        let new_head = crate::hunk_ops::git_run(&main, &["rev-parse", "HEAD"]).await?
+            .trim().to_string();
+
+        db_op(&state.db, move |db| {
+            db.delete_app_worktree(&terminal_id).map_err(|e| e.to_string())
+        })
+        .await?;
+
+        Ok(MergeResult {
+            new_head_sha: new_head,
+            deleted_worktree_path: worktree_path,
+        })
+    })
+    .await
+}
+
+#[command]
+pub async fn discard_worktree(
+    state: State<'_, AppState>,
+    terminal_id: String,
+    worktree_path: String,
+) -> Result<(), String> {
+    wrap_cmd("discard_worktree", async move {
+        // If the worktree no longer exists on disk, still clean the DB row.
+        if !std::path::Path::new(&worktree_path).exists() {
+            db_op(&state.db, move |db| {
+                db.delete_app_worktree(&terminal_id).map_err(|e| e.to_string())
+            })
+            .await?;
+            return Ok(());
+        }
+
+        let main = crate::hunk_ops::resolve_main_repo_path(&worktree_path).await?;
+        let wt_branch = crate::hunk_ops::git_run(&worktree_path, &["symbolic-ref", "--short", "HEAD"])
+            .await
+            .map(|s| s.trim().to_string())
+            .ok()
+            .filter(|s| !s.is_empty());
+
+        crate::hunk_ops::git_run(&main, &["worktree", "remove", "--force", &worktree_path]).await?;
+
+        if let Some(b) = wt_branch {
+            let _ = crate::hunk_ops::git_run(&main, &["branch", "-D", &b]).await;
+        }
+
+        db_op(&state.db, move |db| {
+            db.delete_app_worktree(&terminal_id).map_err(|e| e.to_string())
+        })
+        .await?;
+
+        Ok(())
+    })
+    .await
+}
+
+/// Small helper used by the WorktreeCloseModal to prefill the squash message.
+#[command]
+pub async fn git_log_since_base(
+    worktree_path: String,
+    base_branch: String,
+) -> Result<Vec<String>, String> {
+    wrap_cmd("git_log_since_base", async move {
+        let range = format!("{base_branch}..HEAD");
+        let out = crate::hunk_ops::git_run(
+            &worktree_path,
+            &["log", "--format=%s", &range],
+        )
+        .await?;
+        Ok(out.lines().map(|s| s.to_string()).collect::<Vec<_>>())
+    })
+    .await
+}
+
 // Session history commands
 
 #[command]
