@@ -41,3 +41,19 @@ export interface PushPreview {
 }
 
 export type PushMode = 'normal' | 'force_with_lease';
+
+export type HunkActionKind = 'stage' | 'discard';
+
+export interface HunkAction {
+  kind: HunkActionKind;
+  repoPath: string;
+  filePath: string;
+  hunkPatch: string;
+  atLine: number;   // header line number for toast label
+  timestamp: number;
+}
+
+export interface UndoResult {
+  ok: number;
+  failed: number;
+}
