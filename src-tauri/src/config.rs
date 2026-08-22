@@ -9,6 +9,17 @@ pub struct PreviewProfile {
     pub framework_hint: Option<String>,
 }
 
+/// Per-profile default action when a worktree-isolated terminal closes.
+/// `None` means "always show the close modal".
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WorktreeCloseAction {
+    Merge,
+    Squash,
+    Keep,
+    Discard,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConfigProfile {
     pub id: String,
@@ -20,6 +31,8 @@ pub struct ConfigProfile {
     pub is_default: bool,
     #[serde(default)]
     pub preview: Option<PreviewProfile>,
+    #[serde(default)]
+    pub worktree_close_default: Option<WorktreeCloseAction>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -279,6 +292,7 @@ mod tests {
             env_vars: env,
             is_default: true,
             preview: None,
+            worktree_close_default: None,
         }
     }
 
@@ -308,6 +322,7 @@ mod tests {
             env_vars: HashMap::new(),
             is_default: false,
             preview: None,
+            worktree_close_default: None,
         };
         let json = serde_json::to_string(&p).unwrap();
         let back: ConfigProfile = serde_json::from_str(&json).unwrap();

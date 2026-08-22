@@ -170,8 +170,10 @@ impl Database {
         // Same pattern for the profiles table: `preview_json` is nullable JSON
         // storing the profile's PreviewProfile (see config.rs). NULL means the
         // profile has no preview config, matching the Option<PreviewProfile>
-        // shape in Rust.
-        for column in ["preview_json TEXT"] {
+        // shape in Rust. `worktree_close_default` is the profile's default
+        // action for the worktree close modal, stored as the snake_case string
+        // form of the enum ("merge" | "squash" | "keep" | "discard") or NULL.
+        for column in ["preview_json TEXT", "worktree_close_default TEXT"] {
             let sql = format!("ALTER TABLE profiles ADD COLUMN {}", column);
             if let Err(e) = conn.execute(&sql, []) {
                 if !e.to_string().contains("duplicate column name") {
@@ -211,9 +213,19 @@ impl Database {
             ),
             None => None,
         };
+        // Enum -> snake_case string via serde. Strip the JSON quotes so the
+        // column stores the bare word ("merge" not "\"merge\"").
+        let worktree_close_default: Option<String> = match &profile.worktree_close_default {
+            Some(action) => {
+                let quoted = serde_json::to_string(action)
+                    .map_err(|e| format!("Failed to serialize worktree_close_default: {}", e))?;
+                Some(quoted.trim_matches('"').to_string())
+            }
+            None => None,
+        };
         self.conn.execute(
-            "INSERT OR REPLACE INTO profiles (id, name, description, working_directory, claude_args, env_vars, is_default, preview_json)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            "INSERT OR REPLACE INTO profiles (id, name, description, working_directory, claude_args, env_vars, is_default, preview_json, worktree_close_default)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             params![
                 profile.id,
                 profile.name,
@@ -223,6 +235,7 @@ impl Database {
                 env_vars_json,
                 profile.is_default as i32,
                 preview_json,
+                worktree_close_default,
             ],
         ).map_err(|e| e.to_string())?;
         Ok(())
@@ -230,7 +243,7 @@ impl Database {
 
     pub fn get_profiles(&self) -> Result<Vec<ConfigProfile>, String> {
         let mut stmt = self.conn
-            .prepare("SELECT id, name, description, working_directory, claude_args, env_vars, is_default, preview_json FROM profiles")
+            .prepare("SELECT id, name, description, working_directory, claude_args, env_vars, is_default, preview_json, worktree_close_default FROM profiles")
             .map_err(|e| e.to_string())?;
 
         let profiles = stmt.query_map([], |row| {
@@ -261,6 +274,26 @@ impl Database {
                 }),
                 None => None,
             };
+            // worktree_close_default is a nullable snake_case string. Parse
+            // it back into the enum; unknown values fall back to None with
+            // an eprintln so misconfigured rows don't crash startup.
+            let close_raw: Option<String> = row.get(8)?;
+            let worktree_close_default: Option<crate::config::WorktreeCloseAction> = match close_raw {
+                Some(raw) => {
+                    let quoted = format!("\"{}\"", raw);
+                    match serde_json::from_str::<crate::config::WorktreeCloseAction>(&quoted) {
+                        Ok(action) => Some(action),
+                        Err(e) => {
+                            eprintln!(
+                                "[profiles] unknown worktree_close_default '{}' for '{}' ({}): {}",
+                                raw, name, id, e
+                            );
+                            None
+                        }
+                    }
+                }
+                None => None,
+            };
             Ok(ConfigProfile {
                 id,
                 name,
@@ -270,6 +303,7 @@ impl Database {
                 env_vars,
                 is_default: row.get::<_, i32>(6)? != 0,
                 preview,
+                worktree_close_default,
             })
         }).map_err(|e| e.to_string())?;
 
@@ -633,6 +667,7 @@ mod tests {
             env_vars: env,
             is_default: false,
             preview: None,
+            worktree_close_default: None,
         }
     }
 
