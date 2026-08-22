@@ -5182,6 +5182,37 @@ pub async fn lsp_server_log(
     .await
 }
 
+// ─── Hunk-level accept / discard (unified) ───────────────────────────────
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum HunkApplyMode {
+    Stage,    // git apply --cached
+    Discard,  // git apply -R
+    Unstage,  // git apply -R --cached (undo Stage)
+    Restore,  // git apply (undo Discard, re-apply to working tree)
+}
+
+#[command]
+pub async fn apply_hunk(
+    mode: HunkApplyMode,
+    repo_path: String,
+    file_path: String,
+    hunk_patch: String,
+) -> Result<(), String> {
+    wrap_cmd("apply_hunk", async move {
+        let normalized = crate::hunk_ops::normalize_hunk_patch(&file_path, &hunk_patch);
+        let args: &[&str] = match mode {
+            HunkApplyMode::Stage => &["--cached"],
+            HunkApplyMode::Discard => &["-R"],
+            HunkApplyMode::Unstage => &["-R", "--cached"],
+            HunkApplyMode::Restore => &[],
+        };
+        crate::hunk_ops::apply_hunk_patch(&repo_path, &normalized, args).await
+    })
+    .await
+}
+
 #[cfg(test)]
 mod version_extraction_tests {
     use super::{extract_version_line, has_semver_like};

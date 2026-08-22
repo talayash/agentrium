@@ -252,6 +252,7 @@ fn main() {
             commands::lsp_install_server,
             commands::lsp_restart_server,
             commands::lsp_server_log,
+            commands::apply_hunk,
         ])
         .on_window_event(|window, event| {
             // Only the main window owns the app lifecycle. Detached (tear-off)

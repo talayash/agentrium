@@ -31,6 +31,57 @@ pub fn normalize_hunk_patch(file_path: &str, hunk_patch: &str) -> String {
     )
 }
 
+use tokio::process::Command as TokioCommand;
+use tokio::io::AsyncWriteExt;
+use std::process::Stdio;
+
+/// Pipe a unified diff to `git -C <repo> apply <extra_args>` via stdin.
+/// Returns Ok(()) on git exit 0, or a user_err on non-zero (context mismatch,
+/// invalid patch, etc). Does NOT normalize the patch: caller must pass the
+/// output of `normalize_hunk_patch` (or a fully headered diff).
+pub async fn apply_hunk_patch(
+    repo_path: &str,
+    normalized_patch: &str,
+    extra_args: &[&str],
+) -> Result<(), String> {
+    let mut cmd = TokioCommand::new("git");
+    cmd.arg("-C").arg(repo_path).arg("apply");
+    for a in extra_args {
+        cmd.arg(a);
+    }
+    cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+
+    // Windows: hide flashing console.
+    #[cfg(target_os = "windows")]
+    cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+
+    let mut child = cmd.spawn().map_err(|e| {
+        crate::error_reporter::user_err(&format!("spawn git failed: {e}"))
+    })?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin
+            .write_all(normalized_patch.as_bytes())
+            .await
+            .map_err(|e| crate::error_reporter::user_err(&format!("write patch: {e}")))?;
+        drop(stdin);
+    }
+
+    let output = child.wait_with_output().await.map_err(|e| {
+        crate::error_reporter::user_err(&format!("git wait: {e}"))
+    })?;
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(crate::error_reporter::user_err(&format!(
+            "git apply failed: {}",
+            stderr.trim()
+        )))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -62,5 +113,122 @@ mod tests {
         let out = normalize_hunk_patch("x", patch);
         assert!(out.ends_with('\n'));
         assert!(out.contains("-a\n+b\n"));
+    }
+
+    // -----------------------------------------------------------------
+    // apply_hunk_patch tests using a scratch git repo
+    // -----------------------------------------------------------------
+    use std::process::Command as StdCommand;
+    use tempfile::TempDir;
+
+    fn run(dir: &std::path::Path, args: &[&str]) -> std::process::Output {
+        StdCommand::new("git")
+            .current_dir(dir)
+            .args(args)
+            .output()
+            .expect("git command failed to spawn")
+    }
+
+    fn init_repo(dir: &std::path::Path) {
+        run(dir, &["init", "-q", "-b", "main"]);
+        run(dir, &["config", "user.email", "t@t"]);
+        run(dir, &["config", "user.name", "t"]);
+    }
+
+    fn write_and_commit(dir: &std::path::Path, name: &str, contents: &str, msg: &str) {
+        std::fs::write(dir.join(name), contents).unwrap();
+        run(dir, &["add", name]);
+        run(dir, &["commit", "-q", "-m", msg]);
+    }
+
+    fn diff(dir: &std::path::Path, staged: bool) -> String {
+        let mut args = vec!["diff"];
+        if staged {
+            args.push("--cached");
+        }
+        let out = run(dir, &args);
+        String::from_utf8_lossy(&out.stdout).to_string()
+    }
+
+    /// Extract the first `@@ ... @@ ...` region from a full `git diff`.
+    fn first_bare_hunk(full_diff: &str) -> String {
+        let idx = full_diff.find("@@").expect("no hunk in diff");
+        full_diff[idx..].to_string()
+    }
+
+    #[tokio::test]
+    async fn stage_single_hunk_moves_to_index() {
+        let td = TempDir::new().unwrap();
+        let d = td.path();
+        init_repo(d);
+        write_and_commit(d, "a.txt", "one\ntwo\nthree\n", "init");
+        std::fs::write(d.join("a.txt"), "one\nTWO\nthree\n").unwrap();
+
+        let bare = first_bare_hunk(&diff(d, false));
+        let normalized = super::normalize_hunk_patch("a.txt", &bare);
+        super::apply_hunk_patch(d.to_str().unwrap(), &normalized, &["--cached"])
+            .await
+            .expect("apply --cached");
+
+        let staged = diff(d, true);
+        assert!(staged.contains("-two"));
+        assert!(staged.contains("+TWO"));
+    }
+
+    #[tokio::test]
+    async fn discard_reverses_working_tree_change() {
+        let td = TempDir::new().unwrap();
+        let d = td.path();
+        init_repo(d);
+        write_and_commit(d, "a.txt", "keep\n", "init");
+        std::fs::write(d.join("a.txt"), "keep\nadded\n").unwrap();
+
+        let bare = first_bare_hunk(&diff(d, false));
+        let normalized = super::normalize_hunk_patch("a.txt", &bare);
+        super::apply_hunk_patch(d.to_str().unwrap(), &normalized, &["-R"])
+            .await
+            .expect("apply -R");
+
+        let contents = std::fs::read_to_string(d.join("a.txt")).unwrap();
+        // Normalize CRLF so the test passes on both Windows and Unix.
+        assert_eq!(contents.replace("\r\n", "\n"), "keep\n");
+    }
+
+    #[tokio::test]
+    async fn stale_hunk_returns_user_err() {
+        let td = TempDir::new().unwrap();
+        let d = td.path();
+        init_repo(d);
+        write_and_commit(d, "a.txt", "one\n", "init");
+        std::fs::write(d.join("a.txt"), "one\ntwo\n").unwrap();
+
+        let bogus = "@@ -1,2 +1,2 @@\n-nonexistent\n+replacement\n";
+        let normalized = super::normalize_hunk_patch("a.txt", bogus);
+        let err = super::apply_hunk_patch(d.to_str().unwrap(), &normalized, &["--cached"])
+            .await
+            .unwrap_err();
+        assert!(err.contains("git apply failed"), "unexpected error: {err}");
+    }
+
+    #[tokio::test]
+    async fn unstage_reverses_a_stage() {
+        let td = TempDir::new().unwrap();
+        let d = td.path();
+        init_repo(d);
+        write_and_commit(d, "a.txt", "one\n", "init");
+        std::fs::write(d.join("a.txt"), "one\ntwo\n").unwrap();
+
+        let bare = first_bare_hunk(&diff(d, false));
+        let normalized = super::normalize_hunk_patch("a.txt", &bare);
+
+        super::apply_hunk_patch(d.to_str().unwrap(), &normalized, &["--cached"])
+            .await
+            .unwrap();
+        assert!(diff(d, true).contains("+two"));
+
+        super::apply_hunk_patch(d.to_str().unwrap(), &normalized, &["-R", "--cached"])
+            .await
+            .unwrap();
+        assert_eq!(diff(d, true), "");
     }
 }
