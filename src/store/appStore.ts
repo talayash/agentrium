@@ -4,6 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import type { TerminalThemeName } from '../lib/terminalThemes';
 import { MAX_GRID_TERMINALS } from '../lib/gridEmptyCells';
 import { addPin, removePin, togglePin } from '../lib/pinnedTabs';
+import type { AppWorktreeRow } from '../types/git';
 
 export type TerminalCursorStyle = 'bar' | 'block' | 'underline';
 export type TerminalScrollbarMode = 'auto-hide' | 'always' | 'hidden';
@@ -432,6 +433,16 @@ interface AppState {
   setPromptDraft: (terminalId: string, text: string) => void;
   clearPromptDraft: (terminalId: string) => void;
   setPromptEditorShortcutEnabled: (enabled: boolean) => void;
+
+  // Worktree Close Modal
+  worktreeCloseModal: {
+    isOpen: boolean;
+    terminalId: string | null;
+    worktreeRow: AppWorktreeRow | null;
+    onResolved: (() => void) | null;
+  };
+  openWorktreeCloseModal: (terminalId: string, worktreeRow: AppWorktreeRow, onResolved: () => void) => void;
+  closeWorktreeCloseModal: () => void;
 }
 
 interface SavedTerminalConfig {
@@ -638,6 +649,9 @@ export const useAppStore = create<AppState>()(
       promptEditorSeed: null,
       promptDrafts: {},
       promptEditorShortcutEnabled: true,
+
+      // Worktree Close Modal
+      worktreeCloseModal: { isOpen: false, terminalId: null, worktreeRow: null, onResolved: null },
 
       toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
       toggleSidebarCollapse: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
@@ -1076,6 +1090,12 @@ export const useAppStore = create<AppState>()(
         return { promptDrafts: next };
       }),
       setPromptEditorShortcutEnabled: (enabled) => set({ promptEditorShortcutEnabled: enabled }),
+
+      // Worktree Close Modal actions
+      openWorktreeCloseModal: (terminalId, worktreeRow, onResolved) =>
+        set({ worktreeCloseModal: { isOpen: true, terminalId, worktreeRow, onResolved } }),
+      closeWorktreeCloseModal: () =>
+        set({ worktreeCloseModal: { isOpen: false, terminalId: null, worktreeRow: null, onResolved: null } }),
     }),
     {
       name: 'claude-terminal-app',

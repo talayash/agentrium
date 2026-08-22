@@ -57,3 +57,18 @@ export interface UndoResult {
   ok: number;
   failed: number;
 }
+
+export type WorktreeCloseAction = 'merge' | 'squash' | 'keep' | 'discard';
+
+export interface AppWorktreeRow {
+  terminal_id: string;
+  worktree_path: string;
+  base_branch: string;
+  branch_name: string;
+  created_at: number;
+}
+
+export interface MergeResult {
+  new_head_sha: string;
+  deleted_worktree_path: string;
+}
