@@ -361,7 +361,7 @@ export function ChangelistSection({
         </div>
         {isSelected && terminalId && (
           <div className="ml-7 mr-1 my-1 rounded overflow-hidden border border-border/30">
-            <InlineDiffView filePath={file.path} terminalId={terminalId} pathOverride={pathOverride} />
+            <InlineDiffView repoPath={repoPath} filePath={file.path} terminalId={terminalId} pathOverride={pathOverride} />
           </div>
         )}
       </div>

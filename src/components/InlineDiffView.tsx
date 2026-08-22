@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Loader2, ToggleLeft, ToggleRight } from 'lucide-react';
+import { Loader2, ToggleLeft, ToggleRight, Check, X } from 'lucide-react';
 import { parseDiff, type DiffHunk } from '../utils/diffParser';
+import { useHunkUndoStore } from '../store/hunkUndoStore';
+import { reportInvokeFailure } from '../lib/errorReporter';
 
 interface FileDiffResult {
   file_path: string;
@@ -12,25 +14,54 @@ interface FileDiffResult {
 }
 
 interface InlineDiffViewProps {
+  repoPath: string;
   filePath: string;
   terminalId: string;
   pathOverride?: string | null;
 }
 
 const MAX_DIFF_SIZE = 100_000; // 100KB guard
+const HUNK_CONFIRM_THRESHOLD = 20;
 
-export function InlineDiffView({ filePath, terminalId, pathOverride }: InlineDiffViewProps) {
+function netChangeCount(hunk: DiffHunk): number {
+  return hunk.lines.filter((l) => l.type === 'added' || l.type === 'removed').length;
+}
+
+function reconstructHunkPatch(hunk: DiffHunk): string {
+  const lineStrings = hunk.lines.map((l) => {
+    const prefix = l.type === 'added' ? '+' : l.type === 'removed' ? '-' : ' ';
+    return prefix + l.content;
+  });
+  return hunk.header + '\n' + lineStrings.join('\n') + '\n';
+}
+
+export function InlineDiffView({ repoPath, filePath, terminalId, pathOverride }: InlineDiffViewProps) {
   const [hunks, setHunks] = useState<DiffHunk[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [staged, setStaged] = useState(false);
   const [isBinary, setIsBinary] = useState(false);
+  const [isNewFile, setIsNewFile] = useState(false);
+  const [isDeletedFile, setIsDeletedFile] = useState(false);
   const [truncated, setTruncated] = useState(false);
+  const [confirmingHunkIndex, setConfirmingHunkIndex] = useState<number | null>(null);
+  const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const pushUndo = useHunkUndoStore((s) => s.push);
+
+  const clearConfirmTimer = () => {
+    if (confirmTimerRef.current !== null) {
+      clearTimeout(confirmTimerRef.current);
+      confirmTimerRef.current = null;
+    }
+  };
 
   const fetchDiff = async (showStaged: boolean) => {
     setLoading(true);
     setError(null);
     setTruncated(false);
+    setConfirmingHunkIndex(null);
+    clearConfirmTimer();
     try {
       const result = pathOverride
         ? await invoke<FileDiffResult>('get_path_file_diff', {
@@ -43,6 +74,9 @@ export function InlineDiffView({ filePath, terminalId, pathOverride }: InlineDif
             filePath,
             staged: showStaged,
           });
+
+      setIsNewFile(result.is_new_file);
+      setIsDeletedFile(result.is_deleted_file);
 
       if (result.is_binary) {
         setIsBinary(true);
@@ -62,6 +96,12 @@ export function InlineDiffView({ filePath, terminalId, pathOverride }: InlineDif
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    return () => {
+      clearConfirmTimer();
+    };
+  }, []);
 
   useEffect(() => {
     fetchDiff(staged);
@@ -115,11 +155,102 @@ export function InlineDiffView({ filePath, terminalId, pathOverride }: InlineDif
 
       {/* Diff content */}
       <div className="max-h-[300px] overflow-y-auto overflow-x-auto">
-        {hunks.map((hunk, hunkIdx) => (
+        {hunks.map((hunk, hunkIdx) => {
+          const showHunkActions = !staged && !isBinary && !isNewFile && !isDeletedFile;
+          const isConfirming = confirmingHunkIndex === hunkIdx;
+
+          const handleStageHunk = async () => {
+            const hunkPatch = reconstructHunkPatch(hunk);
+            try {
+              await invoke('apply_hunk', { mode: 'stage', repoPath, filePath, hunkPatch });
+              pushUndo({ kind: 'stage', repoPath, filePath, hunkPatch, atLine: hunkIdx, timestamp: Date.now() });
+            } catch (err) {
+              reportInvokeFailure('apply_hunk', err);
+            }
+          };
+
+          const handleDiscardHunk = async () => {
+            const hunkPatch = reconstructHunkPatch(hunk);
+            try {
+              await invoke('apply_hunk', { mode: 'discard', repoPath, filePath, hunkPatch });
+              pushUndo({ kind: 'discard', repoPath, filePath, hunkPatch, atLine: hunkIdx, timestamp: Date.now() });
+            } catch (err) {
+              reportInvokeFailure('apply_hunk', err);
+            }
+          };
+
+          const handleDiscardClick = () => {
+            const count = netChangeCount(hunk);
+            if (count <= HUNK_CONFIRM_THRESHOLD) {
+              void handleDiscardHunk();
+            } else {
+              setConfirmingHunkIndex(hunkIdx);
+              clearConfirmTimer();
+              confirmTimerRef.current = setTimeout(() => {
+                setConfirmingHunkIndex(null);
+                confirmTimerRef.current = null;
+              }, 5000);
+            }
+          };
+
+          const handleConfirmDiscard = () => {
+            clearConfirmTimer();
+            setConfirmingHunkIndex(null);
+            void handleDiscardHunk();
+          };
+
+          const handleCancelDiscard = () => {
+            clearConfirmTimer();
+            setConfirmingHunkIndex(null);
+          };
+
+          return (
           <div key={hunkIdx}>
             {/* Hunk header */}
-            <div className="px-2 py-0.5 text-[10px] font-mono text-blue-400/60 bg-blue-500/[0.04] select-none sticky top-0">
-              {hunk.header}
+            <div className="flex items-center px-2 py-0.5 text-[10px] font-mono text-blue-400/60 bg-blue-500/[0.04] select-none sticky top-0">
+              <span className="flex-1 truncate">{hunk.header}</span>
+              {showHunkActions && (
+                isConfirming ? (
+                  <div className="flex items-center gap-1 ml-2 shrink-0 select-none">
+                    <span className="text-red-400/80 text-[10px] font-sans whitespace-nowrap">
+                      Really discard {netChangeCount(hunk)} lines?
+                    </span>
+                    <button
+                      onClick={handleCancelDiscard}
+                      aria-label="Cancel"
+                      className="px-1.5 py-px rounded text-[10px] font-sans text-text-tertiary hover:text-text-primary hover:bg-white/[0.08] transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleConfirmDiscard}
+                      aria-label="Discard"
+                      className="px-1.5 py-px rounded text-[10px] font-sans text-red-400 hover:text-red-300 hover:bg-red-500/20 transition-colors"
+                    >
+                      Discard
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-0.5 ml-2 shrink-0">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); void handleStageHunk(); }}
+                      aria-label="Stage hunk"
+                      title="Stage hunk"
+                      className="p-0.5 rounded text-green-500/70 hover:text-green-400 hover:bg-green-500/10 transition-colors"
+                    >
+                      <Check size={11} />
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleDiscardClick(); }}
+                      aria-label="Discard hunk"
+                      title="Discard hunk"
+                      className="p-0.5 rounded text-red-500/70 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                    >
+                      <X size={11} />
+                    </button>
+                  </div>
+                )
+              )}
             </div>
             {/* Lines */}
             {hunk.lines.map((line, lineIdx) => {
@@ -169,7 +300,8 @@ export function InlineDiffView({ filePath, terminalId, pathOverride }: InlineDif
               );
             })}
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {truncated && (
