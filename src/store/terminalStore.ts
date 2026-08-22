@@ -1,13 +1,14 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import { Terminal } from '@xterm/xterm';
-import type { WorktreeDetectResult } from '../types/git';
+import type { WorktreeDetectResult, AppWorktreeRow } from '../types/git';
 import { markTerminalActive, clearTerminalActivity } from '../lib/terminalActivity';
 import { chunkUtf8Bytes } from '../lib/chunkUtf8';
 import type { SessionState } from '../lib/terminalState';
 import { mergeMetrics, emptyMetrics, type SessionMetrics, type TerminalMetricsPayload } from '../lib/sessionMetrics';
 import { usePreviewStore, type PreviewState } from './previewStore';
 import { detectFramework, type FrameworkHint } from '../lib/preview/framework';
+import { reportInvokeFailure } from '../lib/errorReporter';
 
 // Stay safely under the backend's 64 KB per-write cap so very large pastes
 // (multi-hundred KB) don't hit "Write payload too large".
@@ -351,6 +352,23 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
   },
 
   closeTerminal: async (id) => {
+    // If this terminal owns an app-created worktree, open the cleanup modal
+    // and wait for the user to resolve it (merge/squash/keep/discard) before
+    // proceeding with backend close. Failures here are best-effort: if the
+    // lookup fails we log and continue so the terminal still gets closed.
+    try {
+      const row = await invoke<AppWorktreeRow | null>('get_app_worktree', { terminalId: id });
+      if (row != null) {
+        const { useAppStore } = await import('./appStore');
+        await new Promise<void>((resolve) => {
+          useAppStore.getState().openWorktreeCloseModal(id, row, resolve);
+        });
+      }
+    } catch (err) {
+      reportInvokeFailure('get_app_worktree', err);
+      // Proceed to close anyway — cleanup is best-effort.
+    }
+
     // If this terminal owns a script child, kill it first so it doesn't linger
     // as an orphan (visible only via devtools).
     const childId = get().scriptChildren.get(id);

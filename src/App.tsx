@@ -14,6 +14,7 @@ import { ProfileModal } from './components/ProfileModal';
 import { NewTerminalModal } from './components/NewTerminalModal';
 import { WorkspaceModal } from './components/WorkspaceModal';
 import { WorktreeModal } from './components/WorktreeModal';
+import { WorktreeCloseModal } from './components/WorktreeCloseModal';
 import { PushModal } from './components/PushModal';
 import { SessionHistory } from './components/SessionHistory';
 import { SnippetsModal } from './components/SnippetsModal';
@@ -125,7 +126,7 @@ interface SavedTerminalConfig {
 }
 
 function App() {
-  const { sidebarOpen, sidebarCollapsed, hintsOpen, changesOpen, orchestrationOpen, settingsOpen, profileModalOpen, newTerminalModalOpen, workspaceModalOpen, worktreeModalOpen, pushModalOpen, sessionHistoryOpen, snippetsModalOpen, commandPaletteOpen, globalSearchOpen, whatsNewOpen, claudeConfigOpen, sessionTimelineOpen, memoryEditorOpen, showStatusBar, notifyOnFinish, restoreSession, triggerChangesRefresh, showRestoreBanner, pendingRestoreConfigs, setShowRestoreBanner, setPendingRestoreConfigs, lastSeenVersion, setLastSeenVersion, openWhatsNew } = useAppStore();
+  const { sidebarOpen, sidebarCollapsed, hintsOpen, changesOpen, orchestrationOpen, settingsOpen, profileModalOpen, newTerminalModalOpen, workspaceModalOpen, worktreeModalOpen, pushModalOpen, sessionHistoryOpen, snippetsModalOpen, commandPaletteOpen, globalSearchOpen, whatsNewOpen, claudeConfigOpen, sessionTimelineOpen, memoryEditorOpen, showStatusBar, notifyOnFinish, restoreSession, triggerChangesRefresh, showRestoreBanner, pendingRestoreConfigs, setShowRestoreBanner, setPendingRestoreConfigs, lastSeenVersion, setLastSeenVersion, openWhatsNew, worktreeCloseModal, closeWorktreeCloseModal } = useAppStore();
   const { handleTerminalOutput, updateTerminalStatus, setLoopMode, setSessionSummary, createTerminal, createShellTerminalTab, applyTerminalMetrics, adoptTerminal, detachTerminals, closeTerminal, terminals } = useTerminalStore();
 
   // Window identity. A torn-off ("detached") window renders the SAME full
@@ -891,6 +892,17 @@ function App() {
             {claudeConfigOpen && <ClaudeConfigModal />}
             {sessionTimelineOpen && <SessionTimeline />}
             {memoryEditorOpen && <MemoryEditor />}
+            {worktreeCloseModal.isOpen && worktreeCloseModal.worktreeRow && (
+              <WorktreeCloseModal
+                open
+                row={worktreeCloseModal.worktreeRow}
+                profileName={null}
+                onClose={() => {
+                  worktreeCloseModal.onResolved?.();
+                  closeWorktreeCloseModal();
+                }}
+              />
+            )}
           </AnimatePresence>
           {commandPaletteOpen && <CommandPalette />}
           <AnimatePresence>
