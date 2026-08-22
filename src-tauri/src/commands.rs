@@ -2820,6 +2820,47 @@ pub async fn remove_worktree(
     .await
 }
 
+#[command]
+pub async fn get_app_worktree(
+    state: State<'_, AppState>,
+    terminal_id: String,
+) -> Result<Option<crate::database::AppWorktreeRow>, String> {
+    wrap_cmd("get_app_worktree", async move {
+        db_op(&state.db, move |db| {
+            db.get_app_worktree(&terminal_id).map_err(|e| e.to_string())
+        })
+        .await
+    })
+    .await
+}
+
+#[command]
+pub async fn record_app_worktree(
+    state: State<'_, AppState>,
+    terminal_id: String,
+    worktree_path: String,
+    base_branch: String,
+    branch_name: String,
+) -> Result<(), String> {
+    wrap_cmd("record_app_worktree", async move {
+        let row = crate::database::AppWorktreeRow {
+            terminal_id,
+            worktree_path,
+            base_branch,
+            branch_name,
+            created_at: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0),
+        };
+        db_op(&state.db, move |db| {
+            db.insert_app_worktree(&row).map_err(|e| e.to_string())
+        })
+        .await
+    })
+    .await
+}
+
 // Session history commands
 
 #[command]
