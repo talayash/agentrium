@@ -2895,7 +2895,7 @@ pub async fn merge_worktree_ff(
         // Refuse if main checkout is dirty.
         let status = crate::hunk_ops::git_run(&main, &["status", "--porcelain"]).await?;
         if !status.trim().is_empty() {
-            return Err(crate::error_reporter::user_err(&format!(
+            return Err(crate::error_reporter::user_err(format!(
                 "Uncommitted changes in {}. Commit or stash them, then retry.",
                 main
             )));
@@ -2950,7 +2950,7 @@ pub async fn squash_merge_worktree(
 
         let status = crate::hunk_ops::git_run(&main, &["status", "--porcelain"]).await?;
         if !status.trim().is_empty() {
-            return Err(crate::error_reporter::user_err(&format!(
+            return Err(crate::error_reporter::user_err(format!(
                 "Uncommitted changes in {}. Commit or stash them, then retry.",
                 main
             )));

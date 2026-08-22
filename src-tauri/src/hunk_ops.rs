@@ -56,26 +56,27 @@ pub async fn apply_hunk_patch(
     cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
 
     let mut child = cmd.spawn().map_err(|e| {
-        crate::error_reporter::user_err(&format!("spawn git failed: {e}"))
+        crate::error_reporter::user_err(format!("spawn git failed: {e}"))
     })?;
+
 
     if let Some(mut stdin) = child.stdin.take() {
         stdin
             .write_all(normalized_patch.as_bytes())
             .await
-            .map_err(|e| crate::error_reporter::user_err(&format!("write patch: {e}")))?;
+            .map_err(|e| crate::error_reporter::user_err(format!("write patch: {e}")))?;
         drop(stdin);
     }
 
     let output = child.wait_with_output().await.map_err(|e| {
-        crate::error_reporter::user_err(&format!("git wait: {e}"))
+        crate::error_reporter::user_err(format!("git wait: {e}"))
     })?;
 
     if output.status.success() {
         Ok(())
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        Err(crate::error_reporter::user_err(&format!(
+        Err(crate::error_reporter::user_err(format!(
             "git apply failed: {}",
             stderr.trim()
         )))
@@ -94,12 +95,12 @@ pub async fn git_run(path: &str, args: &[&str]) -> Result<String, String> {
     cmd.creation_flags(0x08000000);
 
     let output = cmd.output().await.map_err(|e| {
-        crate::error_reporter::user_err(&format!("spawn git: {e}"))
+        crate::error_reporter::user_err(format!("spawn git: {e}"))
     })?;
     if output.status.success() {
         Ok(String::from_utf8_lossy(&output.stdout).to_string())
     } else {
-        Err(crate::error_reporter::user_err(&format!(
+        Err(crate::error_reporter::user_err(format!(
             "git {} failed: {}",
             args.join(" "),
             String::from_utf8_lossy(&output.stderr).trim()
@@ -124,7 +125,7 @@ pub async fn resolve_main_repo_path(worktree_path: &str) -> Result<String, Strin
     // main worktree checkout.
     let p = std::path::PathBuf::from(&common);
     let parent = p.parent().ok_or_else(|| {
-        crate::error_reporter::user_err(&format!(
+        crate::error_reporter::user_err(format!(
             "cannot derive main repo path from git-common-dir '{}'",
             common
         ))
