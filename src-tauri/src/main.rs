@@ -72,6 +72,11 @@ fn main() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let db = database::Database::new()?;
+            match db.cleanup_orphan_app_worktrees() {
+                Ok(0) => {}
+                Ok(n) => eprintln!("Cleaned {n} orphan app_worktrees row(s)"),
+                Err(e) => eprintln!("app_worktrees cleanup failed: {e}"),
+            }
             let installation_id = match db.get_or_create_installation_id() {
                 Ok(id) => id,
                 Err(e) => {
