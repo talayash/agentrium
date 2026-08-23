@@ -329,6 +329,22 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
         return false;
       }
 
+      // Ctrl+Tab / Ctrl+Shift+Tab: tab cycling is an app-global accelerator,
+      // handled by the window listener in useKeyboardShortcuts. It never got
+      // there before: xterm's keyboard evaluator marks plain Tab as a "cancel"
+      // key, which forces preventDefault() + stopPropagation() on xterm's
+      // textarea and kills the bubble to window - so Ctrl+Tab did nothing
+      // whenever a terminal had focus (i.e. essentially always). Returning
+      // false makes xterm bail out of _keyDown *before* that cancel, leaving
+      // the event free to bubble. Also stops Ctrl+Shift+Tab (which xterm does
+      // not cancel) from leaking a stray \x1b[Z into the PTY.
+      //
+      // Plain Tab is deliberately untouched - Claude Code needs it for
+      // autocomplete and mode switching.
+      if (isCtrl && key === 'tab') {
+        return false;
+      }
+
       return true;
     });
 

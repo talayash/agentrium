@@ -6,6 +6,7 @@ import { toast } from '../store/toastStore';
 import { captureClaudeInput } from '../lib/terminalInput';
 import { reportInvokeFailure } from '../lib/errorReporter';
 import { readClipboardText } from '../lib/clipboard';
+import { cyclableTabIds, nextTabId } from '../lib/tabCycle';
 
 /**
  * Return true when the focused element is an editable surface that is NOT
@@ -289,17 +290,24 @@ export function useKeyboardShortcuts() {
         }
       }
 
+      // Cycle tabs one at a time: Ctrl+Tab forward, Ctrl+Shift+Tab back, both
+      // wrapping at the ends. Order comes from `cyclableTabIds` so it matches
+      // what the tab strip draws (hidden script-child / bottom-pane terminals
+      // dropped, pinned tabs first) instead of the store's insertion order.
+      //
+      // xterm would otherwise swallow Ctrl+Tab before this listener runs - see
+      // the matching bail-out in TerminalView's custom key event handler.
       if (ctrl && e.key === 'Tab') {
         e.preventDefault();
-        const terminals = terminalsRef.current;
-        const activeId = activeIdRef.current;
-        const terminalIds = Array.from(terminals.keys());
-        if (terminalIds.length > 0 && activeId) {
-          const currentIndex = terminalIds.indexOf(activeId);
-          const nextIndex = shift
-            ? (currentIndex - 1 + terminalIds.length) % terminalIds.length
-            : (currentIndex + 1) % terminalIds.length;
-          useTerminalStore.getState().setActiveTerminal(terminalIds[nextIndex]);
+        const tabs = Array.from(terminalsRef.current.values()).map((t) => ({
+          id: t.config.id,
+          scriptParentId: t.scriptParentId,
+          isShellTerminal: t.isShellTerminal,
+        }));
+        const orderedIds = cyclableTabIds(tabs, useAppStore.getState().pinnedTabIds);
+        const nextId = nextTabId(orderedIds, activeIdRef.current, shift ? -1 : 1);
+        if (nextId) {
+          useTerminalStore.getState().setActiveTerminal(nextId);
         }
       }
 
