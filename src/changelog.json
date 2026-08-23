@@ -1,5 +1,12 @@
 [
   {
+    "version": "1.31.4",
+    "date": "2026-08-23",
+    "features": [
+      { "title": "Ctrl+Tab switches tabs", "description": "Ctrl+Tab moves to the next terminal tab and Ctrl+Shift+Tab moves back, following the order shown in the tab strip. The shortcut was previously swallowed before it could run." }
+    ]
+  },
+  {
     "version": "1.31.3",
     "date": "2026-08-21",
     "features": [
