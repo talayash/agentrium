@@ -108,6 +108,9 @@ impl TerminalManager {
         "HOME", "USERPROFILE", "HOMEDRIVE", "HOMEPATH",
     ];
 
+    // The PTY spawn path genuinely needs all of these to avoid an intermediate
+    // struct that would just push the complexity elsewhere.
+    #[allow(clippy::too_many_arguments)]
     pub fn create_terminal(
         &mut self,
         label: String,

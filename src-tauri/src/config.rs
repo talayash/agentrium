@@ -4,17 +4,12 @@ use std::collections::HashMap;
 /// The coding-agent CLI a terminal should launch. `Default` is `Claude` so
 /// profile rows written before this field existed migrate transparently on
 /// their next deserialize.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum AgentKind {
+    #[default]
     Claude,
     Codex,
-}
-
-impl Default for AgentKind {
-    fn default() -> Self {
-        AgentKind::Claude
-    }
 }
 
 impl AgentKind {

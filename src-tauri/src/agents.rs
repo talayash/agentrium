@@ -32,6 +32,8 @@ pub fn spec_for(kind: AgentKind) -> AgentSpec {
     }
 }
 
+// Called from the frontend via reflected metadata; Rust itself never calls this.
+#[allow(dead_code)]
 pub fn all_specs() -> Vec<AgentSpec> {
     vec![spec_for(AgentKind::Claude), spec_for(AgentKind::Codex)]
 }
