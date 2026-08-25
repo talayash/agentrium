@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import { Terminal } from '@xterm/xterm';
 import type { WorktreeDetectResult } from '../types/git';
+import type { AgentKind } from '../lib/agents';
 import { markTerminalActive, clearTerminalActivity } from '../lib/terminalActivity';
 import { chunkUtf8Bytes } from '../lib/chunkUtf8';
 import type { SessionState } from '../lib/terminalState';
@@ -174,6 +175,7 @@ interface TerminalState {
     resumeSessionId?: string,
     continueRecent?: boolean,
     previewInit?: Partial<PreviewState>,
+    agent?: AgentKind,
   ) => Promise<string>;
   createShellTerminalTab: (
     label: string,
@@ -240,7 +242,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
   bottomTerminalIds: [],
   activeBottomTerminalId: null,
 
-  createTerminal: async (label, workingDirectory, claudeArgs, envVars, colorTag, nickname, restoredOutput, resumeSessionId, continueRecent, previewInit) => {
+  createTerminal: async (label, workingDirectory, claudeArgs, envVars, colorTag, nickname, restoredOutput, resumeSessionId, continueRecent, previewInit, agent: AgentKind = 'claude') => {
     try {
       const { useAppStore } = await import('./appStore');
       const costTracking = useAppStore.getState().costTrackingEnabled;
@@ -255,6 +257,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
           resume_session_id: resumeSessionId || null,
           continue_recent: !!continueRecent,
           cost_tracking: costTracking,
+          agent,
         },
       });
       // Parse model, effort, worktree from claude_args

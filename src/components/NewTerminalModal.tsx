@@ -8,6 +8,8 @@ import { homeDir } from '@tauri-apps/api/path';
 import { open } from '@tauri-apps/plugin-dialog';
 import type { WorktreeInfo, WorktreeDetectResult } from '../types/git';
 import { reportInvokeFailure } from '../lib/errorReporter';
+import { specFor, type AgentKind } from '../lib/agents';
+import { AgentPicker } from './AgentPicker';
 import { Button } from './ui/Button';
 import { Modal } from './ui/Modal';
 import { ListRow } from './ui/ListRow';
@@ -28,6 +30,7 @@ interface ConfigProfile {
   claude_args: string[];
   env_vars: Record<string, string>;
   is_default: boolean;
+  agent: AgentKind;
   preview?: PreviewProfile | null;
 }
 
@@ -58,6 +61,7 @@ export function NewTerminalModal() {
   const [selectedModel, setSelectedModel] = useState<'default' | 'opus' | 'sonnet' | 'haiku'>('default');
   const [selectedEffort, setSelectedEffort] = useState<'default' | 'low' | 'medium' | 'high'>('default');
   const [plainShell, setPlainShell] = useState(false);
+  const [selectedAgent, setSelectedAgent] = useState<AgentKind>('claude');
 
   // Worktree state
   const [worktreeDetect, setWorktreeDetect] = useState<WorktreeDetectResult | null>(null);
@@ -104,6 +108,15 @@ export function NewTerminalModal() {
       setEnvVars({});
     }
   }, [selectedProfileId, profiles, defaultDirectory, defaultClaudeArgs]);
+
+  useEffect(() => {
+    if (selectedProfileId) {
+      const profile = profiles.find(p => p.id === selectedProfileId);
+      if (profile && profile.agent !== selectedAgent) {
+        setSelectedProfileId(null);
+      }
+    }
+  }, [selectedAgent, profiles, selectedProfileId]);
 
   // Debounced git detection when working directory changes
   const detectGitRepo = useCallback(async (dir: string) => {
@@ -307,6 +320,7 @@ export function NewTerminalModal() {
           undefined,
           undefined,
           previewInit,
+          selectedAgent,
         );
       }
 
@@ -374,6 +388,14 @@ export function NewTerminalModal() {
             </button>
           </div>
 
+          {/* Agent Selection */}
+          {!plainShell && (
+            <div className="border-t border-[var(--ij-divider-soft)] pt-4">
+              <label className="block text-text-secondary text-[12px] mb-1.5">Agent</label>
+              <AgentPicker value={selectedAgent} onChange={setSelectedAgent} />
+            </div>
+          )}
+
           {/* Profile Selection */}
           {!plainShell && (
             <div className="border-t border-[var(--ij-divider-soft)] pt-4">
@@ -399,7 +421,7 @@ export function NewTerminalModal() {
                   <p className="text-text-primary text-[12px] font-medium">No Profile</p>
                   <p className="text-text-tertiary text-[11px]">Custom settings</p>
                 </button>
-                {profiles.map((profile) => (
+                {profiles.filter(p => p.agent === selectedAgent).map((profile) => (
                   <div
                     key={profile.id}
                     className={`relative group rounded-md transition-colors ${
@@ -601,7 +623,7 @@ export function NewTerminalModal() {
           {!plainShell && (
           <div className="border-t border-[var(--ij-divider-soft)] pt-4">
             <label className="block text-text-secondary text-[12px] mb-1.5">
-              Claude Arguments (one per line)
+              {specFor(selectedAgent).displayName} Arguments (one per line)
             </label>
             <textarea
               value={claudeArgs.join('\n')}
@@ -610,7 +632,7 @@ export function NewTerminalModal() {
               placeholder="--dangerously-skip-permissions&#10;--model opus"
             />
             <p className="text-text-tertiary text-[11px] mt-1">
-              Command: <code className="text-text-secondary">claude {claudeArgs.join(' ')}</code>
+              Command: <code className="text-text-secondary">{specFor(selectedAgent).binary} {claudeArgs.join(' ')}</code>
             </p>
           </div>
           )}
