@@ -1,5 +1,12 @@
 [
   {
+    "version": "1.32.0",
+    "date": "2026-08-25",
+    "features": [
+      { "title": "Codex support and agent picker", "description": "New Terminal now shows a Claude Code / Codex toggle above the profile grid. Each profile is bound to an agent, so grids can mix both CLIs in the same view. Existing profiles are unchanged and default to Claude Code." }
+    ]
+  },
+  {
     "version": "1.31.3",
     "date": "2026-08-21",
     "features": [
