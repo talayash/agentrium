@@ -224,6 +224,9 @@ export function NewTerminalModal() {
       // Select default profile if exists
       const defaultProfile = loadedProfiles.find(p => p.is_default);
       if (defaultProfile) {
+        // Align selectedAgent with the default profile's agent so the deselect
+        // effect doesn't immediately null this selection.
+        setSelectedAgent(defaultProfile.agent);
         setSelectedProfileId(defaultProfile.id);
       }
     } catch (error) {

@@ -169,7 +169,7 @@ export function useKeyboardShortcuts() {
         if (activeId) {
           const instance = terminalsRef.current.get(activeId);
           if (instance) {
-            const { label, working_directory, claude_args, env_vars, color_tag, nickname } = instance.config;
+            const { label, working_directory, claude_args, env_vars, color_tag, nickname, agent } = instance.config;
             // createTerminal rethrows on spawn failure - without this catch the
             // duplicate silently doesn't appear and the rejection goes unhandled.
             useTerminalStore.getState().createTerminal(
@@ -179,6 +179,11 @@ export function useKeyboardShortcuts() {
               env_vars,
               color_tag ?? undefined,
               nickname ?? undefined,
+              undefined,
+              undefined,
+              undefined,
+              undefined,
+              agent,
             ).catch((err) => {
               toast.error('Duplicate failed', 'Could not start the new terminal.');
               reportInvokeFailure('create_terminal', err);

@@ -105,6 +105,7 @@ export interface TerminalConfig {
   created_at: string;
   status: 'Running' | 'Idle' | 'Error' | 'Stopped';
   color_tag: string | null;
+  agent: AgentKind;
   /** UUID of the Claude Code conversation this terminal is bound to. Populated
    *  by the backend a few seconds after spawn (snapshot/diff of
    *  ~/.claude/projects/<encoded-cwd>/*.jsonl) and used by session restore to

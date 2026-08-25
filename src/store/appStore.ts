@@ -4,6 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import type { TerminalThemeName } from '../lib/terminalThemes';
 import { MAX_GRID_TERMINALS } from '../lib/gridEmptyCells';
 import { addPin, removePin, togglePin } from '../lib/pinnedTabs';
+import type { AgentKind } from '../lib/agents';
 
 export type TerminalCursorStyle = 'bar' | 'block' | 'underline';
 export type TerminalScrollbarMode = 'auto-hide' | 'always' | 'hidden';
@@ -443,6 +444,7 @@ interface SavedTerminalConfig {
   env_vars: Record<string, string>;
   color_tag: string | null;
   claude_session_id?: string | null;
+  agent: AgentKind;
 }
 
 // Helper to determine optimal layout based on terminal count

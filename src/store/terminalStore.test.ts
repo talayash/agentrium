@@ -22,6 +22,7 @@ function makeConfig(id: string, overrides: Partial<TerminalConfig> = {}): Termin
     created_at: '2026-01-01T00:00:00Z',
     status: 'Running',
     color_tag: null,
+    agent: 'claude',
     ...overrides,
   };
 }

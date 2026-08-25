@@ -6,6 +6,7 @@ import { useTerminalStore } from '../store/terminalStore';
 import { toast } from '../store/toastStore';
 import { Modal } from './ui/Modal';
 import { Button } from './ui/Button';
+import type { AgentKind } from '../lib/agents';
 
 interface WorkspaceInfo {
   name: string;
@@ -20,6 +21,7 @@ interface SavedTerminalConfig {
   claude_args: string[];
   env_vars: Record<string, string>;
   color_tag: string | null;
+  agent: AgentKind;
 }
 
 export function WorkspaceModal() {
@@ -75,7 +77,12 @@ export function WorkspaceModal() {
           config.claude_args,
           config.env_vars,
           config.color_tag ?? undefined,
-          config.nickname ?? undefined
+          config.nickname ?? undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          config.agent,
         );
       }
       toast.success('Workspace Loaded', `"${selectedWorkspace.name}" with ${configs.length} terminal${configs.length !== 1 ? 's' : ''}.`);

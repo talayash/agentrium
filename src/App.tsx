@@ -43,6 +43,7 @@ import { keyOf, upsertEntry, removeEntry, getDetachedEntries, currentGeometry } 
 import { planRestoreModes } from './lib/restorePlan';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import type { TerminalConfig } from './store/terminalStore';
+import type { AgentKind } from './lib/agents';
 import { useAppStore } from './store/appStore';
 import { useTerminalStore } from './store/terminalStore';
 import { usePreviewStore } from './store/previewStore';
@@ -122,6 +123,7 @@ interface SavedTerminalConfig {
   env_vars: Record<string, string>;
   color_tag: string | null;
   claude_session_id?: string | null;
+  agent: AgentKind;
 }
 
 function App() {
@@ -709,6 +711,8 @@ function App() {
             mode.kind === 'fresh' ? (logs[i] ?? undefined) : undefined,
             mode.kind === 'resume' ? mode.sessionId : undefined,
             mode.kind === 'continue',
+            undefined,
+            config.agent,
           );
           keyToNewId[stableKey] = newId;
         }

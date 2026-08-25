@@ -180,7 +180,7 @@ export function TerminalTabs() {
   const handleDuplicate = (terminalId: string) => {
     const instance = terminals.get(terminalId);
     if (!instance) return;
-    const { label, working_directory, claude_args, env_vars, color_tag, nickname } = instance.config;
+    const { label, working_directory, claude_args, env_vars, color_tag, nickname, agent } = instance.config;
     // createTerminal rethrows on spawn failure - catch or the duplicate
     // silently never appears and the rejection goes unhandled.
     createTerminal(
@@ -190,6 +190,11 @@ export function TerminalTabs() {
       env_vars,
       color_tag ?? undefined,
       nickname ?? undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      agent,
     ).catch((err) => {
       toast.error('Duplicate failed', 'Could not start the new terminal.');
       reportInvokeFailure('create_terminal', err);
