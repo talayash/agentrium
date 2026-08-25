@@ -5,6 +5,8 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { useAppStore } from '../store/appStore';
 import { toast } from '../store/toastStore';
 import { v4 as uuidv4 } from 'uuid';
+import { specFor, type AgentKind } from '../lib/agents';
+import { AgentPicker } from './AgentPicker';
 import { Button } from './ui/Button';
 import { Modal } from './ui/Modal';
 import { ListRow } from './ui/ListRow';
@@ -24,6 +26,7 @@ interface ConfigProfile {
   claude_args: string[];
   env_vars: Record<string, string>;
   is_default: boolean;
+  agent: AgentKind;
   preview?: PreviewProfile | null;
 }
 
@@ -63,6 +66,7 @@ export function ProfileModal() {
       claude_args: [],
       env_vars: {},
       is_default: false,
+      agent: 'claude',
     });
   };
 
@@ -182,6 +186,17 @@ export function ProfileModal() {
             {selectedProfile ? (
               <div className="space-y-4">
                 <div>
+                  <label className="block text-text-secondary text-[12px] mb-1.5">Agent</label>
+                  <AgentPicker
+                    value={selectedProfile.agent}
+                    onChange={(kind) => setSelectedProfile({ ...selectedProfile, agent: kind })}
+                  />
+                  <p className="text-text-tertiary text-[11px] mt-1">
+                    Runs as <code className="text-text-secondary">{specFor(selectedProfile.agent).binary} ...</code>
+                  </p>
+                </div>
+
+                <div>
                   <label className="block text-text-secondary text-[12px] mb-1.5">Name</label>
                   <input
                     type="text"
@@ -223,7 +238,7 @@ export function ProfileModal() {
                 </div>
 
                 <div className="border-t border-[var(--ij-divider-soft)] pt-4">
-                  <label className="block text-text-secondary text-[12px] mb-1.5">Claude Arguments (one per line)</label>
+                  <label className="block text-text-secondary text-[12px] mb-1.5">{specFor(selectedProfile.agent).displayName} Arguments (one per line)</label>
                   <textarea
                     value={selectedProfile.claude_args.join('\n')}
                     onChange={(e) => setSelectedProfile({ ...selectedProfile, claude_args: e.target.value.split('\n').filter(Boolean) })}
