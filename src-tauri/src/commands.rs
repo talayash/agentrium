@@ -291,6 +291,11 @@ pub struct CreateTerminalRequest {
     /// Whether to enable per-session OTel cost/token tracking for this terminal.
     #[serde(default)]
     pub cost_tracking: bool,
+    /// Which coding agent to spawn (Claude or Codex).
+    /// Defaults to Claude for compatibility with older frontends that don't
+    /// send this field.
+    #[serde(default)]
+    pub agent: crate::config::AgentKind,
 }
 
 #[command]
@@ -338,8 +343,7 @@ pub async fn create_terminal(
             let mut terminals = state.terminals.lock().await;
             terminals.create_terminal(
                 request.label.clone(),
-                // TODO(task-4): replace with request.agent once CreateTerminalRequest carries it
-                crate::config::AgentKind::Claude,
+                request.agent,
                 request.working_directory,
                 request.claude_args,
                 request.env_vars,
@@ -5265,5 +5269,37 @@ mod wrap_cmd_tests {
             Err(error_reporter::user_err(inner_msg))
         }).await;
         assert_eq!(result, Err(inner_msg.to_string()));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn create_terminal_request_deserializes_without_agent_field() {
+        // Older frontend versions that don't send `agent` must still
+        // deserialize and default to Claude.
+        let json = r#"{
+            "label": "test",
+            "working_directory": "/tmp",
+            "claude_args": [],
+            "env_vars": {}
+        }"#;
+        let req: CreateTerminalRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.agent, crate::config::AgentKind::Claude);
+    }
+
+    #[test]
+    fn create_terminal_request_deserializes_codex_agent() {
+        let json = r#"{
+            "label": "test",
+            "working_directory": "/tmp",
+            "claude_args": [],
+            "env_vars": {},
+            "agent": "codex"
+        }"#;
+        let req: CreateTerminalRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.agent, crate::config::AgentKind::Codex);
     }
 }
