@@ -338,6 +338,8 @@ pub async fn create_terminal(
             let mut terminals = state.terminals.lock().await;
             terminals.create_terminal(
                 request.label.clone(),
+                // TODO(task-4): replace with request.agent once CreateTerminalRequest carries it
+                crate::config::AgentKind::Claude,
                 request.working_directory,
                 request.claude_args,
                 request.env_vars,

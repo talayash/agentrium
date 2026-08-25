@@ -553,6 +553,7 @@ mod tests {
             status: TerminalStatus::Running,
             color_tag: None,
             claude_session_id: None,
+            agent: crate::config::AgentKind::Claude,
         }
     }
 

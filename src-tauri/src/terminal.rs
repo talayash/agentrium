@@ -26,6 +26,10 @@ pub struct TerminalConfig {
     /// `serde(default)` keeps existing rows from older builds deserializable.
     #[serde(default)]
     pub claude_session_id: Option<String>,
+    /// Which agent CLI this terminal launched. `#[serde(default)]` so
+    /// restored rows from before this field existed migrate to Claude.
+    #[serde(default)]
+    pub agent: crate::config::AgentKind,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -49,6 +53,14 @@ fn is_benign_close_error(e: &std::io::Error) -> bool {
     // Windows: ERROR_INVALID_HANDLE (6), ERROR_BROKEN_PIPE (109),
     // ERROR_NO_DATA / "pipe is being closed" (232).
     matches!(e.raw_os_error(), Some(6) | Some(109) | Some(232))
+}
+
+/// Resolve the binary + arg list for a given agent. Extracted so the spawn
+/// pipeline (which is IO-heavy and awkward to test directly) has one testable
+/// seam. Args are cloned so callers keep ownership of the original vec.
+pub fn build_agent_command(agent: crate::config::AgentKind, args: &[String]) -> (String, Vec<String>) {
+    let spec = crate::agents::spec_for(agent);
+    (spec.binary.to_string(), args.to_vec())
 }
 
 pub struct Terminal {
@@ -99,6 +111,7 @@ impl TerminalManager {
     pub fn create_terminal(
         &mut self,
         label: String,
+        agent: crate::config::AgentKind,
         working_directory: String,
         claude_args: Vec<String>,
         env_vars: HashMap<String, String>,
@@ -129,17 +142,23 @@ impl TerminalManager {
         // both are exclusive of plain (no-flag) spawn.
         // The session id is a UUID Claude generates, but we still run it
         // through the metacharacter check as defense-in-depth.
-        let injected: Vec<String> = if let Some(id) = resume_session_id.as_deref() {
-            if id.contains(Self::SHELL_METACHARACTERS) {
-                return Err(error_reporter::user_err("Invalid session id"));
+        // Codex does not have `--resume` / `--continue`; those flags would
+        // be arg-parse errors, so we skip injection for non-Claude agents.
+        let injected: Vec<String> = if agent == crate::config::AgentKind::Claude {
+            if let Some(id) = resume_session_id.as_deref() {
+                if id.contains(Self::SHELL_METACHARACTERS) {
+                    return Err(error_reporter::user_err("Invalid session id"));
+                }
+                // `--resume` is `[value]` in Claude's help (optional argument), so
+                // Commander.js parses `--resume <id>` as "open picker" plus `<id>`
+                // as a stray positional. The `=` form is the only safe way to
+                // bind an optional argument.
+                vec![format!("--resume={}", id)]
+            } else if continue_recent {
+                vec!["--continue".to_string()]
+            } else {
+                vec![]
             }
-            // `--resume` is `[value]` in Claude's help (optional argument), so
-            // Commander.js parses `--resume <id>` as "open picker" plus `<id>`
-            // as a stray positional. The `=` form is the only safe way to
-            // bind an optional argument.
-            vec![format!("--resume={}", id)]
-        } else if continue_recent {
-            vec!["--continue".to_string()]
         } else {
             vec![]
         };
@@ -185,14 +204,20 @@ impl TerminalManager {
             id
         );
 
-        // Spawn claude directly so the process exits when claude finishes,
-        // allowing the terminal-finished event to fire for notifications
+        // Resolve which agent binary to launch. `build_agent_command` returns
+        // the binary name and echoes the args back so we can hand them to
+        // CommandBuilder platform-appropriately.
+        let (agent_binary, spawn_args) = build_agent_command(agent, &claude_args);
+
+        // Spawn the agent binary directly so the process exits when it
+        // finishes, allowing the terminal-finished event to fire for
+        // notifications.
         #[cfg(target_os = "windows")]
         let mut cmd = {
             let mut c = CommandBuilder::new("cmd.exe");
             c.arg("/C");
-            c.arg("claude");
-            for arg in &claude_args {
+            c.arg(&agent_binary);
+            for arg in &spawn_args {
                 c.arg(arg);
             }
             c
@@ -218,8 +243,8 @@ impl TerminalManager {
             let mut c = CommandBuilder::new(&shell);
             // Build command string with shell-escaped args as defense-in-depth
             // (args are already validated against metacharacters above)
-            let mut full_cmd = "claude".to_string();
-            for arg in &claude_args {
+            let mut full_cmd = agent_binary.clone();
+            for arg in &spawn_args {
                 full_cmd.push(' ');
                 // Single-quote wrap each arg; escape embedded single quotes
                 full_cmd.push('\'');
@@ -247,20 +272,23 @@ impl TerminalManager {
             cmd.env(key, value);
         }
 
-        // Inject Claude Code OpenTelemetry config LAST so it wins over any
-        // user-profile env, pointing the CLI's OTLP metrics exporter at our
-        // embedded localhost receiver and tagging the resource with our id.
-        if let Some(endpoint) = otel_endpoint.as_deref() {
-            cmd.env("CLAUDE_CODE_ENABLE_TELEMETRY", "1");
-            cmd.env("OTEL_METRICS_EXPORTER", "otlp");
-            cmd.env("OTEL_EXPORTER_OTLP_PROTOCOL", "http/json");
-            cmd.env("OTEL_EXPORTER_OTLP_METRICS_PROTOCOL", "http/json");
-            cmd.env("OTEL_EXPORTER_OTLP_ENDPOINT", endpoint);
-            cmd.env("OTEL_EXPORTER_OTLP_COMPRESSION", "none");
-            // 3s export interval ≈ near-real-time without hammering (default 60s).
-            cmd.env("OTEL_METRIC_EXPORT_INTERVAL", "3000");
-            cmd.env("OTEL_METRICS_INCLUDE_SESSION_ID", "true");
-            cmd.env("OTEL_RESOURCE_ATTRIBUTES", format!("terminal.id={}", id));
+        // Claude Code is the only agent that speaks the OTel env-var protocol
+        // we ship with. Codex ignores these, but injecting them is harmless -
+        // still, we skip to keep the process env clean and to make the intent
+        // obvious to future readers.
+        if agent == crate::config::AgentKind::Claude {
+            if let Some(endpoint) = otel_endpoint.as_deref() {
+                cmd.env("CLAUDE_CODE_ENABLE_TELEMETRY", "1");
+                cmd.env("OTEL_METRICS_EXPORTER", "otlp");
+                cmd.env("OTEL_EXPORTER_OTLP_PROTOCOL", "http/json");
+                cmd.env("OTEL_EXPORTER_OTLP_METRICS_PROTOCOL", "http/json");
+                cmd.env("OTEL_EXPORTER_OTLP_ENDPOINT", endpoint);
+                cmd.env("OTEL_EXPORTER_OTLP_COMPRESSION", "none");
+                // 3s export interval ≈ near-real-time without hammering (default 60s).
+                cmd.env("OTEL_METRIC_EXPORT_INTERVAL", "3000");
+                cmd.env("OTEL_METRICS_INCLUDE_SESSION_ID", "true");
+                cmd.env("OTEL_RESOURCE_ATTRIBUTES", format!("terminal.id={}", id));
+            }
         }
 
         // Spawn the command
@@ -285,6 +313,7 @@ impl TerminalManager {
             status: TerminalStatus::Running,
             color_tag,
             claude_session_id: resume_session_id,
+            agent,
         };
 
         let mut reader = pty_pair.master.try_clone_reader()
@@ -455,6 +484,7 @@ impl TerminalManager {
             status: TerminalStatus::Running,
             color_tag: None,
             claude_session_id: None,
+            agent: crate::config::AgentKind::Claude,
         };
 
         let mut reader = pty_pair.master.try_clone_reader()
@@ -575,6 +605,7 @@ impl TerminalManager {
             status: TerminalStatus::Running,
             color_tag: None,
             claude_session_id: None,
+            agent: crate::config::AgentKind::Claude,
         };
 
         let mut reader = pty_pair.master.try_clone_reader()
@@ -871,6 +902,7 @@ mod tests {
                     status,
                     color_tag: None,
                     claude_session_id: None,
+                    agent: crate::config::AgentKind::Claude,
                 },
                 pty_pair,
                 writer,
@@ -926,6 +958,7 @@ mod tests {
         let err = mgr
             .create_terminal(
                 "l".into(),
+                crate::config::AgentKind::Claude,
                 String::new(),
                 vec!["--flag&&evil".into()],
                 HashMap::new(),
@@ -973,5 +1006,26 @@ mod tests {
         let mut mgr = TerminalManager::new();
         assert!(mgr.update_label("nope", "x".to_string()).is_err());
         assert!(mgr.update_nickname("nope", "x".to_string()).is_err());
+    }
+
+    #[test]
+    fn build_agent_command_uses_claude_binary_for_claude() {
+        let (bin, args) = build_agent_command(crate::config::AgentKind::Claude, &["--model".into(), "opus".into()]);
+        assert_eq!(bin, "claude");
+        assert_eq!(args, vec!["--model", "opus"]);
+    }
+
+    #[test]
+    fn build_agent_command_uses_codex_binary_for_codex() {
+        let (bin, args) = build_agent_command(crate::config::AgentKind::Codex, &["--json".into()]);
+        assert_eq!(bin, "codex");
+        assert_eq!(args, vec!["--json"]);
+    }
+
+    #[test]
+    fn build_agent_command_passes_through_empty_args() {
+        let (bin, args) = build_agent_command(crate::config::AgentKind::Codex, &[]);
+        assert_eq!(bin, "codex");
+        assert!(args.is_empty());
     }
 }
