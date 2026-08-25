@@ -1,5 +1,6 @@
 use crate::config::AgentKind;
 
+#[allow(dead_code)]
 pub struct AgentSpec {
     pub kind: AgentKind,
     /// Human-readable name for the UI.
