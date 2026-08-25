@@ -17,6 +17,29 @@ impl Default for AgentKind {
     }
 }
 
+impl AgentKind {
+    /// String form used for database storage and error messages. Matches
+    /// the `#[serde(rename_all = "lowercase")]` wire format.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            AgentKind::Claude => "claude",
+            AgentKind::Codex => "codex",
+        }
+    }
+
+    /// Parse from the wire/DB string form. Unknown strings become Claude,
+    /// which is the same fallback strategy `#[serde(default)]` uses on
+    /// missing fields. This means an unrecognized value (e.g., a future
+    /// agent name loaded by an older build) is silently downgraded rather
+    /// than crashing at startup.
+    pub fn from_str_lossy(s: &str) -> Self {
+        match s {
+            "codex" => AgentKind::Codex,
+            _ => AgentKind::Claude,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct PreviewProfile {
@@ -439,5 +462,19 @@ mod tests {
         let json = serde_json::to_string(&p).unwrap();
         let back: ConfigProfile = serde_json::from_str(&json).unwrap();
         assert_eq!(back.agent, AgentKind::Codex);
+    }
+
+    #[test]
+    fn agent_kind_as_str_matches_wire_format() {
+        assert_eq!(AgentKind::Claude.as_str(), "claude");
+        assert_eq!(AgentKind::Codex.as_str(), "codex");
+    }
+
+    #[test]
+    fn agent_kind_from_str_lossy_defaults_unknown_to_claude() {
+        assert_eq!(AgentKind::from_str_lossy("codex"), AgentKind::Codex);
+        assert_eq!(AgentKind::from_str_lossy("claude"), AgentKind::Claude);
+        assert_eq!(AgentKind::from_str_lossy("something-new"), AgentKind::Claude);
+        assert_eq!(AgentKind::from_str_lossy(""), AgentKind::Claude);
     }
 }

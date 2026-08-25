@@ -70,7 +70,8 @@ impl Database {
                 claude_args TEXT NOT NULL,
                 env_vars TEXT NOT NULL,
                 is_default INTEGER DEFAULT 0,
-                preview_json TEXT
+                preview_json TEXT,
+                agent TEXT NOT NULL DEFAULT 'claude'
             );
 
             CREATE TABLE IF NOT EXISTS workspaces (
@@ -153,8 +154,9 @@ impl Database {
         // Same pattern for the profiles table: `preview_json` is nullable JSON
         // storing the profile's PreviewProfile (see config.rs). NULL means the
         // profile has no preview config, matching the Option<PreviewProfile>
-        // shape in Rust.
-        for column in ["preview_json TEXT"] {
+        // shape in Rust. `agent` stores the agent kind as a lowercase string;
+        // the NOT NULL DEFAULT 'claude' ensures existing rows get a valid value.
+        for column in ["preview_json TEXT", "agent TEXT NOT NULL DEFAULT 'claude'"] {
             let sql = format!("ALTER TABLE profiles ADD COLUMN {}", column);
             if let Err(e) = conn.execute(&sql, []) {
                 if !e.to_string().contains("duplicate column name") {
@@ -195,8 +197,8 @@ impl Database {
             None => None,
         };
         self.conn.execute(
-            "INSERT OR REPLACE INTO profiles (id, name, description, working_directory, claude_args, env_vars, is_default, preview_json)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            "INSERT OR REPLACE INTO profiles (id, name, description, working_directory, claude_args, env_vars, is_default, preview_json, agent)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             params![
                 profile.id,
                 profile.name,
@@ -206,6 +208,7 @@ impl Database {
                 env_vars_json,
                 profile.is_default as i32,
                 preview_json,
+                profile.agent.as_str(),
             ],
         ).map_err(|e| e.to_string())?;
         Ok(())
@@ -213,7 +216,7 @@ impl Database {
 
     pub fn get_profiles(&self) -> Result<Vec<ConfigProfile>, String> {
         let mut stmt = self.conn
-            .prepare("SELECT id, name, description, working_directory, claude_args, env_vars, is_default, preview_json FROM profiles")
+            .prepare("SELECT id, name, description, working_directory, claude_args, env_vars, is_default, preview_json, agent FROM profiles")
             .map_err(|e| e.to_string())?;
 
         let profiles = stmt.query_map([], |row| {
@@ -244,6 +247,7 @@ impl Database {
                 }),
                 None => None,
             };
+            let agent_raw: String = row.get(8)?;
             Ok(ConfigProfile {
                 id,
                 name,
@@ -252,7 +256,7 @@ impl Database {
                 claude_args,
                 env_vars,
                 is_default: row.get::<_, i32>(6)? != 0,
-                agent: crate::config::AgentKind::default(),
+                agent: crate::config::AgentKind::from_str_lossy(&agent_raw),
                 preview,
             })
         }).map_err(|e| e.to_string())?;
@@ -787,5 +791,37 @@ mod tests {
         let b = db.get_or_create_installation_id().unwrap();
         assert_eq!(a, b);
         assert!(!a.is_empty());
+    }
+
+    #[test]
+    fn profile_with_codex_agent_round_trips_through_db() {
+        let db = Database::new_in_memory().unwrap();
+        let mut profile = make_profile("p-codex", "codex-profile");
+        profile.agent = crate::config::AgentKind::Codex;
+        db.save_profile(&profile).unwrap();
+        let loaded = db.get_profiles().unwrap();
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].agent, crate::config::AgentKind::Codex);
+    }
+
+    #[test]
+    fn profile_without_agent_column_migration_defaults_to_claude() {
+        // Simulate a legacy row inserted before the `agent` column existed.
+        // We can't literally test the ALTER TABLE migration path in-memory
+        // (the schema always includes `agent` on fresh init), but we CAN
+        // verify the fallback: if the column value is stored as an empty
+        // string or a value we don't recognize, it deserializes to Claude.
+        let db = Database::new_in_memory().unwrap();
+        let profile = make_profile("p-legacy", "legacy-profile");
+        db.save_profile(&profile).unwrap();
+
+        // Overwrite the agent column to an unknown value on the raw row.
+        db.conn().execute(
+            "UPDATE profiles SET agent = 'unknown-agent-name' WHERE id = ?1",
+            rusqlite::params![profile.id],
+        ).unwrap();
+
+        let loaded = db.get_profiles().unwrap();
+        assert_eq!(loaded[0].agent, crate::config::AgentKind::Claude);
     }
 }
