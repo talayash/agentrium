@@ -1,6 +1,22 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+/// The coding-agent CLI a terminal should launch. `Default` is `Claude` so
+/// profile rows written before this field existed migrate transparently on
+/// their next deserialize.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AgentKind {
+    Claude,
+    Codex,
+}
+
+impl Default for AgentKind {
+    fn default() -> Self {
+        AgentKind::Claude
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct PreviewProfile {
@@ -15,9 +31,14 @@ pub struct ConfigProfile {
     pub name: String,
     pub description: Option<String>,
     pub working_directory: String,
+    // Field is named `claude_args` for JSON back-compat with existing rows.
+    // Semantically it's "agent args" - passed to whichever agent binary this
+    // profile launches. Rename is deferred to its own PR.
     pub claude_args: Vec<String>,
     pub env_vars: HashMap<String, String>,
     pub is_default: bool,
+    #[serde(default)]
+    pub agent: AgentKind,
     #[serde(default)]
     pub preview: Option<PreviewProfile>,
 }
@@ -278,6 +299,7 @@ mod tests {
             claude_args: vec!["--model".to_string(), "opus".to_string()],
             env_vars: env,
             is_default: true,
+            agent: AgentKind::default(),
             preview: None,
         }
     }
@@ -307,6 +329,7 @@ mod tests {
             claude_args: vec![],
             env_vars: HashMap::new(),
             is_default: false,
+            agent: AgentKind::default(),
             preview: None,
         };
         let json = serde_json::to_string(&p).unwrap();
@@ -379,5 +402,42 @@ mod tests {
         let categories = get_default_hints();
         assert_eq!(categories[0].name, "Top 10 Commands");
         assert_eq!(categories[0].hints.len(), 10);
+    }
+
+    #[test]
+    fn agent_kind_defaults_to_claude() {
+        assert_eq!(AgentKind::default(), AgentKind::Claude);
+    }
+
+    #[test]
+    fn agent_kind_serializes_lowercase() {
+        let json = serde_json::to_string(&AgentKind::Codex).unwrap();
+        assert_eq!(json, "\"codex\"");
+    }
+
+    #[test]
+    fn missing_agent_field_deserializes_as_claude() {
+        // Simulate an existing profile row written before the migration.
+        // All non-default fields present; `agent` intentionally omitted.
+        let json = r#"{
+            "id": "p1",
+            "name": "legacy",
+            "description": null,
+            "working_directory": "/tmp",
+            "claude_args": [],
+            "env_vars": {},
+            "is_default": false
+        }"#;
+        let cfg: ConfigProfile = serde_json::from_str(json).unwrap();
+        assert_eq!(cfg.agent, AgentKind::Claude);
+    }
+
+    #[test]
+    fn explicit_codex_agent_round_trips() {
+        let mut p = sample_profile();
+        p.agent = AgentKind::Codex;
+        let json = serde_json::to_string(&p).unwrap();
+        let back: ConfigProfile = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.agent, AgentKind::Codex);
     }
 }
