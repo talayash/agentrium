@@ -20,7 +20,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS-blue?style=flat-square" alt="Platform">
-  <img src="https://img.shields.io/badge/version-1.31.4-green?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.32.0-green?style=flat-square" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-orange?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/Tauri-2.x-purple?style=flat-square" alt="Tauri">
   <img src="https://img.shields.io/badge/React-18-blue?style=flat-square" alt="React">
@@ -154,16 +154,16 @@ Before installing Agentrium, ensure you have:
 
 ### Download
 
-Download the latest release for your platform from the [Releases page](https://github.com/talayash/claude-terminal/releases/latest):
+Download the latest release for your platform from the [Releases page](https://github.com/talayash/agentrium/releases/latest):
 
 | Platform | Installer | Description |
 |---|---|---|
-| Windows | [ClaudeTerminal_1.31.4_x64-setup.exe](https://github.com/talayash/claude-terminal/releases/latest/download/ClaudeTerminal_1.31.4_x64-setup.exe) | NSIS Installer (Recommended) |
-| Windows | [ClaudeTerminal_1.31.4_x64_en-US.msi](https://github.com/talayash/claude-terminal/releases/latest/download/ClaudeTerminal_1.31.4_x64_en-US.msi) | MSI Installer |
-| macOS (Apple Silicon) | `ClaudeTerminal_1.31.4_aarch64.dmg` | DMG for M1/M2/M3/M4 Macs |
-| macOS (Intel) | `ClaudeTerminal_1.31.4_x64.dmg` | DMG for Intel Macs |
+| Windows | [Agentrium_1.32.0_x64-setup.exe](https://github.com/talayash/agentrium/releases/latest/download/Agentrium_1.32.0_x64-setup.exe) | NSIS Installer (Recommended) |
+| Windows | [Agentrium_1.32.0_x64_en-US.msi](https://github.com/talayash/agentrium/releases/latest/download/Agentrium_1.32.0_x64_en-US.msi) | MSI Installer |
+| macOS (Apple Silicon) | `Agentrium_1.32.0_aarch64.dmg` | DMG for M1/M2/M3/M4 Macs |
+| macOS (Intel) | `Agentrium_1.32.0_x64.dmg` | DMG for Intel Macs |
 
-> The 1.31.4 release artifacts still carry the pre-rebrand `ClaudeTerminal_*` filenames because that was the release name at build time. The next release will publish as `Agentrium_X.Y.Z_*` since artifact names follow `tauri.conf.json`'s `productName`.
+> Existing 1.31.x installs auto-update to 1.32.0 via the in-app updater. The bundle identifier is unchanged, so profiles, workspaces, and session history carry over. Pre-rebrand 1.31.x download artifacts are still available on the release history if you need an older build.
 
 > macOS builds are currently not code-signed/notarized - first launch will require right-click > Open or approval in System Settings > Privacy & Security.
 
@@ -244,7 +244,7 @@ Press `F1` or click the lightbulb icon to open the Hints panel:
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/talayash/claude-terminal.git
+   git clone https://github.com/talayash/agentrium.git
    cd claude-terminal
    ```
 
@@ -330,7 +330,7 @@ build up reputation, even when correctly signed.
 If you also see a yellow "Unknown publisher" UAC prompt, the installer was
 likely downloaded from an older release before code signing was enabled - grab
 the latest installer from the
-[Releases page](https://github.com/talayash/claude-terminal/releases/latest).
+[Releases page](https://github.com/talayash/agentrium/releases/latest).
 
 #### macOS - "Agentrium is damaged and can't be opened"
 
@@ -351,7 +351,7 @@ Then open the app normally. The right-click > **Open** workaround does not
 work for the "damaged" variant of the error - only `xattr` does.
 
 > Proper Apple notarization is tracked in
-> [#25](https://github.com/talayash/claude-terminal/issues/25); once it lands,
+> [#25](https://github.com/talayash/agentrium/issues/25); once it lands,
 > these steps will no longer be required on macOS.
 
 ### An agent CLI shows "Not installed"

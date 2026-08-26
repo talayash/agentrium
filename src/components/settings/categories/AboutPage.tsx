@@ -58,10 +58,10 @@ export default function AboutPage() {
 
       <PageSection title="Links">
         <button
-          onClick={() => invoke('open_external_url', { url: 'https://github.com/talayash/claude-terminal' })}
+          onClick={() => invoke('open_external_url', { url: 'https://github.com/talayash/agentrium' })}
           className="flex items-center gap-2 text-accent-primary hover:text-accent-secondary text-[12.5px] py-2"
         >
-          <Github size={14} /> github.com/talayash/claude-terminal
+          <Github size={14} /> github.com/talayash/agentrium
         </button>
         {AGENT_SPECS.map((spec) => (
           <button

@@ -1,6 +1,6 @@
 {
   "name": "agentrium",
-  "version": "1.31.4",
+  "version": "1.32.0",
   "description": "Agentrium - Agent Desktop Environment. Cross-platform desktop app for running Claude Code, Codex, Cursor, and Gemini CLIs side by side.",
   "type": "module",
   "scripts": {

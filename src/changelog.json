@@ -3,8 +3,13 @@
     "version": "1.32.0",
     "date": "2026-08-26",
     "features": [
-      { "title": "Multi-agent terminals: Claude Code, Codex, Cursor", "description": "New Terminal now shows a three-way agent picker with brand icons. Pick Claude Code, Codex, or Cursor per terminal and mix them freely in the grid. Existing profiles are unchanged and default to Claude." },
-      { "title": "Profiles are shared across agents", "description": "A saved profile now appears no matter which agent is selected. Picking a profile also seeds sensible defaults from what it was saved with." }
+      { "title": "Rebrand: Agentrium", "description": "ClaudeTerminal is now Agentrium (Agent Desktop Environment). New icon set. Backward-compatible identifiers (bundle ID, WiX upgrade code, SQLite location) are unchanged so existing installs upgrade cleanly and keep all profiles and history." },
+      { "title": "Four agents in one window", "description": "New Terminal now shows a four-way agent picker with the official brand marks: Claude Code, Codex, Cursor (binary: agent), and Gemini. Pick per terminal, mix them freely in tabs and grid, or bind an agent per profile." },
+      { "title": "Brand icon on every tab and grid cell", "description": "Each tab and each grid cell header shows the agent's brand icon between the badges and the label, with a tooltip showing the display name. Auto-cycled color-tag dots were dropped since identity is now carried by the brand icon." },
+      { "title": "Profiles are shared across agents", "description": "A saved profile appears no matter which agent is selected. Picking a profile no longer overrides your active agent choice - your pick sticks." },
+      { "title": "Per-agent default arguments", "description": "The New Terminal args textarea now uses per-agent defaults. Switching from Claude to Codex swaps the placeholder to Codex's typical flags and populates from your Codex defaults instead. Claude-only flags (--dangerously-skip-permissions, --model, --effort, --continue, --resume, --worktree) are stripped automatically when spawning other agents so profiles are portable." },
+      { "title": "Per-agent version detection in Settings", "description": "Settings > Updates now shows a section per agent with the detected version, a Docs link, and a Recheck button. Settings > About lists all four agents with their versions. Two-stage detector: <binary> --version first, then a PATH probe fallback so CLIs like Cursor's `agent` (which has no --version) still register as installed." },
+      { "title": "Grid mode fixes (GH #52)", "description": "Layout picker icons now render a schematic of the actual grid (no more 3x3 icon on the 2x2 button). Adding a terminal to a 2x2 grid stays 2x2 until it's actually full instead of silently switching to 1x3. Stale 'Terminal not found' cells auto-remove themselves after a restart." }
     ]
   },
   {

@@ -194,7 +194,7 @@ export default function ClaudeUpdatesPage() {
           <div className="text-[11px] p-2 rounded bg-error/10 text-error space-y-2 my-2">
             <p>{appUpdater.error}</p>
             <button
-              onClick={() => invoke('open_external_url', { url: 'https://github.com/talayash/claude-terminal/releases/latest' })}
+              onClick={() => invoke('open_external_url', { url: 'https://github.com/talayash/agentrium/releases/latest' })}
               className="flex items-center gap-1.5 text-accent-primary hover:text-accent-secondary"
             >
               <ExternalLink size={12} /> Download manually from GitHub

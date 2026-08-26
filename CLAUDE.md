@@ -4,7 +4,7 @@
 
 **Agentrium** (Agent Desktop Environment) is a cross-platform desktop application (Windows and macOS) for managing multiple Claude Code CLI terminal instances from a unified interface. Built with Tauri 2.x (Rust backend) and React 18 (TypeScript frontend), it provides tabbed and grid views of parallel Claude Code sessions with PTY-based terminal emulation. The release workflow produces NSIS/MSI installers for Windows and `.dmg`/`.app` bundles for both Apple Silicon and Intel Macs.
 
-Current version: **1.31.4**
+Current version: **1.32.0**
 
 ## Tech Stack
 
@@ -138,7 +138,7 @@ If not using `/publish`, the same steps can be done manually:
 3. Commit, tag with `v{VERSION}`, push commit + tag
 4. The `Release` workflow triggers on `v*` tags
 5. Signing uses `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` secrets
-6. The updater endpoint: `https://github.com/talayash/claude-terminal/releases/latest/download/latest.json`
+6. The updater endpoint: `https://github.com/talayash/agentrium/releases/latest/download/latest.json`
 
 ## Key Patterns
 

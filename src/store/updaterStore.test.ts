@@ -135,7 +135,7 @@ describe('updaterStore', () => {
       // The exact shape that produced fingerprint 6d37063a in production.
       checkMock.mockRejectedValueOnce(
         new Error(
-          'error sending request for url (https://github.com/talayash/claude-terminal/releases/latest/download/latest.json)'
+          'error sending request for url (https://github.com/talayash/agentrium/releases/latest/download/latest.json)'
         )
       );
 
