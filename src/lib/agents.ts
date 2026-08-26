@@ -1,4 +1,4 @@
-export type AgentKind = 'claude' | 'codex' | 'cursor';
+export type AgentKind = 'claude' | 'codex' | 'cursor' | 'gemini';
 
 export interface AgentSpec {
   kind: AgentKind;
@@ -30,6 +30,13 @@ export const AGENT_SPECS: readonly AgentSpec[] = [
     binary: 'agent',
     installUrl: 'https://cursor.com/cli',
     installHint: "curl https://cursor.com/install -fsS | bash  (or  irm 'https://cursor.com/install?win32=true' | iex on Windows)",
+  },
+  {
+    kind: 'gemini',
+    displayName: 'Gemini',
+    binary: 'gemini',
+    installUrl: 'https://github.com/google-gemini/gemini-cli',
+    installHint: 'npm install -g @google/gemini-cli',
   },
 ];
 

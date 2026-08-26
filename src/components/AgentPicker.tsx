@@ -31,6 +31,16 @@ function CursorMark({ size = 22 }: { size?: number }) {
   );
 }
 
+function GeminiMark({ size = 22 }: { size?: number }) {
+  // Google Gemini's four-pointed star (curved concave "sparkle" shape).
+  // Path from simple-icons (googlegemini, CC0).
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M11.04 19.32Q12 21.51 12 24q0-2.49.93-4.68.96-2.19 2.58-3.81t3.81-2.55Q21.51 12 24 12q-2.49 0-4.68-.93a12.3 12.3 0 0 1-3.81-2.58 12.3 12.3 0 0 1-2.58-3.81Q12 2.49 12 0q0 2.49-.96 4.68-.93 2.19-2.55 3.81a12.3 12.3 0 0 1-3.81 2.58Q2.49 12 0 12q2.49 0 4.68.96 2.19.93 3.81 2.55t2.55 3.81" />
+    </svg>
+  );
+}
+
 // Per-agent icon wrapper. Anthropic + OpenAI use their fixed brand hues
 // (readable on both light and dark app themes). Cursor's mark is
 // monochromatic in their branding, so it inherits the theme text color
@@ -44,6 +54,9 @@ function BrandIcon({ kind }: { kind: AgentKind }) {
       return <span style={{ color: '#10A37F' }}><OpenAIMark /></span>;
     case 'cursor':
       return <span className="text-text-primary"><CursorMark /></span>;
+    case 'gemini':
+      // Google blue reads well on both light and dark app themes.
+      return <span style={{ color: '#4285F4' }}><GeminiMark /></span>;
   }
 }
 
@@ -61,7 +74,12 @@ interface AgentPickerProps {
  * new `iconFor` case here.
  */
 export function AgentPicker({ value, onChange, className = '' }: AgentPickerProps) {
-  const cols = AGENT_SPECS.length === 2 ? 'grid-cols-2' : 'grid-cols-3';
+  // Tailwind JIT needs literal class names, so map count -> class explicitly.
+  // Falls back to grid-cols-4 for 5+ agents (would wrap into two rows).
+  const cols =
+    AGENT_SPECS.length <= 2 ? 'grid-cols-2'
+    : AGENT_SPECS.length === 3 ? 'grid-cols-3'
+    : 'grid-cols-4';
   return (
     <div className={`grid ${cols} gap-2 ${className}`}>
       {AGENT_SPECS.map((spec) => {

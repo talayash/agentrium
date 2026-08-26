@@ -39,6 +39,13 @@ pub fn spec_for(kind: AgentKind) -> AgentSpec {
             install_url: "https://cursor.com/cli",
             install_hint: "curl https://cursor.com/install -fsS | bash",
         },
+        AgentKind::Gemini => AgentSpec {
+            kind: AgentKind::Gemini,
+            display_name: "Gemini",
+            binary: "gemini",
+            install_url: "https://github.com/google-gemini/gemini-cli",
+            install_hint: "npm install -g @google/gemini-cli",
+        },
     }
 }
 
@@ -49,6 +56,7 @@ pub fn all_specs() -> Vec<AgentSpec> {
         spec_for(AgentKind::Claude),
         spec_for(AgentKind::Codex),
         spec_for(AgentKind::Cursor),
+        spec_for(AgentKind::Gemini),
     ]
 }
 
@@ -75,6 +83,11 @@ mod tests {
     }
 
     #[test]
+    fn gemini_spec_has_gemini_binary() {
+        assert_eq!(spec_for(AgentKind::Gemini).binary, "gemini");
+    }
+
+    #[test]
     fn all_specs_lists_every_agent_kind() {
         // If a new AgentKind variant is added and forgotten here, this test
         // fails - forces the catalog to stay in sync with the enum.
@@ -82,6 +95,7 @@ mod tests {
         assert!(specs.iter().any(|s| s.kind == AgentKind::Claude));
         assert!(specs.iter().any(|s| s.kind == AgentKind::Codex));
         assert!(specs.iter().any(|s| s.kind == AgentKind::Cursor));
-        assert_eq!(specs.len(), 3);
+        assert!(specs.iter().any(|s| s.kind == AgentKind::Gemini));
+        assert_eq!(specs.len(), 4);
     }
 }

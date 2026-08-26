@@ -17,12 +17,17 @@ describe('agents catalog', () => {
     expect(specFor('cursor').binary).toBe('agent');
   });
 
+  it('resolves gemini by kind', () => {
+    expect(specFor('gemini').binary).toBe('gemini');
+  });
+
   it('lists every agent kind exactly once', () => {
     const kinds = AGENT_SPECS.map(s => s.kind);
     expect(new Set(kinds).size).toBe(kinds.length);
     expect(kinds).toContain('claude');
     expect(kinds).toContain('codex');
     expect(kinds).toContain('cursor');
+    expect(kinds).toContain('gemini');
   });
 
   it('throws on unknown kind', () => {
