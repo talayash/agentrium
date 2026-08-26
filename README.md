@@ -160,8 +160,8 @@ Download the latest release for your platform from the [Releases page](https://g
 |---|---|---|
 | Windows | [Agentrium_1.32.0_x64-setup.exe](https://github.com/talayash/agentrium/releases/latest/download/Agentrium_1.32.0_x64-setup.exe) | NSIS Installer (Recommended) |
 | Windows | [Agentrium_1.32.0_x64_en-US.msi](https://github.com/talayash/agentrium/releases/latest/download/Agentrium_1.32.0_x64_en-US.msi) | MSI Installer |
-| macOS (Apple Silicon) | `Agentrium_1.32.0_aarch64.dmg` | DMG for M1/M2/M3/M4 Macs |
-| macOS (Intel) | `Agentrium_1.32.0_x64.dmg` | DMG for Intel Macs |
+| macOS (Apple Silicon) | [Agentrium_1.32.0_aarch64.dmg](https://github.com/talayash/agentrium/releases/latest/download/Agentrium_1.32.0_aarch64.dmg) | DMG for M1/M2/M3/M4 Macs |
+| macOS (Intel) | [Agentrium_1.32.0_x64.dmg](https://github.com/talayash/agentrium/releases/latest/download/Agentrium_1.32.0_x64.dmg) | DMG for Intel Macs |
 
 > Existing 1.31.x installs auto-update to 1.32.0 via the in-app updater. The bundle identifier is unchanged, so profiles, workspaces, and session history carry over. Pre-rebrand 1.31.x download artifacts are still available on the release history if you need an older build.
 

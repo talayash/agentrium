@@ -20,10 +20,13 @@ Update the version string in **all five** of these files (replace the old versio
 1. **`package.json`** - the `"version"` field
 2. **`src-tauri/Cargo.toml`** - the `version` field under `[package]`
 3. **`src-tauri/tauri.conf.json`** - the `"version"` field
-4. **`README.md`** - update these version references:
+4. **`README.md`** - update these version references (link text AND URL for each row of the Download table):
    - The version badge: `version-X.Y.Z-green`
-   - The NSIS download link filename: `ClaudeTerminal_X.Y.Z_x64-setup.exe` (both the link text and the URL)
-   - The MSI download link filename: `ClaudeTerminal_X.Y.Z_x64_en-US.msi` (both the link text and the URL)
+   - Windows NSIS: `Agentrium_X.Y.Z_x64-setup.exe`
+   - Windows MSI: `Agentrium_X.Y.Z_x64_en-US.msi`
+   - macOS Apple Silicon: `Agentrium_X.Y.Z_aarch64.dmg`
+   - macOS Intel: `Agentrium_X.Y.Z_x64.dmg`
+   - Every row must be a real `[filename](https://github.com/talayash/agentrium/releases/latest/download/filename)` link, not a bare backtick code span.
 5. **`CLAUDE.md`** - the `Current version: **X.Y.Z**` line
 
 After editing, verify each file was updated correctly by reading the changed lines.
