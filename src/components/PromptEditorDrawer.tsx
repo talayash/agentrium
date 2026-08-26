@@ -189,7 +189,7 @@ export function PromptEditorDrawer() {
 
       toast.warning(
         'Large paste detected',
-        `${(bytes / 1024).toFixed(1)} KB · ${lines} lines - sending this inline can bog down Claude Code. Save it as a file and reference it instead?`,
+        `${(bytes / 1024).toFixed(1)} KB · ${lines} lines - sending this inline can bog down the agent. Save it as a file and reference it instead?`,
         {
           duration: 15000,
           actions: [

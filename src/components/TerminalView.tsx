@@ -390,7 +390,7 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
       // which the user said felt easy to miss.
       toast.warning(
         'Large paste detected',
-        `${(bytes / 1024).toFixed(1)} KB · ${lines} lines - pasting this directly into Claude Code can hang the terminal. Save it as a file and reference it instead?`,
+        `${(bytes / 1024).toFixed(1)} KB · ${lines} lines - pasting this directly can hang the agent. Save it as a file and reference it instead?`,
         {
           duration: 15000,
           actions: [

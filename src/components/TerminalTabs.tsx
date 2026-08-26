@@ -805,8 +805,8 @@ export function TerminalTabs() {
                   Welcome to ADE-1
                 </h1>
                 <p className="text-[13px] text-text-tertiary mb-8 text-center max-w-[420px]">
-                  Manage multiple Claude Code sessions from a single native window.
-                  Start a new terminal, or press{' '}
+                  Run Claude Code, Codex, Cursor, and Gemini agents side by side
+                  in one native window. Start a new terminal, or press{' '}
                   <kbd className="px-1.5 py-0.5 rounded bg-elevation-2 text-text-secondary text-[11px] font-sans border border-[var(--ij-divider-soft)] mx-0.5">
                     {isMac ? '⌘' : 'Ctrl'}
                   </kbd>
@@ -828,7 +828,7 @@ export function TerminalTabs() {
                     <div>
                       <div className="text-[13px] font-medium text-text-primary">New Terminal</div>
                       <div className="text-[11.5px] text-text-tertiary mt-0.5">
-                        Start a Claude Code session in any folder
+                        Start an agent session in any folder
                       </div>
                     </div>
                   </button>
