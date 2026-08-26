@@ -8,7 +8,7 @@ import { homeDir } from '@tauri-apps/api/path';
 import { open } from '@tauri-apps/plugin-dialog';
 import type { WorktreeInfo, WorktreeDetectResult } from '../types/git';
 import { reportInvokeFailure } from '../lib/errorReporter';
-import { specFor, type AgentKind } from '../lib/agents';
+import { filterArgsForAgent, specFor, type AgentKind } from '../lib/agents';
 import { AgentPicker } from './AgentPicker';
 import { Button } from './ui/Button';
 import { Modal } from './ui/Modal';
@@ -93,18 +93,17 @@ export function NewTerminalModal() {
   }, [profileModalOpen]);
 
   useEffect(() => {
-    // When profile is selected, update form with profile settings AND
-    // sync the picked agent to whatever the profile is bound to, so the
-    // user gets a coherent preview. The agent picker still lets the user
-    // override afterward - profiles no longer restrict agent selection,
-    // they just provide sensible defaults.
+    // When a profile is selected, apply its working dir / args / env, but
+    // DO NOT sync selectedAgent to the profile's agent. The user's most
+    // recent agent choice always wins - clicking a profile after picking
+    // Codex/Cursor shouldn't snap back to Claude. The default profile's
+    // agent is only used as the initial seed (see loadProfiles).
     if (selectedProfileId) {
       const profile = profiles.find(p => p.id === selectedProfileId);
       if (profile) {
         setWorkingDirectory(profile.working_directory || defaultDirectory);
         setClaudeArgs(profile.claude_args.length > 0 ? profile.claude_args : defaultClaudeArgs);
         setEnvVars(profile.env_vars || {});
-        setSelectedAgent(profile.agent);
       }
     } else {
       // Reset to defaults when "No Profile" is selected
@@ -288,15 +287,25 @@ export function NewTerminalModal() {
           }
         }
 
-        const finalArgs = [...claudeArgs];
-        if (selectedModel !== 'default') {
-          finalArgs.unshift('--model', selectedModel);
-        }
-        if (selectedEffort !== 'default') {
-          finalArgs.unshift('--effort', selectedEffort);
-        }
-        if (useWorktree) {
-          finalArgs.unshift('--worktree');
+        // Strip Claude-only flags when the target isn't Claude (e.g., a
+        // saved profile with --dangerously-skip-permissions being reused
+        // with Codex, which rejects it). filterArgsForAgent is a no-op
+        // shallow copy for Claude.
+        const finalArgs = filterArgsForAgent(selectedAgent, claudeArgs);
+        // Model / Effort / Worktree flags are Claude Code specific. Only
+        // inject them when spawning Claude - Codex and Cursor have their
+        // own selectors (out of scope for MVP) and would arg-parse-fail
+        // on these names.
+        if (selectedAgent === 'claude') {
+          if (selectedModel !== 'default') {
+            finalArgs.unshift('--model', selectedModel);
+          }
+          if (selectedEffort !== 'default') {
+            finalArgs.unshift('--effort', selectedEffort);
+          }
+          if (useWorktree) {
+            finalArgs.unshift('--worktree');
+          }
         }
 
         const previewInit = selectedProfile?.preview?.enabled
@@ -635,8 +644,8 @@ export function NewTerminalModal() {
             </p>
           </div>
           )}
-          {/* Worktree Toggle */}
-          {!plainShell && (
+          {/* Worktree Toggle - Claude-only flag; hidden for other agents */}
+          {!plainShell && selectedAgent === 'claude' && (
           <div className="flex items-center justify-between">
             <div>
               <label className="text-text-secondary text-[12px]">Isolated Worktree</label>
@@ -657,8 +666,8 @@ export function NewTerminalModal() {
           </div>
           )}
 
-          {/* Model Selector */}
-          {!plainShell && (
+          {/* Model Selector - Claude-only flags; hidden for other agents */}
+          {!plainShell && selectedAgent === 'claude' && (
           <div className="border-t border-[var(--ij-divider-soft)] pt-4">
             <label className="block text-text-secondary text-[12px] mb-1.5">Model</label>
             <div className="flex gap-1.5">
@@ -682,8 +691,8 @@ export function NewTerminalModal() {
           </div>
           )}
 
-          {/* Effort Selector */}
-          {!plainShell && (
+          {/* Effort Selector - Claude-only flag; hidden for other agents */}
+          {!plainShell && selectedAgent === 'claude' && (
           <div>
             <label className="block text-text-secondary text-[12px] mb-1.5">Effort</label>
             <div className="flex gap-1.5">

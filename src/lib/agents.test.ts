@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { AGENT_SPECS, specFor } from './agents';
+import { AGENT_SPECS, filterArgsForAgent, specFor } from './agents';
 
 describe('agents catalog', () => {
   it('resolves claude by kind', () => {
@@ -28,5 +28,54 @@ describe('agents catalog', () => {
   it('throws on unknown kind', () => {
     // @ts-expect-error - deliberately passing invalid kind
     expect(() => specFor('unknown')).toThrow();
+  });
+});
+
+describe('filterArgsForAgent', () => {
+  it('leaves args untouched when agent is claude', () => {
+    const args = ['--model', 'opus', '--dangerously-skip-permissions', '--user-flag'];
+    expect(filterArgsForAgent('claude', args)).toEqual(args);
+  });
+
+  it('returns a shallow copy for claude so callers can mutate safely', () => {
+    const args = ['--verbose'];
+    const out = filterArgsForAgent('claude', args);
+    expect(out).not.toBe(args);
+  });
+
+  it('strips --dangerously-skip-permissions for codex', () => {
+    expect(filterArgsForAgent('codex', ['--dangerously-skip-permissions', '--user-flag']))
+      .toEqual(['--user-flag']);
+  });
+
+  it('strips --model and its value for cursor', () => {
+    expect(filterArgsForAgent('cursor', ['--model', 'opus', '--user-flag']))
+      .toEqual(['--user-flag']);
+  });
+
+  it('strips --effort and its value for codex', () => {
+    expect(filterArgsForAgent('codex', ['--effort', 'high', '--user-flag']))
+      .toEqual(['--user-flag']);
+  });
+
+  it('handles the --flag=value form', () => {
+    expect(filterArgsForAgent('codex', ['--model=opus', '--user-flag']))
+      .toEqual(['--user-flag']);
+  });
+
+  it('does not eat the next token when a --flag-with-value has an omitted value', () => {
+    // Malformed input, but we still shouldn't drop --keep.
+    expect(filterArgsForAgent('codex', ['--model', '--keep']))
+      .toEqual(['--keep']);
+  });
+
+  it('strips multiple Claude-only flags in one pass', () => {
+    expect(filterArgsForAgent('cursor', [
+      '--dangerously-skip-permissions',
+      '--model', 'opus',
+      '--continue',
+      '--user-flag',
+      '--another',
+    ])).toEqual(['--user-flag', '--another']);
   });
 });
