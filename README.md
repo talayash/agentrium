@@ -5,10 +5,11 @@
 <h1 align="center">Agentrium</h1>
 
 <p align="center">
-  <strong>A Modern Multi-Instance Terminal Manager for Claude Code</strong>
+  <strong>Run Claude Code, Codex, Cursor, and Gemini side by side in one native desktop app.</strong>
 </p>
 
 <p align="center">
+  <a href="#supported-agents">Agents</a> •
   <a href="#features">Features</a> •
   <a href="#installation">Installation</a> •
   <a href="#usage">Usage</a> •
@@ -29,81 +30,114 @@
 
 ## Overview
 
-**Agentrium** (Agent Desktop Environment) is a cross-platform desktop application (Windows and macOS) for running multiple coding-agent CLIs - [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Codex](https://github.com/openai/codex), [Cursor](https://cursor.com/cli), and [Gemini](https://github.com/google-gemini/gemini-cli) - side by side in one unified interface. Built with Tauri and React, it provides a powerful workspace for running parallel Claude Code sessions with custom configurations, real-time monitoring, and intelligent command assistance.
+**Agentrium** (Agent Desktop Environment) is a cross-platform desktop app for developers who work with multiple coding-agent CLIs. Pick which agent each terminal launches, mix them freely in tabs or a grid, save per-profile setups, and get a native window with proper tabs, split view, session restore, git worktree lifecycle, and hunk review on top.
+
+The app is Tauri-native (small binary, no Electron bloat) and ships to Windows and macOS.
+
+## Supported Agents
+
+Each terminal you spawn can target any of the four agents below. Switch between them with a picker in the New Terminal dialog; the icon on each tab and grid cell tells you which agent is running.
+
+| Agent | Binary | Install | Docs |
+|---|---|---|---|
+| **Claude Code** | `claude` | `npm install -g @anthropic-ai/claude-code` | [docs.claude.com/claude-code](https://docs.claude.com/claude-code) |
+| **Codex** | `codex` | `npm install -g @openai/codex` | [github.com/openai/codex](https://github.com/openai/codex) |
+| **Cursor** | `agent` | `curl https://cursor.com/install -fsS \| bash` (or `irm 'https://cursor.com/install?win32=true' \| iex` on Windows) | [cursor.com/cli](https://cursor.com/cli) |
+| **Gemini** | `gemini` | `npm install -g @google/gemini-cli` | [github.com/google-gemini/gemini-cli](https://github.com/google-gemini/gemini-cli) |
+
+Only Claude Code is required to get started. The other three are opt-in and auto-detected once installed - Settings > Updates shows what's on your PATH.
 
 ## Screenshots
 
 <p align="center">
-  <img src="docs/main-view.png" alt="Main view with active Claude Code session" width="800">
-  <br><em>Main view - an active Claude Code session with branch indicator and status bar</em>
+  <img src="docs/main-view.png" alt="Main view with an active agent session" width="800">
+  <br><em>Main view - an active agent session with branch indicator, brand icon on the tab, and status bar</em>
 </p>
 
 <p align="center">
   <img src="docs/new-terminal.png" alt="New Terminal dialog" width="800">
-  <br><em>New Terminal dialog - pick a profile, set a nickname, working directory, and Claude arguments</em>
+  <br><em>New Terminal dialog - pick the agent, then optionally a profile, working directory, and per-agent arguments</em>
 </p>
 
 <p align="center">
-  <img src="docs/grid-view.png" alt="Grid view with four terminals" width="800">
-  <br><em>Grid view - up to 8 Claude Code sessions at once with selectable layouts</em>
+  <img src="docs/grid-view.png" alt="Grid view with mixed agents" width="800">
+  <br><em>Grid view - up to 8 sessions at once with selectable layouts; the header icon on each cell shows which agent is running</em>
 </p>
 
 <p align="center">
-  <img src="docs/settings.png" alt="Settings modal" width="800">
-  <br><em>Settings - app and Claude Code update status, default arguments, and notifications</em>
+  <img src="docs/settings.png" alt="Settings > Updates" width="800">
+  <br><em>Settings - app version, per-agent CLI detection with docs links, and Claude Code auto-update</em>
 </p>
 
 ## Features
 
-### 🖥️ Multi-Terminal Management
-- Create, manage, and monitor multiple Claude Code instances simultaneously
-- Tab-based interface with drag-and-drop reordering
-- Color-coded terminals for easy identification
-- **Custom nicknames** for easy terminal identification
+### Multi-agent architecture
+
+- Pick per terminal between Claude Code, Codex, Cursor, and Gemini
+- Brand icon on every tab and every grid cell so you always know what's running
+- Per-agent default arguments in Settings; per-profile args stored in SQLite
+- Claude-only flags (`--dangerously-skip-permissions`, `--model`, `--effort`, `--continue`, `--resume`, `--worktree`) are stripped automatically when spawning other agents so profiles are portable
+- Per-agent version detection in Settings > About and Settings > Updates
+- Agents are auto-detected via `<binary> --version` first, then a PATH probe fallback so CLIs without a semver flag still register as installed
+
+### Multi-terminal management
+
+- Tabbed strip with drag-to-reorder, pin, and multi-select tear-off
+- Brand icon prefix on every tab title
+- Custom nicknames per terminal
 - Session state persistence across restarts
+- Overflow chevron with a hidden-tabs dropdown for busy workspaces
 
-### 📐 Smart Grid View
-- View up to **8 terminals simultaneously** in a single window
-- Intelligent auto-layout (1x1, 1x2, 2x2, 2x3, 2x4, etc.)
-- Click to focus, keyboard navigation with arrow keys
-- Quick add/remove terminals from grid via context menu
-- Toggle grid mode with `Ctrl+G`
+### Smart grid view
 
-### 🎨 Modern UI/UX
-- Beautiful dark glassmorphic design
-- Smooth animations powered by Framer Motion
-- Custom window controls with transparent titlebar
-- Responsive and intuitive interface
+- Up to 8 terminals in one window with mixable agents per cell
+- Layout picker with schematic icons that match the actual grid shape (1x1, 1x2, 2x1, 2x2, 1x3, 3x1, 2x3, 3x2, 2x4, 4x2)
+- Layout preserves your manual pick until it's actually full - adding a 3rd terminal to a 2x2 grid stays 2x2, not 1x3
+- Click to focus, arrow keys to navigate, `Ctrl+G` to toggle
+- Cell headers auto-clean stale terminal references after a restart
 
-### ⚙️ Configuration Profiles
-- Save and load custom terminal configurations
-- Pre-configure Claude Code CLI flags per profile
-- Set environment variables for each session
-- Quick-launch favorite configurations
+### Configuration profiles
 
-### 💡 Command Hints & Tips
-- Built-in command reference panel
-- Categorized hints for common operations
-- One-click copy to clipboard
-- Searchable command database
+- Save named profiles with a working directory, per-agent arguments, and env vars
+- Profiles are agent-agnostic in the picker - the same profile appears whether Claude Code, Codex, Cursor, or Gemini is selected
+- SQLite storage, transparent migration for existing profiles
 
-### 🔄 Auto-Setup Wizard
-- Automatic detection of system requirements
-- Guided installation for Node.js and Claude Code
-- One-click Claude Code installation
-- System status monitoring
+### Git worktree lifecycle
 
-### 🔄 Auto-Updates
-- Automatic update checks on startup
-- Background download with progress indicator
-- One-click update installation
-- Manual update check in Settings
+- Create, list, and switch worktrees from the New Terminal dialog
+- Close a terminal that was on a worktree and choose merge (fast-forward), squash-merge, or discard from a dialog
+- Branch chip in the tab strip shows current + upstream status
 
-### ⌨️ Productivity Features
-- Comprehensive keyboard shortcuts
-- Search and filter terminals
-- Rename terminals inline
-- Quick actions menu
+### Hunk review
+
+- IntelliJ-style verified review cockpit for staging individual hunks
+- Diff view with hunk-level accept/reject
+- Changelists for grouping related diffs
+
+### Session restore
+
+- App-restart re-attaches Claude Code conversations by session id (`--resume <id>` or `--continue`)
+- Workspace save/load for storing a named layout of terminals
+- Ephemeral tab state survives a `/clear`
+
+### Modern UI/UX
+
+- Flat IntelliJ IDEA 2026.1 "New UI"-style design (dark and light themes, user-set accent color)
+- WCAG AA text contrast, reduce-motion support that follows the OS setting
+- Compact / comfortable / spacious density
+- UI font scale
+- Custom frameless window with a transparent titlebar
+
+### Auto-updates
+
+- Automatic app update checks on startup with a background download
+- Manual Recheck for each agent CLI in Settings > Updates
+
+### Command hints, snippets, prompt editor
+
+- Built-in Claude Code command reference (Codex/Cursor/Gemini hint packs planned)
+- Snippet manager with import/export
+- Full prompt editor drawer for composing large multi-line prompts
 
 ## Installation
 
@@ -112,10 +146,11 @@
 Before installing Agentrium, ensure you have:
 
 1. **Node.js** (v22 LTS or higher) - [Download](https://nodejs.org/)
-2. **Claude Code** - Install via npm:
-   ```bash
-   npm install -g @anthropic-ai/claude-code
-   ```
+2. At least one of the following agents installed (see [Supported Agents](#supported-agents) above for install commands):
+   - Claude Code (recommended - detected by the setup wizard)
+   - Codex
+   - Cursor
+   - Gemini
 
 ### Download
 
@@ -128,66 +163,74 @@ Download the latest release for your platform from the [Releases page](https://g
 | macOS (Apple Silicon) | `ClaudeTerminal_1.31.4_aarch64.dmg` | DMG for M1/M2/M3/M4 Macs |
 | macOS (Intel) | `ClaudeTerminal_1.31.4_x64.dmg` | DMG for Intel Macs |
 
-> macOS builds are currently not code-signed/notarized - first launch will require right-click → Open or approval in System Settings → Privacy & Security.
+> The 1.31.4 release artifacts still carry the pre-rebrand `ClaudeTerminal_*` filenames because that was the release name at build time. The next release will publish as `Agentrium_X.Y.Z_*` since artifact names follow `tauri.conf.json`'s `productName`.
+
+> macOS builds are currently not code-signed/notarized - first launch will require right-click > Open or approval in System Settings > Privacy & Security.
 
 ### First Launch
 
 1. Run the installer and follow the setup wizard
 2. Launch Agentrium from the Start Menu or Desktop
-3. If Claude Code is not detected, the setup wizard will guide you through installation
-4. Click "New Terminal" to create your first Claude Code session
+3. The setup wizard detects Node.js and Claude Code; if either is missing it guides you through the install
+4. Click "New Terminal", pick your agent from the four brand buttons, and launch your first session
 
 ## Usage
 
-### Creating a Terminal
+### Creating a terminal
 
-1. Click the **"New Terminal"** button in the sidebar, or press `Ctrl+Shift+N`
-2. Select a **profile** from the dropdown (or use Default)
-3. Optionally set a **nickname** for easy identification
-4. Choose the **working directory** for the session
-5. Configure **Claude arguments** (e.g., `--dangerously-skip-permissions`)
-6. Click **Create Terminal** - Claude Code starts automatically!
+1. Click **New Terminal** in the sidebar, or press `Ctrl+Shift+N`
+2. Pick the **agent** from the four brand buttons (Claude Code / Codex / Cursor / Gemini)
+3. Optionally pick a **profile** from the grid
+4. Optionally set a **nickname** for easy identification
+5. Choose the **working directory** for the session
+6. Add per-agent **arguments** in the textarea (placeholder text hints at typical flags per agent)
+7. Click **Start Terminal**
 
-### Managing Terminals
+### Managing terminals
 
-- **Switch terminals**: Click on a tab or sidebar item
-- **Rename**: Double-click the terminal name or use the context menu
-- **Close**: Click the X on the tab or select "Close" from the context menu
-- **Search**: Use the search bar in the sidebar to filter terminals
+- **Switch**: click a tab or a sidebar row
+- **Rename**: double-click the terminal name or use the context menu
+- **Duplicate**: right-click > Duplicate, or `Ctrl+Shift+D` - the duplicate keeps the same agent
+- **Restart**: bottom status bar > Restart - the restarted terminal keeps the same agent
+- **Close**: click X on the tab or use the context menu
+- **Search**: use the sidebar search bar to filter terminals
 
-### Configuration Profiles
+### Configuration profiles
 
-1. Click **"Manage Profiles"** in the sidebar footer
+1. Click **Manage Profiles** in the sidebar footer (or click **+ Add Profile** in the New Terminal dialog)
 2. Create a new profile with:
    - Name and description
    - Working directory
-   - Claude Code arguments (e.g., `--model opus`, `--verbose`)
+   - Agent-flavored arguments (e.g., `--model opus` for Claude, `--dangerously-bypass-approvals-and-sandbox` for Codex)
    - Environment variables
-3. Save and use the profile for new terminals
+3. Save and use the profile for new terminals - it appears under every agent
 
-### Hints Panel
+### Hints panel
 
 Press `F1` or click the lightbulb icon to open the Hints panel:
-- Browse categorized Claude Code commands
+- Categorized Claude Code commands
 - Click any hint to copy it to clipboard
-- Use the search bar to find specific commands
+- Search bar for filtering
+- Codex/Cursor/Gemini hint packs are planned
 
 ## Keyboard Shortcuts
 
 | Shortcut | Action |
 |----------|--------|
 | `Ctrl+Shift+N` | New Terminal |
-| `Ctrl+W` | Close Current Terminal |
-| `Ctrl+B` | Toggle Sidebar |
-| `F1` | Toggle Hints Panel |
+| `Ctrl+Shift+D` | Duplicate current terminal (keeps agent) |
+| `Ctrl+W` | Close current terminal |
+| `Ctrl+B` | Toggle sidebar |
+| `F1` | Toggle Hints panel |
 | `Ctrl+,` | Open Settings |
-| `Ctrl+Tab` | Next Terminal |
-| `Ctrl+Shift+Tab` | Previous Terminal |
-| `Ctrl+G` | Toggle Grid View |
-| `Ctrl+Shift+G` | Add Current Terminal to Grid |
-| `Ctrl+C` | Copy selected text / Send interrupt signal |
+| `Ctrl+P` | Search Everywhere |
+| `Ctrl+Tab` | Next terminal |
+| `Ctrl+Shift+Tab` | Previous terminal |
+| `Ctrl+G` | Toggle Grid view |
+| `Ctrl+Shift+G` | Add current terminal to grid |
+| `Ctrl+C` | Copy selected text / send interrupt |
 | `Ctrl+V` | Paste from clipboard |
-| `Arrow Keys` | Navigate Grid (when in grid mode) |
+| `Arrow keys` | Navigate grid (in grid mode) |
 
 ## Building from Source
 
@@ -220,41 +263,51 @@ Press `F1` or click the lightbulb icon to open the Hints panel:
    npm run tauri build
    ```
 
-   The installers will be available in:
-   - `src-tauri/target/release/bundle/nsis/` (NSIS installer)
-   - `src-tauri/target/release/bundle/msi/` (MSI installer)
+   Installers land in:
+   - `src-tauri/target/release/bundle/nsis/` (NSIS installer, Windows)
+   - `src-tauri/target/release/bundle/msi/` (MSI installer, Windows)
+   - `src-tauri/target/release/bundle/dmg/` (DMG, macOS)
+   - `src-tauri/target/release/bundle/macos/` (`.app`, macOS)
 
 ## Tech Stack
 
 | Layer | Technology |
 |-------|------------|
 | Framework | [Tauri](https://tauri.app/) 2.x |
-| Backend | Rust |
+| Backend | Rust (edition 2021) |
 | Frontend | React 18 + TypeScript |
-| Styling | Tailwind CSS |
-| Animations | Framer Motion |
-| Terminal | xterm.js |
-| State | Zustand |
-| Icons | Lucide React |
+| Styling | Tailwind CSS + Framer Motion |
+| Terminal | xterm.js (`@xterm/xterm` + fit / search / web-links / webgl addons) |
+| State | Zustand (persisted via `zustand/middleware/persist`) |
+| Database | SQLite via `rusqlite` (bundled) |
+| PTY | `portable-pty` |
+| Notifications | `notify-rust` |
+| Icons | Lucide React + inline brand SVGs (simple-icons for Anthropic / Cursor / Gemini, official OpenAI mark for Codex) |
 | Build | Vite |
 
 ## Project Structure
 
 ```
 claude-terminal/
-├── src/                    # React frontend
-│   ├── components/         # UI components
-│   ├── store/             # Zustand stores
-│   └── hooks/             # Custom hooks
-├── src-tauri/             # Tauri backend
-│   ├── src/               # Rust source files
-│   │   ├── main.rs        # Application entry
-│   │   ├── terminal.rs    # Terminal management
-│   │   ├── commands.rs    # Tauri commands
-│   │   ├── config.rs      # Configuration
-│   │   └── database.rs    # SQLite database
-│   └── icons/             # Application icons
-└── package.json           # Node dependencies
+├── src/                              # React frontend
+│   ├── components/                   # UI (TitleBar, TerminalTabs, TerminalGrid, ...)
+│   │   ├── AgentPicker.tsx           # Four-button agent picker
+│   │   ├── BrandIcon.tsx             # Shared per-agent brand SVGs
+│   │   └── settings/                 # Settings modal + category pages
+│   ├── lib/
+│   │   └── agents.ts                 # AgentKind, AGENT_SPECS catalog, filterArgsForAgent
+│   ├── store/                        # Zustand stores
+│   └── hooks/                        # Custom hooks
+├── src-tauri/                        # Tauri backend
+│   ├── src/
+│   │   ├── main.rs                   # App setup, plugin registration, IPC dispatch
+│   │   ├── agents.rs                 # AgentSpec catalog (mirror of TS)
+│   │   ├── config.rs                 # ConfigProfile + AgentKind enum
+│   │   ├── terminal.rs               # PTY lifecycle, per-agent spawn routing
+│   │   ├── commands.rs               # All Tauri #[command] handlers
+│   │   └── database.rs               # SQLite (profiles, workspaces, session_history)
+│   └── icons/                        # App icons
+└── package.json
 ```
 
 ## Troubleshooting
@@ -294,14 +347,22 @@ xattr -d com.apple.quarantine ~/Downloads/Agentrium_*.dmg
 xattr -cr /Applications/Agentrium.app
 ```
 
-Then open the app normally. The right-click → **Open** workaround does not
+Then open the app normally. The right-click > **Open** workaround does not
 work for the "damaged" variant of the error - only `xattr` does.
 
 > Proper Apple notarization is tracked in
 > [#25](https://github.com/talayash/claude-terminal/issues/25); once it lands,
 > these steps will no longer be required on macOS.
 
-### Claude Code not detected
+### An agent CLI shows "Not installed"
+
+1. Verify the binary is on PATH: `which claude` / `where claude` (or the binary name for the agent you're checking).
+2. Restart Agentrium so the app inherits the updated PATH.
+3. Click **Recheck** on that agent's row in Settings > Updates.
+
+If the binary is on PATH but Agentrium still can't detect a version, the agent probably doesn't expose one via `--version`. Agentrium falls back to a PATH probe in that case and marks the agent as **installed** anyway.
+
+### Claude Code not detected during setup
 
 1. Ensure Node.js is installed: `node --version`
 2. Install Claude Code globally: `npm install -g @anthropic-ai/claude-code`
@@ -309,9 +370,9 @@ work for the "damaged" variant of the error - only `xattr` does.
 
 ### Terminal not responding
 
-1. Check if Claude Code is properly authenticated
+1. Check that the agent CLI is authenticated (each agent has its own login flow)
 2. Try closing and reopening the terminal
-3. Check the Claude Code logs for errors
+3. Check the agent's own logs for errors
 
 ### Build errors
 
@@ -321,7 +382,7 @@ work for the "damaged" variant of the error - only `xattr` does.
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions are welcome. Please open a Pull Request.
 
 1. Fork the repository
 2. Create your feature branch (`git checkout -b feature/amazing-feature`)
@@ -336,11 +397,15 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## Acknowledgments
 
 - [Anthropic](https://www.anthropic.com/) for Claude Code
-- [Tauri](https://tauri.app/) for the amazing framework
+- [OpenAI](https://openai.com/) for Codex
+- [Cursor](https://cursor.com/) for the Cursor CLI
+- [Google](https://ai.google.dev/) for the Gemini CLI
+- [Tauri](https://tauri.app/) for the framework
 - [xterm.js](https://xtermjs.org/) for terminal emulation
+- [simple-icons](https://simpleicons.org/) for the brand marks
 
 ---
 
 <p align="center">
-  Made with ❤️ for Claude Code developers
+  Made for developers who juggle multiple coding agents.
 </p>
