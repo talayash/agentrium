@@ -703,28 +703,69 @@ pub async fn get_claude_version() -> Result<String, String> {
     .await
 }
 
-/// Generic per-agent `<binary> --version` runner. Claude routes through
-/// the cached-path helper (`run_claude`) so users with PATH only in
-/// `.zshrc` still resolve it; other agents fall through the shell lookup.
-/// Returns a cleaned single-line version string or an error message.
+/// Generic per-agent version detector.
+///
+/// Two-stage check: (1) run `<binary> --version` and try to extract a
+/// semver-shaped line from either stdout or stderr; if that succeeds we
+/// return it. (2) If the version call failed, or exited zero with no
+/// version output, fall back to `where`/`which` to prove the binary is
+/// on PATH — in which case we return the marker "installed" so the UI
+/// stops falsely claiming "Not installed" for agents whose `--version`
+/// format we can't parse (or which don't ship one — Cursor's `agent`,
+/// for instance, is primarily an interactive REPL).
+///
+/// Claude keeps its dedicated cached-path helper so users with PATH set
+/// only in .zshrc still resolve it.
 #[command]
 pub async fn get_agent_version(agent: crate::config::AgentKind) -> Result<String, String> {
     wrap_cmd("get_agent_version", async move {
-        let output = if agent == crate::config::AgentKind::Claude {
-            run_claude(&["--version"])
+        if agent == crate::config::AgentKind::Claude {
+            let output = run_claude(&["--version"])
                 .await
-                .map_err(|e| e.to_string())?
-        } else {
-            let binary = crate::agents::spec_for(agent).binary;
-            let mut cmd: tokio::process::Command = shell_command(binary, &["--version"]).into();
-            cmd.output().await.map_err(|e| e.to_string())?
-        };
-
-        if !output.status.success() {
-            return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+                .map_err(|e| e.to_string())?;
+            if !output.status.success() {
+                return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+            }
+            let stdout = String::from_utf8(output.stdout).map_err(|e| e.to_string())?;
+            return Ok(extract_version_line(&stdout));
         }
-        let stdout = String::from_utf8(output.stdout).map_err(|e| e.to_string())?;
-        Ok(extract_version_line(&stdout))
+
+        let binary = crate::agents::spec_for(agent).binary;
+
+        // Stage 1: try --version. Look at both stdout and stderr because
+        // many CLIs print version info to stderr.
+        let mut cmd: tokio::process::Command = shell_command(binary, &["--version"]).into();
+        if let Ok(output) = cmd.output().await {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            for buf in [&stdout, &stderr] {
+                let line = extract_version_line(buf);
+                if !line.is_empty() && has_semver_like(&line) {
+                    return Ok(line);
+                }
+            }
+        }
+
+        // Stage 2: fall back to a PATH lookup. `where` on Windows, `which`
+        // on Unix. If the binary is resolvable, we know it's installed even
+        // though we couldn't parse a version out of it - return a stable
+        // "installed" marker so the UI reflects reality. Small console
+        // flash on Windows is acceptable for a fallback path that rarely
+        // fires; tokio::process::Command doesn't expose creation_flags,
+        // so we route the probe through the shell_command helper which
+        // already handles CREATE_NO_WINDOW.
+        let mut probe: tokio::process::Command = if cfg!(target_os = "windows") {
+            shell_command("where", &[binary]).into()
+        } else {
+            shell_command("which", &[binary]).into()
+        };
+        if let Ok(output) = probe.output().await {
+            if output.status.success() && !output.stdout.is_empty() {
+                return Ok("installed".to_string());
+            }
+        }
+
+        Err(format!("`{}` not found on PATH", binary))
     })
     .await
 }
@@ -992,7 +1033,7 @@ pub(crate) fn extract_version_line(stdout: &str) -> String {
     stdout.trim().to_string()
 }
 
-fn has_semver_like(s: &str) -> bool {
+pub(crate) fn has_semver_like(s: &str) -> bool {
     let bytes = s.as_bytes();
     let mut i = 0;
     while i < bytes.len() {
