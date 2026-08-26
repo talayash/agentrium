@@ -22,16 +22,17 @@ export interface TabWidthHints {
  * Deterministic (no DOM measurement) so overflow computation stays pure.
  * Approximates the actual layout in `TerminalTabs.tsx`:
  *   px-3 padding (12+12=24) + optional pin (10+8) + optional status dot
- *   (6+8) + label glyph width (~7px per char, monospace-ish) + close
- *   button (16). Clamped to [80, 200] to match the browser's flex-shrink
- *   behavior on real tabs — a lone glyph never renders narrower than 80px
- *   and a long label collapses to 200px before ellipsis.
+ *   (6+8) + agent brand icon (14px + 4px gap = 18, always present) +
+ *   label glyph width (~7px per char, monospace-ish) + close button (16).
+ *   Clamped to [80, 200] to match the browser's flex-shrink behavior on
+ *   real tabs — a lone glyph never renders narrower than 80px and a long
+ *   label collapses to 200px before ellipsis.
  *
  * Defensive: non-finite / negative label lengths are floored to 0, so a
  * malformed input still returns the clamped minimum instead of NaN.
  */
 export function estimateTabWidth(label: string, opts: TabWidthHints = {}): number {
-  const base = 24 /* padding */ + 16 /* close button */;
+  const base = 24 /* padding */ + 16 /* close button */ + 18 /* agent icon */;
   const pin = opts.isPinned ? 18 : 0;
   const dot = opts.hasStatusDot ? 14 : 0;
   const rawLen = typeof label === 'string' ? label.length : 0;

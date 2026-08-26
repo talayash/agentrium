@@ -23,6 +23,8 @@ import { orderTabsPinnedFirst } from '../lib/pinnedTabOrder';
 import { estimateTabWidth, computeTabOverflow } from '../lib/tabOverflow';
 import { idsToCloseForOthers, idsToCloseForAllButPinned } from '../lib/closeTabActions';
 import { StateDot } from './StateDot';
+import { BrandIcon } from './BrandIcon';
+import { specFor } from '../lib/agents';
 import { Tooltip } from './ui/Tooltip';
 import type { SessionState } from '../lib/terminalState';
 
@@ -522,6 +524,11 @@ export function TerminalTabs() {
                   {pinnedTabIds.includes(terminal.id) && (
                     <Pin size={10} className="text-accent-primary flex-shrink-0" />
                   )}
+                  <Tooltip label={`Agent: ${specFor(terminal.agent).displayName}`}>
+                    <span className="opacity-70 flex-shrink-0 flex items-center">
+                      <BrandIcon kind={terminal.agent} size={14} />
+                    </span>
+                  </Tooltip>
                   <span className="max-w-[120px] truncate">{terminal.nickname || terminal.label}</span>
                   {gitInfoCache.get(terminal.id)?.current_branch && (
                     <span className={`text-[11px] font-mono max-w-[60px] truncate ${
