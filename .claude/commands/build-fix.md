@@ -8,8 +8,8 @@ Run the build and fix any errors found. Follow this process:
 
 ### Step 1: Detect Build System
 Run these checks in order:
-1. `cd src-tauri && cargo check 2>&1` — Rust compilation
-2. `npx tsc --noEmit 2>&1` — TypeScript type checking
+1. `cd src-tauri && cargo check 2>&1` - Rust compilation
+2. `npx tsc --noEmit 2>&1` - TypeScript type checking
 3. If a specific build command was mentioned in $ARGUMENTS, run that instead
 
 ### Step 2: Parse Errors
@@ -28,9 +28,9 @@ Run these checks in order:
 - If the fix created MORE errors than it resolved, REVERT and ask for help
 
 ### Step 5: Guardrails
-- **Stop after 3 failed attempts** on the same error — explain what you tried
-- **Stop if fix creates new errors** — revert and explain
-- **Never change architecture** — if the fix requires restructuring, explain why and ask
+- **Stop after 3 failed attempts** on the same error - explain what you tried
+- **Stop if fix creates new errors** - revert and explain
+- **Never change architecture** - if the fix requires restructuring, explain why and ask
 
 ### Step 6: Report
 After all errors are fixed:

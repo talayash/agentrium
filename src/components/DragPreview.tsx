@@ -24,7 +24,7 @@ export const DRAG_PREVIEW_END = 'ct://drag-preview:end';
 
 /**
  * A transparent, always-on-top, click-through overlay window that renders just
- * the "lifted tab" and follows the global cursor — so the dragged tab is
+ * the "lifted tab" and follows the global cursor - so the dragged tab is
  * visible even outside the source window (a DOM ghost is clipped to its window;
  * this isn't). The main window pre-creates it hidden at startup; tab drags emit
  * start/end events to show/hide it. It self-positions by polling the global
@@ -48,7 +48,7 @@ export function DragPreview() {
 
   useEffect(() => {
     const win = getCurrentWindow();
-    // Never intercept the pointer — the drop must hit the window/desktop below.
+    // Never intercept the pointer - the drop must hit the window/desktop below.
     win.setIgnoreCursorEvents(true).catch(() => {});
     win.setAlwaysOnTop(true).catch(() => {});
 
@@ -58,7 +58,7 @@ export function DragPreview() {
         const [cx, cy] = await invoke<[number, number]>('get_cursor_position');
         await win.setPosition(new PhysicalPosition(Math.round(cx + 14), Math.round(cy + 16)));
       } catch {
-        /* transient — keep going */
+        /* transient - keep going */
       }
       if (runningRef.current) requestAnimationFrame(follow);
     };

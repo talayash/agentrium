@@ -25,14 +25,14 @@ Systematically find and remove dead code from the project. $ARGUMENTS
 4. Verify `cargo check` still passes after each removal
 
 ### Phase 4: Unused Dependencies
-1. Check `package.json` — search for each dependency's usage in `src/`
-2. Check `Cargo.toml` — search for each dependency's usage in `src-tauri/src/`
+1. Check `package.json` - search for each dependency's usage in `src/`
+2. Check `Cargo.toml` - search for each dependency's usage in `src-tauri/src/`
 3. Flag dependencies with zero references (excluding build/config deps)
 4. Present list to user for confirmation before removing
 
 ### Rules
-- **One removal at a time** — verify build passes after each
-- **Never remove code you're not sure is dead** — if in doubt, flag it but don't remove
+- **One removal at a time** - verify build passes after each
+- **Never remove code you're not sure is dead** - if in doubt, flag it but don't remove
 - **Don't touch test code** unless explicitly asked
 - **Create a checkpoint first** if there are uncommitted changes
 

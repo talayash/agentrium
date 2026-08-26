@@ -67,7 +67,7 @@ export function OrchestrationPanel() {
             return next;
           });
         } catch {
-          /* task list is best-effort — panel still renders the team without it */
+          /* task list is best-effort - panel still renders the team without it */
         }
       }
     } catch (err) {

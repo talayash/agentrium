@@ -89,7 +89,7 @@ export function AutoUpdater() {
     if (status !== 'available' || !updateInfo) return;
     if (notifiedVersion === updateInfo.version) return;
     void invoke('send_notification', {
-      title: 'ADE-1 update available',
+      title: 'Agentrium update available',
       body: `Version ${updateInfo.version} is ready to install. Open the app to update.`,
     }).catch((err) => {
       // Notification failures are non-fatal - the in-app banner still shows.

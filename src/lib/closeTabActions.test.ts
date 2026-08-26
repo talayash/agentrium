@@ -41,7 +41,7 @@ describe('idsToCloseForAllButPinned', () => {
   });
 
   it('silently ignores pinned ids that are not in tabIds (stale pin state)', () => {
-    // A pinned id may reference a terminal that no longer exists — the
+    // A pinned id may reference a terminal that no longer exists - the
     // helper shouldn't crash or produce ghost entries.
     expect(idsToCloseForAllButPinned(['a', 'b'], ['a', 'ghost'])).toEqual(['b']);
   });

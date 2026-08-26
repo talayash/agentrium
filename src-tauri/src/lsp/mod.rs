@@ -2,7 +2,7 @@
 //! runs the initialize handshake, syncs documents, and forwards
 //! publishDiagnostics to the frontend as `lsp-diagnostics` events.
 //!
-//! Position encoding: Monaco and LSP both default to UTF-16 — positions
+//! Position encoding: Monaco and LSP both default to UTF-16 - positions
 //! pass through unconverted. Do not change one side without the other.
 
 pub mod acquire;
@@ -127,7 +127,7 @@ impl LspManager {
             .map(|h| (h.attempts, h.last_spawn.elapsed()));
         let Ok(attempts) = next_attempt(history) else {
             self.emit_status(language, root, "error", Some("crashed too many times".into()));
-            // user_err: expected condition (cap is by design), not a defect —
+            // user_err: expected condition (cap is by design), not a defect -
             // keeps every debounced did_change from spamming telemetry.
             return Err(crate::error_reporter::user_err(format!("{language} server crashed {MAX_RESTARTS}+ times; will retry after a cooldown, or restart it from Settings → Editor → Language Servers")));
         };
@@ -156,13 +156,13 @@ impl LspManager {
             acquire::Resolution::Missing => {
                 self.emit_status(language, root, "error", Some("not installed".into()));
                 // user_err: a missing optional server is an expected state,
-                // not a defect — skip telemetry.
+                // not a defect - skip telemetry.
                 return Err(crate::error_reporter::user_err(format!("{language} language server is not installed (Settings → Editor → Language Servers)")));
             }
         };
 
         // Record the attempt BEFORE spawning so failed spawns and failed
-        // handshakes still consume an attempt — otherwise a server that dies
+        // handshakes still consume an attempt - otherwise a server that dies
         // during initialize would respawn-churn forever past the cap.
         self.spawn_history.insert(
             key.clone(),
@@ -223,7 +223,7 @@ impl LspManager {
         // Respawn: replay didOpen for every doc the frontend still has open.
         // Servers ignore didChange for documents they never saw opened, so
         // diagnostics would go dark after a silent respawn otherwise. (On a
-        // first spawn open_docs has no entries for this key — did_open
+        // first spawn open_docs has no entries for this key - did_open
         // records only after ensure() returns.)
         if let Some(docs) = self.open_docs.get(&key) {
             let c = client.lock().await;
@@ -274,7 +274,7 @@ impl LspManager {
     }
 
     /// Full-document sync: a change event without a range replaces the whole
-    /// document — universally supported by tsserver/pyright/rust-analyzer.
+    /// document - universally supported by tsserver/pyright/rust-analyzer.
     pub async fn did_change(
         &mut self,
         root: &str,

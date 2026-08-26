@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="src-tauri/icons/icon.png" alt="ADE-1 Logo" width="160" height="160">
+  <img src="src-tauri/icons/icon.png" alt="Agentrium Logo" width="160" height="160">
 </p>
 
-<h1 align="center">ADE-1</h1>
+<h1 align="center">Agentrium</h1>
 
 <p align="center">
   <strong>A Modern Multi-Instance Terminal Manager for Claude Code</strong>
@@ -29,28 +29,28 @@
 
 ## Overview
 
-**ADE-1** (Agent Desktop Environment) is a cross-platform desktop application (Windows and macOS) for running multiple coding-agent CLIs — [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Codex](https://github.com/openai/codex), [Cursor](https://cursor.com/cli), and [Gemini](https://github.com/google-gemini/gemini-cli) — side by side in one unified interface. Built with Tauri and React, it provides a powerful workspace for running parallel Claude Code sessions with custom configurations, real-time monitoring, and intelligent command assistance.
+**Agentrium** (Agent Desktop Environment) is a cross-platform desktop application (Windows and macOS) for running multiple coding-agent CLIs - [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Codex](https://github.com/openai/codex), [Cursor](https://cursor.com/cli), and [Gemini](https://github.com/google-gemini/gemini-cli) - side by side in one unified interface. Built with Tauri and React, it provides a powerful workspace for running parallel Claude Code sessions with custom configurations, real-time monitoring, and intelligent command assistance.
 
 ## Screenshots
 
 <p align="center">
   <img src="docs/main-view.png" alt="Main view with active Claude Code session" width="800">
-  <br><em>Main view — an active Claude Code session with branch indicator and status bar</em>
+  <br><em>Main view - an active Claude Code session with branch indicator and status bar</em>
 </p>
 
 <p align="center">
   <img src="docs/new-terminal.png" alt="New Terminal dialog" width="800">
-  <br><em>New Terminal dialog — pick a profile, set a nickname, working directory, and Claude arguments</em>
+  <br><em>New Terminal dialog - pick a profile, set a nickname, working directory, and Claude arguments</em>
 </p>
 
 <p align="center">
   <img src="docs/grid-view.png" alt="Grid view with four terminals" width="800">
-  <br><em>Grid view — up to 8 Claude Code sessions at once with selectable layouts</em>
+  <br><em>Grid view - up to 8 Claude Code sessions at once with selectable layouts</em>
 </p>
 
 <p align="center">
   <img src="docs/settings.png" alt="Settings modal" width="800">
-  <br><em>Settings — app and Claude Code update status, default arguments, and notifications</em>
+  <br><em>Settings - app and Claude Code update status, default arguments, and notifications</em>
 </p>
 
 ## Features
@@ -109,7 +109,7 @@
 
 ### Prerequisites
 
-Before installing ADE-1, ensure you have:
+Before installing Agentrium, ensure you have:
 
 1. **Node.js** (v22 LTS or higher) - [Download](https://nodejs.org/)
 2. **Claude Code** - Install via npm:
@@ -128,12 +128,12 @@ Download the latest release for your platform from the [Releases page](https://g
 | macOS (Apple Silicon) | `ClaudeTerminal_1.31.4_aarch64.dmg` | DMG for M1/M2/M3/M4 Macs |
 | macOS (Intel) | `ClaudeTerminal_1.31.4_x64.dmg` | DMG for Intel Macs |
 
-> macOS builds are currently not code-signed/notarized — first launch will require right-click → Open or approval in System Settings → Privacy & Security.
+> macOS builds are currently not code-signed/notarized - first launch will require right-click → Open or approval in System Settings → Privacy & Security.
 
 ### First Launch
 
 1. Run the installer and follow the setup wizard
-2. Launch ADE-1 from the Start Menu or Desktop
+2. Launch Agentrium from the Start Menu or Desktop
 3. If Claude Code is not detected, the setup wizard will guide you through installation
 4. Click "New Terminal" to create your first Claude Code session
 
@@ -263,10 +263,10 @@ claude-terminal/
 
 The installers are signed with code-signing certificates, but new releases may
 still trigger OS-level warnings until trust reputation accumulates. The app is
-not actually damaged or unsafe — these are platform-level checks against
+not actually damaged or unsafe - these are platform-level checks against
 unrecognized binaries.
 
-#### Windows — "Windows protected your PC" (SmartScreen)
+#### Windows - "Windows protected your PC" (SmartScreen)
 
 Windows SmartScreen blocks executables downloaded from the internet until they
 build up reputation, even when correctly signed.
@@ -275,11 +275,11 @@ build up reputation, even when correctly signed.
 2. Click **Run anyway**.
 
 If you also see a yellow "Unknown publisher" UAC prompt, the installer was
-likely downloaded from an older release before code signing was enabled — grab
+likely downloaded from an older release before code signing was enabled - grab
 the latest installer from the
 [Releases page](https://github.com/talayash/claude-terminal/releases/latest).
 
-#### macOS — "ADE-1 is damaged and can't be opened"
+#### macOS - "Agentrium is damaged and can't be opened"
 
 This message is misleading: the app is intact, but the macOS `.dmg` is not yet
 notarized through Apple's notary service, so Gatekeeper rejects it after the
@@ -288,14 +288,14 @@ from Terminal:
 
 ```bash
 # Before opening the DMG
-xattr -d com.apple.quarantine ~/Downloads/ADE-1_*.dmg
+xattr -d com.apple.quarantine ~/Downloads/Agentrium_*.dmg
 
 # Or, if you've already dragged the app to /Applications
-xattr -cr /Applications/ADE-1.app
+xattr -cr /Applications/Agentrium.app
 ```
 
 Then open the app normally. The right-click → **Open** workaround does not
-work for the "damaged" variant of the error — only `xattr` does.
+work for the "damaged" variant of the error - only `xattr` does.
 
 > Proper Apple notarization is tracked in
 > [#25](https://github.com/talayash/claude-terminal/issues/25); once it lands,
@@ -305,7 +305,7 @@ work for the "damaged" variant of the error — only `xattr` does.
 
 1. Ensure Node.js is installed: `node --version`
 2. Install Claude Code globally: `npm install -g @anthropic-ai/claude-code`
-3. Restart ADE-1
+3. Restart Agentrium
 
 ### Terminal not responding
 

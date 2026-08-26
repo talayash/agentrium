@@ -4,7 +4,7 @@ Run a full verification pipeline to check project health.
 
 ## Instructions
 
-Run ALL of the following checks and report results. Do not stop on first failure — run everything.
+Run ALL of the following checks and report results. Do not stop on first failure - run everything.
 
 ### 1. Rust Backend
 ```bash

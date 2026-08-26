@@ -256,7 +256,7 @@ describe('terminalStore - pre-attach output buffer (issue #48)', () => {
 
     // Now the view mounts and attaches. setXterm must replay both chunks in
     // arrival order so xterm's escape parser sees the ESC prefix before its
-    // continuation — otherwise ANSI parsing wedges and the tab looks blank.
+    // continuation - otherwise ANSI parsing wedges and the tab looks blank.
     const write = vi.fn();
     useTerminalStore.getState().setXterm('a', { write } as never);
 
@@ -275,7 +275,7 @@ describe('terminalStore - pre-attach output buffer (issue #48)', () => {
     expect(writeA).toHaveBeenCalledTimes(1);
 
     // A view-switch cycle (unmount then remount) must NOT re-emit the drained
-    // banner — otherwise every tab-switch replays Claude's welcome and the
+    // banner - otherwise every tab-switch replays Claude's welcome and the
     // scrollback duplicates. carryOverBuffer handles the in-lifetime handoff.
     useTerminalStore.getState().setXterm('a', null);
     const writeB = vi.fn();
@@ -298,7 +298,7 @@ describe('terminalStore - pre-attach output buffer (issue #48)', () => {
     expect(write).toHaveBeenCalledTimes(1);
     expect(write).toHaveBeenCalledWith(bytes);
 
-    // After attach, the pending buffer must be empty — a later attach cycle
+    // After attach, the pending buffer must be empty - a later attach cycle
     // shouldn't find any queued chunks.
     useTerminalStore.setState((state) => {
       const next = new Map(state.terminals);
@@ -320,7 +320,7 @@ describe('terminalStore - pre-attach output buffer (issue #48)', () => {
     await useTerminalStore.getState().closeTerminal('a');
 
     // Re-seed the same id, then attach: nothing should be replayed from the
-    // previous life — that data belongs to a dead PTY.
+    // previous life - that data belongs to a dead PTY.
     seed(['a'], 'a');
     const write = vi.fn();
     useTerminalStore.getState().setXterm('a', { write } as never);

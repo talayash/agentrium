@@ -79,7 +79,7 @@ export function TerminalTabs() {
   //
   // Pinned tabs are re-ordered to the front of the strip via
   // `orderTabsPinnedFirst` while the terminal store's insertion order stays
-  // untouched — pinning is a render-only concern. Drag-reorder still writes to
+  // untouched - pinning is a render-only concern. Drag-reorder still writes to
   // the store via `reorderTerminals`, and the pinned-first partition is
   // re-applied on next render, so dragging can't move a tab across the
   // pinned/unpinned boundary visually.
@@ -149,7 +149,7 @@ export function TerminalTabs() {
     e.stopPropagation();
     // Clamp against the viewport so the menu doesn't overflow when the
     // right-click lands near the right or bottom edge. Numbers mirror the
-    // SessionsPanel pattern — a slight over-estimate is fine, the CSS
+    // SessionsPanel pattern - a slight over-estimate is fine, the CSS
     // min-width keeps the menu readable.
     const margin = 4;
     const menuWidth = 220;
@@ -215,7 +215,7 @@ export function TerminalTabs() {
   //
   // The ref points at the *parent* of the ul (the flex-1 min-w-0 wrapper),
   // not the ul itself. The ul has overflow-x-auto and no flex-grow, so its
-  // clientWidth is content-derived — measuring it makes the overflow
+  // clientWidth is content-derived - measuring it makes the overflow
   // decision depend on the previous overflow decision (feedback loop) and
   // reports "no space" the moment we hide the last tab. The parent's width
   // is set by the surrounding flex row and is stable across tab-visibility
@@ -793,7 +793,7 @@ export function TerminalTabs() {
         {!activeTerminalId && !activeFilePath && (
             <div className="absolute inset-0 flex flex-col items-center justify-center text-text-secondary p-8">
               <div className="w-full max-w-[560px] flex flex-col items-center">
-                {/* Hero header — sketch's "welcome" moment */}
+                {/* Hero header - sketch's "welcome" moment */}
                 <img
                   src={appIconUrl}
                   alt=""
@@ -802,7 +802,7 @@ export function TerminalTabs() {
                   style={{ imageRendering: 'pixelated' }}
                 />
                 <h1 className="text-[length:var(--text-h1)] font-semibold text-text-primary mb-1.5 tracking-tight">
-                  Welcome to ADE-1
+                  Welcome to Agentrium
                 </h1>
                 <p className="text-[13px] text-text-tertiary mb-8 text-center max-w-[420px]">
                   Run Claude Code, Codex, Cursor, and Gemini agents side by side
@@ -816,7 +816,7 @@ export function TerminalTabs() {
                   {' '}for Search Everywhere.
                 </p>
 
-                {/* Action cards — sketch's "New Project / Open Project" pattern */}
+                {/* Action cards - sketch's "New Project / Open Project" pattern */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full mb-6">
                   <button
                     onClick={handleNewTab}
@@ -881,7 +881,7 @@ export function TerminalTabs() {
                   </button>
                 </div>
 
-                {/* Keyboard shortcut list — IDE-style discovery */}
+                {/* Keyboard shortcut list - IDE-style discovery */}
                 <div className="w-full grid grid-cols-2 gap-x-6 gap-y-1.5 text-[11px]">
                   <div className="flex items-center justify-between text-text-tertiary">
                     <span>Search Everywhere</span>
@@ -969,7 +969,7 @@ export function TerminalTabs() {
                   onContextMenu={(e) => {
                     // Right-click on a hidden tab reaches the same actions as
                     // a visible tab (Pin/Unpin/Close/Close Others/Close All
-                    // But Pinned) — otherwise users would have to activate a
+                    // But Pinned) - otherwise users would have to activate a
                     // hidden tab first, defeating the dropdown's purpose.
                     setHiddenMenuOpen(false);
                     openTabContextMenu(e, id);
@@ -989,7 +989,7 @@ export function TerminalTabs() {
         const ctxId = contextMenu.terminalId;
         const isPinned = pinnedTabIds.includes(ctxId);
         // Terminal-store insertion order is the source of truth for "all
-        // terminals" — we deliberately don't reuse `terminalList` here (which
+        // terminals" - we deliberately don't reuse `terminalList` here (which
         // has the pinned-first re-order applied), because bulk-close acts on
         // the store, not on the rendered ordering. Filter out script-child /
         // shell terminals for the same reason `terminalList` does: those are

@@ -12,10 +12,10 @@ Generate a changelog for version $ARGUMENTS by analyzing git history.
 
 Group changes into these sections (omit empty sections):
 
-- **New Features** — New functionality added
-- **Bug Fixes** — Issues resolved
-- **Improvements** — Enhancements to existing features
-- **Internal** — Refactoring, dependency updates, CI changes
+- **New Features** - New functionality added
+- **Bug Fixes** - Issues resolved
+- **Improvements** - Enhancements to existing features
+- **Internal** - Refactoring, dependency updates, CI changes
 
 ## Output format
 

@@ -1,4 +1,4 @@
-# Session State + Smart Notifications — Design
+# Session State + Smart Notifications - Design
 
 **Date:** 2026-06-01
 **Status:** Approved (design); ready for implementation planning
@@ -21,7 +21,7 @@ notified **only when Claude genuinely needs attention**, not on every completion
 causes alert fatigue.
 
 Claude Code exposes **no machine-readable state signal**, so state must be *inferred* from
-terminal output — the same approach CCManager uses.
+terminal output - the same approach CCManager uses.
 
 ## Goals
 
@@ -35,15 +35,15 @@ terminal output — the same approach CCManager uses.
 ## Non-goals (YAGNI)
 
 - No "turn complete / idle" notification (attention-only by decision).
-- No backend/Rust detection — detection is frontend-side using xterm's parsed buffer.
-- No new standalone sidebar panel — the Agent View reuses the existing Recent Terminals dropdown.
+- No backend/Rust detection - detection is frontend-side using xterm's parsed buffer.
+- No new standalone sidebar panel - the Agent View reuses the existing Recent Terminals dropdown.
 - No machine-readable IPC with Claude Code (none exists); heuristic classification is accepted.
 - No multi-CLI / non-Claude support.
 
 ## State model
 
 Four states, tracked **only for Claude terminals** (excluded: plain-shell terminals,
-script children, bottom-pane shells — identified via `isShellTerminal` / `scriptParentId`
+script children, bottom-pane shells - identified via `isShellTerminal` / `scriptParentId`
 / plain-shell flag on the instance).
 
 | State | Meaning | Detection |
@@ -57,7 +57,7 @@ script children, bottom-pane shells — identified via `isShellTerminal` / `scri
 
 ## Detection
 
-### Pure classifier module — `src/lib/terminalState.ts`
+### Pure classifier module - `src/lib/terminalState.ts`
 
 ```
 export type SessionState = 'busy' | 'waiting' | 'idle' | 'stopped';
@@ -80,7 +80,7 @@ export function classifySettled(lines: string[]): 'waiting' | 'idle';
   raise "needs attention." (A missed prompt is a minor annoyance; a false alarm erodes
   trust in the whole feature.)
 
-### Driver — single global poller
+### Driver - single global poller
 
 One ~500ms interval (mounted once, e.g. in `App.tsx` or a dedicated hook
 `useSessionStateDetection`) that, for each Claude terminal:
@@ -91,14 +91,14 @@ One ~500ms interval (mounted once, e.g. in `App.tsx` or a dedicated hook
 3. Call `setTerminalState(id, state)` (no-ops when unchanged).
 
 xterm instances persist for **all** tabs (output is written to `instance.xterm` regardless
-of which tab is active — see `handleTerminalOutput`), so background sessions classify
+of which tab is active - see `handleTerminalOutput`), so background sessions classify
 correctly. (Planning must confirm `TerminalView` keeps the xterm mounted for inactive tabs;
 if any path disposes it, fall back to the last-known state for that terminal.)
 
 ## State store
 
 - High-frequency `lastOutputAt` stays in the existing plain Map in `terminalActivity`
-  (no Zustand `set()` on the streaming hot path — preserves the current optimization).
+  (no Zustand `set()` on the streaming hot path - preserves the current optimization).
 - New Zustand state in `terminalStore`: `terminalStates: Map<string, SessionState>` plus
   `setTerminalState(id, state)` which **returns the same state object when unchanged** so
   no needless re-renders fire. Transitions are infrequent, so writing them to Zustand is fine.
@@ -117,10 +117,10 @@ Replace the binary `isWorking` dot with a state-driven dot:
 - `idle` → faint/no dot.
 - `stopped` → gray dot.
 
-Honors the existing Reduce-motion setting (no pulse animation when enabled — same gate the
+Honors the existing Reduce-motion setting (no pulse animation when enabled - same gate the
 current `ct-working-dot` uses). The amber accent is added to the existing CSS class set.
 
-### Agent View (upgrade Recent Terminals dropdown — `titlebar/RecentTerminalsMenu.tsx`)
+### Agent View (upgrade Recent Terminals dropdown - `titlebar/RecentTerminalsMenu.tsx`)
 
 - Each row shows a small state pill (Busy / Waiting / Idle / Stopped) with matching color.
 - Rows **sort Waiting-for-decision to the top**, then Busy, then Idle, then Stopped.
@@ -150,7 +150,7 @@ rule above.
 
 - **Multi-step tool runs:** the `BUSY_WINDOW_MS` settle window prevents flickering to
   Idle/Waiting between rapid tool outputs.
-- **Classifier uncertainty:** defaults to `idle` — never a false "needs attention."
+- **Classifier uncertainty:** defaults to `idle` - never a false "needs attention."
 - **Plain shells / script children / bottom-pane shells:** skipped entirely; they have no
   Claude prompt semantics.
 - **Restored sessions:** restored output is painted into xterm on mount; the poller will

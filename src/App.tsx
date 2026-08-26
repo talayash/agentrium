@@ -245,7 +245,7 @@ function App() {
   // "user restored terminals" case, where new terminals have been added
   // with fresh ids and every persisted pin is now a ghost.
   // Ghost pins are silently ignored by the tab-order helpers, so this is
-  // purely a persistence-hygiene fix — the pinnedTabIds array would
+  // purely a persistence-hygiene fix - the pinnedTabIds array would
   // otherwise grow unbounded across sessions.
   useEffect(() => {
     const { pinnedTabIds, unpinTab } = useAppStore.getState();
@@ -329,7 +329,7 @@ function App() {
             try {
               log = (await invoke<string | null>('get_session_log', { terminalId: id })) ?? undefined;
             } catch {
-              /* no log — adopt without scrollback */
+              /* no log - adopt without scrollback */
             }
             if (cancelled) return;
             adoptTerminal(cfg, log);
@@ -375,7 +375,7 @@ function App() {
       .filter((t) => !t.scriptParentId && !t.isShellTerminal)
       .map((t) => t.config.id);
 
-  // Remove our own close interceptor first, THEN close — so this close isn't
+  // Remove our own close interceptor first, THEN close - so this close isn't
   // intercepted again (the close()+flag dance was unreliable in WebView2).
   const forceCloseWindow = () => {
     closeConfirmedRef.current = true;
@@ -383,7 +383,7 @@ function App() {
     closeUnlistenRef.current = undefined;
     setClosePrompt(false);
     // Deliberately closing this window (return/close/emptied) means it should
-    // NOT be reopened next launch — drop it from the persisted layout.
+    // NOT be reopened next launch - drop it from the persisted layout.
     removeEntry(windowLabel);
     void getCurrentWindow().close();
   };
@@ -436,7 +436,7 @@ function App() {
     try {
       await requestTransfer('main', ownedTabIds(), windowLabel);
     } catch {
-      // best effort — fall through to close
+      // best effort - fall through to close
     }
     forceCloseWindow();
   };
@@ -624,7 +624,7 @@ function App() {
     };
 
     checkLastSession();
-    // `restoreSession` and `isDetached` are read inside — must be in the deps
+    // `restoreSession` and `isDetached` are read inside - must be in the deps
     // so a Settings toggle for restoreSession triggers a re-check rather than
     // running against the mount-time snapshot.
   }, [showSetup, restoreSession, isDetached]);
@@ -741,7 +741,7 @@ function App() {
     // Ghost-pin GC after restore. Restored terminals got fresh UUIDs above,
     // so every id in pinnedTabIds from the previous session is now a ghost.
     // Drop them so the persisted list doesn't grow unbounded across sessions.
-    // (Mirrors the mount-time GC — this pass catches the case where restore
+    // (Mirrors the mount-time GC - this pass catches the case where restore
     // actually created terminals with new ids that never match the old pins.)
     const { pinnedTabIds, unpinTab } = useAppStore.getState();
     const live = useTerminalStore.getState().terminals;
@@ -757,7 +757,7 @@ function App() {
 
   const handleDismissRestore = async () => {
     await invoke('clear_last_session');
-    // Drop saved detached-window layout too — nothing was restored to populate them.
+    // Drop saved detached-window layout too - nothing was restored to populate them.
     for (const { label } of getDetachedEntries()) removeEntry(label);
     setShowRestoreBanner(false);
     setPendingRestoreConfigs(null);
@@ -787,7 +787,7 @@ function App() {
         <>
           {!isDetached && <AutoUpdater />}
 
-          {/* Restore Banner (F3) — main window only. Slimmer, icon-led,
+          {/* Restore Banner (F3) - main window only. Slimmer, icon-led,
               inline-notification style matching IntelliJ's "did you mean" bar. */}
           <AnimatePresence>
             {!isDetached && showRestoreBanner && pendingRestoreConfigs && (
@@ -948,7 +948,7 @@ function App() {
 
 function AppWithBoundary() {
   // The drag-preview overlay boots the same bundle but renders only the
-  // floating tab — keep it out of the full app entirely.
+  // floating tab - keep it out of the full app entirely.
   const { mode } = getWindowMode();
   return (
     <ErrorBoundary>

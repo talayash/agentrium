@@ -11,7 +11,7 @@ Follow this process strictly:
 ### Step 1: Restate Requirements
 - Restate what the user wants in your own words
 - List specific acceptance criteria
-- Identify any ambiguities — ask if unclear
+- Identify any ambiguities - ask if unclear
 
 ### Step 2: Assess Current State
 - Read relevant files in `src/` (frontend) and `src-tauri/src/` (backend)
@@ -39,8 +39,8 @@ Format as:
 # Plan: [Feature Name]
 ## Requirements: ...
 ## Risk Assessment: ...
-## Phase 1: [Name] — Files, Changes, Test
-## Phase 2: [Name] — Files, Changes, Test
+## Phase 1: [Name] - Files, Changes, Test
+## Phase 2: [Name] - Files, Changes, Test
 ## Complexity: S/M/L/XL
 ```
 

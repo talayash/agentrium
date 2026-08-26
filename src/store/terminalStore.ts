@@ -31,7 +31,7 @@ function bufferPendingOutput(id: string, data: Uint8Array): void {
   let chunks = pendingOutputBuffers.get(id);
   const currentBytes = chunks?.reduce((n, c) => n + c.byteLength, 0) ?? 0;
   if (currentBytes + data.byteLength > MAX_PENDING_OUTPUT_BYTES_PER_TERMINAL) {
-    return; // cap reached — drop rather than grow unbounded
+    return; // cap reached - drop rather than grow unbounded
   }
   if (!chunks) {
     chunks = [];
@@ -48,7 +48,7 @@ function drainPendingOutput(id: string, xterm: Terminal): void {
     try {
       xterm.write(chunk);
     } catch {
-      // xterm disposed mid-drain — the rest is unrecoverable, stop.
+      // xterm disposed mid-drain - the rest is unrecoverable, stop.
       return;
     }
   }
@@ -68,7 +68,7 @@ export function __resetPendingOutputBuffersForTest(): void {
  * command or fs plugin required), reconstructs a minimal package.json shape,
  * and seeds the preview store with the detected framework hint.
  *
- * The IPC only exposes `scripts.*` — not `dependencies` — so detection here is
+ * The IPC only exposes `scripts.*` - not `dependencies` - so detection here is
  * limited to the `scripts.dev` path of `detectFramework`, which matches the
  * common case (`next dev`, `vite`, `astro dev`, `nuxt dev`, `svelte`, `ng serve`,
  * `react-scripts start`, `expo start`, `remix dev`). That is enough for the
@@ -90,7 +90,7 @@ async function seedFrameworkHint(terminalId: string, cwd: string): Promise<void>
       usePreviewStore.getState().seedTerminal(terminalId, seed);
     }
   } catch {
-    // no package.json, invalid JSON, path not trusted — silent.
+    // no package.json, invalid JSON, path not trusted - silent.
   }
 }
 
@@ -211,7 +211,7 @@ interface TerminalState {
   //     restoredOutput seeds prior scrollback (from get_session_log), mirroring
   //     session restore.
   //   - detachTerminals: remove terminals from THIS window's store + dispose
-  //     their xterms WITHOUT calling close_terminal — the PTY keeps running so
+  //     their xterms WITHOUT calling close_terminal - the PTY keeps running so
   //     another window can adopt it.
   adoptTerminal: (config: TerminalConfig, restoredOutput?: string) => void;
   detachTerminals: (ids: string[]) => void;
@@ -299,7 +299,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       }
 
       // Fire-and-forget: probe package.json for a framework hint. Runs even if
-      // the caller didn't pass previewInit — that way an ad-hoc terminal in a
+      // the caller didn't pass previewInit - that way an ad-hoc terminal in a
       // Vite/Next repo gets its hint auto-detected.
       void seedFrameworkHint(config.id, workingDirectory);
 
@@ -385,7 +385,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
 
     await invoke('close_terminal', { id });
 
-    // Drop any pre-attach buffered output — the terminal is gone, so replay
+    // Drop any pre-attach buffered output - the terminal is gone, so replay
     // makes no sense and the entry would linger until process exit.
     pendingOutputBuffers.delete(id);
     if (childId) pendingOutputBuffers.delete(childId);
@@ -549,7 +549,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
     // Replay any PTY chunks that arrived before this xterm was attached (the
     // spawn→attach race that used to leave issue-#48 tabs blank). Ordered
     // after restoredOutput/carryOverBuffer so historical scrollback stays
-    // above the live stream — same ordering rule the reader thread enforces.
+    // above the live stream - same ordering rule the reader thread enforces.
     drainPendingOutput(id, xterm);
 
     set((state) => {
@@ -755,7 +755,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
     set((state) => {
       const newTerminals = new Map(state.terminals);
       // Guard against a duplicate adopt (e.g. the transfer event firing twice):
-      // keep the existing instance — clobbering it would drop a live xterm.
+      // keep the existing instance - clobbering it would drop a live xterm.
       if (!newTerminals.has(config.id)) {
         newTerminals.set(config.id, { config, xterm: null, restoredOutput, model, effort, isWorktree });
       }
@@ -788,7 +788,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
         pendingOutputBuffers.delete(id);
 
         // Drop any local script-child entry for this parent. We do NOT close
-        // the child's PTY — detach never kills processes — but the child isn't
+        // the child's PTY - detach never kills processes - but the child isn't
         // carried across windows in v1, so just forget it locally.
         const childId = newChildren.get(id);
         if (childId) {

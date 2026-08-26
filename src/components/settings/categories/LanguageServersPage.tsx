@@ -86,7 +86,7 @@ export default function LanguageServersPage() {
     <div>
       <PageHeader
         title="Editor - Language Servers"
-        description="LSP-based diagnostics, completions, and hover docs inside ADE-1's file editor."
+        description="LSP-based diagnostics, completions, and hover docs inside Agentrium's file editor."
       />
 
       <PageSection title="General">

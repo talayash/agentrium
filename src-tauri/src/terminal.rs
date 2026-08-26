@@ -757,7 +757,7 @@ impl TerminalManager {
     pub fn close_all(&mut self) {
         // Kill every child so their reader threads unblock, move each to a
         // reaper, and clear. On app shutdown the reapers race the process
-        // exit — bounded joins mean we don't hang the shutdown.
+        // exit - bounded joins mean we don't hang the shutdown.
         let drained: Vec<Terminal> = self.terminals.drain().map(|(_, t)| t).collect();
         for mut terminal in drained {
             let _ = terminal.child.kill();
@@ -813,7 +813,7 @@ impl TerminalManager {
 /// Detached cleanup for a closed terminal.
 ///
 /// Historically `close()` killed the child but never `wait()`ed it and
-/// dropped the reader `JoinHandle` without joining — on Unix this left
+/// dropped the reader `JoinHandle` without joining - on Unix this left
 /// zombies; on Windows a stuck reader thread outlived the tab. Move the
 /// remaining teardown onto its own thread so the caller (holding the
 /// TerminalManager mutex) returns immediately, and cap the joins so a
@@ -824,7 +824,7 @@ fn reap_terminal(
 ) {
     std::thread::spawn(move || {
         // wait() reaps the process on Unix and returns the exit status on
-        // Windows. Errors are expected on already-dead children — just drop.
+        // Windows. Errors are expected on already-dead children - just drop.
         let _ = child.wait();
         if let Some(h) = reader_handle {
             // Join with a short deadline so a wedged read (Windows ConPTY

@@ -11,7 +11,7 @@ import type React from 'react';
  * - When exactly one is expanded, that section takes all remaining space
  *   (`flex: '1 1 0'`).
  *
- * The caller is responsible for resolving "expanded" — e.g. Explorer is only
+ * The caller is responsible for resolving "expanded" - e.g. Explorer is only
  * considered expanded when `!explorerCollapsed && showFileTree`. That store
  * lookup stays in the component; this helper takes plain booleans.
  */

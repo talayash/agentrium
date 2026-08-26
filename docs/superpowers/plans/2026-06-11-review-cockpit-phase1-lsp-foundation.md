@@ -1,43 +1,43 @@
-# Verified Review Cockpit — Phase 1: LSP Foundation Implementation Plan
+# Verified Review Cockpit - Phase 1: LSP Foundation Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Spawn and manage real language servers (typescript-language-server, pyright, rust-analyzer) from the Rust backend and surface their diagnostics as squiggles in the existing Monaco file editor, with a Language Servers settings page for install/status/restart.
 
-**Architecture:** Minimal LSP client: Rust owns server processes (stdio JSON-RPC with Content-Length framing, Helix-style reader/writer/stderr tasks), exposes thin Tauri commands (`lsp_did_open/change/close`, generic `lsp_request`) and pushes `lsp-diagnostics` / `lsp-status` events. The frontend keeps stock monaco-editor 0.52 + `@monaco-editor/react` untouched — it syncs open file tabs to the backend and converts published diagnostics to `monaco.editor.setModelMarkers`. NO monaco-languageclient.
+**Architecture:** Minimal LSP client: Rust owns server processes (stdio JSON-RPC with Content-Length framing, Helix-style reader/writer/stderr tasks), exposes thin Tauri commands (`lsp_did_open/change/close`, generic `lsp_request`) and pushes `lsp-diagnostics` / `lsp-status` events. The frontend keeps stock monaco-editor 0.52 + `@monaco-editor/react` untouched - it syncs open file tabs to the backend and converts published diagnostics to `monaco.editor.setModelMarkers`. NO monaco-languageclient.
 
 **Tech Stack:** Rust (tokio, serde_json, reqwest, zip, flate2), Tauri 2 IPC + events, React 18 + Zustand, monaco-editor 0.52, Vitest, cargo test.
 
 **Spec:** `docs/superpowers/specs/2026-06-11-verified-review-cockpit-design.md` (this plan = Phase 1 only).
 
-**Spec deviation (intentional):** the spec's Phase 1 mentions squiggles in "the existing `InlineDiffView` and editor", but `InlineDiffView` is a custom HTML diff renderer, not Monaco — squiggles are impossible there. Phase 1 surfaces diagnostics in the Monaco editor (`FileEditorView`, edit mode); diff-surface intelligence arrives with the cockpit's Monaco DiffEditor in Phase 2.
+**Spec deviation (intentional):** the spec's Phase 1 mentions squiggles in "the existing `InlineDiffView` and editor", but `InlineDiffView` is a custom HTML diff renderer, not Monaco - squiggles are impossible there. Phase 1 surfaces diagnostics in the Monaco editor (`FileEditorView`, edit mode); diff-surface intelligence arrives with the cockpit's Monaco DiffEditor in Phase 2.
 
 ---
 
 ## File structure
 
 **Create (Rust):**
-- `src-tauri/src/lsp/mod.rs` — `LspManager`: server registry keyed by `(root, language)`, initialize handshake, doc sync, restart caps, event emission
-- `src-tauri/src/lsp/transport.rs` — Content-Length frame decoder/encoder (pure, unit-tested)
-- `src-tauri/src/lsp/client.rs` — one child process: spawn (Windows `.cmd` handling, `CREATE_NO_WINDOW`), reader/writer/stderr tasks, request-id correlation, server→client request auto-reply
-- `src-tauri/src/lsp/acquire.rs` — server specs, PATH probing, install (npm prefix / GitHub release download), rust project-root discovery
+- `src-tauri/src/lsp/mod.rs` - `LspManager`: server registry keyed by `(root, language)`, initialize handshake, doc sync, restart caps, event emission
+- `src-tauri/src/lsp/transport.rs` - Content-Length frame decoder/encoder (pure, unit-tested)
+- `src-tauri/src/lsp/client.rs` - one child process: spawn (Windows `.cmd` handling, `CREATE_NO_WINDOW`), reader/writer/stderr tasks, request-id correlation, server→client request auto-reply
+- `src-tauri/src/lsp/acquire.rs` - server specs, PATH probing, install (npm prefix / GitHub release download), rust project-root discovery
 
 **Create (frontend):**
-- `src/lib/lsp/paths.ts` + `paths.test.ts` — `pathToFileUri`, `pathKey` (pure)
-- `src/lib/lsp/languages.ts` + `languages.test.ts` — file path → `{server, languageId}` (pure)
-- `src/lib/lsp/markers.ts` + `markers.test.ts` — LSP Diagnostic[] → Monaco marker data (pure)
-- `src/lib/lsp/lspClient.ts` — singleton: appStore subscription → doc sync, diagnostics listener → markers
+- `src/lib/lsp/paths.ts` + `paths.test.ts` - `pathToFileUri`, `pathKey` (pure)
+- `src/lib/lsp/languages.ts` + `languages.test.ts` - file path → `{server, languageId}` (pure)
+- `src/lib/lsp/markers.ts` + `markers.test.ts` - LSP Diagnostic[] → Monaco marker data (pure)
+- `src/lib/lsp/lspClient.ts` - singleton: appStore subscription → doc sync, diagnostics listener → markers
 - `src/components/settings/categories/LanguageServersPage.tsx`
 
 **Modify:**
-- `src-tauri/Cargo.toml` — add `zip`, `flate2`
-- `src-tauri/src/main.rs` — `mod lsp;`, AppState field, command registration
-- `src-tauri/src/commands.rs` — `shell_command` → `pub(crate)`; new `lsp_*` commands
-- `src/store/appStore.ts` — `lspEnabled` persisted setting
-- `src/store/appStore.test.ts` — persisted-keys allow-list
-- `src/App.tsx` — `initLsp()` once on mount
-- `src/components/settings/index.ts` — category entry
-- `src/components/settings/SettingsWindow.tsx` — pages map entry
+- `src-tauri/Cargo.toml` - add `zip`, `flate2`
+- `src-tauri/src/main.rs` - `mod lsp;`, AppState field, command registration
+- `src-tauri/src/commands.rs` - `shell_command` → `pub(crate)`; new `lsp_*` commands
+- `src/store/appStore.ts` - `lspEnabled` persisted setting
+- `src/store/appStore.test.ts` - persisted-keys allow-list
+- `src/App.tsx` - `initLsp()` once on mount
+- `src/components/settings/index.ts` - category entry
+- `src/components/settings/SettingsWindow.tsx` - pages map entry
 
 **Languages covered (per spec):** `typescript` (also serves JS), `python`, `rust`. PATH detection first; auto-install fallback (npm for tsserver/pyright into app-data prefix, GitHub release binary for rust-analyzer).
 
@@ -131,7 +131,7 @@ mod tests {
 - [ ] **Step 3: Run tests to verify they fail**
 
 Run (from `src-tauri/`): `cargo test lsp::transport`
-Expected: compile error — `FrameDecoder` not found.
+Expected: compile error - `FrameDecoder` not found.
 
 - [ ] **Step 4: Implement the codec**
 
@@ -267,7 +267,7 @@ mod tests {
 
 - [ ] **Step 2: Run to verify failure**
 
-Run: `cargo test lsp::client` — Expected: compile error (after adding `pub mod client;` to `src-tauri/src/lsp/mod.rs`).
+Run: `cargo test lsp::client` - Expected: compile error (after adding `pub mod client;` to `src-tauri/src/lsp/mod.rs`).
 
 - [ ] **Step 3: Implement the client**
 
@@ -275,7 +275,7 @@ Full content above the tests in `src-tauri/src/lsp/client.rs`:
 ```rust
 //! One running language-server child process: spawn, framed stdio pump,
 //! request-id correlation, stderr ring buffer. Protocol-agnostic beyond
-//! JSON-RPC — the manager (mod.rs) owns LSP semantics.
+//! JSON-RPC - the manager (mod.rs) owns LSP semantics.
 
 use std::collections::{HashMap, VecDeque};
 use std::process::Stdio;
@@ -488,7 +488,7 @@ impl LspClient {
 }
 ```
 
-Note: `creation_flags` is a native method on `tokio::process::Command` on Windows — no trait import needed (unlike `std::process::Command`, which requires `std::os::windows::process::CommandExt`).
+Note: `creation_flags` is a native method on `tokio::process::Command` on Windows - no trait import needed (unlike `std::process::Command`, which requires `std::os::windows::process::CommandExt`).
 
 Update `src-tauri/src/lsp/mod.rs`:
 ```rust
@@ -498,8 +498,8 @@ pub mod transport;
 
 - [ ] **Step 4: Run tests + full compile check**
 
-Run: `cargo test lsp::` — Expected: 9 passed (6 transport + 3 client).
-Run: `cargo check` — Expected: clean (warnings about unused items are OK at this stage).
+Run: `cargo test lsp::` - Expected: 9 passed (6 transport + 3 client).
+Run: `cargo check` - Expected: clean (warnings about unused items are OK at this stage).
 
 - [ ] **Step 5: Commit**
 
@@ -589,7 +589,7 @@ mod tests {
 }
 ```
 
-Run: `cargo test lsp::acquire` (after adding `pub mod acquire;` to `mod.rs`) — Expected: compile error.
+Run: `cargo test lsp::acquire` (after adding `pub mod acquire;` to `mod.rs`) - Expected: compile error.
 
 - [ ] **Step 4: Implement acquisition**
 
@@ -732,7 +732,7 @@ fn ra_asset() -> Result<(&'static str, bool), String> {
     } else if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
         Ok(("rust-analyzer-x86_64-unknown-linux-gnu.gz", false))
     } else {
-        Err("no rust-analyzer build for this platform — install it on PATH instead".into())
+        Err("no rust-analyzer build for this platform - install it on PATH instead".into())
     }
 }
 
@@ -803,7 +803,7 @@ pub mod acquire;
 
 - [ ] **Step 5: Run tests**
 
-Run: `cargo test lsp::` — Expected: 13 passed.
+Run: `cargo test lsp::` - Expected: 13 passed.
 
 - [ ] **Step 6: Commit**
 
@@ -814,7 +814,7 @@ git commit -m "feat(lsp): server acquisition - PATH probe, npm prefix install, r
 
 ---
 
-### Task 4: LspManager — lifecycle, doc sync, events (`lsp/mod.rs`)
+### Task 4: LspManager - lifecycle, doc sync, events (`lsp/mod.rs`)
 
 **Files:**
 - Modify: `src-tauri/src/lsp/mod.rs`
@@ -827,7 +827,7 @@ Replace `src-tauri/src/lsp/mod.rs` with:
 //! runs the initialize handshake, syncs documents, and forwards
 //! publishDiagnostics to the frontend as `lsp-diagnostics` events.
 //!
-//! Position encoding: Monaco and LSP both default to UTF-16 — positions
+//! Position encoding: Monaco and LSP both default to UTF-16 - positions
 //! pass through unconverted. Do not change one side without the other.
 
 pub mod acquire;
@@ -989,7 +989,7 @@ impl LspManager {
     }
 
     /// Full-document sync: a change event without a range replaces the whole
-    /// document — universally supported by tsserver/pyright/rust-analyzer.
+    /// document - universally supported by tsserver/pyright/rust-analyzer.
     pub async fn did_change(
         &mut self,
         root: &str,
@@ -1088,8 +1088,8 @@ mod tests {
 
 - [ ] **Step 2: Run tests + compile**
 
-Run: `cargo test lsp::` — Expected: 15 passed.
-Run: `cargo check` — Expected: clean.
+Run: `cargo test lsp::` - Expected: 15 passed.
+Run: `cargo check` - Expected: clean.
 
 - [ ] **Step 3: Commit**
 
@@ -1283,7 +1283,7 @@ pub async fn lsp_server_log(
 }
 ```
 
-Note: match the exact `wrap_cmd` call shape used by neighboring commands in this file (e.g. `check_system_requirements` at `commands.rs:813`) — if `wrap_cmd` in this codebase takes the future differently, mirror that. `Serialize` is already imported at the top of commands.rs (used by `SystemStatus`); if not, add `use serde::Serialize;`.
+Note: match the exact `wrap_cmd` call shape used by neighboring commands in this file (e.g. `check_system_requirements` at `commands.rs:813`) - if `wrap_cmd` in this codebase takes the future differently, mirror that. `Serialize` is already imported at the top of commands.rs (used by `SystemStatus`); if not, add `use serde::Serialize;`.
 
 - [ ] **Step 3: Register the commands**
 
@@ -1356,7 +1356,7 @@ describe('pathKey', () => {
 - [ ] **Step 2: Run to verify failure**
 
 Run: `npx vitest run src/lib/lsp/paths.test.ts`
-Expected: FAIL — module not found.
+Expected: FAIL - module not found.
 
 - [ ] **Step 3: Implement**
 
@@ -1387,7 +1387,7 @@ export function pathKey(uriOrPath: string): string {
 
 - [ ] **Step 4: Run tests**
 
-Run: `npx vitest run src/lib/lsp/paths.test.ts` — Expected: 7 passed.
+Run: `npx vitest run src/lib/lsp/paths.test.ts` - Expected: 7 passed.
 
 - [ ] **Step 5: Commit**
 
@@ -1433,7 +1433,7 @@ describe('lspServerForPath', () => {
 
 - [ ] **Step 2: Run to verify failure**
 
-Run: `npx vitest run src/lib/lsp/languages.test.ts` — Expected: FAIL.
+Run: `npx vitest run src/lib/lsp/languages.test.ts` - Expected: FAIL.
 
 - [ ] **Step 3: Implement**
 
@@ -1441,7 +1441,7 @@ Run: `npx vitest run src/lib/lsp/languages.test.ts` — Expected: FAIL.
 ```typescript
 // Maps file paths to (backend server key, LSP languageId). The server key
 // matches src-tauri/src/lsp/acquire.rs::server_spec. languageId follows the
-// LSP spec ('typescriptreact' for .tsx — tsserver cares about the react
+// LSP spec ('typescriptreact' for .tsx - tsserver cares about the react
 // variants for JSX diagnostics).
 
 export type LspServer = 'typescript' | 'python' | 'rust';
@@ -1471,7 +1471,7 @@ export function lspServerForPath(path: string): LspBinding | null {
 
 - [ ] **Step 4: Run tests**
 
-Run: `npx vitest run src/lib/lsp/languages.test.ts` — Expected: 4 passed.
+Run: `npx vitest run src/lib/lsp/languages.test.ts` - Expected: 4 passed.
 
 - [ ] **Step 5: Commit**
 
@@ -1526,7 +1526,7 @@ describe('diagnosticsToMarkers', () => {
 
 - [ ] **Step 2: Run to verify failure**
 
-Run: `npx vitest run src/lib/lsp/markers.test.ts` — Expected: FAIL.
+Run: `npx vitest run src/lib/lsp/markers.test.ts` - Expected: FAIL.
 
 - [ ] **Step 3: Implement**
 
@@ -1576,7 +1576,7 @@ export function diagnosticsToMarkers(diags: LspDiagnostic[]): MarkerData[] {
 
 - [ ] **Step 4: Run tests**
 
-Run: `npx vitest run src/lib/lsp/markers.test.ts` — Expected: 2 passed.
+Run: `npx vitest run src/lib/lsp/markers.test.ts` - Expected: 2 passed.
 
 - [ ] **Step 5: Commit**
 
@@ -1600,7 +1600,7 @@ In `src/store/appStore.test.ts`, find the persisted-keys allow-list (the test up
 - [ ] **Step 2: Run to verify failure**
 
 Run: `npx vitest run src/store/appStore.test.ts`
-Expected: FAIL — allow-list mismatch (`lspEnabled` expected but not persisted).
+Expected: FAIL - allow-list mismatch (`lspEnabled` expected but not persisted).
 
 - [ ] **Step 3: Implement the setting**
 
@@ -1623,7 +1623,7 @@ setLspEnabled: (v) => set({ lspEnabled: v }),
 
 - [ ] **Step 4: Run tests**
 
-Run: `npx vitest run src/store/appStore.test.ts` — Expected: PASS.
+Run: `npx vitest run src/store/appStore.test.ts` - Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
@@ -1634,7 +1634,7 @@ git commit -m "feat(lsp): lspEnabled persisted setting"
 
 ---
 
-### Task 10: lspClient — doc sync + markers (`src/lib/lsp/lspClient.ts`)
+### Task 10: lspClient - doc sync + markers (`src/lib/lsp/lspClient.ts`)
 
 **Files:**
 - Create: `src/lib/lsp/lspClient.ts`
@@ -1860,7 +1860,7 @@ In `src/components/settings/SettingsWindow.tsx` pages map, after `'editor.font'`
 
 - [ ] **Step 2: Implement the page**
 
-`src/components/settings/categories/LanguageServersPage.tsx` (follow the structure of `EditorGeneralPage.tsx` — use `SettingRow` if its API fits, otherwise plain rows like other pages do; the code below is the complete component):
+`src/components/settings/categories/LanguageServersPage.tsx` (follow the structure of `EditorGeneralPage.tsx` - use `SettingRow` if its API fits, otherwise plain rows like other pages do; the code below is the complete component):
 ```tsx
 import { useEffect, useState, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
@@ -2013,7 +2013,7 @@ export default function LanguageServersPage() {
 }
 ```
 
-Adjust toggle markup to match how `EditorGeneralPage.tsx` renders its checkboxes/toggles (reuse `SettingRow` if that's the established pattern) — visual consistency over the literal markup above.
+Adjust toggle markup to match how `EditorGeneralPage.tsx` renders its checkboxes/toggles (reuse `SettingRow` if that's the established pattern) - visual consistency over the literal markup above.
 
 - [ ] **Step 3: Type-check + settings index test**
 
@@ -2049,7 +2049,7 @@ Expected: all clean/pass.
 3. Settings → Editor → Language Servers: TypeScript shows "On PATH" or "Installed"; "Running in:" lists the repo root; Log shows stderr (may be empty).
 4. If `rust-analyzer` is available (PATH or installed): open `src-tauri/src/main.rs`, introduce `let y: u32 = "x";` → squiggle appears (rust-analyzer takes ~10–60s to index first; later edits are fast).
 5. Toggle "Enable language servers" off → markers clear; on → they return after reopening/editing the file.
-6. Close the app → no orphaned `typescript-language-server`/`rust-analyzer` processes in Task Manager (kill_on_drop covers app exit because the PTY-style cleanup isn't needed — verify regardless).
+6. Close the app → no orphaned `typescript-language-server`/`rust-analyzer` processes in Task Manager (kill_on_drop covers app exit because the PTY-style cleanup isn't needed - verify regardless).
 7. Missing-server path: temporarily rename rust-analyzer off PATH, open a `.rs` file → no crash; settings page shows "Install" for Rust.
 
 - [ ] **Step 3: Fix anything found, then final commit**
@@ -2063,15 +2063,15 @@ git commit -m "feat(lsp): phase 1 LSP foundation - verification fixes"
 
 ## Out of scope for this plan (later phases)
 
-- Hover/go-to-definition providers in editor & diffs (Phase 4 — `lsp_request` passthrough already supports them)
+- Hover/go-to-definition providers in editor & diffs (Phase 4 - `lsp_request` passthrough already supports them)
 - Review Inbox, per-hunk accept/reject, gate bar, AI verdict (Phases 2–3, separate plans)
 - Completions (Phase 4)
-- Diff-aware "new diagnostics" filtering (Phase 2/3 — needs the cockpit's changed-lines context)
+- Diff-aware "new diagnostics" filtering (Phase 2/3 - needs the cockpit's changed-lines context)
 
 ## Known risks / notes for the implementer
 
 - **`wrap_cmd` exact signature**: mirror neighboring commands in `commands.rs` if the snippets here don't match its real shape.
 - **rust-analyzer first-run latency**: diagnostics can take a minute on large crates; the `lsp-status` "running" event fires after `initialize`, not after indexing. Don't mistake slow indexing for breakage.
 - **tsserver project discovery**: typescript-language-server finds `tsconfig.json` relative to the file; the repoRoot rootUri is fine for this repo.
-- **Monaco model URIs**: `@monaco-editor/react` creates models from the `path` prop; never compare URIs directly — always go through `pathKey()`.
+- **Monaco model URIs**: `@monaco-editor/react` creates models from the `path` prop; never compare URIs directly - always go through `pathKey()`.
 - **Locking**: `LspManager` methods run under one `Mutex`; `ensure()` holds it across the initialize handshake (seconds, first open per root only). Acceptable for v1; split locks only if it ever bites.

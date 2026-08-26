@@ -160,7 +160,7 @@ const TerminalCell = memo(function TerminalCell({ terminalId, index, isFocused, 
         </div>
       )}
 
-      {/* Cell Header — sketch: pin + name + status dot + maximize + close */}
+      {/* Cell Header - sketch: pin + name + status dot + maximize + close */}
       <div className={`flex items-center justify-between px-3 h-7 border-b gap-2 ${
         isFocused ? 'bg-accent-primary/10 border-accent-primary/40' : 'bg-bg-secondary border-border'
       }`}>
@@ -176,7 +176,7 @@ const TerminalCell = memo(function TerminalCell({ terminalId, index, isFocused, 
           }`}>
             {terminal.config.nickname || terminal.config.label}
           </span>
-          {/* Status dot — pulses when running (matches sketch's cell head) */}
+          {/* Status dot - pulses when running (matches sketch's cell head) */}
           <span
             className={`inline-block w-1.5 h-1.5 rounded-full flex-shrink-0 ${
               terminal.config.status === 'Running'

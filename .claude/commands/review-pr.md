@@ -3,7 +3,7 @@
 Review the PR at $ARGUMENTS (a PR number or URL). Fetch the diff and changed files, then check for:
 
 ## Rust Backend
-1. No `.unwrap()` in production code paths — use `.map_err()` or `?` operator
+1. No `.unwrap()` in production code paths - use `.map_err()` or `?` operator
 2. Proper `Arc<Mutex<>>` usage for shared state access
 3. PTY reader threads properly handle process exit
 4. `CREATE_NO_WINDOW` flag used for spawned processes on Windows

@@ -1,4 +1,4 @@
-# Verified Review Cockpit — Design
+# Verified Review Cockpit - Design
 
 **Date:** 2026-06-11
 **Status:** Approved (design); pending implementation plan
@@ -7,7 +7,7 @@
 ## Goal
 
 Make claude-terminal the place where developers review, verify, and commit
-agent-written code — eliminating the last reasons to keep VS Code/IntelliJ
+agent-written code - eliminating the last reasons to keep VS Code/IntelliJ
 open. The two reasons research identified: (1) reviewing large changesets is
 painful outside an IDE, and (2) only IDEs have language intelligence (type
 errors, hover, go-to-definition). This feature attacks both at once, with a
@@ -39,7 +39,7 @@ the diff-review surface, plus a "new diagnostics" merge gate.**
 | Hunk accept/reject | Accept = stage hunk (`git apply --cached`); Reject = reverse-apply from working tree with mandatory pre-reject snapshot (one-click restore) |
 | AI pre-review | Lightweight: one headless `claude -p` structured verdict per changeset, manual trigger by default |
 | Merge gate | Advisory, never blocking |
-| LSP architecture | Minimal Rust client + stock Monaco providers (NOT monaco-languageclient — avoids Monaco 0.52→0.55 forced upgrade and the monaco-vscode-api version treadmill) |
+| LSP architecture | Minimal Rust client + stock Monaco providers (NOT monaco-languageclient - avoids Monaco 0.52→0.55 forced upgrade and the monaco-vscode-api version treadmill) |
 
 ## Architecture overview
 
@@ -55,7 +55,7 @@ the diff-review surface, plus a "new diagnostics" merge gate.**
 │ git_stage_hunk / git_revert_hunk / restore_rejected_hunk   │
 │ ai_review_changeset                                        │
 ├─ Rust backend ────────────────────────────────────────────┤
-│ lsp.rs — LspManager (new subsystem)                        │
+│ lsp.rs - LspManager (new subsystem)                        │
 │ hunk commands in commands.rs (git apply based)             │
 │ verdicts + reject-snapshots in database.rs (SQLite)        │
 └────────────────────────────────────────────────────────────┘
@@ -82,7 +82,7 @@ SQLite (`database.rs`), the Claude spawn plumbing, and the
   3. New Settings page "Language Servers": per-language status
      (PATH / installed / missing), install button, restart button,
      stderr log viewer.
-- **Transport:** Helix-style three async tasks per server — stdout reader
+- **Transport:** Helix-style three async tasks per server - stdout reader
   (Content-Length framing codec), stdin writer, stderr logger. Implemented
   with `tokio::process`; `lsp-types` crate for typed structs where
   convenient. No protocol framework needed.
@@ -90,14 +90,14 @@ SQLite (`database.rs`), the Claude spawn plumbing, and the
   restart-with-backoff, max-restart cap, 120s request timeout (Zed's
   numbers).
 - **IPC surface:**
-  - `lsp_did_open` / `lsp_did_change` / `lsp_did_close` — document sync
+  - `lsp_did_open` / `lsp_did_change` / `lsp_did_close` - document sync
     (frontend debounces `didChange`).
-  - `lsp_request(root, language, method, params)` — generic JSON-RPC
+  - `lsp_request(root, language, method, params)` - generic JSON-RPC
     passthrough so hover/definition/completion are one frontend call each
     and future LSP features cost nothing on the Rust side.
   - Pushed `lsp-diagnostics` event `{root, uri, diagnostics}` (same pattern
     as `terminal-output`).
-- **Position encoding:** Monaco and LSP both default to UTF-16 — positions
+- **Position encoding:** Monaco and LSP both default to UTF-16 - positions
   pass through unconverted; document this invariant in code.
 
 ## Component 2: Review Inbox
@@ -108,7 +108,7 @@ SQLite (`database.rs`), the Claude spawn plumbing, and the
   `scan_git_repos` + `list_worktrees`, refreshed on the same cadence as
   `FileChangesPanel`.
 - Card contents: repo/branch name, terminal sessions currently running in
-  that root (informational link only — no change attribution), files/hunks
+  that root (informational link only - no change attribution), files/hunks
   changed, **diagnostics chip** (`✓ clean` / `✗ N new` /
   `LSP unavailable`), **AI verdict chip**, last-change time.
 - Clicking a card opens the **Cockpit**: full-window view (SettingsWindow
@@ -144,11 +144,11 @@ SQLite (`database.rs`), the Claude spawn plumbing, and the
   - **Hover** via `registerHoverProvider` → `lsp_request('textDocument/hover')`.
   - **Go-to-definition** via `registerDefinitionProvider` → opens the
     target file in the existing editor tabs at the target line.
-- **"New diagnostics" definition (v1):** diff-aware filtering —
+- **"New diagnostics" definition (v1):** diff-aware filtering -
   diagnostics in changed files whose range intersects added/modified lines
   count as *new*. No second LSP run against HEAD, no temp checkouts.
   (True HEAD-baseline comparison is a possible v2 upgrade.)
-- **Merge gate:** the cockpit's Commit button carries gate state —
+- **Merge gate:** the cockpit's Commit button carries gate state -
   `N new diagnostics · M unreviewed hunks · AI: low risk`. Advisory only:
   commit is never blocked, but committing red code is impossible to miss.
 
@@ -158,7 +158,7 @@ SQLite (`database.rs`), the Claude spawn plumbing, and the
   `claude -p --output-format json` with a structured prompt over the
   card's diff → `{summary, risk: low|medium|high, flagged_hunks[],
   reasons}`.
-- Cached in SQLite keyed by `(repo_root, diff_hash)` — never re-runs on an
+- Cached in SQLite keyed by `(repo_root, diff_hash)` - never re-runs on an
   unchanged changeset.
 - Trigger: manual button on the card (default); optional
   auto-on-card-creation toggle in settings, labeled with a token-cost
@@ -171,7 +171,7 @@ SQLite (`database.rs`), the Claude spawn plumbing, and the
   Servers settings page. Review works fully without intelligence.
   Restart cap prevents crash loops; stderr captured and viewable.
 - **Stale hunk** (`git apply` fails because the file changed since the
-  diff was taken): re-diff the file and show "changeset moved — re-review
+  diff was taken): re-diff the file and show "changeset moved - re-review
   this file" instead of a raw git error.
 - **AI verdict failure:** chip shows a retry affordance; never blocks the
   card.
@@ -184,7 +184,7 @@ SQLite (`database.rs`), the Claude spawn plumbing, and the
 - **Rust unit tests:** Content-Length framing codec (split, merged, and
   partial frames), acquisition path resolution, reject-snapshot store.
 - **Dogfood e2e per release:** tsserver + rust-analyzer running against
-  this repository itself — the app reviewing its own diffs.
+  this repository itself - the app reviewing its own diffs.
 
 ## Phasing (each phase independently shippable)
 

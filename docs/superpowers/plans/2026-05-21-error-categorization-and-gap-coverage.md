@@ -15,14 +15,14 @@
 ## File Structure
 
 **Modify:**
-- `src-tauri/src/error_reporter.rs` — add `USER_ERR_PREFIX`, `user_err`, `is_user_error`, `strip_user_prefix`, `should_report` + unit tests
-- `src-tauri/src/commands.rs` — `wrap_cmd` calls `should_report` to decide whether to fire telemetry; strips prefix before returning to frontend. Migrate `validate_path_is_trusted` (line 1476) and `git_pull_branch` dirty-tree return (line 3452) to use `user_err`.
-- `src-tauri/src/terminal.rs` — PTY reader thread reports `Err` from `reader.read(...)` via `error_reporter::report_blocking` (line ~268).
-- `src-tauri/src/main.rs` — add an integration test verifying the global panic hook fires from a `std::thread::spawn` panic.
-- `src/lib/errorReporter.ts` — add `reportInvokeFailure(kind, err)` helper.
-- `src/store/updaterStore.ts` — report telemetry from the `checkForUpdates`, `downloadAndInstall`, and `restart` catch blocks.
-- `src/components/AutoUpdater.tsx` — replace `send_notification` `.catch(() => {})` with `reportInvokeFailure` route.
-- `src/main.tsx` — no change (already wired).
+- `src-tauri/src/error_reporter.rs` - add `USER_ERR_PREFIX`, `user_err`, `is_user_error`, `strip_user_prefix`, `should_report` + unit tests
+- `src-tauri/src/commands.rs` - `wrap_cmd` calls `should_report` to decide whether to fire telemetry; strips prefix before returning to frontend. Migrate `validate_path_is_trusted` (line 1476) and `git_pull_branch` dirty-tree return (line 3452) to use `user_err`.
+- `src-tauri/src/terminal.rs` - PTY reader thread reports `Err` from `reader.read(...)` via `error_reporter::report_blocking` (line ~268).
+- `src-tauri/src/main.rs` - add an integration test verifying the global panic hook fires from a `std::thread::spawn` panic.
+- `src/lib/errorReporter.ts` - add `reportInvokeFailure(kind, err)` helper.
+- `src/store/updaterStore.ts` - report telemetry from the `checkForUpdates`, `downloadAndInstall`, and `restart` catch blocks.
+- `src/components/AutoUpdater.tsx` - replace `send_notification` `.catch(() => {})` with `reportInvokeFailure` route.
+- `src/main.tsx` - no change (already wired).
 
 No new files except the design/plan docs already created.
 
@@ -76,7 +76,7 @@ Run from `src-tauri/`:
 cargo test --lib error_reporter::tests::user_err_round_trips_via_strip
 ```
 
-Expected: FAIL — `cannot find function user_err` and similar errors for the other tests. (Run `cargo test --lib error_reporter` to see all failing tests at once.)
+Expected: FAIL - `cannot find function user_err` and similar errors for the other tests. (Run `cargo test --lib error_reporter` to see all failing tests at once.)
 
 - [ ] **Step 1.3: Add the helpers**
 
@@ -140,7 +140,7 @@ git commit -m "feat(error-reporter): add user_err helper and should_report decis
 ## Task 2: Wire `should_report` into `wrap_cmd`
 
 **Files:**
-- Modify: `src-tauri/src/commands.rs` (lines 11-29 — the `wrap_cmd` function)
+- Modify: `src-tauri/src/commands.rs` (lines 11-29 - the `wrap_cmd` function)
 
 - [ ] **Step 2.1: Read the current `wrap_cmd` body**
 
@@ -264,7 +264,7 @@ git commit -m "feat(wrap-cmd): skip telemetry and strip prefix for user_err resu
 - Modify: `src-tauri/src/commands.rs` lines 1476-1502 (`validate_path_is_trusted`) and line 3452 (`git_pull_branch` dirty-tree)
 
 These two changes cover all five fingerprints from the production data:
-- `validate_path_is_trusted` is called from ~30 sites including `scan_git_repos`, `git_list_stashes`, `list_package_scripts`, and `get_worktree_info` — both `"Invalid path '...'"` and `"...not under any active terminal's working directory"` come from here.
+- `validate_path_is_trusted` is called from ~30 sites including `scan_git_repos`, `git_list_stashes`, `list_package_scripts`, and `get_worktree_info` - both `"Invalid path '...'"` and `"...not under any active terminal's working directory"` come from here.
 - `git_pull_branch` has its own dirty-tree validation at line 3452.
 
 - [ ] **Step 3.1: Migrate `validate_path_is_trusted` (line 1476)**
@@ -312,7 +312,7 @@ In the same file, replace lines 3450-3453:
 ```rust
         if is_dirty && !auto_stash {
             return Err(
-                "Working tree has uncommitted changes — commit or stash first, then pull.".into(),
+                "Working tree has uncommitted changes - commit or stash first, then pull.".into(),
             );
         }
 ```
@@ -322,7 +322,7 @@ with:
 ```rust
         if is_dirty && !auto_stash {
             return Err(error_reporter::user_err(
-                "Working tree has uncommitted changes — commit or stash first, then pull.",
+                "Working tree has uncommitted changes - commit or stash first, then pull.",
             ));
         }
 ```
@@ -455,7 +455,7 @@ git commit -m "feat(telemetry): report PTY reader-thread I/O errors"
 **Files:**
 - Modify: `src-tauri/src/main.rs` (existing panic hook is at lines 35-45)
 
-The point of this test is to lock in that `std::panic::set_hook` (set in `main.rs`) fires from background-thread panics. The PTY reader runs on a `std::thread::spawn` thread — we need to know its panics are visible to telemetry.
+The point of this test is to lock in that `std::panic::set_hook` (set in `main.rs`) fires from background-thread panics. The PTY reader runs on a `std::thread::spawn` thread - we need to know its panics are visible to telemetry.
 
 - [ ] **Step 5.1: Read the current panic hook setup**
 
@@ -473,7 +473,7 @@ mod panic_hook_tests {
 
     /// Smoke test: a panic inside `std::thread::spawn` is visible to the
     /// default panic hook (and therefore to our `set_hook` in `main`). We
-    /// don't install the real hook here — that would race with other tests
+    /// don't install the real hook here - that would race with other tests
     /// and need ErrorReporter init. Instead we set our own hook for the
     /// duration of the test, panic on a worker thread, and assert the hook
     /// fired.
@@ -512,9 +512,9 @@ Run from `src-tauri/`:
 cargo test --bin claude-terminal panic_hook_tests
 ```
 
-(Adjust the bin name if `Cargo.toml` uses a different one — `cargo test panic_hook_tests` from `src-tauri/` works regardless.)
+(Adjust the bin name if `Cargo.toml` uses a different one - `cargo test panic_hook_tests` from `src-tauri/` works regardless.)
 
-Expected: PASS — the assertion confirms the hook fires.
+Expected: PASS - the assertion confirms the hook fires.
 
 - [ ] **Step 5.4: Commit**
 
@@ -538,7 +538,7 @@ Append to the end of `src/lib/errorReporter.ts` (after the existing `clamp` func
 /**
  * Convenience wrapper for `.catch` handlers on user-action `invoke(...)` calls.
  * Normalizes the rejection value into a message + stack and forwards to
- * `reportError`. Background pollers should NOT use this — only user-visible
+ * `reportError`. Background pollers should NOT use this - only user-visible
  * actions where a silent failure is a user-facing bug.
  */
 export function reportInvokeFailure(kind: string, err: unknown): void {
@@ -550,7 +550,7 @@ export function reportInvokeFailure(kind: string, err: unknown): void {
     reportError(kind, err);
     return;
   }
-  // Anything else (object, undefined, number, etc.) — coerce safely.
+  // Anything else (object, undefined, number, etc.) - coerce safely.
   let message: string;
   try {
     message = JSON.stringify(err);
@@ -730,7 +730,7 @@ In `src/components/AutoUpdater.tsx`, find lines 89-95:
       title: 'ClaudeTerminal update available',
       body: `Version ${updateInfo.version} is ready to install. Open the app to update.`,
     }).catch(() => {
-      // Notification failures are non-fatal — the in-app banner still shows.
+      // Notification failures are non-fatal - the in-app banner still shows.
     });
 ```
 
@@ -741,7 +741,7 @@ Replace with:
       title: 'ClaudeTerminal update available',
       body: `Version ${updateInfo.version} is ready to install. Open the app to update.`,
     }).catch((err) => {
-      // Notification failures are non-fatal — the in-app banner still shows.
+      // Notification failures are non-fatal - the in-app banner still shows.
       // We still report so we know if the OS notification path is broken.
       reportInvokeFailure('send_notification', err);
     });
@@ -784,7 +784,7 @@ From `src-tauri/`:
 cargo test
 ```
 
-Expected: every test in the workspace passes. If anything fails, fix it before moving on — don't proceed with failures.
+Expected: every test in the workspace passes. If anything fails, fix it before moving on - don't proceed with failures.
 
 - [ ] **Step 9.2: Type-check the frontend**
 
@@ -804,7 +804,7 @@ From repo root:
 npm test -- --run
 ```
 
-Expected: green. (If Vitest is the runner — confirm via `package.json` if needed.)
+Expected: green. (If Vitest is the runner - confirm via `package.json` if needed.)
 
 - [ ] **Step 9.4: Production-build sanity check**
 
@@ -814,7 +814,7 @@ From repo root:
 npm run build
 ```
 
-Expected: build succeeds. This compiles the frontend and verifies Vite/TypeScript end-to-end. Do NOT run `npm run tauri build` (slower, signing required) — `npm run build` is enough to catch frontend regressions.
+Expected: build succeeds. This compiles the frontend and verifies Vite/TypeScript end-to-end. Do NOT run `npm run tauri build` (slower, signing required) - `npm run build` is enough to catch frontend regressions.
 
 From `src-tauri/`:
 
@@ -838,14 +838,14 @@ Expected: clean working tree (all changes committed in tasks 1-8). If anything i
 git push origin master
 ```
 
-Expected: pushes commits from tasks 1-8. The repo's `.github/workflows/release.yml` is tag-triggered, not push-triggered, so this push does not cut a release — that happens later via `/publish`.
+Expected: pushes commits from tasks 1-8. The repo's `.github/workflows/release.yml` is tag-triggered, not push-triggered, so this push does not cut a release - that happens later via `/publish`.
 
 ---
 
 ## Self-review notes
 
-- **Spec coverage:** Architecture (sentinel prefix + 3 gap fills + verification test) covered by Tasks 1, 2, 4, 5, 6, 7, 8. Migration list (5 fingerprints) covered by Task 3 — `validate_path_is_trusted` handles 4 of 5; `git_pull_branch` is the 5th.
+- **Spec coverage:** Architecture (sentinel prefix + 3 gap fills + verification test) covered by Tasks 1, 2, 4, 5, 6, 7, 8. Migration list (5 fingerprints) covered by Task 3 - `validate_path_is_trusted` handles 4 of 5; `git_pull_branch` is the 5th.
 - **Placeholder scan:** All steps have exact paths, exact code, exact commands. No "TBD" or "fill in details."
 - **Type consistency:** `user_err`, `is_user_error`, `strip_user_prefix`, `should_report`, `USER_ERR_PREFIX` named the same in every reference. `reportInvokeFailure(kind: string, err: unknown)` signature is consistent across Tasks 6, 7, 8.
 - **Scope check:** Single PR, single subsystem (error telemetry). No decomposition needed.
-- **Frontend audit scope:** Bounded to the spec — updater store + one AutoUpdater catch. Other `.catch(() => {})` blocks are deliberately left as future work.
+- **Frontend audit scope:** Bounded to the spec - updater store + one AutoUpdater catch. Other `.catch(() => {})` blocks are deliberately left as future work.

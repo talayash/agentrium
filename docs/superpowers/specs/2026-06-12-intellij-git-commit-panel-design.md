@@ -1,4 +1,4 @@
-# IntelliJ-style Git Commit Panel — Design
+# IntelliJ-style Git Commit Panel - Design
 
 Date: 2026-06-12
 Status: approved-by-request (user supplied IntelliJ IDEA Commit tool window screenshot as the target; "identical to IntelliJ IDEA Git, rename to Git, no Shelf tab")

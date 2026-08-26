@@ -26,7 +26,7 @@ interface UpdateCheckResult {
 /**
  * Per-agent version card. Claude Code (the only agent with a proper
  * update-check backend right now) gets the full check + update UI. The
- * others show a version line, a Docs link, and — when not installed —
+ * others show a version line, a Docs link, and - when not installed -
  * a one-line install hint. Update flows for Codex/Cursor/Gemini are a
  * follow-up (each has its own installer path, so unifying them is real
  * work).
@@ -151,7 +151,7 @@ export default function ClaudeUpdatesPage() {
     <div>
       <PageHeader title="Updates" />
 
-      <PageSection title="ADE-1">
+      <PageSection title="Agentrium">
         <div className="flex items-center justify-between py-2 px-1">
           <div>
             <p className="text-text-primary text-[13px]">v{appVersion}</p>

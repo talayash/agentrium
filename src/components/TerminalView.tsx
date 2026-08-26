@@ -213,7 +213,7 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
     fitAddon.fit();
 
     // DIAG(pty-size): trace initial fit vs. PTY's hard-coded 120x30 spawn.
-    // Note: initial fit does NOT push size to PTY — it waits for ResizeObserver,
+    // Note: initial fit does NOT push size to PTY - it waits for ResizeObserver,
     // which is the exact race window we're hunting for. Remove after fix.
     {
       const rect = containerRef.current.getBoundingClientRect();
@@ -575,7 +575,7 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
       const el = containerRef.current;
       if (!el) return false;
       // Inactive tab terminals are visibility: hidden but keep their layout
-      // box, so their rects still cover the drop point — without this check a
+      // box, so their rects still cover the drop point - without this check a
       // drop pastes the path into every mounted terminal.
       if (isVisibilityHidden(el)) return false;
       const rect = el.getBoundingClientRect();

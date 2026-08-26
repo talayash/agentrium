@@ -1,6 +1,6 @@
 //! One running language-server child process: spawn, framed stdio pump,
 //! request-id correlation, stderr ring buffer. Protocol-agnostic beyond
-//! JSON-RPC — the manager (mod.rs) owns LSP semantics.
+//! JSON-RPC - the manager (mod.rs) owns LSP semantics.
 
 use std::collections::{HashMap, VecDeque};
 use std::process::Stdio;
@@ -242,7 +242,7 @@ impl LspClient {
     }
 
     /// Hard-kill the child. On Windows this may terminate a shim parent
-    /// (e.g. an npm .cmd wrapper) rather than the server grandchild — the
+    /// (e.g. an npm .cmd wrapper) rather than the server grandchild - the
     /// manager should attempt a graceful shutdown/exit handshake first;
     /// stdin EOF (pipe drop) is the practical backstop.
     pub async fn kill(&mut self) {

@@ -75,7 +75,7 @@ pub enum Resolution {
 ///
 /// On Windows, `where` lists the extensionless sh shim first for npm bins
 /// (e.g. "...\nodejs\npm" before "npm.cmd"), and Command::new on that sh
-/// script fails with ERROR_BAD_EXE_FORMAT — so prefer a line ending in
+/// script fails with ERROR_BAD_EXE_FORMAT - so prefer a line ending in
 /// .exe/.cmd/.bat. Elsewhere, require an absolute path so shell alias output
 /// (e.g. "alias foo='bar'") is rejected.
 fn pick_lookup_line(stdout: &str, windows: bool) -> Option<String> {
@@ -185,7 +185,7 @@ fn ra_asset() -> Result<(&'static str, bool), String> {
     } else if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
         Ok(("rust-analyzer-x86_64-unknown-linux-gnu.gz", false))
     } else {
-        Err("no rust-analyzer build for this platform — install it on PATH instead".into())
+        Err("no rust-analyzer build for this platform - install it on PATH instead".into())
     }
 }
 

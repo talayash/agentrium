@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "ADE-1",
+  "productName": "Agentrium",
   "version": "1.31.4",
   "identifier": "com.claudeterminal.desktop",
   "build": {
@@ -14,7 +14,7 @@
     "withGlobalTauri": false,
     "windows": [
       {
-        "title": "ADE-1",
+        "title": "Agentrium",
         "width": 1400,
         "height": 900,
         "minWidth": 900,
@@ -42,11 +42,11 @@
       "icons/icon.png"
     ],
     "resources": [],
-    "copyright": "Copyright 2026 ADE-1",
+    "copyright": "Copyright 2026 Agentrium",
     "shortDescription": "Agent Desktop Environment - multi-agent CLI terminal manager",
-    "longDescription": "ADE-1 is a desktop application for running Claude Code, Codex, Cursor, and Gemini CLIs side by side in tabbed and grid views. Features include per-agent profiles, worktree lifecycle, hunk review, and session restore.",
+    "longDescription": "Agentrium is a desktop application for running Claude Code, Codex, Cursor, and Gemini CLIs side by side in tabbed and grid views. Features include per-agent profiles, worktree lifecycle, hunk review, and session restore.",
     "category": "DeveloperTool",
-    "publisher": "ADE-1",
+    "publisher": "Agentrium",
     "windows": {
       "certificateThumbprint": null,
       "digestAlgorithm": "sha256",

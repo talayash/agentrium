@@ -1,4 +1,4 @@
-# Git Push Popup — Design
+# Git Push Popup - Design
 
 Date: 2026-05-21
 Topic: An IntelliJ-style "Push Commits" modal for the active terminal's git repo, triggered by `Ctrl+Shift+K`.
@@ -18,7 +18,7 @@ Let users preview the commits they're about to push, change the destination (rem
 6. Success: modal closes, git info refreshes for the active terminal, success toast shown.
    Failure: modal stays open, inline error strip above footer + error toast.
 
-## Backend — Rust (`src-tauri/src/commands.rs`)
+## Backend - Rust (`src-tauri/src/commands.rs`)
 
 ### New command: `get_push_preview(path) -> PushPreview`
 
@@ -80,13 +80,13 @@ git push
   HEAD:<remote_branch>
 ```
 
-Reject `remote` and `remote_branch` containing control chars / leading `-` / spaces / refspec-meaningful chars (`:`, `*`, `?`, `[`, `^`, `~`). `remote` must be a member of the `git remote` list — re-validate server-side, do not trust the frontend.
+Reject `remote` and `remote_branch` containing control chars / leading `-` / spaces / refspec-meaningful chars (`:`, `*`, `?`, `[`, `^`, `~`). `remote` must be a member of the `git remote` list - re-validate server-side, do not trust the frontend.
 
 `PushMode` enum mirrors `AutoStageMode` pattern (`#[serde(rename_all = "snake_case")]`).
 
 Register `get_push_preview` in `main.rs` invoke_handler.
 
-## Frontend — React
+## Frontend - React
 
 ### Store (`src/store/appStore.ts`)
 
@@ -125,9 +125,9 @@ Layout:
 - **Body** (flex 1, scrollable):
   - When `loading` → centered spinner.
   - When `error` → error block with retry button.
-  - When `preview && !has_upstream` → info pill `New branch — push will set upstream to {remote}/{remote_branch}`.
+  - When `preview && !has_upstream` → info pill `New branch - push will set upstream to {remote}/{remote_branch}`.
   - When `preview && behind > 0` → warning pill `Remote has {behind} new commit(s). Pull first to avoid a non-fast-forward.`
-  - When `commits.length === 0` → empty-state `No new commits — your branch is up to date.`
+  - When `commits.length === 0` → empty-state `No new commits - your branch is up to date.`
   - Otherwise → commit list (one row per commit).
 - **Footer** (48px, top border):
   - Left: `☐ Push tags`
@@ -143,7 +143,7 @@ Split-button (`PushSplitButton` inlined):
 - Primary button: `Push` (disabled when `commits.length === 0` or `busy` or empty `remote_branch`).
 - Chevron: opens popover with single item `Force Push (with lease)` (disabled when `commits.length === 0` or `busy`).
 - Selecting force opens an inline confirm: "Force-push with lease to `{remote}/{remote_branch}`? Refuses if the remote has commits you haven't fetched."
-- Busy state: button shows `Pushing…` with a spinner; both the chevron and Cancel are still clickable (Cancel aborts the modal but does NOT cancel the in-flight git push — we let it finish).
+- Busy state: button shows `Pushing…` with a spinner; both the chevron and Cancel are still clickable (Cancel aborts the modal but does NOT cancel the in-flight git push - we let it finish).
 
 Push handler:
 ```ts
@@ -184,11 +184,11 @@ if (ctrl && shift && e.key === 'K') {
 
 `tryOpenPushModalForActiveTerminal()` (helper exported from appStore or inlined): looks up active terminal → working directory → checks `gitInfoCache.get(activeId)?.is_git_repo`. If yes, `openPushModal(path)`. If not, `toast.info('Push', 'Not in a git repository')`.
 
-### Trigger #2 — File Changes panel header
+### Trigger #2 - File Changes panel header
 
-In `src/components/FileChangesPanel.tsx`, add a `Push` icon button (`Upload` from lucide-react, sky color) next to the existing Commit affordance. Same guard logic — only enabled when in a git repo.
+In `src/components/FileChangesPanel.tsx`, add a `Push` icon button (`Upload` from lucide-react, sky color) next to the existing Commit affordance. Same guard logic - only enabled when in a git repo.
 
-### Trigger #3 — Branch dropdown in title bar
+### Trigger #3 - Branch dropdown in title bar
 
 In `src/components/TitleBar.tsx` branch dropdown menu (`branchMenuOpen` panel), add a footer item below the branch list: `Push to remote…` (with `Upload` icon, accent color). Clicking closes the dropdown and opens the push modal.
 
@@ -200,7 +200,7 @@ Add `<AnimatePresence>{pushModalOpen && <PushModal />}</AnimatePresence>` in `Ap
 
 - **No remotes configured** → `get_push_preview` returns an error; modal shows it with a one-line message and a Cancel.
 - **Detached HEAD** → `get_push_preview` returns an error: "Cannot push from a detached HEAD".
-- **No new commits** → modal still opens (lets user see the empty state), Push button disabled (no `Up to date` footer text — the empty-state message in the body is enough).
+- **No new commits** → modal still opens (lets user see the empty state), Push button disabled (no `Up to date` footer text - the empty-state message in the body is enough).
 - **Pushing to a new remote branch** → handled implicitly: `HEAD:{remote_branch}` creates the remote branch. With `set_upstream: true` we also set tracking.
 - **Push rejected (non-fast-forward / hook failure / auth)** → backend returns stderr; modal displays it verbatim in the inline error strip. User can edit branch/remote and retry.
 - **Concurrent close** during in-flight push → `closePushModal` is allowed; the push completes in the background but its toast still fires.
@@ -225,4 +225,4 @@ Manual verification matrix:
 4. Repo with no remotes → modal opens with a clean error and a Cancel.
 5. Repo with `behind > 0` → warning pill shown, normal push fails non-fast-forward → inline error shown, force-with-lease succeeds (when expected).
 6. Detached HEAD → opening modal fails with clear error.
-7. Triggers: keyboard, FileChangesPanel button, branch-dropdown entry — all open the modal with the same state.
+7. Triggers: keyboard, FileChangesPanel button, branch-dropdown entry - all open the modal with the same state.

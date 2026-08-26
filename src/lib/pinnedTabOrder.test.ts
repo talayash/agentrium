@@ -21,7 +21,7 @@ describe('orderTabsPinnedFirst', () => {
     ]);
   });
 
-  it('ignores pinnedIds order — final order follows tabIds insertion order', () => {
+  it('ignores pinnedIds order - final order follows tabIds insertion order', () => {
     // pinnedIds says c-then-a, but result is a-then-c because 'a' comes first in tabIds.
     expect(orderTabsPinnedFirst(['a', 'b', 'c', 'd', 'e'], ['c', 'a'])).toEqual([
       'a',
@@ -45,7 +45,7 @@ describe('orderTabsPinnedFirst', () => {
     expect(orderTabsPinnedFirst(['a', 'b', 'c'], [])).toEqual(['a', 'b', 'c']);
   });
 
-  it('is defensive against duplicate pin ids — treats [a, a] the same as [a]', () => {
+  it('is defensive against duplicate pin ids - treats [a, a] the same as [a]', () => {
     // Even if pinnedIds contains duplicates, each tab id only appears once
     // in the result (based on its single occurrence in tabIds).
     expect(orderTabsPinnedFirst(['a', 'b', 'c'], ['a', 'a'])).toEqual(['a', 'b', 'c']);

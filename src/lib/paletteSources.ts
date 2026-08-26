@@ -1,4 +1,4 @@
-// Palette source registry — types + fixed-order array for the command
+// Palette source registry - types + fixed-order array for the command
 // palette's Search Everywhere upgrade (Phase 5). The chip strip in
 // CommandPalette iterates PALETTE_SOURCES to render one chip per source.
 

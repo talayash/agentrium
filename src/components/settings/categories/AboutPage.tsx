@@ -10,7 +10,7 @@ import { BrandIcon } from '../../BrandIcon';
 registerSetting({
   category: { group: 'privacy-about', page: 'about' },
   id: 'about',
-  label: 'About ADE-1',
+  label: 'About Agentrium',
   keywords: ['version', 'about', 'github', 'license', 'agent'],
 });
 
@@ -36,11 +36,11 @@ export default function AboutPage() {
 
   return (
     <div>
-      <PageHeader title="About ADE-1" />
+      <PageHeader title="About Agentrium" />
 
       <PageSection title="Versions">
         <div className="py-2 text-[12.5px] text-text-primary space-y-1.5">
-          <p>ADE-1 <span className="font-mono text-text-secondary">v{appVersion}</span></p>
+          <p>Agentrium <span className="font-mono text-text-secondary">v{appVersion}</span></p>
           {AGENT_SPECS.map((spec) => {
             const version = agentVersions[spec.kind];
             return (

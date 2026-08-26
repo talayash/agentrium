@@ -1,4 +1,4 @@
-# Auto-hiding terminal scrollbar — design
+# Auto-hiding terminal scrollbar - design
 
 **Date:** 2026-06-09
 **Status:** Approved
@@ -24,16 +24,16 @@ New persisted store field on `appStore`:
 
 - `terminalScrollbarMode: 'auto-hide' | 'always' | 'hidden'` (default `'auto-hide'`)
 - Setter `setTerminalScrollbarMode`
-- Added to `partialize`. No persist migration needed — an absent key falls back to the
+- Added to `partialize`. No persist migration needed - an absent key falls back to the
   default for upgrading users.
 
 UI: a `Segmented` control on `TerminalAppearancePage` under "Buffer & rendering":
 
-> **Scrollbar** — `[ Auto-hide | Always | Hidden ]`
+> **Scrollbar** - `[ Auto-hide | Always | Hidden ]`
 
 Registered via `registerSetting` so it is searchable.
 
-## Rendering approach (Option A — native scrollbar + class toggle)
+## Rendering approach (Option A - native scrollbar + class toggle)
 
 Keep the native WebKit scrollbar; do not build a custom overlay div. Control visibility
 with a class on `.xterm-viewport`:
@@ -55,13 +55,13 @@ terminal is open and wires behavior per mode:
 
 - **`hidden`** → add `ct-sb-hidden`; no listeners.
 - **`always`** → keep `ct-sb-show` on permanently (the empty-buffer check still applies via
-  CSS — an unscrollable viewport has no thumb anyway).
+  CSS - an unscrollable viewport has no thumb anyway).
 - **`auto-hide`** → listen for `mousemove` on the container and `scroll` on the viewport.
   On either event, *if the buffer is actually scrollable*
   (`viewport.scrollHeight - viewport.clientHeight > 2`), add `ct-sb-show` and reset a
   ~1500 ms idle timer that removes it.
 
-PTY output alone never reveals the scrollbar — only mouse move / scroll do, matching
+PTY output alone never reveals the scrollbar - only mouse move / scroll do, matching
 "no input from client = hide". The "only when scrollable" guard means a fresh terminal
 with nothing scrolled off-screen shows no track.
 
@@ -70,11 +70,11 @@ without recreating the xterm instance.
 
 ## Files touched
 
-- `src/store/appStore.ts` — field, setter, default, `partialize` entry, exported mode type.
-- `src/components/settings/categories/TerminalAppearancePage.tsx` — `Segmented` control +
+- `src/store/appStore.ts` - field, setter, default, `partialize` entry, exported mode type.
+- `src/components/settings/categories/TerminalAppearancePage.tsx` - `Segmented` control +
   `registerSetting`.
-- `src/components/TerminalView.tsx` — the auto-hide effect.
-- `src/index.css` — rework `.xterm-viewport` scrollbar rules for the three states + fade.
+- `src/components/TerminalView.tsx` - the auto-hide effect.
+- `src/index.css` - rework `.xterm-viewport` scrollbar rules for the three states + fade.
 
 No backend/Rust changes. No new dependencies.
 

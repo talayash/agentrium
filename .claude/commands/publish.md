@@ -4,7 +4,7 @@ You are performing a full release of ClaudeTerminal. Follow every step below in 
 
 ## Arguments
 
-$ARGUMENTS — The new version number (e.g. `1.6.0`). If not provided, ask the user what version to publish.
+$ARGUMENTS - The new version number (e.g. `1.6.0`). If not provided, ask the user what version to publish.
 
 ## Step 1: Validate
 
@@ -17,14 +17,14 @@ $ARGUMENTS — The new version number (e.g. `1.6.0`). If not provided, ask the u
 
 Update the version string in **all five** of these files (replace the old version with the new one):
 
-1. **`package.json`** — the `"version"` field
-2. **`src-tauri/Cargo.toml`** — the `version` field under `[package]`
-3. **`src-tauri/tauri.conf.json`** — the `"version"` field
-4. **`README.md`** — update these version references:
+1. **`package.json`** - the `"version"` field
+2. **`src-tauri/Cargo.toml`** - the `version` field under `[package]`
+3. **`src-tauri/tauri.conf.json`** - the `"version"` field
+4. **`README.md`** - update these version references:
    - The version badge: `version-X.Y.Z-green`
    - The NSIS download link filename: `ClaudeTerminal_X.Y.Z_x64-setup.exe` (both the link text and the URL)
    - The MSI download link filename: `ClaudeTerminal_X.Y.Z_x64_en-US.msi` (both the link text and the URL)
-5. **`CLAUDE.md`** — the `Current version: **X.Y.Z**` line
+5. **`CLAUDE.md`** - the `Current version: **X.Y.Z**` line
 
 After editing, verify each file was updated correctly by reading the changed lines.
 

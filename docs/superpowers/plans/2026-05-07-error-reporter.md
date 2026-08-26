@@ -4,15 +4,15 @@
 
 **Goal:** Capture Rust panics, Tauri command errors, and frontend exceptions and forward them to the existing `ct-analytics` Cloudflare Worker so they can be triaged from D1.
 
-**Architecture:** Single ingest path. Every error source ends up calling `error_reporter::report(...)` in Rust, which scrubs PII, dedupes by fingerprint (60s window in-memory), and POSTs to a new `/error_report` route on the existing worker. The worker writes one row per non-throttled report into a new `errors` D1 table. A daily Worker cron deletes rows older than 90 days. A Settings toggle (`errorReportingEnabled`, default `true`) gates everything; the Rust flag is the source of truth and is set by the frontend after mount. Failures are dropped silently — no retry queue.
+**Architecture:** Single ingest path. Every error source ends up calling `error_reporter::report(...)` in Rust, which scrubs PII, dedupes by fingerprint (60s window in-memory), and POSTs to a new `/error_report` route on the existing worker. The worker writes one row per non-throttled report into a new `errors` D1 table. A daily Worker cron deletes rows older than 90 days. A Settings toggle (`errorReportingEnabled`, default `true`) gates everything; the Rust flag is the source of truth and is set by the frontend after mount. Failures are dropped silently - no retry queue.
 
 **Tech Stack:** Rust (tokio, reqwest, sha2 for fingerprints), TypeScript/React (xstate-free vanilla handlers + class ErrorBoundary), Cloudflare Workers (D1, KV, cron triggers), Zustand (persisted setting).
 
 **Spec:** [`docs/superpowers/specs/2026-05-07-error-reporter-design.md`](../specs/2026-05-07-error-reporter-design.md)
 
-**Note for the implementing engineer — pragmatic refinements vs. the spec:**
+**Note for the implementing engineer - pragmatic refinements vs. the spec:**
 
-1. The spec describes wrapping each command's `.map_err` (Option A). With 103 commands in `commands.rs` averaging multiple `?` operators, that's hundreds of edits. The plan implements the same Option-A intent with a single body-wrapping helper — `wrap_cmd("name", async move { ... }).await` — so each command gets exactly one explicit wrap. Same observability, far less churn.
+1. The spec describes wrapping each command's `.map_err` (Option A). With 103 commands in `commands.rs` averaging multiple `?` operators, that's hundreds of edits. The plan implements the same Option-A intent with a single body-wrapping helper - `wrap_cmd("name", async move { ... }).await` - so each command gets exactly one explicit wrap. Same observability, far less churn.
 2. The spec calls for a new `src/components/ErrorBoundary.tsx`. The codebase already has an `ErrorBoundary` class inline at the top of `src/App.tsx`. The plan extends that class instead of creating a new file.
 
 ---
@@ -20,24 +20,24 @@
 ## Files Touched
 
 ### Created
-- `src-tauri/src/error_reporter.rs` — reporter module (state, scrub, fingerprint, dedup, send).
-- `src/lib/errorReporter.ts` — tiny frontend helper that invokes the Tauri command.
-- `workers/ct-analytics/migrations/0001_errors_table.sql` — D1 migration for the new table (versionable, vs. ad-hoc `wrangler d1 execute`).
+- `src-tauri/src/error_reporter.rs` - reporter module (state, scrub, fingerprint, dedup, send).
+- `src/lib/errorReporter.ts` - tiny frontend helper that invokes the Tauri command.
+- `workers/ct-analytics/migrations/0001_errors_table.sql` - D1 migration for the new table (versionable, vs. ad-hoc `wrangler d1 execute`).
 
 ### Modified
-- `src-tauri/Cargo.toml` — add `sha2` dependency.
-- `src-tauri/src/main.rs` — register `mod error_reporter`, set panic hook, init reporter in `setup`, register two new IPC commands.
-- `src-tauri/src/commands.rs` — add `wrap_cmd` helper, add `report_error` and `set_error_reporting_enabled` IPC commands, wrap every existing `#[command]` body that returns `Result`.
-- `workers/ct-analytics/src/index.ts` — add `ErrorReportBody` interface, `handleErrorReport` route, `scheduled` cron handler, route wiring.
-- `workers/ct-analytics/wrangler.jsonc` — add `triggers.crons` entry.
-- `src/main.tsx` — install global `error` and `unhandledrejection` listeners before React mounts.
-- `src/App.tsx` — extend the existing `ErrorBoundary` to call `reportError` and show a generic fallback (no leaked `error.message`); push `errorReportingEnabled` to Rust on mount.
-- `src/store/appStore.ts` — add persisted `errorReportingEnabled` field + `setErrorReportingEnabled` action.
-- `src/components/SettingsModal.tsx` — add toggle row that updates the store and pushes the new value to Rust.
+- `src-tauri/Cargo.toml` - add `sha2` dependency.
+- `src-tauri/src/main.rs` - register `mod error_reporter`, set panic hook, init reporter in `setup`, register two new IPC commands.
+- `src-tauri/src/commands.rs` - add `wrap_cmd` helper, add `report_error` and `set_error_reporting_enabled` IPC commands, wrap every existing `#[command]` body that returns `Result`.
+- `workers/ct-analytics/src/index.ts` - add `ErrorReportBody` interface, `handleErrorReport` route, `scheduled` cron handler, route wiring.
+- `workers/ct-analytics/wrangler.jsonc` - add `triggers.crons` entry.
+- `src/main.tsx` - install global `error` and `unhandledrejection` listeners before React mounts.
+- `src/App.tsx` - extend the existing `ErrorBoundary` to call `reportError` and show a generic fallback (no leaked `error.message`); push `errorReportingEnabled` to Rust on mount.
+- `src/store/appStore.ts` - add persisted `errorReportingEnabled` field + `setErrorReportingEnabled` action.
+- `src/components/SettingsModal.tsx` - add toggle row that updates the store and pushes the new value to Rust.
 
 ---
 
-## Phase 1 — Worker side (deployable independently)
+## Phase 1 - Worker side (deployable independently)
 
 ### Task 1: Add D1 migration for the `errors` table
 
@@ -339,7 +339,7 @@ cd workers/ct-analytics
 npx wrangler d1 migrations apply ct-analytics-db --remote
 ```
 
-Expected: `🚣 Applied 1 migration`. (If it says "0 migrations to apply", the table already exists — verify with the next step.)
+Expected: `🚣 Applied 1 migration`. (If it says "0 migrations to apply", the table already exists - verify with the next step.)
 
 - [ ] **Step 2: Verify the remote table**
 
@@ -382,7 +382,7 @@ Expected: one row with `source='frontend'` and `message='smoke test'`.
 
 - [ ] **Step 6: Verify rate limiting**
 
-Re-run the same `Invoke-RestMethod` immediately. Expected: `ok = True; throttled = True`. (If `throttled` is missing, the rate limit isn't working — debug `rl:errors:smoke-test` KV key.)
+Re-run the same `Invoke-RestMethod` immediately. Expected: `ok = True; throttled = True`. (If `throttled` is missing, the rate limit isn't working - debug `rl:errors:smoke-test` KV key.)
 
 - [ ] **Step 7: Clean up the smoke-test row and commit**
 
@@ -392,11 +392,11 @@ npx wrangler d1 execute ct-analytics-db --remote --command "DELETE FROM errors W
 cd ../..
 ```
 
-No commit needed — Phase 1 is complete and deployed.
+No commit needed - Phase 1 is complete and deployed.
 
 ---
 
-## Phase 2 — Rust `error_reporter` module (TDD, no integration yet)
+## Phase 2 - Rust `error_reporter` module (TDD, no integration yet)
 
 ### Task 5: Add `sha2` dependency
 
@@ -1032,7 +1032,7 @@ git commit -m "feat(error_reporter): add async report() send path"
 **Files:**
 - Modify: `src-tauri/src/error_reporter.rs`
 
-The panic hook fires on whichever thread panicked, which may not be a Tokio runtime thread. With `panic = "abort"` in release, the process is going to die — we get one shot.
+The panic hook fires on whichever thread panicked, which may not be a Tokio runtime thread. With `panic = "abort"` in release, the process is going to die - we get one shot.
 
 - [ ] **Step 1: Implement `report_blocking`**
 
@@ -1055,7 +1055,7 @@ pub fn report_blocking(
         return;
     }
 
-    // No runtime — build a one-shot single-threaded runtime and drive `fut` to
+    // No runtime - build a one-shot single-threaded runtime and drive `fut` to
     // completion (or our 5s timeout). Best-effort.
     let rt = match tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -1093,7 +1093,7 @@ git commit -m "feat(error_reporter): add report_blocking for panic hook"
 
 ---
 
-## Phase 3 — Rust integration (panic hook + IPC + command wrapping)
+## Phase 3 - Rust integration (panic hook + IPC + command wrapping)
 
 ### Task 12: Set the panic hook and initialize the reporter in `main.rs`
 
@@ -1247,7 +1247,7 @@ pub fn set_error_reporting_enabled(enabled: bool) -> Result<(), String> {
 }
 ```
 
-(`#[command]` matches the existing file's style — there's already a `use tauri::command;` at the top of `commands.rs`. If for any reason that import isn't visible, fall back to `#[tauri::command]`.)
+(`#[command]` matches the existing file's style - there's already a `use tauri::command;` at the top of `commands.rs`. If for any reason that import isn't visible, fall back to `#[tauri::command]`.)
 
 - [ ] **Step 2: Register the new commands in `main.rs`**
 
@@ -1266,7 +1266,7 @@ cargo check
 cd ..
 ```
 
-Expected: clean build, possibly a `dead_code` warning about `wrap_cmd` (we'll start using it next task — that's fine for this commit).
+Expected: clean build, possibly a `dead_code` warning about `wrap_cmd` (we'll start using it next task - that's fine for this commit).
 
 - [ ] **Step 4: Commit**
 
@@ -1284,7 +1284,7 @@ git commit -m "feat(error_reporter): add wrap_cmd helper and frontend IPC comman
 
 There are 103 functions defined in this file; the ones registered as Tauri commands are the 80+ listed in `main.rs`'s `generate_handler!`. The mechanical edit is: for each `#[command] / #[tauri::command]` function whose return type is `Result<T, String>`, wrap the entire body with `wrap_cmd("function_name", async move { /* original body */ }).await`.
 
-Pattern transformation — a function that today reads:
+Pattern transformation - a function that today reads:
 
 ```rust
 #[command]
@@ -1317,18 +1317,18 @@ pub async fn create_terminal(
 }
 ```
 
-Wrapping is idempotent (a wrapped command compiles and behaves identically apart from the side effect of the report). If a command captures `state: State<'_, AppState>` it must move into the closure — `async move` captures by move, which is what we want.
+Wrapping is idempotent (a wrapped command compiles and behaves identically apart from the side effect of the report). If a command captures `state: State<'_, AppState>` it must move into the closure - `async move` captures by move, which is what we want.
 
 **Two existing commands are already special and should NOT be wrapped:**
 
-1. `report_error` — wrapping it would risk an infinite loop if the report itself fails (it doesn't currently, but defense in depth). Skip.
-2. `set_error_reporting_enabled` — trivially infallible; wrapping is noise. Skip.
+1. `report_error` - wrapping it would risk an infinite loop if the report itself fails (it doesn't currently, but defense in depth). Skip.
+2. `set_error_reporting_enabled` - trivially infallible; wrapping is noise. Skip.
 
-Wrap every other function listed in `tauri::generate_handler!` in `main.rs`. The list is in `src-tauri/src/main.rs:38-123`. Functions in `commands.rs` that are *not* listed in `generate_handler!` are private helpers — leave them alone.
+Wrap every other function listed in `tauri::generate_handler!` in `main.rs`. The list is in `src-tauri/src/main.rs:38-123`. Functions in `commands.rs` that are *not* listed in `generate_handler!` are private helpers - leave them alone.
 
 The plan splits this work into 5 batches by ~20 commands each, so the engineer can commit between batches and bisect easily if any wrap breaks the build.
 
-- [ ] **Step 1: Wrap batch 1 — terminal lifecycle (10 commands)**
+- [ ] **Step 1: Wrap batch 1 - terminal lifecycle (10 commands)**
 
 These are at the top of `commands.rs`. Wrap each body with `wrap_cmd("name", async move { ... }).await`:
 
@@ -1345,7 +1345,7 @@ create_shell_terminal
 get_terminal_changes
 ```
 
-`get_terminals` returns `Vec<...>` directly without `Result` — leave unwrapped if its signature isn't `Result<_, String>`. Verify each function signature before wrapping. (`get_terminals` per `main.rs` is registered, but if its signature is `pub async fn get_terminals(...) -> Vec<TerminalInfo>` then it's infallible and skip it. Check the signature with `Grep` if unsure.)
+`get_terminals` returns `Vec<...>` directly without `Result` - leave unwrapped if its signature isn't `Result<_, String>`. Verify each function signature before wrapping. (`get_terminals` per `main.rs` is registered, but if its signature is `pub async fn get_terminals(...) -> Vec<TerminalInfo>` then it's infallible and skip it. Check the signature with `Grep` if unsure.)
 
 After editing this batch:
 
@@ -1362,7 +1362,7 @@ git add src-tauri/src/commands.rs
 git commit -m "feat(error_reporter): wrap terminal commands with wrap_cmd"
 ```
 
-- [ ] **Step 2: Wrap batch 2 — profiles, workspaces, sessions (16 commands)**
+- [ ] **Step 2: Wrap batch 2 - profiles, workspaces, sessions (16 commands)**
 
 ```
 save_profile
@@ -1390,7 +1390,7 @@ git add src-tauri/src/commands.rs
 git commit -m "feat(error_reporter): wrap profile/workspace/session commands"
 ```
 
-- [ ] **Step 3: Wrap batch 3 — git + worktrees (16 commands)**
+- [ ] **Step 3: Wrap batch 3 - git + worktrees (16 commands)**
 
 ```
 get_path_changes
@@ -1426,7 +1426,7 @@ git add src-tauri/src/commands.rs
 git commit -m "feat(error_reporter): wrap git/worktree commands"
 ```
 
-- [ ] **Step 4: Wrap batch 4 — claude config, snippets, hints, system (15 commands)**
+- [ ] **Step 4: Wrap batch 4 - claude config, snippets, hints, system (15 commands)**
 
 ```
 get_claude_version
@@ -1459,7 +1459,7 @@ git add src-tauri/src/commands.rs
 git commit -m "feat(error_reporter): wrap claude config/snippets/system commands"
 ```
 
-- [ ] **Step 5: Wrap batch 5 — orchestration, files, search, telemetry (~17 commands)**
+- [ ] **Step 5: Wrap batch 5 - orchestration, files, search, telemetry (~17 commands)**
 
 ```
 get_active_teams
@@ -1496,11 +1496,11 @@ cargo build
 cd ..
 ```
 
-Expected: clean release-ish build. Address any warnings about unwrapped `Result<_, String>` commands the engineer missed — the `dead_code` warning on `wrap_cmd` should now be gone.
+Expected: clean release-ish build. Address any warnings about unwrapped `Result<_, String>` commands the engineer missed - the `dead_code` warning on `wrap_cmd` should now be gone.
 
 ---
 
-## Phase 4 — Frontend integration
+## Phase 4 - Frontend integration
 
 ### Task 15: Add the frontend `errorReporter.ts` helper
 
@@ -1521,7 +1521,7 @@ export function reportError(kind: string, message: string, stack?: string): void
   const m = clamp(scrub(message), MESSAGE_MAX);
   const s = stack ? clamp(scrub(stack), STACK_MAX) : null;
   invoke('report_error', { payload: { kind: kind ?? null, message: m, stack: s } }).catch(() => {
-    // Swallow — never let the reporter break the app.
+    // Swallow - never let the reporter break the app.
   });
 }
 
@@ -1542,7 +1542,7 @@ function clamp(s: string, max: number): string {
 npm run build
 ```
 
-Expected: build succeeds. (No tests for this — the project has no frontend test runner.)
+Expected: build succeeds. (No tests for this - the project has no frontend test runner.)
 
 - [ ] **Step 3: Commit**
 
@@ -1621,7 +1621,7 @@ import { reportError } from './lib/errorReporter';
 
 - [ ] **Step 2: Update the `ErrorBoundary` class**
 
-Replace the existing class (lines 36–66 — the class that starts with `class ErrorBoundary extends Component`) with:
+Replace the existing class (lines 36–66 - the class that starts with `class ErrorBoundary extends Component`) with:
 
 ```tsx
 class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
@@ -1663,7 +1663,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boole
 }
 ```
 
-The state no longer carries `error: Error | null` because we don't surface the message to the user (see the spec — generic fallback only).
+The state no longer carries `error: Error | null` because we don't surface the message to the user (see the spec - generic fallback only).
 
 - [ ] **Step 3: Verify build**
 
@@ -1758,7 +1758,7 @@ Inside the `App()` function in `src/App.tsx`, near the other `useEffect` hooks (
   }, []);
 ```
 
-Make sure `useEffect` and `invoke` are already imported at the top of the file — they are.
+Make sure `useEffect` and `invoke` are already imported at the top of the file - they are.
 
 - [ ] **Step 2: Verify build**
 
@@ -1819,7 +1819,7 @@ Find the `{/* Analytics */}` block. Add this new section directly below it (abov
                 <div>
                   <p className="text-text-primary text-[13px]">Send error reports</p>
                   <p className="text-text-tertiary text-[11px] mt-0.5">
-                    Helps fix crashes. No personal data — Windows usernames are scrubbed.
+                    Helps fix crashes. No personal data - Windows usernames are scrubbed.
                   </p>
                 </div>
                 <button
@@ -1860,13 +1860,13 @@ git commit -m "feat(frontend): add error reporting toggle to Settings"
 
 ---
 
-## Phase 5 — End-to-end verification
+## Phase 5 - End-to-end verification
 
 ### Task 21: Smoke-test the whole pipeline in a dev build
 
 **Files:** None (manual verification + temporary code changes that get reverted).
 
-This task uses the live worker — make sure `CT_INGEST_TOKEN` is exported in the shell before `npm run tauri dev`, otherwise the reporter no-ops with `eprintln!`.
+This task uses the live worker - make sure `CT_INGEST_TOKEN` is exported in the shell before `npm run tauri dev`, otherwise the reporter no-ops with `eprintln!`.
 
 - [ ] **Step 1: Set the build-time token**
 
@@ -1913,7 +1913,7 @@ Expected: `source='frontend'`, `kind='Error'`, `message='e2e-frontend-test'`.
 
 - [ ] **Step 5: Trigger a Rust panic**
 
-Stop the dev server. In `src-tauri/src/commands.rs`, find any command (e.g. `get_hints`) and add `panic!("e2e-rust-panic");` as the first line of its body inside the `wrap_cmd` closure. Restart `npm run tauri dev`. Trigger that command from the UI (open the Hints panel, F1 in this app). The app will likely close — that's expected with `panic = "abort"` in release; in debug it may stay up depending on the call stack.
+Stop the dev server. In `src-tauri/src/commands.rs`, find any command (e.g. `get_hints`) and add `panic!("e2e-rust-panic");` as the first line of its body inside the `wrap_cmd` closure. Restart `npm run tauri dev`. Trigger that command from the UI (open the Hints panel, F1 in this app). The app will likely close - that's expected with `panic = "abort"` in release; in debug it may stay up depending on the call stack.
 
 Verify a row appeared:
 

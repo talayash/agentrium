@@ -9,13 +9,13 @@ export default {
         'bg-secondary': 'var(--elevation-1)',
         'bg-elevated': 'var(--elevation-2)',
         'bg-surface': 'var(--elevation-3)',
-        // Elevation system — IntelliJ IDEA New UI (Dark)
+        // Elevation system - IntelliJ IDEA New UI (Dark)
         'elevation-0': 'var(--elevation-0)', // Main editor bg
         'elevation-1': 'var(--elevation-1)', // Tool windows, tabs, sidebar
         'elevation-2': 'var(--elevation-2)', // Cards, panels
         'elevation-3': 'var(--elevation-3)', // Hover / selected row
         'elevation-4': 'var(--elevation-4)', // Popups, dropdowns, modals
-        // Accent — IntelliJ blue
+        // Accent - IntelliJ blue
         'accent-primary': '#3574F0',
         'accent-secondary': '#548AF7',
         // Borders
@@ -26,12 +26,12 @@ export default {
         // Text tokens are theme-aware: dark channels live in index.css :root,
         // light channels are swapped in by applyThemeMode(). Channel-triplet
         // form keeps Tailwind's /opacity modifiers working. text-tertiary was
-        // lifted to #8A8E97 (dark) for WCAG AA — the old #6F737A measured ~3.46:1
+        // lifted to #8A8E97 (dark) for WCAG AA - the old #6F737A measured ~3.46:1
         // on elevation-0 / ~2.90:1 on elevation-1, below the 4.5:1 floor.
         'text-primary': 'rgb(var(--text-primary) / <alpha-value>)',
         'text-secondary': 'rgb(var(--text-secondary) / <alpha-value>)',
         'text-tertiary': 'rgb(var(--text-tertiary) / <alpha-value>)',
-        // Semantic — IntelliJ palette (theme-aware via CSS vars; light overrides
+        // Semantic - IntelliJ palette (theme-aware via CSS vars; light overrides
         // are applied by accentTheme.applyThemeMode()).
         'success': 'var(--success)',
         'warning': 'var(--warning)',
@@ -42,7 +42,7 @@ export default {
         mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
       },
       boxShadow: {
-        // Accent-aware — derived vars are (re)set by applyAccentColor() so the
+        // Accent-aware - derived vars are (re)set by applyAccentColor() so the
         // glow follows the user's chosen accent instead of hardcoded blue.
         'glow-sm': '0 0 8px var(--accent-glow-sm)',
         'glow-md': '0 0 16px var(--accent-glow-md)',

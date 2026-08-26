@@ -1,7 +1,7 @@
 {
-  "name": "ade-1",
+  "name": "agentrium",
   "version": "1.31.4",
-  "description": "ADE-1 - Agent Desktop Environment. Cross-platform desktop app for running Claude Code, Codex, Cursor, and Gemini CLIs side by side.",
+  "description": "Agentrium - Agent Desktop Environment. Cross-platform desktop app for running Claude Code, Codex, Cursor, and Gemini CLIs side by side.",
   "type": "module",
   "scripts": {
     "dev": "vite",

@@ -8,7 +8,7 @@ export interface AgentSpec {
   installHint: string;
   /**
    * Placeholder text shown in the args textarea. Not persisted, purely
-   * a hint — real defaults live in `appStore.defaultAgentArgs[kind]`.
+   * a hint - real defaults live in `appStore.defaultAgentArgs[kind]`.
    * Newline-separated so it can preview a multi-flag setup.
    */
   defaultArgsHint: string;

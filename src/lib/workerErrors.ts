@@ -3,7 +3,7 @@ import { reportError } from './errorReporter';
 type Report = (kind: string, message: string, stack?: string) => void;
 
 /**
- * Uncaught errors inside a Web Worker never reach `window.onerror` — the
+ * Uncaught errors inside a Web Worker never reach `window.onerror` - the
  * worker just dies and its features (e.g. Monaco language smarts) silently
  * stop working. Attach listeners so those crashes reach telemetry.
  * Uses addEventListener so the host library's own handlers are untouched.

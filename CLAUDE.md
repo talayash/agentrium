@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**ADE-1** (Agent Desktop Environment) is a cross-platform desktop application (Windows and macOS) for managing multiple Claude Code CLI terminal instances from a unified interface. Built with Tauri 2.x (Rust backend) and React 18 (TypeScript frontend), it provides tabbed and grid views of parallel Claude Code sessions with PTY-based terminal emulation. The release workflow produces NSIS/MSI installers for Windows and `.dmg`/`.app` bundles for both Apple Silicon and Intel Macs.
+**Agentrium** (Agent Desktop Environment) is a cross-platform desktop application (Windows and macOS) for managing multiple Claude Code CLI terminal instances from a unified interface. Built with Tauri 2.x (Rust backend) and React 18 (TypeScript frontend), it provides tabbed and grid views of parallel Claude Code sessions with PTY-based terminal emulation. The release workflow produces NSIS/MSI installers for Windows and `.dmg`/`.app` bundles for both Apple Silicon and Intel Macs.
 
 Current version: **1.31.4**
 
@@ -12,9 +12,9 @@ Current version: **1.31.4**
 - **Backend**: Rust (edition 2021)
 - **Frontend**: React 18 + TypeScript + Vite
 - **Terminal emulation**: xterm.js (`@xterm/xterm`) with fit, search, and web-links addons
-- **Styling**: Tailwind CSS + Framer Motion. Flat IntelliJ IDEA 2026.1 "New UI"–style design: a 5-step elevation ramp (`--elevation-0..4` CSS vars), `#3574F0` accent, Inter (UI) + JetBrains Mono (code). Supports dark/light/auto theme, user-set accent color, compact/comfortable/spacious density, UI font scale, and a "reduce motion" toggle that follows the OS `prefers-reduced-motion` setting until explicitly overridden. Text tokens target WCAG AA contrast. (Not glassmorphic — translucency is limited to overlay scrims.)
+- **Styling**: Tailwind CSS + Framer Motion. Flat IntelliJ IDEA 2026.1 "New UI"–style design: a 5-step elevation ramp (`--elevation-0..4` CSS vars), `#3574F0` accent, Inter (UI) + JetBrains Mono (code). Supports dark/light/auto theme, user-set accent color, compact/comfortable/spacious density, UI font scale, and a "reduce motion" toggle that follows the OS `prefers-reduced-motion` setting until explicitly overridden. Text tokens target WCAG AA contrast. (Not glassmorphic - translucency is limited to overlay scrims.)
 - **State management**: Zustand (persisted via `zustand/middleware/persist`)
-- **Database**: SQLite via `rusqlite` (bundled) — stores profiles, workspaces, session history
+- **Database**: SQLite via `rusqlite` (bundled) - stores profiles, workspaces, session history
 - **PTY**: `portable-pty` crate for spawning Claude Code processes
 - **Notifications**: `notify-rust` crate for native desktop notifications (Windows Toast and macOS NSUserNotification)
 - **Auto-updates**: `tauri-plugin-updater` with signed releases from GitHub
@@ -23,7 +23,7 @@ Current version: **1.31.4**
 
 ```
 src/                          # React frontend
-  App.tsx                     # Root component — layout, event listeners, setup wizard gate
+  App.tsx                     # Root component - layout, event listeners, setup wizard gate
   main.tsx                    # React entry point
   index.css                   # Tailwind base styles
   components/
@@ -52,7 +52,7 @@ src/                          # React frontend
 src-tauri/                    # Rust backend
   src/
     main.rs                   # Tauri app setup, plugin registration, state init
-    terminal.rs               # TerminalManager — PTY lifecycle (create, write, resize, close)
+    terminal.rs               # TerminalManager - PTY lifecycle (create, write, resize, close)
     commands.rs               # Tauri IPC commands (all #[command] handlers)
     config.rs                 # ConfigProfile struct, HintCategory/Hint structs, default hints
     database.rs               # SQLite database (profiles, workspaces, session_history tables)
@@ -61,7 +61,7 @@ src-tauri/                    # Rust backend
   capabilities/default.json   # Tauri security capabilities
 
 .claude/commands/
-  publish.md                  # /publish slash command — full release workflow
+  publish.md                  # /publish slash command - full release workflow
 
 .github/workflows/release.yml  # CI: build + publish GitHub releases (tag-triggered)
 ```
@@ -80,7 +80,7 @@ src-tauri/                    # Rust backend
 ### Frontend (React)
 
 - `App.tsx` listens for `terminal-output` and `terminal-finished` Tauri events
-- Terminal state uses a `Map<string, TerminalInstance>` in Zustand (not persisted — terminals are ephemeral)
+- Terminal state uses a `Map<string, TerminalInstance>` in Zustand (not persisted - terminals are ephemeral)
 - App state (sidebar, grid, settings) is persisted to localStorage via Zustand persist middleware
 - Each `TerminalView` creates an xterm.js instance and wires keyboard input to `write_to_terminal` IPC
 - Grid mode supports up to 8 terminals with auto-layout calculation in `getOptimalLayout()`
@@ -100,7 +100,7 @@ Key Tauri commands exposed to the frontend:
 
 ### Prerequisites
 
-- Node.js v22+ (LTS; v18/v20 are EOL — CI builds on 22)
+- Node.js v22+ (LTS; v18/v20 are EOL - CI builds on 22)
 - Rust (latest stable via rustup)
 - Visual Studio Build Tools (Windows)
 
@@ -142,8 +142,8 @@ If not using `/publish`, the same steps can be done manually:
 
 ## Key Patterns
 
-- **Error handling in Rust**: Commands return `Result<T, String>` — errors are string-mapped via `.map_err(|e| e.to_string())`. Every `#[command]` body is wrapped in `wrap_cmd("name", ...)`, which reports `Err` results to telemetry. Errors caused by user input or environment (validation, git push/pull rejections, file-too-large) must be returned via `error_reporter::user_err(...)` — the UI still sees the plain message, but telemetry is skipped. Background threads/tasks outside `wrap_cmd` report real failures via `error_reporter::report_bg(kind, message)`; use `report_blocking` only when the process is about to exit (panic hook, shutdown path).
-- **Error handling in the frontend** (pick by call-site type, never `console.error`-only — that silently deletes telemetry the global `unhandledrejection` handler would have produced):
+- **Error handling in Rust**: Commands return `Result<T, String>` - errors are string-mapped via `.map_err(|e| e.to_string())`. Every `#[command]` body is wrapped in `wrap_cmd("name", ...)`, which reports `Err` results to telemetry. Errors caused by user input or environment (validation, git push/pull rejections, file-too-large) must be returned via `error_reporter::user_err(...)` - the UI still sees the plain message, but telemetry is skipped. Background threads/tasks outside `wrap_cmd` report real failures via `error_reporter::report_bg(kind, message)`; use `report_blocking` only when the process is about to exit (panic hook, shutdown path).
+- **Error handling in the frontend** (pick by call-site type, never `console.error`-only - that silently deletes telemetry the global `unhandledrejection` handler would have produced):
   - *User-initiated action* → `.catch(err => { toast.error(...); reportInvokeFailure('<command_name>', err); })` from `src/lib/errorReporter.ts`. A silent failure here is a user-facing bug.
   - *Background poller / best-effort cleanup* → `.catch(() => {})` with a one-line comment saying why it's safe to swallow.
   - *Clipboard* → always `copyText()` / `readClipboardText()` from `src/lib/clipboard.ts`, never bare `navigator.clipboard` (WebView2 focus gating).

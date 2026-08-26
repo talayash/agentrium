@@ -3,7 +3,7 @@
  * context menu actions on the terminal tab strip.
  *
  * Kept out of the component so the filtering logic is trivially
- * unit-testable — the component just maps the result through the store's
+ * unit-testable - the component just maps the result through the store's
  * existing `closeTerminal(id)` mechanism.
  *
  * Neither helper closes anything itself; they return the id list the caller
@@ -15,7 +15,7 @@
  * Ids to close when the user picks "Close Others" on the tab whose id is
  * `keepId`. Returns every id in `tabIds` except `keepId`, preserving the
  * caller's order. If `keepId` isn't in `tabIds` (stale menu, defensive),
- * every id is returned — mirrors the user's intent ("close all except this
+ * every id is returned - mirrors the user's intent ("close all except this
  * one") since the "this one" is already gone.
  */
 export function idsToCloseForOthers(

@@ -17,19 +17,19 @@
 ## File Structure
 
 **Created:**
-- `src/components/UpdatePill.tsx` — small pill that subscribes to `useUpdaterStore` and renders nothing unless status is `ready` or `error`. ~80 lines.
+- `src/components/UpdatePill.tsx` - small pill that subscribes to `useUpdaterStore` and renders nothing unless status is `ready` or `error`. ~80 lines.
 
 **Modified:**
-- `src/store/updaterStore.ts` — add `lastCheckAt: number | null`; refactor `downloadAndInstall` to optionally accept a pre-fetched `Update` handle; chain auto-download after `available`.
-- `src/components/AutoUpdater.tsx` — banner only auto-opens on `ready`; add 4-hour periodic interval and focus-regained listener that call `checkForUpdates`. Also: wrap one `onClick={downloadAndInstall}` handler in `() => downloadAndInstall()` so React's `MouseEvent` isn't passed as `preFetched` (mechanical consequence of the Task 1 signature change).
-- `src/components/SettingsModal.tsx` — wrap one `onClick={appUpdater.downloadAndInstall}` handler in `() => appUpdater.downloadAndInstall()` for the same reason.
-- `src/components/TitleBar.tsx` — render `<UpdatePill />` as the first child of the right action cluster, before `<FileDiff />` button.
+- `src/store/updaterStore.ts` - add `lastCheckAt: number | null`; refactor `downloadAndInstall` to optionally accept a pre-fetched `Update` handle; chain auto-download after `available`.
+- `src/components/AutoUpdater.tsx` - banner only auto-opens on `ready`; add 4-hour periodic interval and focus-regained listener that call `checkForUpdates`. Also: wrap one `onClick={downloadAndInstall}` handler in `() => downloadAndInstall()` so React's `MouseEvent` isn't passed as `preFetched` (mechanical consequence of the Task 1 signature change).
+- `src/components/SettingsModal.tsx` - wrap one `onClick={appUpdater.downloadAndInstall}` handler in `() => appUpdater.downloadAndInstall()` for the same reason.
+- `src/components/TitleBar.tsx` - render `<UpdatePill />` as the first child of the right action cluster, before `<FileDiff />` button.
 
 ---
 
 ## Task 1: Refactor `downloadAndInstall` to accept a pre-fetched Update
 
-**Why first:** Auto-chaining (Task 3) calls `downloadAndInstall` immediately after a successful `check()`. Without a refactor, the store would call `check()` twice in a row — wasted network round-trip.
+**Why first:** Auto-chaining (Task 3) calls `downloadAndInstall` immediately after a successful `check()`. Without a refactor, the store would call `check()` twice in a row - wasted network round-trip.
 
 **Files:**
 - Modify: `src/store/updaterStore.ts`
@@ -178,9 +178,9 @@ Run: `npm run tauri dev`
 
 Once the app loads:
 1. Open the React DevTools console (Tauri dev window has DevTools).
-2. In console: `window.__TAURI__ ? 'tauri ready' : 'not ready'` — confirm Tauri is loaded.
+2. In console: `window.__TAURI__ ? 'tauri ready' : 'not ready'` - confirm Tauri is loaded.
 3. After ~3 seconds (the startup check runs), inspect Zustand state:
-   `useUpdaterStore.getState().lastCheckAt` — should be a millisecond timestamp roughly equal to `Date.now()`.
+   `useUpdaterStore.getState().lastCheckAt` - should be a millisecond timestamp roughly equal to `Date.now()`.
 
 If you can't access `useUpdaterStore` from the console, add a temporary `(window as any).__updater = useUpdaterStore;` line at module scope in `updaterStore.ts`, verify, then remove it before committing.
 
@@ -264,7 +264,7 @@ Without a real new release on GitHub, `check()` will return `null` and you'll se
    - `useUpdaterStore.getState().status` transitions: `idle` → `checking` → `available` → `downloading` → `ready`.
 5. **Remove the temporary block** and the temporary `__updater` global. Run `npm run tauri dev` again to confirm the app boots cleanly.
 
-Expected: status transitions land at `ready` without manual user action. The banner does NOT pop up during this dev test (Task 4 changes the banner condition; until Task 4 is committed the banner will still appear briefly on `available` — that's fine for this verification).
+Expected: status transitions land at `ready` without manual user action. The banner does NOT pop up during this dev test (Task 4 changes the banner condition; until Task 4 is committed the banner will still appear briefly on `available` - that's fine for this verification).
 
 - [ ] **Step 4: Commit**
 
@@ -297,7 +297,7 @@ useEffect(() => {
 }, [status, dismissed]);
 ```
 
-Also update the startup check effect — it currently sets `setShowBanner(true)` on `result.available`. Since download is now automatic, the banner shouldn't pop up on `available`. Change:
+Also update the startup check effect - it currently sets `setShowBanner(true)` on `result.available`. Since download is now automatic, the banner shouldn't pop up on `available`. Change:
 
 ```tsx
 useEffect(() => {
@@ -358,7 +358,7 @@ const FOUR_HOURS_MS = 4 * 60 * 60 * 1000;
 useEffect(() => {
   const id = setInterval(() => {
     const last = useUpdaterStore.getState().lastCheckAt;
-    // Guard against drift on a sleeping/throttled timer — only fire if
+    // Guard against drift on a sleeping/throttled timer - only fire if
     // at least 4h of wall-clock time have actually elapsed.
     if (last !== null && Date.now() - last < FOUR_HOURS_MS) return;
     void checkForUpdates();
@@ -444,7 +444,7 @@ Expected: passes.
 3. After the 3-second startup check, click another window to blur the Tauri window.
 4. Wait 6 seconds, then click the Tauri window to bring it back to focus.
 5. In DevTools console, confirm `useUpdaterStore.getState().lastCheckAt` advanced.
-6. Click away and back again immediately. Confirm `lastCheckAt` did NOT advance (because <5s have passed since the last check — the floor protected it).
+6. Click away and back again immediately. Confirm `lastCheckAt` did NOT advance (because <5s have passed since the last check - the floor protected it).
 7. **Restore `THIRTY_MINUTES_MS` to `30 * 60 * 1000`** before committing.
 
 Expected: focus re-check fires after the floor passes, doesn't fire if it hasn't.
@@ -483,7 +483,7 @@ export function UpdatePill() {
     return (
       <button
         onClick={() => void checkForUpdates()}
-        title={error || 'Update failed — click to retry'}
+        title={error || 'Update failed - click to retry'}
         className="no-drag flex items-center gap-1.5 h-6 px-2 rounded-full bg-error/15 text-error ring-1 ring-inset ring-error/30 hover:bg-error/20 transition-colors text-[11px] font-medium max-w-[180px]"
       >
         <AlertTriangle size={11} strokeWidth={2} className="flex-shrink-0" />
@@ -504,7 +504,7 @@ export function UpdatePill() {
         exit={{ opacity: 0, scale: 0.9 }}
         transition={{ duration: 0.6, times: [0, 0.5, 1] }}
         onClick={() => void restart()}
-        title={`Restart to install update v${version} — your terminals will be restored`}
+        title={`Restart to install update v${version} - your terminals will be restored`}
         className="no-drag flex items-center gap-1.5 h-6 px-2 rounded-full bg-accent-primary/15 text-accent-primary ring-1 ring-inset ring-accent-primary/30 hover:bg-accent-primary/25 transition-colors text-[11px] font-medium max-w-[180px]"
       >
         <RotateCw size={11} strokeWidth={2} className="flex-shrink-0" />
@@ -519,7 +519,7 @@ export function UpdatePill() {
 
 Notes:
 - The `no-drag` class is required because the title bar is a Tauri drag region and we don't want clicks to start a window drag.
-- Heights match the rest of the title bar action cluster (24px pill vs 28px square buttons — the smaller height is intentional, the pill has a different visual weight).
+- Heights match the rest of the title bar action cluster (24px pill vs 28px square buttons - the smaller height is intentional, the pill has a different visual weight).
 - Tailwind tokens like `bg-accent-primary` and `text-error` are project conventions already used elsewhere in the title bar.
 
 - [ ] **Step 2: Run typecheck**
@@ -527,7 +527,7 @@ Notes:
 Run: `npx tsc --noEmit`
 Expected: passes.
 
-- [ ] **Step 3: Standalone visual smoke test (component renders nothing yet — validated in Task 8)**
+- [ ] **Step 3: Standalone visual smoke test (component renders nothing yet - validated in Task 8)**
 
 This task only creates the component. It isn't wired into `TitleBar` yet, so visually nothing changes. The next task wires it up and verifies it on screen.
 
@@ -558,7 +558,7 @@ import { UpdatePill } from './UpdatePill';
 Find this block in `TitleBar.tsx` (around lines 298-315):
 
 ```tsx
-{/* Right cluster — search, run, tool windows, settings, window controls */}
+{/* Right cluster - search, run, tool windows, settings, window controls */}
 <div className="flex items-stretch">
   <div className="flex items-center gap-0.5 pr-2 no-drag">
     <button onClick={toggleChanges} className={iconBtn(changesOpen)} title="File Changes (F2)">
@@ -569,7 +569,7 @@ Find this block in `TitleBar.tsx` (around lines 298-315):
 Insert `<UpdatePill />` and a small spacer divider before the `<button onClick={toggleChanges} …>`:
 
 ```tsx
-{/* Right cluster — search, run, tool windows, settings, window controls */}
+{/* Right cluster - search, run, tool windows, settings, window controls */}
 <div className="flex items-stretch">
   <div className="flex items-center gap-0.5 pr-2 no-drag">
     <UpdatePill />
@@ -578,7 +578,7 @@ Insert `<UpdatePill />` and a small spacer divider before the `<button onClick={
     </button>
 ```
 
-The pill returns `null` when status is anything other than `ready` or `error`, so it won't disturb layout in the normal case. Tailwind's `gap-0.5` between flex children means the pill is naturally spaced from the FileDiff button — no extra divider needed.
+The pill returns `null` when status is anything other than `ready` or `error`, so it won't disturb layout in the normal case. Tailwind's `gap-0.5` between flex children means the pill is naturally spaced from the FileDiff button - no extra divider needed.
 
 - [ ] **Step 3: Run typecheck**
 
@@ -603,9 +603,9 @@ This is the headline visual test.
    (If `useUpdaterStore` isn't accessible, use the temporary `__updater` global from Task 2.)
 
 4. Confirm: a pill appears in the title bar between the project breadcrumb area and the FileDiff button. It reads `↻ Relaunch · v1.21.0`. It performs a one-time pulse animation on entry.
-5. Hover the pill — tooltip shows `Restart to install update v1.21.0 — your terminals will be restored`.
-6. Click the pill. The app should save session state and relaunch (a real `relaunch()` call). On a dev build with no real update staged this might error in the underlying updater — that's fine for this visual test; the click handler firing is what we're validating.
-7. Reset the state: `useUpdaterStore.setState({ status: 'idle', updateInfo: null });` — pill disappears.
+5. Hover the pill - tooltip shows `Restart to install update v1.21.0 - your terminals will be restored`.
+6. Click the pill. The app should save session state and relaunch (a real `relaunch()` call). On a dev build with no real update staged this might error in the underlying updater - that's fine for this visual test; the click handler firing is what we're validating.
+7. Reset the state: `useUpdaterStore.setState({ status: 'idle', updateInfo: null });` - pill disappears.
 8. Force the error state:
 
    ```js
@@ -665,7 +665,7 @@ Expected: completes without TypeScript or Rust errors. Installer artifacts appea
 
 (If a full installer build is too slow for an end-of-task gate, at minimum run `npx tsc --noEmit` and `npm run build` for the Vite frontend bundle to confirm no production-only issues.)
 
-- [ ] **Step 3: No commit needed — this is a verification gate.**
+- [ ] **Step 3: No commit needed - this is a verification gate.**
 
 ---
 
@@ -675,9 +675,9 @@ Expected: completes without TypeScript or Rust errors. Installer artifacts appea
 
 | Spec section | Task that covers it |
 | --- | --- |
-| Background scheduler — startup check (unchanged) | (no task — already exists) |
-| Background scheduler — periodic 4h check | Task 5 |
-| Background scheduler — focus re-check with 30-min floor | Task 6 |
+| Background scheduler - startup check (unchanged) | (no task - already exists) |
+| Background scheduler - periodic 4h check | Task 5 |
+| Background scheduler - focus re-check with 30-min floor | Task 6 |
 | `lastCheckAt` field + drift guard | Tasks 2, 5, 6 |
 | Silent auto-download on `available` | Tasks 1, 3 |
 | Banner only auto-opens on `ready` | Task 4 |
@@ -689,4 +689,4 @@ All spec sections covered.
 
 **Placeholder scan:** No "TBD"/"TODO"/"add appropriate" placeholders. Every code step shows the exact code. Manual verification steps spell out what to click and observe.
 
-**Type consistency:** `UpdaterState.downloadAndInstall` signature in Task 1 (`(preFetched?: Update) => Promise<boolean>`) matches its call site in Task 3 (`get().downloadAndInstall(update)`). The `Update` import is added in Task 1 step 2. Constants `FOUR_HOURS_MS` and `THIRTY_MINUTES_MS` are defined in Tasks 5 and 6 respectively, both at module scope of `AutoUpdater.tsx` — no naming collisions. `UpdatePill` exports a named function matching the import in Task 8.
+**Type consistency:** `UpdaterState.downloadAndInstall` signature in Task 1 (`(preFetched?: Update) => Promise<boolean>`) matches its call site in Task 3 (`get().downloadAndInstall(update)`). The `Update` import is added in Task 1 step 2. Constants `FOUR_HOURS_MS` and `THIRTY_MINUTES_MS` are defined in Tasks 5 and 6 respectively, both at module scope of `AutoUpdater.tsx` - no naming collisions. `UpdatePill` exports a named function matching the import in Task 8.

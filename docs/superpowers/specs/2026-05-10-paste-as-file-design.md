@@ -13,7 +13,7 @@ Pasting large text (logs, JSON, stack traces) directly into a Claude Code termin
 - One-click capture of a large paste into a file inside the active terminal's working directory.
 - Auto-reference that file in Claude Code via the native `@mention` syntax so the file is attached to the next prompt.
 - Stay scoped to the terminal's working dir so Claude Code's permission model accepts the path without prompting.
-- Throwaway by default — files clean up when the terminal closes; longer retention is opt-in.
+- Throwaway by default - files clean up when the terminal closes; longer retention is opt-in.
 
 ## Non-goals (v1)
 
@@ -26,22 +26,22 @@ Pasting large text (logs, JSON, stack traces) directly into a Claude Code termin
 
 ### New files
 
-- `src/components/PasteAsFileDrawer.tsx` — slide-in right-side drawer (Framer Motion, dark glassmorphic, matches existing modals).
-- `src/store/pasteStore.ts` — in-memory `Map<terminalId, PasteHistoryEntry[]>`. Not persisted (disk is the source of truth).
-- `src-tauri/src/pastes.rs` — pure filesystem helpers: write, list, read, delete, purge.
+- `src/components/PasteAsFileDrawer.tsx` - slide-in right-side drawer (Framer Motion, dark glassmorphic, matches existing modals).
+- `src/store/pasteStore.ts` - in-memory `Map<terminalId, PasteHistoryEntry[]>`. Not persisted (disk is the source of truth).
+- `src-tauri/src/pastes.rs` - pure filesystem helpers: write, list, read, delete, purge.
 
 ### Modified files
 
-- `src/store/appStore.ts` — adds `isPasteDrawerOpen: boolean` and `pasteDrawerSeed: { content?: string; targetTerminalId?: string } | null`.
-- `src/store/terminalStore.ts` — `closeTerminal` calls `invoke('purge_pastes', { terminalId })` (best-effort, errors logged) before removing the terminal from the map.
-- `src/components/TerminalView.tsx` — auto-detect interception on `onData` chunks above threshold (see below).
-- `src/components/TerminalStatusBar.tsx` — adds the "Paste as file" toolbar button.
-- `src/components/SettingsModal.tsx` — adds a "Pastes" section (threshold, prompt template, retention).
-- `src/hooks/useKeyboardShortcuts.ts` — registers `Ctrl+Shift+V` to open the drawer pre-filled from clipboard.
-- `src-tauri/src/commands.rs` — five new `#[command]` handlers (see IPC).
-- `src-tauri/src/main.rs` — registers the new commands and (for retention != "delete on close") spawns the startup cleanup task.
-- `src-tauri/capabilities/default.json` — allowlist the five new commands.
-- `src/changelog.json` — entry so the WhatsNewModal surfaces the feature post-update.
+- `src/store/appStore.ts` - adds `isPasteDrawerOpen: boolean` and `pasteDrawerSeed: { content?: string; targetTerminalId?: string } | null`.
+- `src/store/terminalStore.ts` - `closeTerminal` calls `invoke('purge_pastes', { terminalId })` (best-effort, errors logged) before removing the terminal from the map.
+- `src/components/TerminalView.tsx` - auto-detect interception on `onData` chunks above threshold (see below).
+- `src/components/TerminalStatusBar.tsx` - adds the "Paste as file" toolbar button.
+- `src/components/SettingsModal.tsx` - adds a "Pastes" section (threshold, prompt template, retention).
+- `src/hooks/useKeyboardShortcuts.ts` - registers `Ctrl+Shift+V` to open the drawer pre-filled from clipboard.
+- `src-tauri/src/commands.rs` - five new `#[command]` handlers (see IPC).
+- `src-tauri/src/main.rs` - registers the new commands and (for retention != "delete on close") spawns the startup cleanup task.
+- `src-tauri/capabilities/default.json` - allowlist the five new commands.
+- `src/changelog.json` - entry so the WhatsNewModal surfaces the feature post-update.
 
 ## On-disk layout
 
@@ -132,24 +132,24 @@ On terminal restore (existing session-restore path), `hydrateFromDisk` runs once
 
 ### Entry points
 
-- Toolbar button on `TerminalStatusBar.tsx` — clipboard icon, tooltip `"Paste as file (Ctrl+Shift+V)"`.
-- Global `Ctrl+Shift+V` registered in `useKeyboardShortcuts.ts` — opens drawer, pre-fills editor with current clipboard contents.
+- Toolbar button on `TerminalStatusBar.tsx` - clipboard icon, tooltip `"Paste as file (Ctrl+Shift+V)"`.
+- Global `Ctrl+Shift+V` registered in `useKeyboardShortcuts.ts` - opens drawer, pre-fills editor with current clipboard contents.
 - Auto-detect toast (uses existing `ToastContainer`): when a single `onData` chunk crosses the threshold AND looks pasted (chunk arrived <16ms after the prior input event, i.e. not interactive typing), forward of the chunk to the PTY is suspended and a toast offers `[Save & Reference] [Paste anyway] [Don't ask again]`. Default action on Enter = Save & Reference.
 
 ### Behaviors
 
-- **Send** — writes the file, types `<rendered-template>` into the target PTY via `writeToTerminal`. No trailing newline; user reviews and submits. Drawer closes. Toast: `"Sent to <terminal label>"`.
-- **Save only** — writes the file and copies the relative path to the clipboard. Toast: `"Saved · path copied"`. Drawer closes.
-- **Discard** — drawer closes; no disk write.
-- **Recent pastes row click** — re-opens that paste's content in the editor (read-only by default; "Edit" button to unlock).
-- **Recent pastes `[↗]` button** — re-sends to the active terminal without re-opening the drawer.
+- **Send** - writes the file, types `<rendered-template>` into the target PTY via `writeToTerminal`. No trailing newline; user reviews and submits. Drawer closes. Toast: `"Sent to <terminal label>"`.
+- **Save only** - writes the file and copies the relative path to the clipboard. Toast: `"Saved · path copied"`. Drawer closes.
+- **Discard** - drawer closes; no disk write.
+- **Recent pastes row click** - re-opens that paste's content in the editor (read-only by default; "Edit" button to unlock).
+- **Recent pastes `[↗]` button** - re-sends to the active terminal without re-opening the drawer.
 
 ### Settings (new "Pastes" section in SettingsModal)
 
-- **Auto-detect threshold** — bytes (default 4096) AND lines (default 50). Either limit triggers the toast.
-- **Prompt template** — string with `{path}` placeholder. Default: `Please look at @{path}`.
-- **Retention** — `delete-on-terminal-close` (default) | `keep-N-days` (with N input) | `keep-forever`.
-- **Clear all pastes for this terminal** — manual button (uses `purge_pastes`).
+- **Auto-detect threshold** - bytes (default 4096) AND lines (default 50). Either limit triggers the toast.
+- **Prompt template** - string with `{path}` placeholder. Default: `Please look at @{path}`.
+- **Retention** - `delete-on-terminal-close` (default) | `keep-N-days` (with N input) | `keep-forever`.
+- **Clear all pastes for this terminal** - manual button (uses `purge_pastes`).
 
 ## IPC commands
 
@@ -189,7 +189,7 @@ All five live in `commands.rs`, backed by `pastes.rs`:
 
 Each command resolves `terminal_id` → `working_directory` via `TerminalManager`, then computes `<cwd>/.claudeterminal/pastes/`. Every disk operation canonicalizes the resolved path and asserts it stays inside the pastes dir before touching anything. `file_name` is rejected unless it matches `^[A-Za-z0-9._-]+$`.
 
-`pastes.rs` uses `std::fs` directly; the Tauri `fs` plugin is not involved, so no new fs-plugin scopes are required — only allowlisting these five commands in `capabilities/default.json`.
+`pastes.rs` uses `std::fs` directly; the Tauri `fs` plugin is not involved, so no new fs-plugin scopes are required - only allowlisting these five commands in `capabilities/default.json`.
 
 ## Flows
 
@@ -218,13 +218,13 @@ Each command resolves `terminal_id` → `working_directory` via `TerminalManager
 
 ## Edge cases & error handling
 
-- **Working dir gone** — `write_paste` returns `"Working directory <path> no longer exists"`; drawer surfaces inline; editor content is preserved.
-- **Disk full / permission denied** — same inline-error path; nothing partial is sent.
-- **Empty content** — Send and Save buttons disabled.
-- **Very large content (>5 MB)** — warning banner `"This paste is X MB — Claude Code may truncate when reading"` but the operation is allowed.
-- **Drawer collision** — only one drawer instance globally; opening it with new seed content while editor is dirty prompts `"Discard current draft?"`.
-- **Target terminal died between open and Send** — `writeToTerminal` returns an error; toast surfaces it; the file is preserved on disk so the user can retry from the recent list.
-- **Hostile `file_name`** (`../`, drive letter, separator, NUL) — rejected by regex before any filesystem call.
+- **Working dir gone** - `write_paste` returns `"Working directory <path> no longer exists"`; drawer surfaces inline; editor content is preserved.
+- **Disk full / permission denied** - same inline-error path; nothing partial is sent.
+- **Empty content** - Send and Save buttons disabled.
+- **Very large content (>5 MB)** - warning banner `"This paste is X MB - Claude Code may truncate when reading"` but the operation is allowed.
+- **Drawer collision** - only one drawer instance globally; opening it with new seed content while editor is dirty prompts `"Discard current draft?"`.
+- **Target terminal died between open and Send** - `writeToTerminal` returns an error; toast surfaces it; the file is preserved on disk so the user can retry from the recent list.
+- **Hostile `file_name`** (`../`, drive letter, separator, NUL) - rejected by regex before any filesystem call.
 
 ## Testing
 
@@ -258,7 +258,7 @@ Each command resolves `terminal_id` → `working_directory` via `TerminalManager
 ## Rollout
 
 - Single feature, single PR.
-- Version bump `1.20.8` → `1.21.0` (minor — net-new user-facing feature).
+- Version bump `1.20.8` → `1.21.0` (minor - net-new user-facing feature).
 - New `src/changelog.json` entry so the WhatsNewModal surfaces it after update.
 - Add a screenshot of the drawer to `docs/` matching the style of `docs/main-view.png`.
 - No DB migration. No new dependencies (Monaco and Framer Motion are already present).

@@ -39,7 +39,7 @@ function write(layout: Layout) {
   try {
     localStorage.setItem(KEY, JSON.stringify(layout));
   } catch {
-    /* storage full / unavailable — non-fatal */
+    /* storage full / unavailable - non-fatal */
   }
 }
 

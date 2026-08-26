@@ -4,11 +4,11 @@
 
 **Goal:** Build a "Paste as File" feature that captures large pastes (logs, JSON) into a file under `<cwd>/.claudeterminal/pastes/` and auto-references it in Claude Code via `@mention`.
 
-**Architecture:** New `pastes.rs` Rust module owns file I/O. Five new IPC commands. New React drawer (`PasteAsFileDrawer.tsx`) with Monaco editor. Auto-detect on xterm `onData` chunks. Settings live in `appStore` (persisted). Pastes are throwaway by default — purged on terminal close.
+**Architecture:** New `pastes.rs` Rust module owns file I/O. Five new IPC commands. New React drawer (`PasteAsFileDrawer.tsx`) with Monaco editor. Auto-detect on xterm `onData` chunks. Settings live in `appStore` (persisted). Pastes are throwaway by default - purged on terminal close.
 
 **Tech Stack:** Rust + Tauri 2 (backend), React 18 + TypeScript + Zustand + Monaco + Framer Motion (frontend). No new deps.
 
-**Test approach:** Rust unit tests via `#[cfg(test)]` for security-critical filename validation and path-canonicalization. No frontend test framework exists in this project — frontend correctness verified by manual QA at the end.
+**Test approach:** Rust unit tests via `#[cfg(test)]` for security-critical filename validation and path-canonicalization. No frontend test framework exists in this project - frontend correctness verified by manual QA at the end.
 
 ---
 
@@ -18,7 +18,7 @@
 
 | Path | Responsibility |
 |---|---|
-| `src-tauri/src/pastes.rs` | Pure filesystem helpers: validate filename, write paste, list, read, delete, purge, retention pass. Self-contained — takes a `cwd: &Path`, returns `Result<_, String>`. |
+| `src-tauri/src/pastes.rs` | Pure filesystem helpers: validate filename, write paste, list, read, delete, purge, retention pass. Self-contained - takes a `cwd: &Path`, returns `Result<_, String>`. |
 | `src/store/pasteStore.ts` | In-memory `Map<terminalId, PasteHistoryEntry[]>` (most-recent first). Hydrates from disk on terminal restore. Not persisted. |
 | `src/components/PasteAsFileDrawer.tsx` | Right-side slide-in drawer with Monaco editor, filename/extension inputs, target-terminal selector, prompt template, recent pastes list, action buttons. |
 
@@ -42,7 +42,7 @@
 
 ---
 
-## Task 1: Rust pastes module — pure filesystem core
+## Task 1: Rust pastes module - pure filesystem core
 
 **Files:**
 - Create: `src-tauri/src/pastes.rs`
@@ -521,7 +521,7 @@ pub async fn purge_pastes(
     wrap_cmd("purge_pastes", async move {
         let cwd = match terminal_cwd(&state, &terminal_id).await {
             Ok(p) => p,
-            Err(_) => return Ok(()), // terminal may already be gone — best-effort
+            Err(_) => return Ok(()), // terminal may already be gone - best-effort
         };
         crate::pastes::purge_pastes(&cwd)
     })
@@ -559,7 +559,7 @@ git commit -m "feat(pastes): expose write/list/read/delete/purge IPC commands"
 
 ---
 
-## Task 3: appStore — drawer state + persisted settings
+## Task 3: appStore - drawer state + persisted settings
 
 **Files:**
 - Modify: `src/store/appStore.ts`
@@ -642,7 +642,7 @@ Find the `partialize: (state) => ({ ... })` block and add (alongside the other p
         pasteRetentionDays: state.pasteRetentionDays,
 ```
 
-(`pasteDrawerOpen` / `pasteDrawerSeed` are NOT persisted — they are session state.)
+(`pasteDrawerOpen` / `pasteDrawerSeed` are NOT persisted - they are session state.)
 
 - [ ] **Step 4: Type check**
 
@@ -661,7 +661,7 @@ git commit -m "feat(pastes): add drawer state and persisted settings"
 
 ---
 
-## Task 4: pasteStore — recent pastes per terminal
+## Task 4: pasteStore - recent pastes per terminal
 
 **Files:**
 - Create: `src/store/pasteStore.ts`
@@ -735,7 +735,7 @@ export const usePasteStore = create<PasteState>((set, get) => ({
         return { byTerminal: next };
       });
     } catch {
-      // non-fatal — paste dir may not exist yet
+      // non-fatal - paste dir may not exist yet
     }
   },
 }));
@@ -758,7 +758,7 @@ git commit -m "feat(pastes): add pasteStore for recent paste history"
 
 ---
 
-## Task 5: toastStore — actions support
+## Task 5: toastStore - actions support
 
 **Files:**
 - Modify: `src/store/toastStore.ts`
@@ -791,7 +791,7 @@ Update the `addToast` signature to accept `actions`:
   addToast: (toast: Omit<Toast, 'id' | 'duration'> & { duration?: number }) => string;
 ```
 
-(No body change needed — the spread already passes `actions` through.)
+(No body change needed - the spread already passes `actions` through.)
 
 Update each convenience function to accept actions. Replace the `toast` block:
 
@@ -1016,7 +1016,7 @@ export function PasteAsFileDrawer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // Re-sniff extension as user pastes/types — only if they haven't manually
+  // Re-sniff extension as user pastes/types - only if they haven't manually
   // touched the dropdown (we track this implicitly: if extension matches the
   // *previous* sniff result, we update; if user changed it, we leave it).
   const lastDetectedRef = useRef<DetectedKind>('text');
@@ -1103,7 +1103,7 @@ export function PasteAsFileDrawer() {
     try {
       await navigator.clipboard.writeText(entry.relative_path);
     } catch {
-      // ignore — clipboard may be unavailable
+      // ignore - clipboard may be unavailable
     }
     toast.success('Saved · path copied', entry.relative_path);
     closeDrawer();
@@ -1257,7 +1257,7 @@ export function PasteAsFileDrawer() {
                   <span>Size: {formatBytes(stats.bytes)}</span>
                   <span>Detected: {extension}</span>
                   {stats.bytes > 5 * 1024 * 1024 && (
-                    <span className="text-warning">⚠ Large — Claude may truncate</span>
+                    <span className="text-warning">⚠ Large - Claude may truncate</span>
                   )}
                 </div>
               </div>
@@ -1423,7 +1423,7 @@ Replace with:
         return;
       }
 
-      // Pull the LATEST settings each call — these change in Settings without
+      // Pull the LATEST settings each call - these change in Settings without
       // re-rendering this terminal.
       const app = useAppStore.getState();
       if (!isLikelyPaste || !app.pasteAutoDetectEnabled) {
@@ -1527,7 +1527,7 @@ import { ClipboardPaste } from 'lucide-react';
 import { useAppStore } from '../store/appStore';
 ```
 
-(`useAppStore` may already be imported — skip the duplicate.)
+(`useAppStore` may already be imported - skip the duplicate.)
 
 Locate the existing button row and insert:
 
@@ -1539,7 +1539,7 @@ Locate the existing button row and insert:
     try {
       clipboardText = await navigator.clipboard.readText();
     } catch {
-      // ignore — drawer opens empty if clipboard read fails
+      // ignore - drawer opens empty if clipboard read fails
     }
     useAppStore.getState().openPasteDrawer({
       content: clipboardText,
@@ -1616,7 +1616,7 @@ git commit -m "feat(pastes): add Ctrl+Shift+V shortcut to open paste drawer"
 
 ---
 
-## Task 10: SettingsModal — Pastes section
+## Task 10: SettingsModal - Pastes section
 
 **Files:**
 - Modify: `src/components/SettingsModal.tsx`
@@ -1633,7 +1633,7 @@ Add the imports needed at the top:
 import { useAppStore } from '../store/appStore'; // probably already imported
 ```
 
-Inside the modal body — after an existing section closing tag, add:
+Inside the modal body - after an existing section closing tag, add:
 
 ```tsx
 <section className="flex flex-col gap-2 py-3 border-t border-white/5">
@@ -1739,7 +1739,7 @@ git commit -m "feat(pastes): add Pastes settings section"
 
 ---
 
-## Task 11: Cleanup — purge pastes on terminal close
+## Task 11: Cleanup - purge pastes on terminal close
 
 **Files:**
 - Modify: `src/store/terminalStore.ts`
@@ -1758,7 +1758,7 @@ Find the `closeTerminal` action in `src/store/terminalStore.ts`. After the `awai
       const { usePasteStore } = await import('./pasteStore');
       usePasteStore.getState().clearForTerminal(id);
     } catch {
-      // ignore — cleanup is best-effort
+      // ignore - cleanup is best-effort
     }
 ```
 
@@ -1893,7 +1893,7 @@ cd src-tauri
 cargo check
 ```
 
-Expected: succeeds; `Cargo.lock` is regenerated. (Don't ship a release yet — that's done by `/publish`. This step just keeps lockfile consistent with the bump.)
+Expected: succeeds; `Cargo.lock` is regenerated. (Don't ship a release yet - that's done by `/publish`. This step just keeps lockfile consistent with the bump.)
 
 - [ ] **Step 6: Commit**
 
@@ -1904,7 +1904,7 @@ git commit -m "chore: bump version to 1.21.0"
 
 ---
 
-## Task 15: Verification — build, type-check, manual QA
+## Task 15: Verification - build, type-check, manual QA
 
 - [ ] **Step 1: Frontend type check + build**
 
@@ -1925,7 +1925,7 @@ cargo test --lib
 
 Expected: builds clean, all tests in `pastes` module pass.
 
-- [ ] **Step 3: Manual QA — happy path**
+- [ ] **Step 3: Manual QA - happy path**
 
 ```
 npm run tauri dev
@@ -1940,25 +1940,25 @@ In the running app:
 5. Click **Send**. Verify file appears at `<cwd>/.claudeterminal/pastes/paste-…json`, terminal receives `Please look at @.claudeterminal/pastes/paste-…json`, drawer closes, success toast shows.
 6. Verify `<cwd>/.claudeterminal/.gitignore` exists and contains `*`.
 
-- [ ] **Step 4: Manual QA — auto-detect**
+- [ ] **Step 4: Manual QA - auto-detect**
 
 1. With auto-detect enabled in Settings, copy a long log file (>4KB) to clipboard.
 2. Click into the terminal and `Ctrl+V`. Verify a toast appears with three buttons.
 3. Click **Save & Reference**. Drawer opens pre-filled. Send. Confirm file is written and `@mention` types into PTY.
-4. Repeat with **Paste anyway** — verify the chunk goes to PTY raw and only that one chunk.
-5. Repeat with **Don't ask again** — verify the chunk goes to PTY and the next big paste skips the toast.
+4. Repeat with **Paste anyway** - verify the chunk goes to PTY raw and only that one chunk.
+5. Repeat with **Don't ask again** - verify the chunk goes to PTY and the next big paste skips the toast.
 6. Re-enable auto-detect in Settings.
 
-- [ ] **Step 5: Manual QA — recent + lifecycle**
+- [ ] **Step 5: Manual QA - recent + lifecycle**
 
 1. Send three pastes from one terminal. Verify all three appear in the drawer's "Recent pastes" list.
 2. Click a recent row → verify content reloads in the editor.
 3. Click the `[↗]` button → verify it re-sends without re-opening.
 4. Click the trash icon on a recent row → verify it disappears AND the file is gone from disk.
 5. Close the terminal. Verify `<cwd>/.claudeterminal/pastes/` is empty (default retention is "delete on terminal close").
-6. In Settings switch retention to "Keep for N days", repeat — verify files survive a terminal close.
+6. In Settings switch retention to "Keep for N days", repeat - verify files survive a terminal close.
 
-- [ ] **Step 6: Manual QA — error paths**
+- [ ] **Step 6: Manual QA - error paths**
 
 1. Open a terminal in a write-protected directory (or a directory you delete after opening). Try Send. Verify the drawer surfaces the error inline and content is preserved in the editor.
 2. Open a terminal, send one paste, then close that terminal. Open the drawer (it's now empty). Manually paste content and pick a target terminal that's still alive. Verify behavior remains correct.
@@ -1976,7 +1976,7 @@ git commit -m "fix(pastes): manual QA fixes"
 
 ## Self-Review Checklist (already done by author)
 
-- **Spec coverage:** Every section of the spec maps to a task — drawer (T6), data model (T1, T4), filesystem layout (T1), IPC (T2), auto-detect (T7), settings (T10), retention (T1 + T11), cleanup (T11), changelog (T13), version bump (T14). The "startup retention pass" mentioned in the spec is *not* implemented in v1 — retention "Keep for N days" purges only when a paste is later opened/listed via `list_pastes` not on app boot. This is a deliberate scope reduction; documented above.
+- **Spec coverage:** Every section of the spec maps to a task - drawer (T6), data model (T1, T4), filesystem layout (T1), IPC (T2), auto-detect (T7), settings (T10), retention (T1 + T11), cleanup (T11), changelog (T13), version bump (T14). The "startup retention pass" mentioned in the spec is *not* implemented in v1 - retention "Keep for N days" purges only when a paste is later opened/listed via `list_pastes` not on app boot. This is a deliberate scope reduction; documented above.
 - **Placeholder scan:** No TBD/TODO. Every step shows the actual code.
 - **Type consistency:** `PasteEntry` shape matches between Rust (`pastes.rs`), TypeScript (`pasteStore.ts`), and the drawer.
 - **Ambiguity:** None spotted.

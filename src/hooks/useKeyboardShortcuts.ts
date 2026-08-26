@@ -107,7 +107,7 @@ export function useKeyboardShortcuts() {
         const activeId = activeIdRef.current;
         (async () => {
           let clipboardText = '';
-          try { clipboardText = await readClipboardText(); } catch { /* clipboard may be unavailable — open drawer with empty seed */ }
+          try { clipboardText = await readClipboardText(); } catch { /* clipboard may be unavailable - open drawer with empty seed */ }
           useAppStore.getState().openPasteDrawer({
             content: clipboardText,
             targetTerminalId: activeId,

@@ -20,7 +20,7 @@ export default function PrivacyPage() {
       <PageSection title="Analytics">
         <SettingRow
           label="Anonymous usage analytics"
-          description="Send anonymous app version and OS info to help improve ADE-1."
+          description="Send anonymous app version and OS info to help improve Agentrium."
         >
           <Toggle value={telemetryEnabled} onChange={setTelemetryEnabled} />
         </SettingRow>

@@ -11,14 +11,14 @@ description: React/TypeScript/xterm.js patterns for ClaudeTerminal frontend
 - Never hold references to disposed terminals
 
 ## Event Listeners
-- `listen()` returns unlisten function — call it in useEffect cleanup
+- `listen()` returns unlisten function - call it in useEffect cleanup
 - Register listeners in App.tsx for global events (terminal-output, terminal-finished)
 
 ## Zustand
-- `terminalStore` — NOT persisted (terminals are ephemeral)
-- `appStore` — persisted to localStorage (UI state)
+- `terminalStore` - NOT persisted (terminals are ephemeral)
+- `appStore` - persisted to localStorage (UI state)
 - Use selectors to avoid unnecessary re-renders
-- Avoid stale closures — use `getState()` in callbacks
+- Avoid stale closures - use `getState()` in callbacks
 
 ## IPC
 - Always wrap `invoke()` in try/catch
@@ -27,5 +27,5 @@ description: React/TypeScript/xterm.js patterns for ClaudeTerminal frontend
 
 ## Styling
 - Dark glassmorphic theme: `bg-gray-800/80`, `border-gray-700/50`, `backdrop-blur`
-- Use Tailwind classes — no hardcoded colors
+- Use Tailwind classes - no hardcoded colors
 - Framer Motion for animations

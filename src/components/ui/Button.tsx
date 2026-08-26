@@ -14,7 +14,7 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   icon?: ReactNode;
 }
 
-// All variants follow the user's accent token — no hardcoded brand colors.
+// All variants follow the user's accent token - no hardcoded brand colors.
 const VARIANTS: Record<ButtonVariant, string> = {
   primary: 'bg-accent-primary hover:bg-accent-secondary text-white',
   secondary:

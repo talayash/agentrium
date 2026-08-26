@@ -1,6 +1,6 @@
 // Maps file paths to (backend server key, LSP languageId). The server key
 // matches src-tauri/src/lsp/acquire.rs::server_spec. languageId follows the
-// LSP spec ('typescriptreact' for .tsx — tsserver cares about the react
+// LSP spec ('typescriptreact' for .tsx - tsserver cares about the react
 // variants for JSX diagnostics).
 
 export type LspServer = 'typescript' | 'python' | 'rust';

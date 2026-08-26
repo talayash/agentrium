@@ -7,9 +7,9 @@
  *       live:{installation_id}   TTL=900s,  metadata = {version, os, country}
  *
  *   - D1 (binding: DB)
- *       counters             — all-time scalars (total_installations)
- *       daily_dau            — one row per (date, installation_id), DAU = COUNT(*)
- *       daily_stats          — counters by (date, dimension, bucket)
+ *       counters             - all-time scalars (total_installations)
+ *       daily_dau            - one row per (date, installation_id), DAU = COUNT(*)
+ *       daily_stats          - counters by (date, dimension, bucket)
  *
  * Routes:
  *   POST /heartbeat              record a heartbeat
@@ -217,7 +217,7 @@ async function handleHeartbeat(
     );
   }
 
-  // Aggregate writes — one batch, partial atomicity.
+  // Aggregate writes - one batch, partial atomicity.
   const stmts = [
     env.DB.prepare('INSERT OR IGNORE INTO daily_dau (date, installation_id) VALUES (?, ?)').bind(
       date,

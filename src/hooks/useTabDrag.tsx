@@ -44,7 +44,7 @@ interface DragStart {
  * Pointer-based tab drag/drop. HTML5 DnD is unreliable in WebView2, so the tab
  * drag uses pointer events + pointer capture. The lifted "carry" visual is a
  * separate transparent, always-on-top overlay window (see DragPreview) that
- * follows the cursor — so the dragged tab is visible even OUTSIDE the window (a
+ * follows the cursor - so the dragged tab is visible even OUTSIDE the window (a
  * DOM ghost would be clipped to its window). One gesture covers:
  *   - reorder within the strip (slide-aside: other tabs part to open a gap),
  *   - drag-out: release outside the strip → `routeTabDrop` tears off a new
@@ -56,7 +56,7 @@ export function useTabDrag(windowLabel: string, variant: 'main' | 'detached' = '
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [dropIndex, setDropIndex] = useState<number | null>(null);
   const [splitDropTargetId, setSplitDropTargetId] = useState<string | null>(null);
-  // Ids currently being dragged — drives the strip's slide-aside preview order.
+  // Ids currently being dragged - drives the strip's slide-aside preview order.
   const [dragIds, setDragIds] = useState<string[]>([]);
 
   const startRef = useRef<DragStart | null>(null);
@@ -100,7 +100,7 @@ export function useTabDrag(windowLabel: string, variant: 'main' | 'detached' = '
   const commitReorder = useCallback(
     (ids: string[], at: number) => {
       // `at` is an index among the NON-dragged tabs (see computeDropIndex), so
-      // insert there directly — matching the strip's slide-aside preview order,
+      // insert there directly - matching the strip's slide-aside preview order,
       // so commit produces no visual jump.
       const remaining = tabOrder().filter((tid) => !ids.includes(tid));
       const insertAt = Math.max(0, Math.min(at, remaining.length));
@@ -202,7 +202,7 @@ export function useTabDrag(windowLabel: string, variant: 'main' | 'detached' = '
     }
     if (!s) return;
     if (!s.moved) {
-      // Plain click — let onClick handle focus/selection.
+      // Plain click - let onClick handle focus/selection.
       startRef.current = null;
       return;
     }

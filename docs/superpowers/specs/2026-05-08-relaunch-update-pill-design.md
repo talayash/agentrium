@@ -1,11 +1,11 @@
-# Relaunch-Update Pill — Design
+# Relaunch-Update Pill - Design
 
 **Date:** 2026-05-08
 **Status:** Approved (pending user review)
 
 ## Problem
 
-Today, ClaudeTerminal only checks for updates 3 seconds after the app launches. Users who never close the app and never open Settings never learn that a new version is available — they sit on stale builds indefinitely. There is also no visible "an update is waiting" affordance once one has been found; the only entry points are the modal banner (which can be dismissed) and the Settings → Updates panel (which the idle user never visits).
+Today, ClaudeTerminal only checks for updates 3 seconds after the app launches. Users who never close the app and never open Settings never learn that a new version is available - they sit on stale builds indefinitely. There is also no visible "an update is waiting" affordance once one has been found; the only entry points are the modal banner (which can be dismissed) and the Settings → Updates panel (which the idle user never visits).
 
 ## Goal
 
@@ -44,19 +44,19 @@ Trigger (startup / 4h interval / focus regained)
 
 ### Components
 
-- **`updaterStore`** (existing, extended) — owns the entire update state machine.
-  - New field: `lastCheckAt: number | null` — wall-clock timestamp of the most recent `checkForUpdates` call (success or failure).
+- **`updaterStore`** (existing, extended) - owns the entire update state machine.
+  - New field: `lastCheckAt: number | null` - wall-clock timestamp of the most recent `checkForUpdates` call (success or failure).
   - New behavior: when `checkForUpdates` resolves with `status === 'available'`, the store immediately invokes `downloadAndInstall` itself instead of waiting for UI.
   - The existing guard ("don't re-check if status is `downloading` or `ready`") stays. Once an update is staged, polling pauses until the user restarts or an error resets the state.
 
-- **Background scheduler** (new, lives in a top-level component — `AutoUpdater` is the natural home, since it already owns the startup check).
-  - **Periodic check:** `setInterval` of 4 hours, started after the initial startup check resolves. On each tick, compares `Date.now() - lastCheckAt` to the interval — only fires if at least 4 hours of wall-clock time have actually elapsed (guards against drift on a sleeping/throttled timer).
+- **Background scheduler** (new, lives in a top-level component - `AutoUpdater` is the natural home, since it already owns the startup check).
+  - **Periodic check:** `setInterval` of 4 hours, started after the initial startup check resolves. On each tick, compares `Date.now() - lastCheckAt` to the interval - only fires if at least 4 hours of wall-clock time have actually elapsed (guards against drift on a sleeping/throttled timer).
   - **Focus re-check:** `getCurrentWindow().onFocusChanged()` listener. Fires `checkForUpdates` only when focus is gained AND `Date.now() - lastCheckAt > 30 * 60 * 1000` (30-minute floor prevents thrash on every alt-tab).
   - All listeners are cleaned up on unmount.
 
-- **`AutoUpdater` banner** (existing, modified) — currently auto-opens on `status === 'available'`. Changed to auto-open only on `status === 'ready'`, since the `available` and `downloading` states are now silent for the auto-flow. An explicit Settings-initiated check still surfaces all states inside the Settings modal itself.
+- **`AutoUpdater` banner** (existing, modified) - currently auto-opens on `status === 'available'`. Changed to auto-open only on `status === 'ready'`, since the `available` and `downloading` states are now silent for the auto-flow. An explicit Settings-initiated check still surfaces all states inside the Settings modal itself.
 
-- **`UpdatePill`** (new component) — small pill rendered inside `TitleBar`'s right cluster, positioned **before** the `FileDiff` button. Subscribes to `useUpdaterStore`. Renders nothing unless `status === 'ready'` or `status === 'error'`.
+- **`UpdatePill`** (new component) - small pill rendered inside `TitleBar`'s right cluster, positioned **before** the `FileDiff` button. Subscribes to `useUpdaterStore`. Renders nothing unless `status === 'ready'` or `status === 'error'`.
 
 ### `UpdatePill` visual states
 
@@ -64,7 +64,7 @@ Trigger (startup / 4h interval / focus regained)
 
 - Content: `↻ Relaunch · v{version}` (icon: `RotateCw` from lucide)
 - Style: pill shape, height 24px, `bg-accent-primary/15`, `text-accent-primary`, `ring-1 ring-inset ring-accent-primary/30`
-- Tooltip: `Restart to install update v{version} — your terminals will be restored`
+- Tooltip: `Restart to install update v{version} - your terminals will be restored`
 - Click handler: `useUpdaterStore.getState().restart()`
 - Animation: subtle one-time entry pulse via Framer Motion (scale 1 → 1.05 → 1, 600ms) so a user already looking at the title bar notices it
 - Max width: 180px with truncation on the version string for safety on narrow windows
@@ -89,10 +89,10 @@ The pill is conditionally rendered, so it does not reserve space when absent.
 
 ## Files touched
 
-- `src/store/updaterStore.ts` — add `lastCheckAt` field; chain `downloadAndInstall` automatically after `available`; preserve existing error/guard behavior. Note: the existing `downloadAndInstall` re-runs `check()` internally — for the auto-chained call we should pass the already-fetched `Update` handle through (or refactor `downloadAndInstall` to accept one) to avoid a redundant network round-trip. The Settings-initiated path can keep the re-check.
-- `src/components/AutoUpdater.tsx` — change auto-show condition from `available` to `ready`; add periodic interval and focus listener that drive `checkForUpdates`.
-- `src/components/UpdatePill.tsx` — **new** component, ~80 lines.
-- `src/components/TitleBar.tsx` — render `<UpdatePill />` as the first child of the right action cluster.
+- `src/store/updaterStore.ts` - add `lastCheckAt` field; chain `downloadAndInstall` automatically after `available`; preserve existing error/guard behavior. Note: the existing `downloadAndInstall` re-runs `check()` internally - for the auto-chained call we should pass the already-fetched `Update` handle through (or refactor `downloadAndInstall` to accept one) to avoid a redundant network round-trip. The Settings-initiated path can keep the re-check.
+- `src/components/AutoUpdater.tsx` - change auto-show condition from `available` to `ready`; add periodic interval and focus listener that drive `checkForUpdates`.
+- `src/components/UpdatePill.tsx` - **new** component, ~80 lines.
+- `src/components/TitleBar.tsx` - render `<UpdatePill />` as the first child of the right action cluster.
 
 ## Edge cases
 
@@ -101,7 +101,7 @@ The pill is conditionally rendered, so it does not reserve space when absent.
 3. **A newer release ships while v1.21.0 is already staged.** Polling is paused once `status === 'ready'`. The user restarts to v1.21.0, and v1.21.1 is picked up on the next launch's startup check. Re-downloading mid-session would be worse UX than missing one revision.
 4. **Restart fails.** Existing `restart()` already sets the `error` field; the pill flips to its error variant.
 5. **Window minimized for days, then restored.** `onFocusChanged(true)` fires; the 30-minute floor passes; `checkForUpdates` runs; an update is found; silent download proceeds; pill appears. **This is the headline user case.**
-6. **Tauri updater returns an update with the same version we are running.** The plugin's `check()` already filters this — no extra guard needed.
+6. **Tauri updater returns an update with the same version we are running.** The plugin's `check()` already filters this - no extra guard needed.
 7. **Download fails on a transient network error.** Status becomes `error`; the pill shows the error variant. The next 4-hour periodic tick will retry automatically. We deliberately do not retry immediately to avoid hammering the endpoint on persistent failures.
 
 ## Testing
@@ -115,5 +115,5 @@ No automated tests are added in this change. Adding test infrastructure for the 
 
 ## Risk notes
 
-- **Silent background download uses bandwidth without an explicit per-update consent step.** This is an intentional trade-off — it matches Claude Desktop's behavior and ClaudeTerminal release artifacts are small (~10MB NSIS / ~6MB MSI). Users who object can still ignore the pill; nothing is installed without a click.
+- **Silent background download uses bandwidth without an explicit per-update consent step.** This is an intentional trade-off - it matches Claude Desktop's behavior and ClaudeTerminal release artifacts are small (~10MB NSIS / ~6MB MSI). Users who object can still ignore the pill; nothing is installed without a click.
 - **The 4-hour interval and 30-minute focus floor are picked, not measured.** If telemetry later shows users restarting much more often than expected, the cadence can be tuned without redesign.

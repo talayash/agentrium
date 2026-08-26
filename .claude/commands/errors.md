@@ -4,7 +4,7 @@ You are pulling end-user error/exception reports stored by the `ct-analytics` Cl
 
 ## Arguments
 
-`$ARGUMENTS` — Window in days (e.g. `1`, `7`, `30`). Plain integer or with trailing `d` (e.g. `7d`). Defaults to **7** if empty. Clamped to [1, 90].
+`$ARGUMENTS` - Window in days (e.g. `1`, `7`, `30`). Plain integer or with trailing `d` (e.g. `7d`). Defaults to **7** if empty. Clamped to [1, 90].
 
 ## Step 1: Resolve the window
 
@@ -31,7 +31,7 @@ You are pulling end-user error/exception reports stored by the `ct-analytics` Cl
    Ask before running. If they decline, fall through to Step 3.
 5. If the request fails for any other reason (no token, non-2xx, network error), fall through to Step 3.
 
-## Step 3: Fallback — query D1 directly via wrangler
+## Step 3: Fallback - query D1 directly via wrangler
 
 Run wrangler from `workers/ct-analytics/` against the production D1 (`--remote`). Use `--json` so the output is parseable. Run all queries; capture stdout per query.
 
@@ -73,14 +73,14 @@ Invocation pattern (single line; queries can be `;`-separated in a single `--com
 npx wrangler d1 execute ct-analytics-db --remote --json --command "<query>"
 ```
 
-If wrangler is not authenticated, it will fail with an auth error — tell the user to run `npx wrangler login` and abort.
+If wrangler is not authenticated, it will fail with an auth error - tell the user to run `npx wrangler login` and abort.
 
 ## Step 4: Format and print the summary inline
 
 Print **only** to chat (no files written). Use this structure:
 
 ```
-## Error report — last {N} days  (as of {generated_at})
+## Error report - last {N} days  (as of {generated_at})
 
 **Totals**: {total_errors} events from {affected_installations} installations across {unique_fingerprints} unique fingerprints.
 
@@ -91,7 +91,7 @@ Print **only** to chat (no files written). Use this structure:
 
 ### Top issues
 
-1. **[source] [kind]** — {occurrences} events, {users} users, versions={versions}
+1. **[source] [kind]** - {occurrences} events, {users} users, versions={versions}
    First seen: {first_seen}  Last seen: {last_seen}
    Fingerprint: `{fingerprint}`
    Message: {message}
@@ -109,15 +109,15 @@ After the structured listing, add a `### Summary` section in prose (3–6 senten
 
 - Call out the single highest-impact issue (most users affected, not just most occurrences).
 - Note any version that is over-represented vs. its share of DAU (suggests a regression introduced in that version).
-- Note any source that dominates (e.g., "Most errors come from `rust_panic` — likely a single recurring crash" vs. "Spread across all three sources").
+- Note any source that dominates (e.g., "Most errors come from `rust_panic` - likely a single recurring crash" vs. "Spread across all three sources").
 - If a fingerprint appears only in one specific version, flag it as likely-introduced-in-that-version.
 - If totals are zero or trivially low (<5), say so plainly and don't fabricate analysis.
 
-End with **one** concrete next step the user might take (e.g., "Reproduce fingerprint `abc123` on 1.21.0 against the `terminal.rs` PTY reader — message references that file").
+End with **one** concrete next step the user might take (e.g., "Reproduce fingerprint `abc123` on 1.21.0 against the `terminal.rs` PTY reader - message references that file").
 
 ## Notes
 
 - Never print or save the `STATS_TOKEN` value.
-- Do not write any report file — output is inline only.
+- Do not write any report file - output is inline only.
 - The Worker endpoint must be deployed at least once before HTTPS path works. If `/errors/summary` 404s on production but exists in the code, run `npx wrangler deploy` from `workers/ct-analytics/`.
 - If the user passes anything that looks like a version (e.g. `since-v1.21.0`), tell them this command only supports day windows and ask them to use a day count instead.

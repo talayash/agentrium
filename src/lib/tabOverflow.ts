@@ -2,7 +2,7 @@
  * Pure helpers for the tab-strip "Show Hidden Tabs" overflow chevron.
  *
  * The tab strip has a bounded width; when many tabs are open they overflow
- * off-screen. This module computes — without any DOM measurement — which
+ * off-screen. This module computes - without any DOM measurement - which
  * tabs fit and which need to move into a chevron dropdown, keeping the
  * active tab visible when possible.
  *
@@ -25,7 +25,7 @@ export interface TabWidthHints {
  *   (6+8) + agent brand icon (14px + 4px gap = 18, always present) +
  *   label glyph width (~7px per char, monospace-ish) + close button (16).
  *   Clamped to [80, 200] to match the browser's flex-shrink behavior on
- *   real tabs — a lone glyph never renders narrower than 80px and a long
+ *   real tabs - a lone glyph never renders narrower than 80px and a long
  *   label collapses to 200px before ellipsis.
  *
  * Defensive: non-finite / negative label lengths are floored to 0, so a
@@ -44,7 +44,7 @@ export function estimateTabWidth(label: string, opts: TabWidthHints = {}): numbe
 export interface OverflowParams {
   tabIds: readonly string[];
   activeId: string | null;
-  /** Parallel to tabIds — width of each tab in px. Length should match tabIds. */
+  /** Parallel to tabIds - width of each tab in px. Length should match tabIds. */
   tabWidths: readonly number[];
   containerWidth: number;
   chevronWidth: number;
@@ -74,7 +74,7 @@ export interface OverflowResult {
  *   - `containerWidth` too small for even one tab (budget ≤ 0) → active tab
  *     shown alone if present, otherwise everything hidden.
  *   - `tabWidths` shorter than `tabIds` → missing entries treated as the
- *     max clamp (200) so the tab is conservatively counted. Silent — the
+ *     max clamp (200) so the tab is conservatively counted. Silent - the
  *     helper stays pure and side-effect-free.
  */
 export function computeTabOverflow(params: OverflowParams): OverflowResult {
@@ -87,7 +87,7 @@ export function computeTabOverflow(params: OverflowParams): OverflowResult {
   const totalWidth = tabIds.reduce((sum, _id, i) => sum + widthAt(i), 0);
   const availableForTabs = containerWidth - reservedRight;
 
-  // Everything fits — no chevron needed.
+  // Everything fits - no chevron needed.
   if (totalWidth <= availableForTabs) {
     return { visible: [...tabIds], hidden: [] };
   }
@@ -95,7 +95,7 @@ export function computeTabOverflow(params: OverflowParams): OverflowResult {
   // Overflow: reserve chevron width.
   const budget = availableForTabs - chevronWidth;
 
-  // Budget too small for anything — show active if present, else hide all.
+  // Budget too small for anything - show active if present, else hide all.
   if (budget <= 0) {
     if (activeId && tabIds.includes(activeId)) {
       return {
@@ -122,8 +122,8 @@ export function computeTabOverflow(params: OverflowParams): OverflowResult {
   // Keep active tab visible. Normally swap it into the last visible slot;
   // but if the prefix-fit loop couldn't fit *any* tab (every tab wider than
   // the budget after reserving chevron space), fall through to showing the
-  // active tab alone. Without this fallback the strip renders empty — just
-  // the "N hidden" chevron badge with no visible tab — because a narrow tab
+  // active tab alone. Without this fallback the strip renders empty - just
+  // the "N hidden" chevron badge with no visible tab - because a narrow tab
   // strip plus a wide label produces budget > 0 but no tab that fits.
   if (activeId && hidden.includes(activeId)) {
     const newVisible = visible.length > 0

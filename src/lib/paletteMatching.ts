@@ -22,7 +22,7 @@ export interface FuzzyMatchResult {
 /**
  * Fuzzy match text against query. Exact-substring matches score highest
  * (100 - startIdx, so front matches beat middle matches). Character-by-
- * character fuzzy match falls back if no substring hit — consecutive
+ * character fuzzy match falls back if no substring hit - consecutive
  * matches get a 3-point bonus, non-consecutive 1 point.
  * Empty query returns { matches: true, score: 0, positions: [] }.
  */

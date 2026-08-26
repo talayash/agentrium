@@ -27,7 +27,7 @@ export function applyAccentColor(hex: string): void {
   root.style.setProperty('--ij-tab-underline', hex);
   root.style.setProperty('--border-focus', `rgba(${r}, ${g}, ${b}, 0.55)`);
   // Shadow-glow tokens consumed by Tailwind's shadow-glow-sm / shadow-glow-md.
-  // Distinct from --accent-glow (0.18) — different consumers, different alphas.
+  // Distinct from --accent-glow (0.18) - different consumers, different alphas.
   root.style.setProperty('--accent-glow-sm', `rgba(${r}, ${g}, ${b}, 0.14)`);
   root.style.setProperty('--accent-glow-md', `rgba(${r}, ${g}, ${b}, 0.22)`);
 }
@@ -55,7 +55,7 @@ export function applyThemeMode(mode: ThemeMode): void {
     root.style.setProperty('--text-primary', '39 40 46');     // #27282E
     root.style.setProperty('--text-secondary', '92 96 107');  // #5C606B
     root.style.setProperty('--text-tertiary', '107 111 121'); // #6B6F79
-    // Semantic overrides — ExpUI Green4/Yellow4/Red4 (vivid on light bg).
+    // Semantic overrides - ExpUI Green4/Yellow4/Red4 (vivid on light bg).
     // Dark defaults live in index.css :root.
     root.style.setProperty('--success', '#208A3C');
     root.style.setProperty('--warning', '#FFAF0F');

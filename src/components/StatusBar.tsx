@@ -58,7 +58,7 @@ export function StatusBar() {
   const activeGitInfo = activeTerminalId ? gitInfoCache.get(activeTerminalId) : null;
   const now = useNowTick();
 
-  // "Last event" ticker — sketch showed "last event: 12s ago" in the status
+  // "Last event" ticker - sketch showed "last event: 12s ago" in the status
   // bar. Walk every terminal's last-output timestamp and format the most
   // recent one. Rendered only when there's a terminal AND we've seen output
   // within the last hour (otherwise it becomes stale-looking).
@@ -71,7 +71,7 @@ export function StatusBar() {
     if (latest === 0) return null;
     const ageMs = now - latest;
     if (ageMs < 0) return null;
-    if (ageMs > 60 * 60_000) return null; // >1h old — hide (stale signal)
+    if (ageMs > 60 * 60_000) return null; // >1h old - hide (stale signal)
     if (ageMs < 3_000) return 'just now';
     if (ageMs < 60_000) return `${Math.round(ageMs / 1000)}s ago`;
     return `${Math.round(ageMs / 60_000)}m ago`;
@@ -147,7 +147,7 @@ export function StatusBar() {
 
         {activeTerminal && <span className="text-text-tertiary/50 px-1">·</span>}
 
-        {/* Last-event ticker — sketch's "last event: 12s ago" widget. */}
+        {/* Last-event ticker - sketch's "last event: 12s ago" widget. */}
         {lastEventLabel && (
           <>
             <span className="text-text-tertiary text-[11px] px-1.5">
@@ -177,7 +177,7 @@ export function StatusBar() {
                 <span className="font-mono truncate max-w-[140px]">
                   {activeGitInfo.current_branch}
                 </span>
-                {/* Clean-state indicator — sketch's "up to date" checkmark. */}
+                {/* Clean-state indicator - sketch's "up to date" checkmark. */}
                 {activeGitInfo.dirty_count === 0 && (activeGitInfo.ahead ?? 0) === 0 && (activeGitInfo.behind ?? 0) === 0 && (
                   <Check size={9} strokeWidth={2.5} className="text-success" />
                 )}
@@ -276,7 +276,7 @@ export function StatusBar() {
         )}
 
         {/* App version */}
-        <Tooltip label={`ADE-1 v${appVersion}`} side="top">
+        <Tooltip label={`Agentrium v${appVersion}`} side="top">
           <span className="text-text-tertiary px-1.5 font-mono">v{appVersion}</span>
         </Tooltip>
       </div>

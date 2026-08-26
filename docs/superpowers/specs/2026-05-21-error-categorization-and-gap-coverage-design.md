@@ -1,4 +1,4 @@
-# Error categorization & gap coverage — design
+# Error categorization & gap coverage - design
 
 **Date:** 2026-05-21
 **Author:** Tal Ayash
@@ -8,7 +8,7 @@
 
 The `ct-analytics` Cloudflare Worker has been collecting end-user error reports since the [2026-05-07 error reporter rollout](2026-05-07-error-reporter-design.md). The first batch of production data shows two problems:
 
-1. **The dashboard is dominated by user-input validation, not bugs.** Of 11 events in the last 7 days, 10 are command-level `Err(String)` returns that exist precisely to tell the user "your input was invalid" — e.g., `git_pull_branch` returning `"Working tree has uncommitted changes — commit or stash first"`. These are not crashes or unexpected failures, but `wrap_cmd` reports every `Err` indiscriminately.
+1. **The dashboard is dominated by user-input validation, not bugs.** Of 11 events in the last 7 days, 10 are command-level `Err(String)` returns that exist precisely to tell the user "your input was invalid" - e.g., `git_pull_branch` returning `"Working tree has uncommitted changes - commit or stash first"`. These are not crashes or unexpected failures, but `wrap_cmd` reports every `Err` indiscriminately.
 2. **Several real failure modes are not covered.** PTY reader-thread I/O errors are only logged via `eprintln!`; tauri-plugin-updater failures are silently swallowed in `AutoUpdater.tsx`; 119 `.catch(() => {})` blocks across 34 frontend files quietly drop IPC errors that the user perceives as "the button did nothing."
 
 This spec covers a single PR that fixes both: categorize user-input errors so they're not reported, and instrument the real gaps so we capture the failures that matter.
@@ -17,7 +17,7 @@ This spec covers a single PR that fixes both: categorize user-input errors so th
 
 - Stop reporting user-input validation as "errors" on the dashboard.
 - Capture PTY reader-thread I/O failures, updater plugin failures, and user-visible IPC failures.
-- Preserve the existing `Result<T, String>` contract on every command — no protocol/signature churn.
+- Preserve the existing `Result<T, String>` contract on every command - no protocol/signature churn.
 - Add tests that lock in the new contract.
 
 ## Non-goals
@@ -31,7 +31,7 @@ This spec covers a single PR that fixes both: categorize user-input errors so th
 
 Two coordinated changes, plus three targeted gap fills:
 
-1. **Sentinel-prefix categorization.** A new `user_err(msg)` helper returns a `String` with a hidden control-character prefix (`"\x01u\x01"`). `wrap_cmd` detects the sentinel, strips it before returning to the frontend, and **does not** invoke `error_reporter::report`. The frontend sees an identical string — no IPC change.
+1. **Sentinel-prefix categorization.** A new `user_err(msg)` helper returns a `String` with a hidden control-character prefix (`"\x01u\x01"`). `wrap_cmd` detects the sentinel, strips it before returning to the frontend, and **does not** invoke `error_reporter::report`. The frontend sees an identical string - no IPC change.
 2. **Gap instrumentation.** PTY reader thread reports its own I/O errors via `report_blocking`. Updater calls in `AutoUpdater.tsx` get wrapped in try/catch with `reportError`. User-initiated `invoke(...).catch(() => {})` sites (button handlers and menu actions) get a shared `reportInvokeFailure` helper. Background pollers and fire-and-forget cleanup are out of scope.
 3. **Verification test.** A smoke test that the global panic hook in `main.rs` catches `std::thread::spawn` panics (the PTY reader thread relies on this).
 
@@ -39,7 +39,7 @@ Two coordinated changes, plus three targeted gap fills:
 
 The cleanest type-system answer would be an `AppError { User(String), Internal(String) }` enum, but the cost is changing 105 command signatures from `Result<T, String>` to `Result<T, AppError>`. Every call site, every `.map_err(|e| e.to_string())`, every test would churn. The sentinel approach is a localized change to `wrap_cmd` plus targeted migration of known offenders. Future commands inherit the pattern by importing `user_err`; nothing else changes.
 
-The control-character prefix `\x01u\x01` is chosen because `\x01` (Start of Heading) never appears in error messages we generate — it's not in path strings, library error formats, or user-facing copy. A doc comment on `user_err` warns against passing untrusted strings that might collide.
+The control-character prefix `\x01u\x01` is chosen because `\x01` (Start of Heading) never appears in error messages we generate - it's not in path strings, library error formats, or user-facing copy. A doc comment on `user_err` warns against passing untrusted strings that might collide.
 
 ## Components
 
@@ -65,7 +65,7 @@ wrap_cmd detects USER_ERR_PREFIX
     │
     ├─► strip prefix → return Err("Working tree dirty") to frontend
     │
-    └─► (skip report() — nothing sent to Worker)
+    └─► (skip report() - nothing sent to Worker)
 ```
 
 **Internal-error path (unchanged):**
@@ -97,7 +97,7 @@ The five fingerprints that polluted the last 7 days of telemetry:
 
 | Command | Current `Err` shape | Action |
 |---|---|---|
-| `git_pull_branch` | `"Working tree has uncommitted changes — commit or stash first, then pull."` | Wrap in `user_err(...)`. |
+| `git_pull_branch` | `"Working tree has uncommitted changes - commit or stash first, then pull."` | Wrap in `user_err(...)`. |
 | `scan_git_repos` | `"Invalid path '<x>': The system cannot find the file specified. (os error 2)"` | Wrap in `user_err(...)` when the path came from frontend args. |
 | `git_list_stashes` | same shape | Wrap in `user_err(...)`. |
 | `list_package_scripts` | same shape | Wrap in `user_err(...)`. |
@@ -125,16 +125,16 @@ Existing tests stay green. New tests:
 - `wrap_cmd` does not call `error_reporter::report` for user errors. Implementation: extract the "should report?" decision into a pure helper (`fn should_report(err: &str) -> bool { !is_user_error(err) }`) and test that directly, since the reporter itself is global state.
 - A `std::thread::spawn(|| panic!("test"))` inside the panic-hook smoke test triggers the hook (verified by setting a flag the test reads). Run only in debug builds to avoid disturbing release behavior.
 
-Frontend tests for `reportInvokeFailure` are skipped — the function is a thin normalization wrapper around the existing `reportError` (which is already covered by smoke tests).
+Frontend tests for `reportInvokeFailure` are skipped - the function is a thin normalization wrapper around the existing `reportError` (which is already covered by smoke tests).
 
 ## Risks and mitigations
 
 | Risk | Mitigation |
 |---|---|
-| A future contributor produces an error message that happens to start with `\x01u\x01`. | Doc comment on `user_err` warns about the contract. Realistically `\x01` won't appear — no real library prepends control characters. |
-| Migration mis-classifies a real bug as user input. | Inspection per site. If wrong, the command's `Err` still flows correctly to the frontend — we just lose telemetry signal on that one shape. Easy to revert per-site. |
+| A future contributor produces an error message that happens to start with `\x01u\x01`. | Doc comment on `user_err` warns about the contract. Realistically `\x01` won't appear - no real library prepends control characters. |
+| Migration mis-classifies a real bug as user input. | Inspection per site. If wrong, the command's `Err` still flows correctly to the frontend - we just lose telemetry signal on that one shape. Easy to revert per-site. |
 | Reporter helper `should_report` drifts from `wrap_cmd`'s implementation. | Put the helper in `error_reporter.rs` and have `wrap_cmd` call it. Single source of truth. |
-| PTY reader-error reporting floods telemetry if a user has a flaky terminal. | The existing 60-second dedup window in `error_reporter::Dedup` covers this — repeated identical I/O errors collapse to one report per minute. |
+| PTY reader-error reporting floods telemetry if a user has a flaky terminal. | The existing 60-second dedup window in `error_reporter::Dedup` covers this - repeated identical I/O errors collapse to one report per minute. |
 | Frontend audit scope creep. | Hard rule: only user-initiated invokes (button handlers, menu actions). Background pollers and fire-and-forget cleanup stay as-is. |
 
 ## Out of scope
@@ -147,4 +147,4 @@ Frontend tests for `reportInvokeFailure` are skipped — the function is a thin 
 
 ## Open questions
 
-None at design time. Implementation will surface per-site judgment calls for the migration list — those are handled inline against this design.
+None at design time. Implementation will surface per-site judgment calls for the migration list - those are handled inline against this design.

@@ -1,30 +1,30 @@
-# Issue #22 — Plain-shell toggle + zoom shortcuts
+# Issue #22 - Plain-shell toggle + zoom shortcuts
 
 **Date:** 2026-05-08
-**Issue:** [#22](https://github.com/talayash/claude-terminal/issues/22) — "cant zoom in, cant scroll up, cant use ollama"
+**Issue:** [#22](https://github.com/talayash/claude-terminal/issues/22) - "cant zoom in, cant scroll up, cant use ollama"
 **Status:** Design
 
 ## Background
 
 Issue #22 reported three complaints. Item 2 (scrollback) is already resolved on the in-flight branch via the appearance settings (default scrollback raised to 50,000). This spec covers the remaining two:
 
-1. **Item 1 — `ollama launch claude ...`:** the New Terminal flow hardcodes `cmd /C claude [args]`, so users can't run wrappers around Claude.
-2. **Item 3 — Zoom:** font size is configurable in Settings → Appearance (8–32 px) but there is no keyboard shortcut, so users have to open Settings to change it.
+1. **Item 1 - `ollama launch claude ...`:** the New Terminal flow hardcodes `cmd /C claude [args]`, so users can't run wrappers around Claude.
+2. **Item 3 - Zoom:** font size is configurable in Settings → Appearance (8–32 px) but there is no keyboard shortcut, so users have to open Settings to change it.
 
 ## Goals
 
-- Let users start a terminal that runs **any** command, not just `claude`, from the New Terminal modal — explicitly to enable `ollama launch claude ...` and similar wrappers.
+- Let users start a terminal that runs **any** command, not just `claude`, from the New Terminal modal - explicitly to enable `ollama launch claude ...` and similar wrappers.
 - Let users zoom the terminal font in/out and reset it without opening Settings.
 
 ## Non-goals
 
 - Persisting the wrapper command per profile (out of scope for this iteration; if requested later, becomes a "command prefix" or "executable" field on `ConfigProfile`).
-- Per-terminal font size. Zoom changes the global setting — the same one Settings → Appearance sets.
+- Per-terminal font size. Zoom changes the global setting - the same one Settings → Appearance sets.
 - Touching the existing bottom-pane plain-shell flow (already shipped, lives in `bottomTerminalIds`).
 
 ## Approach
 
-### Part 1 — "Plain shell" toggle in NewTerminalModal
+### Part 1 - "Plain shell" toggle in NewTerminalModal
 
 A single toggle near the top of `NewTerminalModal.tsx`, labeled **"Plain shell (no Claude)"**. When on:
 
@@ -33,7 +33,7 @@ A single toggle near the top of `NewTerminalModal.tsx`, labeled **"Plain shell (
 - Footer button label flips from **"Start Terminal"** → **"Start Shell"**.
 - Submit calls a new store action `createShellTerminalTab(label, workingDirectory, colorTag, nickname)` instead of `createTerminal(...)`.
 
-The toggle defaults to **off** (preserves existing behavior). Toggle state is *not* persisted — every new modal opens in Claude mode.
+The toggle defaults to **off** (preserves existing behavior). Toggle state is *not* persisted - every new modal opens in Claude mode.
 
 #### Backend
 
@@ -41,7 +41,7 @@ No changes. `create_shell_terminal` IPC command already exists (`commands.rs:300
 
 #### Store
 
-`src/store/terminalStore.ts` already has `openShellTerminal(label, cwd)` (line 415), but it routes the new terminal into the **bottom pane** (`bottomTerminalIds`) — not the main tab list. The modal needs a sibling helper that mirrors `createTerminal`'s post-IPC bookkeeping (insert into `terminals`, mark `activeTerminalId`, no `bottomTerminalIds` push).
+`src/store/terminalStore.ts` already has `openShellTerminal(label, cwd)` (line 415), but it routes the new terminal into the **bottom pane** (`bottomTerminalIds`) - not the main tab list. The modal needs a sibling helper that mirrors `createTerminal`'s post-IPC bookkeeping (insert into `terminals`, mark `activeTerminalId`, no `bottomTerminalIds` push).
 
 Add `createShellTerminalTab(label, cwd, colorTag?, nickname?)`:
 - Invokes `create_shell_terminal` IPC.
@@ -49,7 +49,7 @@ Add `createShellTerminalTab(label, cwd, colorTag?, nickname?)`:
 - Sets it as the active terminal (matches `createTerminal` UX so the user sees their new shell).
 - Returns the new terminal id.
 
-The two helpers (`openShellTerminal` for bottom pane, `createShellTerminalTab` for main tabs) intentionally stay separate because their post-create routing is genuinely different — sharing a "where to put it" parameter would be a worse boundary than two small functions.
+The two helpers (`openShellTerminal` for bottom pane, `createShellTerminalTab` for main tabs) intentionally stay separate because their post-create routing is genuinely different - sharing a "where to put it" parameter would be a worse boundary than two small functions.
 
 #### Modal
 
@@ -62,7 +62,7 @@ The two helpers (`openShellTerminal` for bottom pane, `createShellTerminalTab` f
   - Claude path: existing behavior unchanged.
 - Footer button text: `plainShell ? 'Start Shell' : 'Start Terminal'`.
 
-### Part 2 — Zoom keyboard shortcuts
+### Part 2 - Zoom keyboard shortcuts
 
 `src/hooks/useKeyboardShortcuts.ts` gets three new bindings:
 
@@ -112,8 +112,8 @@ No backend (Rust) changes. No new IPC commands. No schema changes.
 
 ## Error handling
 
-- **Plain shell toggle:** Same error surface as Claude path — `setError(String(err))` on IPC failure. Working-directory empty check still applies (currently `if (!workingDirectory.trim())`).
-- **Zoom shortcuts:** `setTerminalFontSize` clamps silently at boundaries (8 and 32). At the limits, the shortcut becomes a no-op — that's acceptable; matches Chrome/VS Code zoom behavior.
+- **Plain shell toggle:** Same error surface as Claude path - `setError(String(err))` on IPC failure. Working-directory empty check still applies (currently `if (!workingDirectory.trim())`).
+- **Zoom shortcuts:** `setTerminalFontSize` clamps silently at boundaries (8 and 32). At the limits, the shortcut becomes a no-op - that's acceptable; matches Chrome/VS Code zoom behavior.
 
 ## Testing plan
 
@@ -123,12 +123,12 @@ Manual (the project doesn't have unit tests for the modal/shortcut layer):
 2. **Plain shell hides Claude UI:** With toggle on, Profile/Args/Model/Effort sections are gone; toggle off restores them; previously-selected profile/args are not lost during the toggle round-trip.
 3. **Plain shell + worktree:** Toggle on, pick a worktree from the list, Start Shell. Resulting shell's CWD is the worktree path.
 4. **Plain shell + env vars:** Set `ANTHROPIC_BASE_URL=http://localhost:11434` in env vars, Start Shell, run `claude` from inside it. Confirms the env wrapper path the issue author actually wants.
-5. **Zoom in terminal:** Focus terminal, hit `Ctrl+=` ten times — font grows one px each press until it caps at 32.
+5. **Zoom in terminal:** Focus terminal, hit `Ctrl+=` ten times - font grows one px each press until it caps at 32.
 6. **Zoom out + reset:** `Ctrl+-` shrinks; `Ctrl+0` returns to 14 regardless of current size.
-7. **Zoom doesn't fire in modal:** Open Settings, click into the Claude-args textarea, press `Ctrl+-` — character is selected backwards (native), font does NOT change.
+7. **Zoom doesn't fire in modal:** Open Settings, click into the Claude-args textarea, press `Ctrl+-` - character is selected backwards (native), font does NOT change.
 8. **Zoom persists:** Set to 18, restart app, terminal opens at 18.
 
 ## Risks
 
-- **Plain shell as restorable session:** existing `claude_args: vec!["__shell__".into()]` sentinel in `terminal.rs:433` already exists for this — restore code paths must handle it, but they do today (the bottom-pane shell uses the same sentinel). Since this design routes shells into the main tab list rather than the bottom pane, restore will pick them up like any other terminal — verify the existing crash-recovery path treats `__shell__` correctly when the terminal lives in `terminals` rather than `bottomTerminalIds`. If it doesn't, restore will need a small branch; flag during implementation.
-- **Ctrl+= layout dependence:** `e.key === '='` matches US keyboards; non-US layouts where `=` requires Shift may be inconsistent. Acceptable — VS Code has the same caveat. Users on those layouts can fall back to Settings → Appearance.
+- **Plain shell as restorable session:** existing `claude_args: vec!["__shell__".into()]` sentinel in `terminal.rs:433` already exists for this - restore code paths must handle it, but they do today (the bottom-pane shell uses the same sentinel). Since this design routes shells into the main tab list rather than the bottom pane, restore will pick them up like any other terminal - verify the existing crash-recovery path treats `__shell__` correctly when the terminal lives in `terminals` rather than `bottomTerminalIds`. If it doesn't, restore will need a small branch; flag during implementation.
+- **Ctrl+= layout dependence:** `e.key === '='` matches US keyboards; non-US layouts where `=` requires Shift may be inconsistent. Acceptable - VS Code has the same caveat. Users on those layouts can fall back to Settings → Appearance.

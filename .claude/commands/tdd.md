@@ -10,19 +10,19 @@ Implement the following using TDD: $ARGUMENTS
 
 Follow this cycle strictly. Do NOT skip steps.
 
-#### 🔴 RED — Write a Failing Test
+#### 🔴 RED - Write a Failing Test
 1. Write a test that describes the desired behavior
-2. Run the test — it MUST fail
+2. Run the test - it MUST fail
 3. If it passes, the test is wrong or the feature already exists
 
-#### 🟢 GREEN — Make It Pass
+#### 🟢 GREEN - Make It Pass
 1. Write the MINIMUM code to make the test pass
 2. Do not write more code than needed
-3. Run the test — it MUST pass now
+3. Run the test - it MUST pass now
 
-#### 🔵 REFACTOR — Clean Up
+#### 🔵 REFACTOR - Clean Up
 1. Refactor the implementation (not the test) for clarity
-2. Run the test — it MUST still pass
+2. Run the test - it MUST still pass
 3. No behavior changes during refactor
 
 ### Repeat
@@ -43,7 +43,7 @@ Continue the RED → GREEN → REFACTOR cycle for each piece of functionality.
 ### Checkpoints
 Create a git checkpoint after each completed GREEN phase:
 ```bash
-git add -A && git commit -m "checkpoint: [test description] — GREEN"
+git add -A && git commit -m "checkpoint: [test description] - GREEN"
 ```
 
 ### Report

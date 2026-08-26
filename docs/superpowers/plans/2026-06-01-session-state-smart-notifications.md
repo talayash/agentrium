@@ -21,17 +21,17 @@
 
 ## File Structure
 
-- Create `src/lib/terminalState.ts` — pure classifier + `SessionState` type + pattern lists. One responsibility: turn screen text into a state verdict.
-- Create `src/lib/terminalState.test.ts` — classifier unit tests.
-- Create `src/lib/notificationGate.ts` — pure `isWithinDnd()` + best-effort `playNotificationSound()`.
-- Create `src/lib/notificationGate.test.ts` — DND-window unit tests.
-- Create `src/hooks/useWindowFocused.ts` — boolean app-window focus via Tauri.
-- Create `src/hooks/useSessionStateDetection.ts` — the global poller; owns buffer reading + transition/notification logic.
-- Create `src/components/StateDot.tsx` — shared state dot, used by tabs, Agent View, grid.
-- Modify `src/store/terminalStore.ts` — add `terminalStates` map + `setTerminalState` + cleanup.
-- Modify `src/components/TerminalTabs.tsx` — replace binary working dot with `StateDot`.
-- Modify `src/components/titlebar/RecentTerminalsMenu.tsx` — Agent View: state pills, waiting-first sort, count badge on the icon.
-- Modify `src/App.tsx` — mount `useSessionStateDetection()`.
+- Create `src/lib/terminalState.ts` - pure classifier + `SessionState` type + pattern lists. One responsibility: turn screen text into a state verdict.
+- Create `src/lib/terminalState.test.ts` - classifier unit tests.
+- Create `src/lib/notificationGate.ts` - pure `isWithinDnd()` + best-effort `playNotificationSound()`.
+- Create `src/lib/notificationGate.test.ts` - DND-window unit tests.
+- Create `src/hooks/useWindowFocused.ts` - boolean app-window focus via Tauri.
+- Create `src/hooks/useSessionStateDetection.ts` - the global poller; owns buffer reading + transition/notification logic.
+- Create `src/components/StateDot.tsx` - shared state dot, used by tabs, Agent View, grid.
+- Modify `src/store/terminalStore.ts` - add `terminalStates` map + `setTerminalState` + cleanup.
+- Modify `src/components/TerminalTabs.tsx` - replace binary working dot with `StateDot`.
+- Modify `src/components/titlebar/RecentTerminalsMenu.tsx` - Agent View: state pills, waiting-first sort, count badge on the icon.
+- Modify `src/App.tsx` - mount `useSessionStateDetection()`.
 
 ---
 
@@ -114,7 +114,7 @@ describe('classifySettled', () => {
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `npx vitest run src/lib/terminalState.test.ts`
-Expected: FAIL — "Failed to resolve import './terminalState'" / `classifySettled is not a function`.
+Expected: FAIL - "Failed to resolve import './terminalState'" / `classifySettled is not a function`.
 
 - [ ] **Step 3: Write the implementation**
 
@@ -137,7 +137,7 @@ export const WAITING_PATTERNS: RegExp[] = [
 ];
 
 /**
- * Markers that mean the plain input box is on screen — i.e. Claude is idle and
+ * Markers that mean the plain input box is on screen - i.e. Claude is idle and
  * ready for a new prompt, even if a numbered list from the last response is
  * still visible above the box.
  */
@@ -152,7 +152,7 @@ const OPTION_LINE = /^(?:❯\s*)?\d+\.\s+\S/;
 /**
  * Decide whether settled terminal output represents a blocking prompt
  * (`waiting`) or a ready input box (`idle`). Only called once output has gone
- * quiet — `busy` is handled by the caller via the activity timer.
+ * quiet - `busy` is handled by the caller via the activity timer.
  *
  * Bias: when uncertain, return `idle`. A missed prompt is a minor annoyance;
  * a false "needs attention" alarm erodes trust in the whole feature.
@@ -237,7 +237,7 @@ describe('isWithinDnd', () => {
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `npx vitest run src/lib/notificationGate.test.ts`
-Expected: FAIL — cannot resolve `./notificationGate` / `isWithinDnd is not a function`.
+Expected: FAIL - cannot resolve `./notificationGate` / `isWithinDnd is not a function`.
 
 - [ ] **Step 3: Write the implementation**
 
@@ -313,7 +313,7 @@ git commit -m "feat: DND-window gate and notification sound helper"
 - [ ] **Step 1: Write the failing test (append to the existing file)**
 
 ```typescript
-// src/store/terminalStore.test.ts — append inside the file
+// src/store/terminalStore.test.ts - append inside the file
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useTerminalStore } from './terminalStore';
 
@@ -347,7 +347,7 @@ describe('terminalStore session state', () => {
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `npx vitest run src/store/terminalStore.test.ts -t "session state"`
-Expected: FAIL — `terminalStates` undefined / `setTerminalState is not a function`.
+Expected: FAIL - `terminalStates` undefined / `setTerminalState is not a function`.
 
 - [ ] **Step 3a: Add the import (top of `src/store/terminalStore.ts`)**
 
@@ -369,8 +369,8 @@ Find (around line 56):
 Add immediately after it:
 ```typescript
   // Inferred Claude session state per terminal (busy/waiting/idle/stopped).
-  // Written only on transitions by the detection poller — never on the
-  // streaming hot path — so subscribers re-render only when state changes.
+  // Written only on transitions by the detection poller - never on the
+  // streaming hot path - so subscribers re-render only when state changes.
   terminalStates: Map<string, SessionState>;
 ```
 
@@ -458,7 +458,7 @@ git commit -m "feat: track per-terminal session state in terminalStore"
 **Files:**
 - Create: `src/hooks/useWindowFocused.ts`
 
-No unit test — this is a thin Tauri event binding verified via the manual check in Task 9.
+No unit test - this is a thin Tauri event binding verified via the manual check in Task 9.
 
 - [ ] **Step 1: Write the implementation**
 
@@ -493,7 +493,7 @@ export function useWindowFocused(): boolean {
 - [ ] **Step 2: Type-check**
 
 Run: `npx tsc --noEmit`
-Expected: PASS (no errors). If `getCurrentWindow` is not found, confirm the import path against the installed `@tauri-apps/api` version — in Tauri 2 it is `@tauri-apps/api/window`.
+Expected: PASS (no errors). If `getCurrentWindow` is not found, confirm the import path against the installed `@tauri-apps/api` version - in Tauri 2 it is `@tauri-apps/api/window`.
 
 - [ ] **Step 3: Commit**
 
@@ -510,7 +510,7 @@ git commit -m "feat: useWindowFocused hook for notification suppression"
 - Create: `src/components/StateDot.tsx`
 
 Reduce-motion is handled globally by CSS (`:root[data-reduce-motion="true"]`), so the
-pulse class `ct-working-dot` auto-disables — no prop needed.
+pulse class `ct-working-dot` auto-disables - no prop needed.
 
 - [ ] **Step 1: Write the implementation**
 
@@ -540,7 +540,7 @@ export function StateDot({ state, size = 8 }: { state: SessionState; size?: numb
 - [ ] **Step 2: Type-check**
 
 Run: `npx tsc --noEmit`
-Expected: PASS. (If `bg-amber-400` is not recognized by the Tailwind config, substitute the project's amber token; verify by grepping `amber` in `src/` — `TerminalTabs.tsx` already uses `text-amber`-style tokens via the changelog's accent set.)
+Expected: PASS. (If `bg-amber-400` is not recognized by the Tailwind config, substitute the project's amber token; verify by grepping `amber` in `src/` - `TerminalTabs.tsx` already uses `text-amber`-style tokens via the changelog's accent set.)
 
 - [ ] **Step 3: Commit**
 
@@ -613,7 +613,7 @@ export function useSessionStateDetection(): void {
       const now = Date.now();
 
       for (const [id, inst] of store.terminals) {
-        // Claude terminals only — skip plain shells and script children.
+        // Claude terminals only - skip plain shells and script children.
         if (inst.scriptParentId || inst.isShellTerminal) continue;
 
         // Exited process: pin to stopped and re-arm notifications.
@@ -630,7 +630,7 @@ export function useSessionStateDetection(): void {
         } else if (inst.xterm) {
           state = classifySettled(readBufferTail(inst.xterm, BUFFER_TAIL_ROWS));
         } else {
-          // No mounted buffer to read — keep the last known state.
+          // No mounted buffer to read - keep the last known state.
           state = store.terminalStates.get(id) ?? 'idle';
         }
 
@@ -647,7 +647,7 @@ export function useSessionStateDetection(): void {
             notifiedRef.current.add(id);
           }
         } else {
-          // Left the waiting episode — re-arm for the next prompt.
+          // Left the waiting episode - re-arm for the next prompt.
           notifiedRef.current.delete(id);
         }
       }
@@ -661,7 +661,7 @@ export function useSessionStateDetection(): void {
 - [ ] **Step 2: Type-check**
 
 Run: `npx tsc --noEmit`
-Expected: PASS. Common fixes: ensure `Terminal` is imported as a type from `@xterm/xterm`; confirm `app.dndStart`, `app.dndEnd`, `app.notificationSoundEnabled` exist on the app store (they do — see `src/store/appStore.ts`).
+Expected: PASS. Common fixes: ensure `Terminal` is imported as a type from `@xterm/xterm`; confirm `app.dndStart`, `app.dndEnd`, `app.notificationSoundEnabled` exist on the app store (they do - see `src/store/appStore.ts`).
 
 - [ ] **Step 3: Commit**
 
@@ -782,13 +782,13 @@ Replace with:
                   )}
 ```
 
-(The `ct-working-tab` class on line 245 stays as-is — it keys off `isWorking`,
+(The `ct-working-tab` class on line 245 stays as-is - it keys off `isWorking`,
 which now means `sessionState === 'busy'`.)
 
 - [ ] **Step 5: Type-check**
 
 Run: `npx tsc --noEmit`
-Expected: PASS. If `now` becomes unused after this change, leave it — it is still used by `useNowTick()` to drive the 500ms re-render; do not remove the `useNowTick` call.
+Expected: PASS. If `now` becomes unused after this change, leave it - it is still used by `useNowTick()` to drive the 500ms re-render; do not remove the `useNowTick` call.
 
 - [ ] **Step 6: Commit**
 
@@ -939,14 +939,14 @@ Expected: PASS (no unused-symbol errors for `STATUS_DOT`).
 
 ```bash
 git add src/components/titlebar/RecentTerminalsMenu.tsx
-git commit -m "feat: Agent View — state pills, waiting-first sort, count badge"
+git commit -m "feat: Agent View - state pills, waiting-first sort, count badge"
 ```
 
 ---
 
 ## Task 10: Calibration + end-to-end verification
 
-This task has no code of its own — it validates the heuristics against the real
+This task has no code of its own - it validates the heuristics against the real
 Claude Code build and confirms the feature works end to end.
 
 - [ ] **Step 1: Run the full unit suite**
@@ -988,9 +988,9 @@ git commit -m "test: calibrate session-state patterns against live Claude build"
 
 ---
 
-## Self-review notes (author check — already applied)
+## Self-review notes (author check - already applied)
 
 - **Spec coverage:** 4-state model (Tasks 1, 6); xterm-buffer detection (Tasks 1, 6); store with no-op-on-unchanged (Task 3); tab dots (Task 8); Agent View on Recent Terminals with waiting-first sort + count badge (Task 9); attention-only notification with focus suppression + dedup + DND (Tasks 2, 6); no idle ping (Task 6 only notifies on `waiting`); plain-shell exclusion (Task 6); reduce-motion via global CSS (Task 5); tests for classifier, gate, store (Tasks 1–3). All spec sections map to a task.
-- **Spec discrepancy resolved:** the spec said "reuse existing DND/sound gating" — none existed, so Task 2 builds it. The existing finish-notification path in `App.tsx` is intentionally left unchanged (out of scope).
+- **Spec discrepancy resolved:** the spec said "reuse existing DND/sound gating" - none existed, so Task 2 builds it. The existing finish-notification path in `App.tsx` is intentionally left unchanged (out of scope).
 - **Type consistency:** `SessionState` is defined once in `terminalState.ts` and imported everywhere; `classifySettled`, `setTerminalState`, `isWithinDnd`, `playNotificationSound`, `StateDot`, `useWindowFocused`, `useSessionStateDetection` names match across all tasks.
 - **Open verification (Task 9 Step 4 / Task 6):** confirm inactive-tab `TerminalView` keeps its xterm mounted; if any path disposes it the poller already falls back to last-known state.

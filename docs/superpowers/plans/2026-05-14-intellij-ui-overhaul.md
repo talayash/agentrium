@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Implement the five-section IntelliJ overhaul from `docs/superpowers/specs/2026-05-14-intellij-ui-overhaul-design.md` — sidebar-as-Explorer-only, Changelists Lite, Tools moved to title-bar dropdown, full-window categorized Settings, IJ visual-polish standardization, and the active-work tab indicator.
+**Goal:** Implement the five-section IntelliJ overhaul from `docs/superpowers/specs/2026-05-14-intellij-ui-overhaul-design.md` - sidebar-as-Explorer-only, Changelists Lite, Tools moved to title-bar dropdown, full-window categorized Settings, IJ visual-polish standardization, and the active-work tab indicator.
 
 **Architecture:** Additive: no removed Zustand keys, two new SQLite tables (`CREATE TABLE IF NOT EXISTS`), all new visual settings driven by CSS variables on `:root`. `SettingsModal.tsx` (780 lines) replaced by `SettingsWindow.tsx` + 16 thin category page components. `FileChangesPanel.tsx` (1466 lines) split into 4 siblings under `src/components/changes/`.
 
@@ -106,7 +106,7 @@ This plan file contains Phases 0–5 in full bite-sized detail. Phases 6–13 fo
 
 ---
 
-## Phase 0 — Branch setup
+## Phase 0 - Branch setup
 
 ### Task 0.1: Create feature branch
 
@@ -138,7 +138,7 @@ Expected: branch pushed; "Branch 'feat/intellij-overhaul' set up to track 'origi
 
 ---
 
-## Phase 1 — Foundation: appStore new keys + CSS theme tokens
+## Phase 1 - Foundation: appStore new keys + CSS theme tokens
 
 This phase is pure additive: all new keys default to today's behavior, so the app should look and behave identically after Phase 1.
 
@@ -152,7 +152,7 @@ This phase is pure additive: all new keys default to today's behavior, so the ap
 Append the following to `src/index.css` just below the existing `:root` block (after the `--ij-divider-soft` line):
 
 ```css
-/* Density tokens — driven by Appearance setting, default = comfortable */
+/* Density tokens - driven by Appearance setting, default = comfortable */
 :root {
   --ui-row-py: 6px;            /* primary vertical padding for list rows */
   --ui-row-px: 8px;            /* primary horizontal padding for list rows */
@@ -161,7 +161,7 @@ Append the following to `src/index.css` just below the existing `:root` block (a
 :root[data-density="comfortable"] { --ui-row-py: 6px; --ui-row-px: 8px; }
 :root[data-density="spacious"]    { --ui-row-py: 8px; --ui-row-px: 10px; }
 
-/* Reduce motion — wraps Framer + CSS transitions when the user opts in. */
+/* Reduce motion - wraps Framer + CSS transitions when the user opts in. */
 :root[data-reduce-motion="true"] *,
 :root[data-reduce-motion="true"] *::before,
 :root[data-reduce-motion="true"] *::after {
@@ -209,12 +209,12 @@ Each sub-task adds one logical group of keys to `src/store/appStore.ts` and a ma
 6. Update `resetAppStore()` in the test file with the new defaults.
 7. Add the new keys to `PERSISTED_KEYS`.
 8. Add at least one clamping/validation test.
-9. Run `npm test -- --run src/store/appStore.test.ts` — all pass.
+9. Run `npm test -- --run src/store/appStore.test.ts` - all pass.
 10. Commit.
 
 The key groups and their exact contents:
 
-**Task 1.2 — Appearance group (5 keys + 4 type/const exports)**
+**Task 1.2 - Appearance group (5 keys + 4 type/const exports)**
 
 Type/const exports at top of file:
 ```typescript
@@ -272,7 +272,7 @@ Partialize additions:
 
 Tests (append after existing terminal-appearance describe):
 ```typescript
-describe('appStore — appearance v1.22.0 setters', () => {
+describe('appStore - appearance v1.22.0 setters', () => {
   it('setUiFontScale clamps to 0.85..1.25 with 2-decimal rounding', () => {
     const { setUiFontScale } = useAppStore.getState();
     setUiFontScale(0.5);
@@ -311,7 +311,7 @@ PERSISTED_KEYS additions: `'themeMode'`, `'uiDensity'`, `'accentColorHex'`, `'ui
 
 Commit message: `feat(store): add appearance settings (theme/density/accent/scale/reduce-motion)`
 
-**Task 1.3 — Notifications group (4 keys)**
+**Task 1.3 - Notifications group (4 keys)**
 
 ```typescript
   notificationSoundEnabled: boolean;
@@ -336,7 +336,7 @@ Setters:
 
 Test:
 ```typescript
-describe('appStore — notifications v1.22.0 setters', () => {
+describe('appStore - notifications v1.22.0 setters', () => {
   it('setDndStart / setDndEnd validate HH:mm shape', () => {
     const s = useAppStore.getState();
     s.setDndStart('23:30');
@@ -349,7 +349,7 @@ describe('appStore — notifications v1.22.0 setters', () => {
 
 Commit: `feat(store): add notification sound + DND settings`
 
-**Task 1.4 — Startup & Session group (2 keys + App.tsx wiring)**
+**Task 1.4 - Startup & Session group (2 keys + App.tsx wiring)**
 
 ```typescript
   sessionAutoSaveIntervalSec: number;
@@ -373,7 +373,7 @@ Test: clamp to 10..600.
 
 Commit: `feat(store): expose session auto-save interval + confirm-on-close`
 
-**Task 1.5 — Editor group (8 keys)**
+**Task 1.5 - Editor group (8 keys)**
 
 Keys: `editorTabSize` (clamp 1..8), `editorRenderWhitespace`, `editorWordWrap`, `editorMinimap`, `editorAutoSaveOnBlur`, `editorFontFamily` (default `'"JetBrains Mono", "Cascadia Code", Consolas, monospace'`), `editorFontSize` (clamp 8..32), `editorLineHeight` (clamp 1.0..2.0).
 
@@ -381,15 +381,15 @@ Each gets the corresponding `set...` setter, mirroring the terminal-appearance s
 
 Test: validate the 3 clamping setters (`editorTabSize`, `editorFontSize`, `editorLineHeight`).
 
-Commit: `feat(store): add editor (Monaco) prefs — tab size, wrap, font, etc.`
+Commit: `feat(store): add editor (Monaco) prefs - tab size, wrap, font, etc.`
 
-**Task 1.6 — Terminal Behavior group (3 keys)**
+**Task 1.6 - Terminal Behavior group (3 keys)**
 
 Keys: `terminalShellPathOverride` (string, default empty), `terminalCopyOnSelect` (bool, default false), `terminalPasteShortcut` (`'ctrl+v' | 'ctrl+shift+v'`, default `'ctrl+shift+v'`). Simple setters, no clamping.
 
-Commit: `feat(store): terminal behavior — shell override, copy-on-select, paste binding`
+Commit: `feat(store): terminal behavior - shell override, copy-on-select, paste binding`
 
-**Task 1.7 — VCS group (4 keys + 2 type exports)**
+**Task 1.7 - VCS group (4 keys + 2 type exports)**
 
 Type exports:
 ```typescript
@@ -399,19 +399,19 @@ export type MergeStrategy = 'merge' | 'rebase' | 'ff-only';
 
 Keys: `vcsCommitMessageTemplate` (string), `vcsDefaultAutoStage: AutoStageMode` (default `'none'`), `vcsDefaultMergeStrategy: MergeStrategy` (default `'merge'`), `vcsChangelistsConfirmDelete` (bool, default true).
 
-Commit: `feat(store): VCS defaults — commit template, auto-stage, merge, confirm delete`
+Commit: `feat(store): VCS defaults - commit template, auto-stage, merge, confirm delete`
 
-**Task 1.8 — Claude group (2 keys)**
+**Task 1.8 - Claude group (2 keys)**
 
 Keys: `claudeDefaultModel: 'opus' | 'sonnet' | 'haiku' | null` (default `null`), `claudeBinaryPathOverride: string` (default empty).
 
-Commit: `feat(store): Claude defaults — default model + binary path override`
+Commit: `feat(store): Claude defaults - default model + binary path override`
 
 After Task 1.8 the appStore has 28 new persisted keys total. All defaults preserve today's behavior.
 
 ---
 
-## Phase 2 — Theme tokens applied to `:root`
+## Phase 2 - Theme tokens applied to `:root`
 
 After this phase, the new appearance settings actually do something on screen.
 
@@ -572,7 +572,7 @@ Expected: all 6 tests pass.
 
 ```bash
 git add src/lib/accentTheme.ts src/lib/accentTheme.test.ts
-git commit -m "feat(theme): accentTheme module — runtime CSS-var application"
+git commit -m "feat(theme): accentTheme module - runtime CSS-var application"
 ```
 
 ### Task 2.2: Wire `accentTheme` to `appStore` changes in `App.tsx`
@@ -617,7 +617,7 @@ Inside `App()`, below the existing `useAppStore` destructure, add:
 npm run tauri dev
 ```
 
-Confirm: app still launches and looks identical. Open DevTools, run `useAppStore.getState().setAccentColorHex('#FF00AA')` — title bar accent flips to pink. Reset.
+Confirm: app still launches and looks identical. Open DevTools, run `useAppStore.getState().setAccentColorHex('#FF00AA')` - title bar accent flips to pink. Reset.
 
 - [ ] **Step 4: Commit**
 
@@ -628,7 +628,7 @@ git commit -m "feat(theme): wire appearance store keys to documentElement on mou
 
 ---
 
-## Phase 3 — Sidebar simplification
+## Phase 3 - Sidebar simplification
 
 ### Task 3.1: Strip the terminal list and Tools footer from `Sidebar.tsx`
 
@@ -737,7 +737,7 @@ git commit -m "chore(keymap): rename Toggle Sidebar → Toggle Explorer"
 
 ---
 
-## Phase 4 — Title bar additions
+## Phase 4 - Title bar additions
 
 ### Task 4.1: Create the shared keymap definition
 
@@ -1044,7 +1044,7 @@ Commit: `feat(titlebar): mount RecentTerminalsMenu + ToolsMenu`
 
 ---
 
-## Phase 5 — Active-work tab indicator
+## Phase 5 - Active-work tab indicator
 
 ### Task 5.1: Track `lastOutputAt` in `terminalStore`
 
@@ -1057,7 +1057,7 @@ Add field to `TerminalInstance`:
   lastOutputAt?: number;
 ```
 
-In `handleTerminalOutput`, stamp `lastOutputAt` on every chunk. Integrate the timestamp write into the existing `set((state) => ...)` block (fold into the same `terminals` map update — do not double-render):
+In `handleTerminalOutput`, stamp `lastOutputAt` on every chunk. Integrate the timestamp write into the existing `set((state) => ...)` block (fold into the same `terminals` map update - do not double-render):
 
 ```typescript
     set((state) => {
@@ -1121,7 +1121,7 @@ export function useNowTick(): number {
 }
 ```
 
-Commit: `feat(hooks): useNowTick — 500ms tick while terminals are emitting output`
+Commit: `feat(hooks): useNowTick - 500ms tick while terminals are emitting output`
 
 ### Task 5.3: Apply pulse + shimmer in `TerminalTabs.tsx`
 
@@ -1177,13 +1177,13 @@ Append to `src/index.css`:
 }
 ```
 
-Smoke-test: run `for i in {1..50}; do echo $i; sleep 0.5; done` in a terminal — pulse + shimmer fire. Toggle reduce-motion via `useAppStore.getState().setUiReduceMotion(true)` — both stop.
+Smoke-test: run `for i in {1..50}; do echo $i; sleep 0.5; done` in a terminal - pulse + shimmer fire. Toggle reduce-motion via `useAppStore.getState().setUiReduceMotion(true)` - both stop.
 
 Commit: `feat(tabs): active-work pulse on status dot + shimmer on tab underline`
 
 ---
 
-## Phase 6 — Settings window shell
+## Phase 6 - Settings window shell
 
 ### Task 6.1: Create the search index module
 
@@ -1449,7 +1449,7 @@ Commit: `feat(settings): SettingsWindow shell with lazy page loading`
 
 ---
 
-## Phase 7 — Settings category pages
+## Phase 7 - Settings category pages
 
 Each page is a thin component (typically 30–90 lines) that wires Zustand setters to UI controls. They follow this skeleton:
 
@@ -1542,53 +1542,53 @@ Commit: `feat(settings): SettingRow + Toggle + Segmented primitives`
 
 Each task below: write the page file (template above), import any specialized lift-from-old-modal blocks, register the page's settings to `SETTINGS_INDEX`, commit. Each commit is one page so it's reviewable individually.
 
-**Task 7.1 — AppearancePage** (theme/density/accent/scale/reduce-motion). Use `Segmented` for theme + density, swatches + `<input type="color">` for accent, range slider for scale (0.85–1.25), `Toggle` for reduce-motion. Register 5 settings.
+**Task 7.1 - AppearancePage** (theme/density/accent/scale/reduce-motion). Use `Segmented` for theme + density, swatches + `<input type="color">` for accent, range slider for scale (0.85–1.25), `Toggle` for reduce-motion. Register 5 settings.
 
-**Task 7.2 — NotificationsPage** (notify-on-finish, sound, DND start/end). 4 settings registered.
+**Task 7.2 - NotificationsPage** (notify-on-finish, sound, DND start/end). 4 settings registered.
 
-**Task 7.3 — StartupSessionPage** (restore-session, auto-save interval input, confirm-on-close). 3 settings.
+**Task 7.3 - StartupSessionPage** (restore-session, auto-save interval input, confirm-on-close). 3 settings.
 
-**Task 7.4 — KeymapPage** — read from `KEYMAP` in `lib/keymap.ts`. Group by `KeymapEntry.group`. Render as a simple two-column table (label / `<kbd>` shortcut). 1 "setting" registered with keywords = all shortcut IDs.
+**Task 7.4 - KeymapPage** - read from `KEYMAP` in `lib/keymap.ts`. Group by `KeymapEntry.group`. Render as a simple two-column table (label / `<kbd>` shortcut). 1 "setting" registered with keywords = all shortcut IDs.
 
-**Task 7.5 — EditorGeneralPage** (tab size, render whitespace, word wrap, minimap, auto-save on blur). 5 settings.
+**Task 7.5 - EditorGeneralPage** (tab size, render whitespace, word wrap, minimap, auto-save on blur). 5 settings.
 
-**Task 7.6 — EditorFontPage** (family / size / line height). 3 settings.
+**Task 7.6 - EditorFontPage** (family / size / line height). 3 settings.
 
-**Task 7.7 — TerminalAppearancePage** — lift the entire terminal-appearance block from current `SettingsModal.tsx` (lines 350–467). 8 settings.
+**Task 7.7 - TerminalAppearancePage** - lift the entire terminal-appearance block from current `SettingsModal.tsx` (lines 350–467). 8 settings.
 
-**Task 7.8 — TerminalBehaviorPage** (shell override input, copy-on-select toggle, paste shortcut segmented). 3 settings.
+**Task 7.8 - TerminalBehaviorPage** (shell override input, copy-on-select toggle, paste shortcut segmented). 3 settings.
 
-**Task 7.9 — TerminalPastesPage** — lift the pastes block (lines 642–737 of current `SettingsModal.tsx`). 6 settings.
+**Task 7.9 - TerminalPastesPage** - lift the pastes block (lines 642–737 of current `SettingsModal.tsx`). 6 settings.
 
-**Task 7.10 — GitPage** (commit message template textarea, default auto-stage segmented, default merge strategy segmented). 3 settings.
+**Task 7.10 - GitPage** (commit message template textarea, default auto-stage segmented, default merge strategy segmented). 3 settings.
 
-**Task 7.11 — ChangelistsPage** (confirm-before-delete toggle). 1 setting.
+**Task 7.11 - ChangelistsPage** (confirm-before-delete toggle). 1 setting.
 
-**Task 7.12 — ClaudeDefaultsPage** — lift the default-claude-args block (lines 329–346 of `SettingsModal.tsx`); add default model dropdown + binary path input. 3 settings.
+**Task 7.12 - ClaudeDefaultsPage** - lift the default-claude-args block (lines 329–346 of `SettingsModal.tsx`); add default model dropdown + binary path input. 3 settings.
 
-**Task 7.13 — ClaudeUpdatesPage** — lift the Claude Code update block (lines 260–326 of `SettingsModal.tsx`). 1 setting.
+**Task 7.13 - ClaudeUpdatesPage** - lift the Claude Code update block (lines 260–326 of `SettingsModal.tsx`). 1 setting.
 
-**Task 7.14 — ToolsPage** — render 7 launch buttons that call the existing modal-open actions (same as `ToolsMenu`).
+**Task 7.14 - ToolsPage** - render 7 launch buttons that call the existing modal-open actions (same as `ToolsMenu`).
 
-**Task 7.15 — PrivacyPage** — lift telemetry + error reporting blocks (lines 581–639 of `SettingsModal.tsx`). 2 settings.
+**Task 7.15 - PrivacyPage** - lift telemetry + error reporting blocks (lines 581–639 of `SettingsModal.tsx`). 2 settings.
 
-**Task 7.16 — AboutPage** — lift About block (lines 770–778 of `SettingsModal.tsx`); add GitHub link button.
+**Task 7.16 - AboutPage** - lift About block (lines 770–778 of `SettingsModal.tsx`); add GitHub link button.
 
 After all 16 pages exist:
 
-**Task 7.17 — Test rendering**
+**Task 7.17 - Test rendering**
 
 ```bash
 npm run tauri dev
 ```
 
-For each category in the tree, click and verify the right pane renders without console errors. Type "scrollback" into the search box — only Terminal Appearance should highlight. Type "telemetry" — Privacy highlights.
+For each category in the tree, click and verify the right pane renders without console errors. Type "scrollback" into the search box - only Terminal Appearance should highlight. Type "telemetry" - Privacy highlights.
 
 Commit (one per page): `feat(settings): <PageName> category`
 
 ---
 
-## Phase 8 — Remove old SettingsModal and wire new window
+## Phase 8 - Remove old SettingsModal and wire new window
 
 ### Task 8.1: Switch the app to use `SettingsWindow`
 
@@ -1630,7 +1630,7 @@ Commit: `refactor(settings): replace SettingsModal with SettingsWindow`
 
 ---
 
-## Phase 9 — Changelists Rust backend
+## Phase 9 - Changelists Rust backend
 
 ### Task 9.1: Add SQLite migration
 
@@ -1907,7 +1907,7 @@ mod tests {
 }
 ```
 
-Note: `Database.conn` is private (the existing struct holds `conn: Connection`). The test helpers above access `&d.conn` — make the field `pub(crate)` (or add a `pub fn conn(&self) -> &Connection` accessor). Choose the accessor — minimally invasive:
+Note: `Database.conn` is private (the existing struct holds `conn: Connection`). The test helpers above access `&d.conn` - make the field `pub(crate)` (or add a `pub fn conn(&self) -> &Connection` accessor). Choose the accessor - minimally invasive:
 
 In `src-tauri/src/database.rs` add:
 ```rust
@@ -1995,7 +1995,7 @@ pub async fn assign_files_to_changelist(
 }
 ```
 
-Note: this requires the `conn()` accessor added in Task 9.2. If you'd rather make `conn` `pub(crate)`, do that instead — but pick one and stick with it across all commands.
+Note: this requires the `conn()` accessor added in Task 9.2. If you'd rather make `conn` `pub(crate)`, do that instead - but pick one and stick with it across all commands.
 
 In `src-tauri/src/main.rs`:
 
@@ -2020,9 +2020,9 @@ Commit: `feat(changelists): 5 Tauri IPC commands`
 
 ---
 
-## Phase 10 — Split FileChangesPanel (refactor, no behavior change)
+## Phase 10 - Split FileChangesPanel (refactor, no behavior change)
 
-This phase is a pure mechanical refactor. After it, the panel behaves identically — we just have 4 sibling files instead of one 1466-line file. Phase 11 then adds the new ChangelistSection.
+This phase is a pure mechanical refactor. After it, the panel behaves identically - we just have 4 sibling files instead of one 1466-line file. Phase 11 then adds the new ChangelistSection.
 
 ### Task 10.1: Create `src/components/changes/` directory + coordinator
 
@@ -2056,7 +2056,7 @@ export function pathsEqual(a: string, b: string): boolean {
 }
 ```
 
-Step 2: Create the new coordinator `src/components/changes/FileChangesPanel.tsx` that imports the four sibling sections. It owns the data fetches and splitter that today live in the monolithic file. (The exact code is straight extraction from the current `FileChangesPanel.tsx` lines covering: header, Repositories ⇕ Changes splitter, stashes section render, commit bar render — but each becomes a child component.)
+Step 2: Create the new coordinator `src/components/changes/FileChangesPanel.tsx` that imports the four sibling sections. It owns the data fetches and splitter that today live in the monolithic file. (The exact code is straight extraction from the current `FileChangesPanel.tsx` lines covering: header, Repositories ⇕ Changes splitter, stashes section render, commit bar render - but each becomes a child component.)
 
 Step 3: Run `npm run build` to confirm imports type-check.
 
@@ -2122,7 +2122,7 @@ Commit: `refactor(changes): remove monolithic FileChangesPanel; wire new path`
 
 ---
 
-## Phase 11 — ChangelistSection UI
+## Phase 11 - ChangelistSection UI
 
 ### Task 11.1: Build `ChangelistSection.tsx`
 
@@ -2140,7 +2140,7 @@ State:
 Effects:
 - On `repoRoot` change or `changesRefreshTrigger`, fetch `list_changelists(repoRoot)` and the file→list mapping (a second small query: SELECT file_path, changelist_id FROM changelist_files WHERE repo_path=?1).
 
-Wait — we don't have a Tauri command for the file mapping yet. Add it as part of Task 11.1's prep work:
+Wait - we don't have a Tauri command for the file mapping yet. Add it as part of Task 11.1's prep work:
 
 Add a 6th command `get_changelist_assignments(repo_path) → Vec<(file_path, changelist_id)>`:
 
@@ -2176,15 +2176,15 @@ Register in `main.rs` `invoke_handler!`.
 Then write the React component. The component:
 1. Renders the Staged section as today (with "Unstage all").
 2. For unstaged files, groups them by their changelist assignment (Default if no assignment).
-3. Renders each changelist header with: chevron, name (or inline-edit), file count, ⋯ menu (Rename / Delete — both gated by `vcsChangelistsConfirmDelete`), and "Stage all" button.
+3. Renders each changelist header with: chevron, name (or inline-edit), file count, ⋯ menu (Rename / Delete - both gated by `vcsChangelistsConfirmDelete`), and "Stage all" button.
 4. Adds a `+ List` button at the top of the Changes section.
 5. Right-click on any file shows context menu with "Move to Changelist ▸" submenu.
 
-The full code is ~250 lines — straight Tauri `invoke` calls plus the existing file-row rendering pattern lifted from the monolithic `FileChangesPanel.tsx`.
+The full code is ~250 lines - straight Tauri `invoke` calls plus the existing file-row rendering pattern lifted from the monolithic `FileChangesPanel.tsx`.
 
-Smoke test: open File Changes panel. Create a list. Move a file into it. Stage all from that list. Commit. Verify mapping is sticky (commit, modify file again — file reappears in the same list).
+Smoke test: open File Changes panel. Create a list. Move a file into it. Stage all from that list. Commit. Verify mapping is sticky (commit, modify file again - file reappears in the same list).
 
-Commit: `feat(changelists): ChangelistSection UI — CRUD + Stage all + context menu`
+Commit: `feat(changelists): ChangelistSection UI - CRUD + Stage all + context menu`
 
 ### Task 11.2: Wire `ChangelistSection` into `FileChangesPanel`
 
@@ -2199,7 +2199,7 @@ Commit: `feat(changelists): replace flat changes list with ChangelistSection`
 
 ---
 
-## Phase 12 — Visual polish refinements
+## Phase 12 - Visual polish refinements
 
 ### Task 12.1: Standardize `HintsPanel.tsx` and `OrchestrationPanel.tsx` headers
 
@@ -2237,20 +2237,20 @@ Commit: `feat(theme): apply density var to sidebar / settings / changelist rows`
 
 ### Task 12.3: Verify accent + light theme end-to-end
 
-Smoke-test only — no code changes.
+Smoke-test only - no code changes.
 
 1. Open Settings → Appearance.
 2. Change theme to Light → verify sidebar / title bar / panels switch.
 3. Change theme back to Dark.
 4. Change accent to a non-blue swatch → verify stripes, tab underline, focus rings, AutoUpdater progress bar all switch.
-5. Switch density between compact / comfortable / spacious — sidebar rows respond.
+5. Switch density between compact / comfortable / spacious - sidebar rows respond.
 6. Enable reduce motion → confirm tab pulse + shimmer stop.
 
 If anything fails: file an issue inside this phase as a 12.3.x sub-task.
 
 ---
 
-## Phase 13 — Release
+## Phase 13 - Release
 
 ### Task 13.1: Add changelog entry
 
@@ -2300,7 +2300,7 @@ The `/publish` slash command handles version bumps in package.json / Cargo.toml 
 
 | Spec section | Plan coverage |
 |---|---|
-| §1 Layout & navigation — title bar dropdowns | Phase 4 (4.2, 4.3, 4.4) |
+| §1 Layout & navigation - title bar dropdowns | Phase 4 (4.2, 4.3, 4.4) |
 | §1 Sidebar = Explorer only | Phase 3 (3.1, 3.2) |
 | §2 Changelists Lite data model | Phase 9 (9.1, 9.2) |
 | §2 New IPC commands | Phase 9 (9.3) + 11.1 (get_changelist_assignments) |
@@ -2310,14 +2310,14 @@ The `/publish` slash command handles version bumps in package.json / Cargo.toml 
 | §3 16 category pages | Phase 7 (7.1–7.16) |
 | §3 Search behavior | Phase 6 (6.1) + 6.4 (highlightedPages) |
 | §3 New setting keys (28) | Phase 1 (1.2–1.8) |
-| §4 Visual polish — header standardization | Phase 12 (12.1) |
+| §4 Visual polish - header standardization | Phase 12 (12.1) |
 | §4 Density / accent / light theme | Phase 2 (2.1, 2.2) + Phase 12 (12.2, 12.3) |
 | §4 Active-work tab indicator | Phase 5 (5.1–5.3) |
 | §5 Migration | Phases 1 + 9.1 (Zustand additive + SQLite IF NOT EXISTS) |
 | §5 Risk: power users miss sidebar list | Phase 4 (RecentTerminalsMenu) |
-| §5 Rollout — v1.22.0 + changelog | Phase 13 |
+| §5 Rollout - v1.22.0 + changelog | Phase 13 |
 
-**2. Placeholder scan:** none — every code block contains real code, every task names exact files and exact commands. The only "lift from current SettingsModal.tsx lines X–Y" notes reference real lines and copy the existing implementation; the engineer reads those lines directly.
+**2. Placeholder scan:** none - every code block contains real code, every task names exact files and exact commands. The only "lift from current SettingsModal.tsx lines X–Y" notes reference real lines and copy the existing implementation; the engineer reads those lines directly.
 
 **3. Type consistency:** `ChangelistInfo` (Rust + TS) carries `id: Option<i64>` / `id?: number` plus `name: string` and `is_default: bool`. The `assign_files_to_changelist` command accepts `changelist_id: Option<i64>` (None ⇒ Default). All call sites and serde derives line up.
 
@@ -2329,7 +2329,7 @@ The `/publish` slash command handles version bumps in package.json / Cargo.toml 
 
 Plan complete. Two execution options:
 
-1. **Subagent-Driven (recommended)** — dispatch a fresh subagent per task, review between tasks, fast iteration.
-2. **Inline Execution** — execute tasks in this session using `superpowers:executing-plans`, batch execution with checkpoints.
+1. **Subagent-Driven (recommended)** - dispatch a fresh subagent per task, review between tasks, fast iteration.
+2. **Inline Execution** - execute tasks in this session using `superpowers:executing-plans`, batch execution with checkpoints.
 
 Which approach?

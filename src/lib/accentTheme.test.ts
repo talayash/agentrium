@@ -31,7 +31,7 @@ describe('accentTheme', () => {
     expect(style.getPropertyValue('--accent-glow-sm')).toBe('rgba(53, 116, 240, 0.14)');
     expect(style.getPropertyValue('--accent-glow-md')).toBe('rgba(53, 116, 240, 0.22)');
 
-    // A distinct accent — verify the vars actually track the input, not a
+    // A distinct accent - verify the vars actually track the input, not a
     // hardcoded blue.
     applyAccentColor('#22A322');
     style = document.documentElement.style;

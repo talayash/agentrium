@@ -38,7 +38,7 @@ export function getWindowMode(): WindowModeInfo {
   try {
     label = getCurrentWebviewWindow().label;
   } catch {
-    // Outside a Tauri context (e.g. vitest/jsdom) — keep the derived fallback.
+    // Outside a Tauri context (e.g. vitest/jsdom) - keep the derived fallback.
   }
 
   cached = { mode, initialIds, label };

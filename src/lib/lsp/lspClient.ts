@@ -158,7 +158,7 @@ function bumpStartingCount(delta: number): void {
 }
 
 // Monaco's bundled TS worker paints its own 'typescript'-owned markers. Once
-// the real tsserver is connected those are redundant duplicates — and worse,
+// the real tsserver is connected those are redundant duplicates - and worse,
 // the worker is tsconfig-blind. Silence it while our LSP covers TS/JS;
 // restore it when LSP is off or the server isn't running so users keep the
 // pre-LSP single-file squiggles.

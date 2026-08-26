@@ -8,7 +8,7 @@ import { useTerminalStore } from '../store/terminalStore';
 //
 //   1. Global `contextmenu` handler that suppresses the browser-native menu
 //      everywhere EXCEPT text inputs, xterm helper textareas, and Monaco
-//      editors — those retain native cut/copy/paste + spell-check.
+//      editors - those retain native cut/copy/paste + spell-check.
 //   2. `beforeunload` handler that cancels any refresh attempt while
 //      terminals are open (belt-and-suspenders against menu vectors we
 //      haven't thought of).

@@ -193,10 +193,10 @@ interface AppState {
   gridLayout: GridLayout;
   gridFocusedIndex: number | null;
 
-  // Pinned tabs — persist by id so relaunched sessions stay pinned across app restarts.
+  // Pinned tabs - persist by id so relaunched sessions stay pinned across app restarts.
   // Terminals themselves are ephemeral; pins are just intent-preserving metadata.
   // Bulk close actions (Close Others, Close All But Pinned) live in the tab
-  // context-menu logic, not the store — see Task D.
+  // context-menu logic, not the store - see Task D.
   pinnedTabIds: string[];
   pinTab: (id: string) => void;
   unpinTab: (id: string) => void;
@@ -607,7 +607,7 @@ export const useAppStore = create<AppState>()(
       gridLayout: '1x1',
       gridFocusedIndex: null,
 
-      // Pinned tabs — id list only; terminals themselves remain ephemeral in
+      // Pinned tabs - id list only; terminals themselves remain ephemeral in
       // terminalStore. See src/lib/pinnedTabs.ts for the pure helpers.
       pinnedTabIds: [],
 
@@ -1243,7 +1243,7 @@ export const useAppStore = create<AppState>()(
         // Pinned tabs (Phase 4a). Persist pinned-tab intent WITHIN a session
         // so refreshes / new detached windows preserve the pin state.
         // Restored terminals get fresh UUIDs (Uuid::new_v4() in Rust), so
-        // pins do NOT survive app restart — see the startup GC in App.tsx
+        // pins do NOT survive app restart - see the startup GC in App.tsx
         // that drops ghost ids after session restore populates the store.
         // A stable-key persistence pass (using working_directory +
         // claude_session_id) is queued as a follow-up.

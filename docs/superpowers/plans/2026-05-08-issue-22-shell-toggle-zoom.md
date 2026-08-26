@@ -1,4 +1,4 @@
-# Issue #22 — Plain-shell toggle + zoom shortcuts Implementation Plan
+# Issue #22 - Plain-shell toggle + zoom shortcuts Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -28,7 +28,7 @@ No backend, no IPC, no schema changes.
 
 ## Task 1: Export `DEFAULT_TERMINAL_FONT_SIZE`
 
-Small precursor — both the store's initial state and the new `Ctrl+0` reset shortcut need a single source of truth for the default size.
+Small precursor - both the store's initial state and the new `Ctrl+0` reset shortcut need a single source of truth for the default size.
 
 **Files:**
 - Modify: `src/store/appStore.ts:11` (alongside `DEFAULT_TERMINAL_FONT_FAMILY`)
@@ -59,7 +59,7 @@ to:
 - [ ] **Step 3: Type-check**
 
 Run: `npx tsc --noEmit -p tsconfig.json`
-Expected: no new errors. (Pre-existing errors unrelated to this task may remain — note them but don't fix them.)
+Expected: no new errors. (Pre-existing errors unrelated to this task may remain - note them but don't fix them.)
 
 - [ ] **Step 4: Commit**
 
@@ -72,7 +72,7 @@ git commit -m "refactor: extract DEFAULT_TERMINAL_FONT_SIZE constant"
 
 ## Task 2: Add `createShellTerminalTab` store action
 
-The existing `openShellTerminal` (line 415) routes the new shell into `bottomTerminalIds` (the bottom pane). For the New Terminal modal we need a sibling that mirrors `createTerminal`'s post-IPC bookkeeping: insert into `terminals`, mark active, fetch git info. Crucially, it must NOT set `isShellTerminal: true` — that flag would hide the terminal from `Sidebar.tsx:76` and `TerminalTabs.tsx:45`.
+The existing `openShellTerminal` (line 415) routes the new shell into `bottomTerminalIds` (the bottom pane). For the New Terminal modal we need a sibling that mirrors `createTerminal`'s post-IPC bookkeeping: insert into `terminals`, mark active, fetch git info. Crucially, it must NOT set `isShellTerminal: true` - that flag would hide the terminal from `Sidebar.tsx:76` and `TerminalTabs.tsx:45`.
 
 **Files:**
 - Modify: `src/store/terminalStore.ts:53-91` (interface declaration)
@@ -102,7 +102,7 @@ In `src/store/terminalStore.ts`, add this implementation immediately after the c
         label,
         cwd: workingDirectory,
       });
-      // Apply nickname/color_tag the user picked in the modal — the backend
+      // Apply nickname/color_tag the user picked in the modal - the backend
       // command takes only label+cwd, so we patch the persisted record here.
       // (Falls back silently if either is empty to avoid a needless IPC.)
       if (nickname) {
@@ -116,7 +116,7 @@ In `src/store/terminalStore.ts`, add this implementation immediately after the c
 
       set((state) => {
         const newTerminals = new Map(state.terminals);
-        // Intentionally NOT setting isShellTerminal — that flag is for bottom-
+        // Intentionally NOT setting isShellTerminal - that flag is for bottom-
         // pane shells. Main-tab shells appear in the sidebar and tab bar like
         // any other terminal; their plain-shell-ness is recorded durably in
         // the backend via claude_args=["__shell__"].
@@ -216,15 +216,15 @@ Insert this JSX block immediately after the Nickname field's closing `</div>` (a
 
 Use these exact anchors to find each block:
 
-1. **Profile Selection** — starts with `{profiles.length > 0 && (` (around line 324). Change the opening guard to `{!plainShell && profiles.length > 0 && (` — no other change.
+1. **Profile Selection** - starts with `{profiles.length > 0 && (` (around line 324). Change the opening guard to `{!plainShell && profiles.length > 0 && (` - no other change.
 
-2. **Claude Arguments** — the `<div>` containing `<label>Claude Arguments (one per line)</label>` (around line 524).
+2. **Claude Arguments** - the `<div>` containing `<label>Claude Arguments (one per line)</label>` (around line 524).
 
-3. **Model Selector** — the `<div>` containing `<label>Model</label>` (around line 559).
+3. **Model Selector** - the `<div>` containing `<label>Model</label>` (around line 559).
 
-4. **Effort Selector** — the `<div>` containing `<label>Effort</label>` (around line 583).
+4. **Effort Selector** - the `<div>` containing `<label>Effort</label>` (around line 583).
 
-For #2, #3, #4, wrap the existing block (the entire `<div>...</div>`) with `{!plainShell && (` and `)}` — do NOT add another `<div>`. The pattern is:
+For #2, #3, #4, wrap the existing block (the entire `<div>...</div>`) with `{!plainShell && (` and `)}` - do NOT add another `<div>`. The pattern is:
 
 ```tsx
 {!plainShell && (
@@ -234,7 +234,7 @@ For #2, #3, #4, wrap the existing block (the entire `<div>...</div>`) with `{!pl
 )}
 ```
 
-Leave Working Directory, Nickname, and the Worktree section visible in both modes. (The modal has no env-vars UI today; env vars only flow in via Profile, so they're naturally absent in plain-shell mode — that's acceptable for v1; users can set them in the shell itself.)
+Leave Working Directory, Nickname, and the Worktree section visible in both modes. (The modal has no env-vars UI today; env vars only flow in via Profile, so they're naturally absent in plain-shell mode - that's acceptable for v1; users can set them in the shell itself.)
 
 - [ ] **Step 5: Branch the submit handler**
 
@@ -332,7 +332,7 @@ In the running app:
 2. Toggle "Plain shell (no Claude)" on. Confirm Profile, Claude Arguments, Model, Effort sections vanish; Working Directory, Nickname, Worktree section remain.
 3. Toggle off. Confirm the hidden sections come back.
 4. Toggle on. Click "Start Shell". Confirm a new tab opens, the shell prompt appears, and typing `cd` (or `pwd`) shows the working directory.
-5. In that shell, type `set ANTHROPIC_BASE_URL=http://localhost:11434 && claude --help` (Windows) or the equivalent — confirm it actually runs `claude` (the issue's real use case).
+5. In that shell, type `set ANTHROPIC_BASE_URL=http://localhost:11434 && claude --help` (Windows) or the equivalent - confirm it actually runs `claude` (the issue's real use case).
 
 If smoke test fails, fix and re-run before moving on. Don't commit broken UI.
 
@@ -373,14 +373,14 @@ Add this helper at the top of the file, just above the `export function useKeybo
 ```ts
 /**
  * Return true when the focused element is an editable surface that is NOT
- * inside an xterm terminal — i.e., a Settings/modal input, a Monaco editor,
+ * inside an xterm terminal - i.e., a Settings/modal input, a Monaco editor,
  * or the global search box. In those cases we must let key events pass
  * through to the native control instead of hijacking them for terminal zoom.
  */
 function isFocusInNonTerminalEditable(): boolean {
   const el = document.activeElement;
   if (!el || el === document.body) return false;
-  // xterm's hidden textarea always lives inside an .xterm container — let
+  // xterm's hidden textarea always lives inside an .xterm container - let
   // shortcuts through when the user is "in" a terminal.
   if (el.closest('.xterm')) return false;
   const tag = el.tagName;
@@ -407,7 +407,7 @@ Find the existing `handleKeyDown` function (starts around line 26). Just before 
         else setTerminalFontSize(DEFAULT_TERMINAL_FONT_SIZE);
         return;
       }
-      // Ctrl++ (with Shift) — same as Ctrl+= for users who reflexively press shift.
+      // Ctrl++ (with Shift) - same as Ctrl+= for users who reflexively press shift.
       if (ctrl && shift && e.key === '+') {
         if (isFocusInNonTerminalEditable()) return;
         e.preventDefault();
@@ -428,7 +428,7 @@ Expected: no new errors.
 
 In the running dev app:
 1. Click into a terminal, press `Ctrl+=` ten times. Font grows one px each press up to 32, then stops.
-2. Press `Ctrl+-` repeatedly down to 8 — confirm it stops at 8.
+2. Press `Ctrl+-` repeatedly down to 8 - confirm it stops at 8.
 3. Press `Ctrl+0`. Font snaps back to 14.
 4. Open Settings (Ctrl+,), click into the "Default Claude Args" textarea, press `Ctrl+-`. Confirm the character is selected backwards (native behavior) and the terminal font does NOT change.
 5. Restart the app. Set zoom to 18, restart, confirm terminals open at 18 (`partialize` already includes `terminalFontSize`).
@@ -444,7 +444,7 @@ git commit -m "feat(shortcuts): add Ctrl+= / Ctrl+- / Ctrl+0 terminal zoom (#22)
 
 ## Task 5: Restore handler branch for `__shell__`
 
-Crash recovery currently calls `createTerminal` for every saved terminal — including those with `claude_args=["__shell__"]` (a sentinel set by the backend's `create_shell_terminal`). That would try to spawn `cmd /C claude __shell__`, which fails. Branch on the sentinel and route through `createShellTerminalTab` instead.
+Crash recovery currently calls `createTerminal` for every saved terminal - including those with `claude_args=["__shell__"]` (a sentinel set by the backend's `create_shell_terminal`). That would try to spawn `cmd /C claude __shell__`, which fails. Branch on the sentinel and route through `createShellTerminalTab` instead.
 
 **Files:**
 - Modify: `src/App.tsx:280-289` (inside `handleRestore`)
@@ -493,7 +493,7 @@ Replace the body with:
       const config = pendingRestoreConfigs[i];
       try {
         if (config.claude_args[0] === '__shell__') {
-          // Plain shell — re-spawn as a main-tab shell. We deliberately don't
+          // Plain shell - re-spawn as a main-tab shell. We deliberately don't
           // restore the script-runner sentinel '__script__' here; that's a
           // child terminal owned by its parent and gets recreated on demand.
           await createShellTerminalTab(
@@ -503,7 +503,7 @@ Replace the body with:
             config.nickname ?? undefined,
           );
         } else if (config.claude_args[0] === '__script__') {
-          // Script runner — owned by parent terminal, skip on restore.
+          // Script runner - owned by parent terminal, skip on restore.
           continue;
         } else {
           await createTerminal(
@@ -527,14 +527,14 @@ Replace the body with:
 Run: `npx tsc --noEmit -p tsconfig.json`
 Expected: no new errors.
 
-- [ ] **Step 4: Manual smoke test (best-effort — depends on runtime conditions)**
+- [ ] **Step 4: Manual smoke test (best-effort - depends on runtime conditions)**
 
 Crash recovery is normally only offered when the previous session ended unexpectedly. To exercise it deterministically:
 1. In the dev app, create a plain-shell tab (Task 3 path).
-2. Force-quit the app (close the window without graceful shutdown — e.g., Task Manager → End Task on the dev process).
+2. Force-quit the app (close the window without graceful shutdown - e.g., Task Manager → End Task on the dev process).
 3. Relaunch. If the restore banner appears, click "Restore" and confirm the plain-shell tab comes back as a working shell (NOT as a failed `claude __shell__` terminal).
 
-If the restore banner doesn't appear in this scenario, the code path is exercised purely by the type-checker and code review — that's acceptable for this task. Note in the commit body that smoke-testing crash recovery is environment-dependent.
+If the restore banner doesn't appear in this scenario, the code path is exercised purely by the type-checker and code review - that's acceptable for this task. Note in the commit body that smoke-testing crash recovery is environment-dependent.
 
 - [ ] **Step 5: Commit**
 
@@ -569,14 +569,14 @@ Expected: build succeeds. Watch for unused-import warnings on the files touched.
 In `npm run tauri dev`, exercise in order:
 1. Claude path still works: New Terminal → no toggle → Start Terminal → claude prompt appears.
 2. Plain shell path: New Terminal → toggle on → Start Shell → shell prompt; run `ollama launch claude --help` (or any non-claude command) to prove the wrapper use case.
-3. Toggle round-trip: in the modal, toggle on then off — Profile/Args/Model/Effort sections re-appear with their previous values intact.
-4. Plain shell respects worktree selection: with a git repo as working directory, pick a worktree, toggle plain shell on, Start Shell — shell opens at the worktree path.
+3. Toggle round-trip: in the modal, toggle on then off - Profile/Args/Model/Effort sections re-appear with their previous values intact.
+4. Plain shell respects worktree selection: with a git repo as working directory, pick a worktree, toggle plain shell on, Start Shell - shell opens at the worktree path.
 5. Zoom in/out/reset (Ctrl+= / Ctrl+- / Ctrl+0) works inside terminal focus, NOT inside Settings inputs.
 6. Restart and confirm font size persists.
 
 - [ ] **Step 5: Update the issue**
 
-Comment on issue #22 acknowledging the fix shipped (delivery is automatic via the next release cycle — no extra action needed). Don't close the issue here; the release workflow does that downstream.
+Comment on issue #22 acknowledging the fix shipped (delivery is automatic via the next release cycle - no extra action needed). Don't close the issue here; the release workflow does that downstream.
 
 ---
 
@@ -594,6 +594,6 @@ Comment on issue #22 acknowledging the fix shipped (delivery is automatic via th
 | `Ctrl+-` zoom out | Task 4 step 3 |
 | `Ctrl+0` reset | Task 4 step 3 |
 | Focus-scoping (skip non-terminal inputs) | Task 4 step 2 |
-| Persistence (font size survives restart) | Free — already in `partialize` |
+| Persistence (font size survives restart) | Free - already in `partialize` |
 | Restore-handler `__shell__` branch (flagged risk) | Task 5 |
 | Manual test plan items 1–8 | Tasks 3, 4, 6 step 4 |

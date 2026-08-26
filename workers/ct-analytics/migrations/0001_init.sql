@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS daily_stats (
 CREATE INDEX IF NOT EXISTS idx_daily_stats_date ON daily_stats(date);
 CREATE INDEX IF NOT EXISTS idx_daily_stats_dim ON daily_stats(date, dimension);
 
--- One row per (date, installation_id) — DAU = COUNT(*) per date.
+-- One row per (date, installation_id) - DAU = COUNT(*) per date.
 CREATE TABLE IF NOT EXISTS daily_dau (
   date TEXT NOT NULL,
   installation_id TEXT NOT NULL,

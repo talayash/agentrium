@@ -17,7 +17,7 @@ describe('PALETTE_SOURCES', () => {
       expect(typeof src.id).toBe('string');
       expect(typeof src.label).toBe('string');
       expect(typeof src.category).toBe('string');
-      // LucideIcon is a React.forwardRef component — object in current lucide-react,
+      // LucideIcon is a React.forwardRef component - object in current lucide-react,
       // function in older builds. Both are renderable.
       expect(['function', 'object']).toContain(typeof src.icon);
       expect(src.icon).toBeTruthy();

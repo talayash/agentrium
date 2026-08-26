@@ -24,8 +24,8 @@ export function PreviewPanel() {
   );
 
   // In dev mode the app itself is served from http://localhost:5173, so a
-  // preview pointed there would load ADE-1 recursively into an
-  // iframe — a Reload click looks like the whole app restarted. Refuse to
+  // preview pointed there would load Agentrium recursively into an
+  // iframe - a Reload click looks like the whole app restarted. Refuse to
   // iframe our own origin. In production `window.location.origin` is
   // `tauri://localhost` (or similar), which never matches a detected URL.
   const isSelfPreview = useMemo(() => {
@@ -94,7 +94,7 @@ export function PreviewPanel() {
       style={{ width: panelWidthPx }}
       data-testid="preview-panel"
     >
-      {/* Resize handle — 4px wide invisible strip on the left edge, with a
+      {/* Resize handle - 4px wide invisible strip on the left edge, with a
           hover state that reveals a hairline in the accent colour. */}
       <div
         onMouseDown={onHandleMouseDown}
@@ -135,10 +135,10 @@ export function PreviewPanel() {
             <div className="absolute inset-0 flex items-center justify-center text-center p-6">
               <div className="max-w-sm">
                 <div className="text-text-primary text-[13px] font-semibold mb-1">
-                  Can't preview ADE-1 itself
+                  Can't preview Agentrium itself
                 </div>
                 <div className="text-text-tertiary text-[11.5px]">
-                  <code className="text-text-secondary">{url}</code> is ADE-1's own dev
+                  <code className="text-text-secondary">{url}</code> is Agentrium's own dev
                   server. Point the preview at your app's URL (a different port).
                 </div>
               </div>

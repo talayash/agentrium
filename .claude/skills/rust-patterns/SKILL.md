@@ -6,12 +6,12 @@ description: Rust/Tauri patterns and best practices for ClaudeTerminal backend
 # Rust Patterns for ClaudeTerminal
 
 ## Error Handling
-- Commands return `Result<T, String>` — use `.map_err(|e| e.to_string())`
-- Never `.unwrap()` in production — use `?` operator
+- Commands return `Result<T, String>` - use `.map_err(|e| e.to_string())`
+- Never `.unwrap()` in production - use `?` operator
 - Use `anyhow` for internal errors, convert to String at IPC boundary
 
 ## Thread Safety
-- `AppState` uses `Arc<Mutex<T>>` — lock, use, drop quickly
+- `AppState` uses `Arc<Mutex<T>>` - lock, use, drop quickly
 - Never hold a Mutex lock across `.await` points
 - PTY reader threads use `mpsc::channel` to communicate with Tokio tasks
 

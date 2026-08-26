@@ -18,7 +18,7 @@ describe('estimateTabWidth', () => {
 
   it('adds width when the tab is pinned', () => {
     // Use a label long enough to be above the 80px floor so the pin actually
-    // moves the estimate — otherwise both are clamped to 80.
+    // moves the estimate - otherwise both are clamped to 80.
     const long = 'x'.repeat(10);
     expect(estimateTabWidth(long, { isPinned: true })).toBeGreaterThan(
       estimateTabWidth(long),
@@ -66,7 +66,7 @@ describe('computeTabOverflow', () => {
   });
 
   it('treats exact-fit as fully visible (no chevron)', () => {
-    // 3 tabs at 100 = 300px, container is exactly 300px — everything fits.
+    // 3 tabs at 100 = 300px, container is exactly 300px - everything fits.
     expect(
       computeTabOverflow({
         tabIds: ['a', 'b', 'c'],
@@ -122,7 +122,7 @@ describe('computeTabOverflow', () => {
   it('keeps the single active tab visible when it is wider than the budget', () => {
     // Regression: with only one tab open in a narrow strip, the tab was
     // wider than the budget so nothing fit, and the pre-fix active-swap
-    // required visible.length > 0 — so it never fired, leaving `visible`
+    // required visible.length > 0 - so it never fired, leaving `visible`
     // empty. The strip then rendered just the "1 hidden" chevron badge
     // with no actual tab. The invariant is: if there is an activeId, at
     // least the active tab must render.
@@ -198,7 +198,7 @@ describe('computeTabOverflow', () => {
 
   it('preserves the pinned-first ordering the caller provides (active swap included)', () => {
     // tabIds already ordered pinned-first (['pin1', 'pin2', ...]). Active is 'b',
-    // which lives in the unpinned tail — verify the swap picks it up while
+    // which lives in the unpinned tail - verify the swap picks it up while
     // pins stay in front.
     // Widths: 5 * 100 = 500. Container 300, chevron 32 → budget 268 → 2 fit.
     // Prefix ['pin1', 'pin2'] fits; active 'b' is hidden → swap into slot 2.

@@ -7,7 +7,7 @@ describe('pinnedTabs helpers', () => {
     expect(addPin([], 'a')).toEqual(['a']);
     expect(addPin(['a', 'b'], 'c')).toEqual(['a', 'b', 'c']);
 
-    // No-op when already pinned — same array reference so shallow-equal
+    // No-op when already pinned - same array reference so shallow-equal
     // selectors can short-circuit.
     const pinned = ['a', 'b'];
     expect(addPin(pinned, 'a')).toBe(pinned);
@@ -18,7 +18,7 @@ describe('pinnedTabs helpers', () => {
     expect(removePin(['a', 'b', 'c'], 'b')).toEqual(['a', 'c']);
     expect(removePin(['a'], 'a')).toEqual([]);
 
-    // No-op when absent — content unchanged (filter still returns a fresh
+    // No-op when absent - content unchanged (filter still returns a fresh
     // array, but callers compare by value here).
     expect(removePin(['a', 'b'], 'missing')).toEqual(['a', 'b']);
     expect(removePin([], 'anything')).toEqual([]);

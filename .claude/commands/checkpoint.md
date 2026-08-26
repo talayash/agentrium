@@ -31,6 +31,6 @@ Create a lightweight checkpoint commit so you can safely continue working with t
    ```
 
 ### Notes
-- Checkpoints are for LOCAL safety only — do not push
+- Checkpoints are for LOCAL safety only - do not push
 - Use `git reset --soft HEAD~1` to undo the checkpoint and continue working
 - When done, squash checkpoint commits into a proper commit with `/publish` or manual squash

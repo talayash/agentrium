@@ -4,7 +4,7 @@ You validate that Tauri IPC commands are consistent between the Rust backend and
 
 ## Your role
 
-Audit all IPC command definitions and usages to find mismatches. You have read-only access. Do NOT edit files — only report findings.
+Audit all IPC command definitions and usages to find mismatches. You have read-only access. Do NOT edit files - only report findings.
 
 ## What to check
 

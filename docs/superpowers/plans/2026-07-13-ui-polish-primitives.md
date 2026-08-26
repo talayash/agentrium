@@ -1,8 +1,8 @@
-# UI Polish v2 — Primitives + Consistency Pass Implementation Plan
+# UI Polish v2 - Primitives + Consistency Pass Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Ship four new `ui/` primitives (`ListRow`, `PanelHeader`, `ProgressStripe`, `EmptyState`), migrate the panels/modals/dropdowns in the spec onto them, add a status-bar notification-unread dot + optional global progress stripe, and add a "just-finished" tab flash — all as a single-release polish pass.
+**Goal:** Ship four new `ui/` primitives (`ListRow`, `PanelHeader`, `ProgressStripe`, `EmptyState`), migrate the panels/modals/dropdowns in the spec onto them, add a status-bar notification-unread dot + optional global progress stripe, and add a "just-finished" tab flash - all as a single-release polish pass.
 
 **Architecture:** Primitive-first. Add four small React components under `src/components/ui/`; extract the only branching logic (`ProgressStripe`) to `src/lib/progressStripe.ts` for unit testing per the repo's existing style (pure helpers unit-tested; visual components verified in the dev app). Then walk each listed surface and replace its ad-hoc row/header/empty markup with the new primitives, preserving all behavior.
 
@@ -22,7 +22,7 @@ cd /c/Users/talay/claude-terminal
 npx tsc --noEmit
 npm run test:run
 ```
-Expected: type-check clean, all vitest suites pass. If either fails, stop and surface — the plan assumes a clean baseline.
+Expected: type-check clean, all vitest suites pass. If either fails, stop and surface - the plan assumes a clean baseline.
 
 - [ ] **Prep Step 2: Read the spec**
 
@@ -74,7 +74,7 @@ Run:
 ```bash
 npx vitest run src/lib/progressStripe.test.ts
 ```
-Expected: FAIL — `Cannot find module './progressStripe'`.
+Expected: FAIL - `Cannot find module './progressStripe'`.
 
 - [ ] **Step 3: Implement the helper**
 
@@ -145,7 +145,7 @@ import { computeStripeStyle } from '../../lib/progressStripe';
 interface ProgressStripeProps {
   /** 0..1 for determinate; omit for indeterminate. Values outside [0,1] are clamped. */
   value?: number;
-  /** Reserves the 2 px row without rendering the bar — prevents layout shift. */
+  /** Reserves the 2 px row without rendering the bar - prevents layout shift. */
   hidden?: boolean;
   className?: string;
 }
@@ -223,7 +223,7 @@ interface EmptyStateProps {
   icon?: ReactNode;
   title: string;
   description?: string;
-  /** Optional primary action — pass a Button. */
+  /** Optional primary action - pass a Button. */
   action?: ReactNode;
   /** Top-align instead of vertical-center. Auto-selected when the parent is short (<200px). */
   compact?: boolean;
@@ -300,7 +300,7 @@ interface ListRowProps {
   leading?: ReactNode;
   /** Optional right-aligned meta slot (kbd chip, count, date). */
   trailing?: ReactNode;
-  /** Render as a <button> (default — keyboard-clickable) or a <div> (for
+  /** Render as a <button> (default - keyboard-clickable) or a <div> (for
    *  wrapping already-interactive children). */
   as?: 'button' | 'div';
   /** 'default' = 26px; 'compact' = 22px. */
@@ -438,7 +438,7 @@ interface PanelHeaderProps {
   onToggleCollapsed?: () => void;
   /** Right-slot: usually a small cluster of icon buttons. */
   actions?: ReactNode;
-  /** When present, renders a 2px progress bar under the header — shows either
+  /** When present, renders a 2px progress bar under the header - shows either
    *  an indeterminate slide or a determinate fill (value 0..1). */
   progress?: { active: boolean; value?: number };
   className?: string;
@@ -679,7 +679,7 @@ Open `src/components/FileTreePanel.tsx`. Locate the panel's header block (the cu
 import { PanelHeader } from './ui/PanelHeader';
 ```
 
-Replace the header block with a `PanelHeader` invocation that preserves the existing title, actions (pin/reveal/refresh), and — if the panel has a loading state — the progress prop. Read the current header for the exact actions cluster; do not drop any buttons.
+Replace the header block with a `PanelHeader` invocation that preserves the existing title, actions (pin/reveal/refresh), and - if the panel has a loading state - the progress prop. Read the current header for the exact actions cluster; do not drop any buttons.
 
 - [ ] **Step 3: Migrate the file-tree row rendering to `ListRow (compact)`**
 
@@ -812,7 +812,7 @@ Find the session-list mapping block inside the widget's dropdown. Replace each r
 </ListRow>
 ```
 
-Adjust the property names to match the widget's local variables — do **not** rename them; they're already established.
+Adjust the property names to match the widget's local variables - do **not** rename them; they're already established.
 
 - [ ] **Step 3: Verify type-check + build**
 
@@ -855,7 +855,7 @@ import { ListRow } from './ui/ListRow';
 
 - [ ] **Step 2: Replace only the file-change leaf-row markup**
 
-Inside `ChangelistSection.tsx`, find the row that renders each individual file change (typically has status letter + file path + optional selected/staged indicators). **Do not touch** the collapsible section headers, staging buttons, or drag-drop wrappers — they are load-bearing per the spec.
+Inside `ChangelistSection.tsx`, find the row that renders each individual file change (typically has status letter + file path + optional selected/staged indicators). **Do not touch** the collapsible section headers, staging buttons, or drag-drop wrappers - they are load-bearing per the spec.
 
 Replace the leaf row's `<div>` or `<button>` with:
 
@@ -872,7 +872,7 @@ Replace the leaf row's `<div>` or `<button>` with:
 </ListRow>
 ```
 
-Use whatever the existing local names are for `isExpanded` / `StatusGlyph` — do not introduce new components.
+Use whatever the existing local names are for `isExpanded` / `StatusGlyph` - do not introduce new components.
 
 - [ ] **Step 3: Verify type-check + build**
 
@@ -929,7 +929,7 @@ Find the mapping over worktrees inside `WorktreeModal.tsx`. Replace each row's m
 </ListRow>
 ```
 
-Match the local property names of the existing worktree data (`name`, `path`, `branch`, `is_worktree`) — do not rename.
+Match the local property names of the existing worktree data (`name`, `path`, `branch`, `is_worktree`) - do not rename.
 
 - [ ] **Step 3: Add an EmptyState for the "no worktrees" case**
 
@@ -1124,7 +1124,7 @@ git commit -m "feat(history): rows use ListRow"
 
 ---
 
-## Task 16: `StatusBar` — unread-notification dot on the bell
+## Task 16: `StatusBar` - unread-notification dot on the bell
 
 **Files:**
 - Modify: `src/store/appStore.ts`
@@ -1150,7 +1150,7 @@ incrementUnreadNotifications: () => set((s) => ({ unreadNotificationCount: s.unr
 clearUnreadNotifications: () => set({ unreadNotificationCount: 0 }),
 ```
 
-Add `unreadNotificationCount` to the persist middleware's `partialize` allow-list (find the existing allow-list keys and append this one), and update the matching test in `src/store/appStore.test.ts` — the test's "persisted keys allow-list" assertion must include the new key.
+Add `unreadNotificationCount` to the persist middleware's `partialize` allow-list (find the existing allow-list keys and append this one), and update the matching test in `src/store/appStore.test.ts` - the test's "persisted keys allow-list" assertion must include the new key.
 
 - [ ] **Step 2: Increment on background finish**
 
@@ -1204,7 +1204,7 @@ Expected: all clean; the appStore persist-allow-list test now includes `unreadNo
 
 - [ ] **Step 5: Manual visual check**
 
-Run `npm run tauri dev`. Start a terminal, hide the window (minimize / switch app), and wait for a Claude session to finish. Refocus the app — the status-bar bell should show a dot. Click the bell — dot disappears.
+Run `npm run tauri dev`. Start a terminal, hide the window (minimize / switch app), and wait for a Claude session to finish. Refocus the app - the status-bar bell should show a dot. Click the bell - dot disappears.
 
 - [ ] **Step 6: Commit**
 
@@ -1215,13 +1215,13 @@ git commit -m "feat(statusbar): unread-notification dot"
 
 ---
 
-## Task 17: `StatusBar` — optional global progress stripe
+## Task 17: `StatusBar` - optional global progress stripe
 
 **Files:**
 - Modify: `src/store/appStore.ts`
 - Modify: `src/components/StatusBar.tsx`
 - Modify: `src/lsp/*.ts` (call the setter on start/ready)
-- Modify: any git fetch/pull invocation site that already tracks local `loading` — publish it up
+- Modify: any git fetch/pull invocation site that already tracks local `loading` - publish it up
 
 - [ ] **Step 1: Add store state**
 
@@ -1240,7 +1240,7 @@ globalBusy: null,
 setGlobalBusy: (label) => set({ globalBusy: label }),
 ```
 
-Do **not** persist `globalBusy` — omit from `partialize`. It's ephemeral.
+Do **not** persist `globalBusy` - omit from `partialize`. It's ephemeral.
 
 - [ ] **Step 2: Render the stripe above the status bar**
 
@@ -1273,7 +1273,7 @@ return (
 
 Open `src/lib/lsp/lspClient.ts` (or wherever the LSP start/ready handshake lives). At the moment the client transitions to `starting`, call `useAppStore.getState().setGlobalBusy('Starting language server…')`. When the client transitions to `ready` (or errors), call `useAppStore.getState().setGlobalBusy(null)`.
 
-If multiple language servers may start concurrently, keep a **counter** in the module (not the store) and only clear the store label when the counter drops to zero — otherwise the last one ready clears the stripe even if others are still starting.
+If multiple language servers may start concurrently, keep a **counter** in the module (not the store) and only clear the store label when the counter drops to zero - otherwise the last one ready clears the stripe even if others are still starting.
 
 - [ ] **Step 4: Hook git fetch/pull**
 
@@ -1290,7 +1290,7 @@ Expected: both clean.
 
 - [ ] **Step 6: Manual visual check**
 
-Run `npm run tauri dev`. Open a `.ts` file to trigger LSP startup — a 2 px accent stripe should appear above the status bar and disappear once the LSP is ready. Trigger a `git pull` from the file-changes panel — the stripe should appear again while it runs.
+Run `npm run tauri dev`. Open a `.ts` file to trigger LSP startup - a 2 px accent stripe should appear above the status bar and disappear once the LSP is ready. Trigger a `git pull` from the file-changes panel - the stripe should appear again while it runs.
 
 - [ ] **Step 7: Commit**
 
@@ -1367,7 +1367,7 @@ const justFinishedAt = useTerminalStore((s) => s.justFinishedAt);
 
 And use `justFinishedAt.has(terminal.id)` in the classname (not the `getState()` call inline).
 
-For **inactive tabs** that finish, apply the same class briefly so the user sees the flash from across the tab strip. Reuse the existing `ct-working-tab::after` selector — that pseudo-element already sits at the same position. Add a sibling rule:
+For **inactive tabs** that finish, apply the same class briefly so the user sees the flash from across the tab strip. Reuse the existing `ct-working-tab::after` selector - that pseudo-element already sits at the same position. Add a sibling rule:
 
 ```css
 .ct-tab-finish-inactive::after {
@@ -1393,7 +1393,7 @@ Expected: all clean.
 
 - [ ] **Step 5: Manual visual check**
 
-Run `npm run tauri dev`. In an active terminal, type a Claude prompt and wait for it to finish. The active tab's bottom underline should flash green for ~800 ms then fade back to accent blue. Switch to another terminal while the first is busy and let it finish — the inactive tab flashes green in the strip.
+Run `npm run tauri dev`. In an active terminal, type a Claude prompt and wait for it to finish. The active tab's bottom underline should flash green for ~800 ms then fade back to accent blue. Switch to another terminal while the first is busy and let it finish - the inactive tab flashes green in the strip.
 
 - [ ] **Step 6: Reduce-motion verification**
 
@@ -1427,23 +1427,23 @@ Expected: all green. If anything fails, stop and fix before proceeding.
 Run `npm run tauri dev`. Walk through this checklist and confirm each item:
 
 1. Sidebar's "PROJECT" header height/style is unchanged; expand/collapse works.
-2. Sessions panel — refresh spinner + progress stripe both fire; selected row has stripe; empty state renders in a folder with no sessions.
-3. FileTreePanel — hovering, selecting, expanding folders all still work; selected file has stripe.
-4. TitleBar branch dropdown — current branch has stripe; other branches don't; filter still works.
-5. Session widget dropdown — active session has stripe.
-6. FileChangesPanel — expanded change row has stripe; group headers and staging unchanged.
-7. WorktreeModal — worktrees list uses stripe; empty state renders when there are none.
-8. SnippetsModal — selected snippet has stripe; empty-search state renders.
-9. NewTerminalModal — recent/profile rows have stripe when selected; empty search state renders.
-10. ProfileModal — profile rows have stripe; empty state renders.
-11. SessionHistory — rows migrated.
-12. StatusBar — unread bell dot appears on background-finish; clears on click.
-13. StatusBar — global progress stripe appears during LSP startup and git pull.
-14. Terminal tab — flashes green for ~800 ms on busy → idle.
+2. Sessions panel - refresh spinner + progress stripe both fire; selected row has stripe; empty state renders in a folder with no sessions.
+3. FileTreePanel - hovering, selecting, expanding folders all still work; selected file has stripe.
+4. TitleBar branch dropdown - current branch has stripe; other branches don't; filter still works.
+5. Session widget dropdown - active session has stripe.
+6. FileChangesPanel - expanded change row has stripe; group headers and staging unchanged.
+7. WorktreeModal - worktrees list uses stripe; empty state renders when there are none.
+8. SnippetsModal - selected snippet has stripe; empty-search state renders.
+9. NewTerminalModal - recent/profile rows have stripe when selected; empty search state renders.
+10. ProfileModal - profile rows have stripe; empty state renders.
+11. SessionHistory - rows migrated.
+12. StatusBar - unread bell dot appears on background-finish; clears on click.
+13. StatusBar - global progress stripe appears during LSP startup and git pull.
+14. Terminal tab - flashes green for ~800 ms on busy → idle.
 
 - [ ] **Step 3: Reduce-motion pass**
 
-Enable the in-app "Reduce motion" toggle. Repeat items 2, 13, and 14 above. Confirm no animation plays — stripes are static/absent, tab flash is instant, all list-row hover transitions are instant.
+Enable the in-app "Reduce motion" toggle. Repeat items 2, 13, and 14 above. Confirm no animation plays - stripes are static/absent, tab flash is instant, all list-row hover transitions are instant.
 
 - [ ] **Step 4: Cross-platform sanity**
 
@@ -1472,7 +1472,7 @@ Open `src/changelog.json`. Add a new entry above the existing 1.27.1 block:
 }
 ```
 
-Do not bump the version files here — that's the `/publish 1.28.0` command's job.
+Do not bump the version files here - that's the `/publish 1.28.0` command's job.
 
 - [ ] **Step 6: Commit changelog**
 
@@ -1487,9 +1487,9 @@ The full polish pass is done. The next command is `/publish 1.28.0`.
 
 ---
 
-## Self-review checks (done — see below)
+## Self-review checks (done - see below)
 
-- **Spec coverage:** Every migration surface in the spec's Part 2 table maps to a task (6–15). Part 3 status-bar additions → Tasks 16, 17. Part 4 motion delta → Task 18 (tab flash), Task 5 (modal open — verified in place via `dialogMotion` which the primitive already uses). Part 1 primitives → Tasks 1–5. Verification section → Task 19.
+- **Spec coverage:** Every migration surface in the spec's Part 2 table maps to a task (6–15). Part 3 status-bar additions → Tasks 16, 17. Part 4 motion delta → Task 18 (tab flash), Task 5 (modal open - verified in place via `dialogMotion` which the primitive already uses). Part 1 primitives → Tasks 1–5. Verification section → Task 19.
 - **No placeholders:** No TBD/TODO/vague "handle appropriately" instructions; every step has concrete code or a concrete search key.
 - **Type consistency:** `ListRow` props (`selected`, `disabled`, `variant`, `leading`, `trailing`, `as`) are consistent across every consumer. `PanelHeader` `progress` prop shape (`{active, value?}`) is consistent. `computeStripeStyle` return type matches the consumer.
 - **Ambiguity fixes applied:** Task 17 clarifies that `globalBusy` counts multiple concurrent LSP starts via a module counter (not the store).

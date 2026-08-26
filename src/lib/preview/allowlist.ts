@@ -1,7 +1,7 @@
 const LOCALHOST_HOSTS = new Set(['localhost', '127.0.0.1', '0.0.0.0']);
 
 function hostMatchesGlob(host: string, pattern: string): boolean {
-  // Only supports a single leading '*.' — 'foo.*' or 'a*b' are literal.
+  // Only supports a single leading '*.' - 'foo.*' or 'a*b' are literal.
   if (!pattern.startsWith('*.')) {
     return host === pattern;
   }

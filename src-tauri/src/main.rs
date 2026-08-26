@@ -22,7 +22,7 @@ pub struct AppState {
     pub terminals: Arc<Mutex<terminal::TerminalManager>>,
     /// Database uses `std::sync::Mutex`, NOT `tokio::sync::Mutex`, so callers
     /// don't hold the guard across `.await`. Every DB call runs inside a
-    /// `spawn_blocking` closure (see `commands::db_op`) — the mutex is held
+    /// `spawn_blocking` closure (see `commands::db_op`) - the mutex is held
     /// only for the duration of the sync rusqlite call, on the blocking
     /// pool, off the tokio runtime workers.
     pub db: Arc<std::sync::Mutex<database::Database>>,
@@ -113,7 +113,7 @@ fn main() {
             });
 
             // WebView2 ships a default browser context menu with "Refresh" that
-            // reloads the top-level document — clicking it inside the preview
+            // reloads the top-level document - clicking it inside the preview
             // iframe closes every open terminal. Parent-window JS can't cancel
             // that click (iframes are separate documents), and WebView2 also
             // auto-confirms `beforeunload` in Tauri, so the ONLY reliable
@@ -257,7 +257,7 @@ fn main() {
         .on_window_event(|window, event| {
             // Only the main window owns the app lifecycle. Detached (tear-off)
             // windows are labelled `detached-*`; closing one must NOT save the
-            // session or tear down every PTY — that close is handled in JS
+            // session or tear down every PTY - that close is handled in JS
             // (the "return to main / close terminals" dialog).
             if window.label() != "main" {
                 return;
@@ -273,7 +273,7 @@ fn main() {
                         manager.get_all_configs()
                     };
                     {
-                        // Sync lock — we're already inside block_on and the
+                        // Sync lock - we're already inside block_on and the
                         // process is about to exit; no need to yield the runtime.
                         let db = db.lock().unwrap_or_else(|p| p.into_inner());
                         if let Err(e) = db.save_last_session(&configs) {
@@ -296,7 +296,7 @@ fn main() {
                     }
                 });
                 // The main window is the app. Closing it quits everything
-                // (including any torn-off windows) — matching the original
+                // (including any torn-off windows) - matching the original
                 // single-window behavior. Torn-off windows persist their layout
                 // during the session, so the next launch restores them. This
                 // exit force-closes detached windows without firing their JS

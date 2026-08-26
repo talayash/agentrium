@@ -6,7 +6,7 @@
 
 **Architecture:**
 - Backend: introduce `AgentKind` enum + `AgentSpec` catalog (`agents.rs`). `ConfigProfile` grows an `agent` field with `#[serde(default)]` so existing rows migrate transparently to `Claude`. `TerminalManager::create_terminal` accepts `agent` and picks the binary from the spec; Claude-only side effects (session-id resume, OTel injection) stay gated on `agent == Claude`.
-- Frontend: `NewTerminalModal` gains an agent-picker row above profiles; `ProfileModal` gains an agent selector at the top of the form. Filtering is derived — profiles show only if their `agent` matches the selection.
+- Frontend: `NewTerminalModal` gains an agent-picker row above profiles; `ProfileModal` gains an agent selector at the top of the form. Filtering is derived - profiles show only if their `agent` matches the selection.
 - Migration: zero-schema-change. `ConfigProfile` JSON in SQLite deserializes fine either way thanks to `#[serde(default)]`.
 
 **Tech Stack:** Rust (Tauri, portable-pty, serde, rusqlite), React 18 + TypeScript, Zustand, Vitest, Cargo test.
@@ -25,25 +25,25 @@
 ## File Structure
 
 ### Files created
-- `src-tauri/src/agents.rs` — `AgentKind` enum + `AgentSpec` catalog + `spec_for()` + `all_specs()`.
-- `src/lib/agents.ts` — TypeScript mirror: `AgentKind` union, `AGENT_SPECS` const, `agentDisplayName()` / `agentBinary()` helpers.
-- `src/components/AgentPicker.tsx` — the 2-button strip. Reused by both `NewTerminalModal` and `ProfileModal`.
+- `src-tauri/src/agents.rs` - `AgentKind` enum + `AgentSpec` catalog + `spec_for()` + `all_specs()`.
+- `src/lib/agents.ts` - TypeScript mirror: `AgentKind` union, `AGENT_SPECS` const, `agentDisplayName()` / `agentBinary()` helpers.
+- `src/components/AgentPicker.tsx` - the 2-button strip. Reused by both `NewTerminalModal` and `ProfileModal`.
 
 ### Files modified
-- `src-tauri/src/config.rs` — add `agent: AgentKind` to `ConfigProfile` with `#[serde(default)]`.
-- `src-tauri/src/terminal.rs` — add `agent` to `TerminalConfig`; extract `build_agent_command()` helper; gate Claude-only features behind `agent == Claude`.
-- `src-tauri/src/commands.rs` — add `agent` to `CreateTerminalRequest`; pass through to `terminals.create_terminal()`.
-- `src-tauri/src/main.rs` — register the new `agents` module.
-- `src/components/NewTerminalModal.tsx` — add agent picker above profile grid; filter profiles by agent; update command-preview line to use selected agent's binary.
-- `src/components/ProfileModal.tsx` — add agent picker at top of profile form; include `agent` in save payload.
-- `src/store/terminalStore.ts` — thread `agent` through `createTerminal()` into the IPC call.
+- `src-tauri/src/config.rs` - add `agent: AgentKind` to `ConfigProfile` with `#[serde(default)]`.
+- `src-tauri/src/terminal.rs` - add `agent` to `TerminalConfig`; extract `build_agent_command()` helper; gate Claude-only features behind `agent == Claude`.
+- `src-tauri/src/commands.rs` - add `agent` to `CreateTerminalRequest`; pass through to `terminals.create_terminal()`.
+- `src-tauri/src/main.rs` - register the new `agents` module.
+- `src/components/NewTerminalModal.tsx` - add agent picker above profile grid; filter profiles by agent; update command-preview line to use selected agent's binary.
+- `src/components/ProfileModal.tsx` - add agent picker at top of profile form; include `agent` in save payload.
+- `src/store/terminalStore.ts` - thread `agent` through `createTerminal()` into the IPC call.
 
 ### Files unchanged (verify only)
-- `src-tauri/src/database.rs` — profile column stores serialized `ConfigProfile` JSON; back-compat is on serde, no schema change needed. Confirm at Task 2.
+- `src-tauri/src/database.rs` - profile column stores serialized `ConfigProfile` JSON; back-compat is on serde, no schema change needed. Confirm at Task 2.
 
 ---
 
-## Task 1: Backend — `AgentKind` enum on `ConfigProfile`
+## Task 1: Backend - `AgentKind` enum on `ConfigProfile`
 
 **Files:**
 - Modify: `src-tauri/src/config.rs`
@@ -92,13 +92,13 @@ fn explicit_codex_agent_round_trips() {
 }
 ```
 
-You will also need to add `agent: AgentKind::default(),` to the existing `sample_profile()` helper (line ~270 of the current file) — but only after Step 3 has added the field to the struct. For now, the tests will fail to compile because `AgentKind` doesn't exist yet. That's expected.
+You will also need to add `agent: AgentKind::default(),` to the existing `sample_profile()` helper (line ~270 of the current file) - but only after Step 3 has added the field to the struct. For now, the tests will fail to compile because `AgentKind` doesn't exist yet. That's expected.
 
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `cd src-tauri && cargo test --lib config::tests -- --nocapture`
 
-Expected: compile error `cannot find type AgentKind in this scope` — this is the "red" for our test.
+Expected: compile error `cannot find type AgentKind in this scope` - this is the "red" for our test.
 
 - [ ] **Step 3: Add the enum and field**
 
@@ -161,7 +161,7 @@ git commit -m "feat(config): AgentKind enum on ConfigProfile with serde back-com
 
 ---
 
-## Task 2: Backend — `AgentSpec` catalog module
+## Task 2: Backend - `AgentSpec` catalog module
 
 **Files:**
 - Create: `src-tauri/src/agents.rs`
@@ -257,7 +257,7 @@ git commit -m "feat(agents): AgentSpec catalog for Claude and Codex"
 
 ---
 
-## Task 3: Backend — Route PTY spawn by agent
+## Task 3: Backend - Route PTY spawn by agent
 
 **Files:**
 - Modify: `src-tauri/src/terminal.rs:11-29` (TerminalConfig), `src-tauri/src/terminal.rs:99-268` (create_terminal spawn logic)
@@ -472,7 +472,7 @@ Finally, populate `agent` on the returned `TerminalConfig`. Find where `Terminal
 
 Run: `cd src-tauri && cargo build && cargo test --lib`
 
-Expected: everything compiles; no test regressions. Any compile errors will point at the two call sites of `create_terminal` (`commands.rs` line 339 and the second in `commands.rs` around line 4444) — that's Task 4's problem, so it's OK to see them after this task if you use `cargo test --lib terminal::tests` to scope to this module.
+Expected: everything compiles; no test regressions. Any compile errors will point at the two call sites of `create_terminal` (`commands.rs` line 339 and the second in `commands.rs` around line 4444) - that's Task 4's problem, so it's OK to see them after this task if you use `cargo test --lib terminal::tests` to scope to this module.
 
 To avoid needing Task 4 to compile: temporarily supply `crate::config::AgentKind::Claude` at both call sites in `commands.rs` in this task, then Task 4 replaces those literals with the value from the request.
 
@@ -485,11 +485,11 @@ git commit -m "feat(terminal): route PTY spawn by AgentKind, gate Claude-only fe
 
 ---
 
-## Task 4: Backend — Plumb `agent` through `CreateTerminalRequest`
+## Task 4: Backend - Plumb `agent` through `CreateTerminalRequest`
 
 **Files:**
 - Modify: `src-tauri/src/commands.rs:273-352` (CreateTerminalRequest + create_terminal)
-- Modify: `src-tauri/src/commands.rs:~4444` (second spawn call site — restore path)
+- Modify: `src-tauri/src/commands.rs:~4444` (second spawn call site - restore path)
 
 - [ ] **Step 1: Write the failing test**
 
@@ -528,7 +528,7 @@ fn create_terminal_request_deserializes_codex_agent() {
 
 Run: `cd src-tauri && cargo test --lib commands::tests::create_terminal_request_deserializes_without_agent_field`
 
-Expected: compile error — `agent` field doesn't exist on `CreateTerminalRequest`.
+Expected: compile error - `agent` field doesn't exist on `CreateTerminalRequest`.
 
 - [ ] **Step 3: Add the field and pass it through**
 
@@ -573,7 +573,7 @@ terminals.create_terminal(
 )?
 ```
 
-Do the same for the second call site around line 4444 (the shell/restore path). Search for `terminals.create_terminal(` in `commands.rs` — there should be exactly two hits. Both need `agent` passed in. For the shell/restore path, if there's no obvious agent context, default to `crate::config::AgentKind::Claude` and leave a comment explaining why.
+Do the same for the second call site around line 4444 (the shell/restore path). Search for `terminals.create_terminal(` in `commands.rs` - there should be exactly two hits. Both need `agent` passed in. For the shell/restore path, if there's no obvious agent context, default to `crate::config::AgentKind::Claude` and leave a comment explaining why.
 
 - [ ] **Step 4: Run tests to verify they pass**
 
@@ -590,7 +590,7 @@ git commit -m "feat(commands): accept agent in CreateTerminalRequest, plumb to s
 
 ---
 
-## Task 5: Frontend — Shared `AgentPicker` component + TS types
+## Task 5: Frontend - Shared `AgentPicker` component + TS types
 
 **Files:**
 - Create: `src/lib/agents.ts`
@@ -724,7 +724,7 @@ git commit -m "feat(ui): AgentPicker component and agent catalog"
 
 ---
 
-## Task 6: Frontend — Wire `AgentPicker` into `NewTerminalModal`
+## Task 6: Frontend - Wire `AgentPicker` into `NewTerminalModal`
 
 **Files:**
 - Modify: `src/components/NewTerminalModal.tsx`
@@ -871,7 +871,7 @@ Around line 604 (the "Claude Arguments" section), rename the label and update th
 
 - [ ] **Step 5: Pass `agent` to the terminal creation call**
 
-Around line 299 (the `createTerminal(...)` call), you'll need to thread the agent through. This depends on how `terminalStore.createTerminal` is currently shaped, which Task 7 modifies. For now, add the argument at the call site — Task 7 aligns the store signature:
+Around line 299 (the `createTerminal(...)` call), you'll need to thread the agent through. This depends on how `terminalStore.createTerminal` is currently shaped, which Task 7 modifies. For now, add the argument at the call site - Task 7 aligns the store signature:
 
 ```tsx
 newTerminalId = await createTerminal(
@@ -894,10 +894,10 @@ newTerminalId = await createTerminal(
 Run: `npm run tauri dev`
 
 Verify:
-1. Open New Terminal modal — two agent buttons appear above the Profile grid, "Claude Code" selected by default.
-2. Click "Codex" — profile grid filters to zero Codex profiles (correct, since none exist yet).
+1. Open New Terminal modal - two agent buttons appear above the Profile grid, "Claude Code" selected by default.
+2. Click "Codex" - profile grid filters to zero Codex profiles (correct, since none exist yet).
 3. Args label reads "Codex Arguments" and command preview reads `codex ...`.
-4. Click "Claude Code" — profile grid returns to existing profiles, label returns to "Claude Code Arguments".
+4. Click "Claude Code" - profile grid returns to existing profiles, label returns to "Claude Code Arguments".
 
 Do not commit until Task 7 aligns the store signature.
 
@@ -907,7 +907,7 @@ Wait until Task 7 is done, then commit both together (see Task 7 Step 5).
 
 ---
 
-## Task 7: Frontend — Thread `agent` through `terminalStore.createTerminal`
+## Task 7: Frontend - Thread `agent` through `terminalStore.createTerminal`
 
 **Files:**
 - Modify: `src/store/terminalStore.ts` (createTerminal signature + IPC call)
@@ -915,7 +915,7 @@ Wait until Task 7 is done, then commit both together (see Task 7 Step 5).
 
 - [ ] **Step 1: Locate the current signature**
 
-Open `src/store/terminalStore.ts`. Find `createTerminal:` — it's a Zustand store action that ends with an `invoke<TerminalConfig>('create_terminal', { request: {...} })` call.
+Open `src/store/terminalStore.ts`. Find `createTerminal:` - it's a Zustand store action that ends with an `invoke<TerminalConfig>('create_terminal', { request: {...} })` call.
 
 - [ ] **Step 2: Add `agent` parameter and pass it into the IPC request**
 
@@ -968,9 +968,9 @@ Expected: no type errors. If `NewTerminalModal.tsx` complains about the new arg,
 Run: `npm run tauri dev` (or continue the session started at Task 6 Step 6).
 
 Verify:
-1. With "Claude Code" selected, create a terminal — Claude spawns as before.
-2. Install Codex locally first (`npm install -g @openai/codex`), then with "Codex" selected, create a terminal — Codex CLI spawns.
-3. Without Codex installed, create a Codex terminal — expect a clear error banner mentioning that `codex` was not found (from `Failed to spawn command`).
+1. With "Claude Code" selected, create a terminal - Claude spawns as before.
+2. Install Codex locally first (`npm install -g @openai/codex`), then with "Codex" selected, create a terminal - Codex CLI spawns.
+3. Without Codex installed, create a Codex terminal - expect a clear error banner mentioning that `codex` was not found (from `Failed to spawn command`).
 4. Existing profiles still open and edit fine (they load with `agent: 'claude'`).
 
 - [ ] **Step 5: Commit Tasks 6 + 7 together**
@@ -982,7 +982,7 @@ git commit -m "feat(ui): agent picker in NewTerminalModal, thread agent through 
 
 ---
 
-## Task 8: Frontend — Agent selector in `ProfileModal`
+## Task 8: Frontend - Agent selector in `ProfileModal`
 
 **Files:**
 - Modify: `src/components/ProfileModal.tsx`
@@ -1062,13 +1062,13 @@ Wherever the profile form renders a label mentioning "Claude Arguments" (search 
 
 - [ ] **Step 5: Type-check + smoke test**
 
-Run: `npm run type-check` — expect no errors.
+Run: `npm run type-check` - expect no errors.
 
-Run: `npm run tauri dev` — verify:
-1. Open Profile modal, create a profile — the picker is at the top, defaults to Claude.
-2. Switch to Codex, save — reopen the profile: Codex is still selected.
+Run: `npm run tauri dev` - verify:
+1. Open Profile modal, create a profile - the picker is at the top, defaults to Claude.
+2. Switch to Codex, save - reopen the profile: Codex is still selected.
 3. Existing profiles from before this change load with Claude selected (from serde default).
-4. Save a Codex profile, open New Terminal, pick Codex — the profile appears in the grid. Pick Claude — the profile disappears.
+4. Save a Codex profile, open New Terminal, pick Codex - the profile appears in the grid. Pick Claude - the profile disappears.
 
 - [ ] **Step 6: Commit**
 
@@ -1092,7 +1092,7 @@ npm run test
 cd src-tauri && cargo test && cargo clippy -- -D warnings && cd ..
 ```
 
-Expected: everything passes. If clippy flags something, fix it — the existing codebase has zero-warnings clippy on `master`.
+Expected: everything passes. If clippy flags something, fix it - the existing codebase has zero-warnings clippy on `master`.
 
 - [ ] **Step 2: Manual QA checklist**
 
@@ -1110,7 +1110,7 @@ Walk through:
 
 - [ ] **Step 3: Update the changelog**
 
-Add an entry to `src/changelog.json` under the next version bump (do not bump version here — that's the `/publish` command's job). Example entry:
+Add an entry to `src/changelog.json` under the next version bump (do not bump version here - that's the `/publish` command's job). Example entry:
 
 ```json
 {
@@ -1136,11 +1136,11 @@ The branch is now ready to open as a PR.
 If something breaks in production:
 - Everything is additive: no schema change, no field rename, no removed features.
 - `agent` on `ConfigProfile` defaults to `Claude` on both serialize (via `#[serde(default)]`) and TS side, so downgrading the app will simply ignore the field.
-- The one non-additive change is `TerminalManager::create_terminal`'s new `agent` parameter — a downgrade of just the backend without the frontend would break because the frontend still sends `agent` in the IPC payload, but `serde(default)` on `CreateTerminalRequest.agent` handles the reverse case (old backend, new frontend? No, new backend, old frontend is what matters — and that's fine).
+- The one non-additive change is `TerminalManager::create_terminal`'s new `agent` parameter - a downgrade of just the backend without the frontend would break because the frontend still sends `agent` in the IPC payload, but `serde(default)` on `CreateTerminalRequest.agent` handles the reverse case (old backend, new frontend? No, new backend, old frontend is what matters - and that's fine).
 
 ## Self-review notes
 
 - **Spec coverage**: agent-picker UI (Task 6), profile-level agent (Task 8), backend routing (Tasks 1-4), test coverage (throughout). All requirements from the conversation are mapped.
-- **Placeholder scan**: no "TBD" or "handle edge cases" — every code step shows full code.
+- **Placeholder scan**: no "TBD" or "handle edge cases" - every code step shows full code.
 - **Type consistency**: `AgentKind` enum spelled the same everywhere (`Claude` / `Codex` in Rust, `'claude'` / `'codex'` in TS via `#[serde(rename_all = "lowercase")]`). `agent` field name identical in Rust, TS interfaces, and JSON payloads.
-- **Known gap**: no automated test proves the actual spawn uses the correct binary — this is IO-bound and awkward to test in unit isolation. The `build_agent_command` helper covers the resolution logic; the spawn wiring is manually verified in Task 9's QA checklist. Adding an integration test that mocks `portable_pty::CommandBuilder` is possible but disproportionately expensive for MVP.
+- **Known gap**: no automated test proves the actual spawn uses the correct binary - this is IO-bound and awkward to test in unit isolation. The `build_agent_command` helper covers the resolution logic; the spawn wiring is manually verified in Task 9's QA checklist. Adding an integration test that mocks `portable_pty::CommandBuilder` is possible but disproportionately expensive for MVP.

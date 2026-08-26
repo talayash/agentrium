@@ -137,12 +137,12 @@
   --ij-divider: #181819;         /* Hard dividers between tool windows / editor */
   --ij-divider-soft: #393B40;    /* Soft dividers inside a panel */
 
-  /* Text tokens — stored as space-separated RGB channels so Tailwind's
+  /* Text tokens - stored as space-separated RGB channels so Tailwind's
      /opacity modifiers resolve (rgb(var(--x) / <alpha-value>)) AND light mode
      can override them in applyThemeMode(). These are the dark-theme values. */
   --text-primary: 223 225 229;   /* #DFE1E5 */
   --text-secondary: 157 160 168; /* #9DA0A8 */
-  --text-tertiary: 138 142 151;  /* #8A8E97 — WCAG AA (~5:1 on elevation-0) */
+  --text-tertiary: 138 142 151;  /* #8A8E97 - WCAG AA (~5:1 on elevation-0) */
 
   /* Density tokens - driven by Appearance setting, default = comfortable */
   --ui-row-py: 6px;
@@ -152,7 +152,7 @@
   --ui-font-scale: 1;
 
   /* --- Phase 1 design tokens ------------------------------------------ */
-  /* Motion — calm, fast IntelliJ feel. Mirrored in lib/motionTokens.ts for
+  /* Motion - calm, fast IntelliJ feel. Mirrored in lib/motionTokens.ts for
      Framer Motion. reduce-motion neutralizes these via the cascade below. */
   --ease-out: cubic-bezier(0.25, 0.1, 0.25, 1);
   --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
@@ -168,15 +168,15 @@
   --space-5: 24px;
   --space-6: 32px;
 
-  /* Type scale (px) — caption/meta/body/title */
+  /* Type scale (px) - caption/meta/body/title */
   --text-caption: 11px;
   --text-meta: 12px;
   --text-body: 13px;
   --text-title: 14px;
 
-  /* Typography — IntelliJ New UI header scale (Inter, relative to 13px body) */
-  --text-h1: 18px;   /* +5 bold — modal titles, wizard headers */
-  --text-h2: 16px;   /* +3 bold — section headers */
+  /* Typography - IntelliJ New UI header scale (Inter, relative to 13px body) */
+  --text-h1: 18px;   /* +5 bold - modal titles, wizard headers */
+  --text-h2: 16px;   /* +3 bold - section headers */
 
   /* Layout dimension tokens (Phase-3 consumers: TitleBar, Sidebar, TerminalGrid) */
   --h-header: 40px;  /* Merged main window header */
@@ -185,11 +185,11 @@
   --w-rail:   48px;  /* Collapsed sidebar / tool-window stripe */
   --w-panel:  260px; /* Expanded sidebar panel */
 
-  /* Semantic colors — theme-aware. Dark defaults here; light overrides live
+  /* Semantic colors - theme-aware. Dark defaults here; light overrides live
      in accentTheme.applyThemeMode(). */
-  --success: #5FAD65;   /* ExpUI Green7 (dark) — desaturated so it doesn't fight ANSI green in Claude output */
+  --success: #5FAD65;   /* ExpUI Green7 (dark) - desaturated so it doesn't fight ANSI green in Claude output */
   --warning: #D6AE58;   /* ExpUI Yellow6 (dark) */
-  --error:   #DB5C5C;   /* ExpUI Red7 (dark) — matches current */
+  --error:   #DB5C5C;   /* ExpUI Red7 (dark) - matches current */
 
   /* Focus ring. --border-focus is normally (re)set by applyAccentColor();
      this default keeps focus-visible visible on first paint before that runs. */
@@ -200,7 +200,7 @@
      shadow-glow-sm / shadow-glow-md utilities. applyAccentColor() rewrites
      these from the user's chosen hex so focused surfaces glow in the current
      accent instead of always-blue. --accent-glow (0.18), set elsewhere in
-     accentTheme.ts, is a distinct token — do not consolidate. */
+     accentTheme.ts, is a distinct token - do not consolidate. */
   --accent-glow-sm: rgba(53, 116, 240, 0.14);
   --accent-glow-md: rgba(53, 116, 240, 0.22);
 }
@@ -209,7 +209,7 @@
    Uses `outline` so it never affects layout and never collides with the
    Tailwind `ring-` (box-shadow) utilities used for selection/hover. Elements
    that define their own focus style via `focus:outline-none focus:ring-*`
-   (inputs, etc.) keep it — their higher-specificity rule wins. This is the
+   (inputs, etc.) keep it - their higher-specificity rule wins. This is the
    fallback for everything else (buttons, toggles, list rows). */
 :focus-visible {
   outline: var(--focus-ring-width) solid var(--border-focus);
@@ -217,7 +217,7 @@
   border-radius: 4px;
 }
 
-/* The xterm input proxy manages its own cursor/focus — never ring it. */
+/* The xterm input proxy manages its own cursor/focus - never ring it. */
 .xterm textarea:focus-visible,
 .xterm-helper-textarea:focus-visible {
   outline: none;
@@ -279,7 +279,7 @@
 }
 
 /* Tab drag "pickup": the floating ghost fades + settles in when grabbed.
-   Only opacity is animated here — position/rotate/scale are written live as an
+   Only opacity is animated here - position/rotate/scale are written live as an
    inline transform, so they must not be touched by this keyframe. */
 @keyframes ct-ghost-in {
   from { opacity: 0; }

@@ -1,4 +1,4 @@
-# Preview Panel — Base44/Lovable/Dyad-style live web preview
+# Preview Panel - Base44/Lovable/Dyad-style live web preview
 
 **Date:** 2026-07-23
 **Goal:** Add a right-docked, resizable live-preview panel for terminals running web dev
@@ -30,7 +30,7 @@ Rust: TerminalManager.reader_thread ──"terminal-output"──▶ frontend li
 ```
 
 **Invariants:**
-- Detection is passive — no critical path.
+- Detection is passive - no critical path.
 - State is per-terminal; the panel is a singleton (one live iframe at a time by default).
 - No new IPC. `fs:read-text-file` for `package.json`, existing `open_external_url` for the
   external browser button, existing `WebviewWindow` for pop-out.
@@ -41,15 +41,15 @@ Rust: TerminalManager.reader_thread ──"terminal-output"──▶ frontend li
 |---|---|
 | `src/components/PreviewPanel.tsx` | Docked panel: header, iframe surface, drag-resize handle |
 | `src/components/PreviewToolbar.tsx` | URL bar, reload, external open, device toggle, back/forward, pop-out, close |
-| `src/components/PreviewInlineHint.tsx` | Small "Detected `http://…` — Open preview" toast strip for ad-hoc terminals |
+| `src/components/PreviewInlineHint.tsx` | Small "Detected `http://…` - Open preview" toast strip for ad-hoc terminals |
 | `src/components/settings/PreviewSettingsSection.tsx` | Allow-list editor, default device mode, `keepAliveAcrossTabs` |
 | `src/store/previewStore.ts` | Zustand slice (see Section 3) |
-| `src/lib/preview/detector.ts` | Pure `detectUrl(text): string \| null` — regex + priority |
+| `src/lib/preview/detector.ts` | Pure `detectUrl(text): string \| null` - regex + priority |
 | `src/lib/preview/framework.ts` | Pure `detectFramework(packageJson): FrameworkHint` |
 | `src/lib/preview/allowlist.ts` | Pure `isUrlAllowed(url, allowList): boolean` |
 | `src/lib/preview/__tests__/detector.test.ts` | Vitest against known dev-server output fixtures |
-| `src/lib/preview/__tests__/framework.test.ts` | Vitest — `package.json` → framework mapping |
-| `src/lib/preview/__tests__/allowlist.test.ts` | Vitest — scheme, hostname, glob match |
+| `src/lib/preview/__tests__/framework.test.ts` | Vitest - `package.json` → framework mapping |
+| `src/lib/preview/__tests__/allowlist.test.ts` | Vitest - scheme, hostname, glob match |
 
 ## Modified files
 
@@ -78,7 +78,7 @@ type FrameworkHint =
 interface PreviewState {
   isOpen: boolean;              // panel visible when this terminal is active
   detectedUrl: string | null;   // last URL scraped from stdout
-  userOverride: string | null;  // URL manually entered — wins over detectedUrl
+  userOverride: string | null;  // URL manually entered - wins over detectedUrl
   frameworkHint: FrameworkHint;
   deviceMode: DeviceMode;
   history: string[];
@@ -178,7 +178,7 @@ scraped URL always overrides the guessed default port once seen.
 - **Profile flagged `preview.enabled = true`:** panel opens automatically the first time
   the terminal produces any output (immediately if `userOverride` is set).
 - **Any terminal, ad-hoc:** on first detection of a localhost URL, `PreviewInlineHint`
-  slides in for ~6 s ("Detected `http://localhost:5173` — Open preview"). Click opens the
+  slides in for ~6 s ("Detected `http://localhost:5173` - Open preview"). Click opens the
   panel and stops the hint from re-showing for that terminal.
 - **Manual:** the `ToolStripe` right-side icon toggles `globalOpen`. Shortcut
   `Ctrl+Shift+V` if free, else fall back in order to `Ctrl+Shift+G`, `Ctrl+Alt+P`;
@@ -189,7 +189,7 @@ scraped URL always overrides the guessed default port once seen.
 Default: single iframe, active-tab-driven. When the active terminal changes, the current
 iframe unmounts and the new terminal's iframe mounts. If `keepAliveAcrossTabs` is on,
 all iframes stay mounted with `visibility: hidden` for inactive tabs (opt-in from
-Settings — costs one live iframe + dev-server WebSocket per open terminal).
+Settings - costs one live iframe + dev-server WebSocket per open terminal).
 
 ## Security
 
@@ -213,7 +213,7 @@ URLs surface an inline error and don't touch the iframe `src`.
 directly (not the React bundle). Capability: extend `webviewWindow:allow-create` with a
 label prefix `preview-*`.
 
-## Implementation stages (Q6 D — staged for early ship-ability)
+## Implementation stages (Q6 D - staged for early ship-ability)
 
 Each stage is testable + shippable:
 
@@ -227,12 +227,12 @@ Each stage is testable + shippable:
 
 ## Non-goals
 
-- Screen capture / native GUI preview (Q1 — deferred).
-- Multiple simultaneous iframes without `keepAliveAcrossTabs` (Q4 — deferred).
-- Full mobile emulator (real touch events, viewport meta emulation) — device frames are
+- Screen capture / native GUI preview (Q1 - deferred).
+- Multiple simultaneous iframes without `keepAliveAcrossTabs` (Q4 - deferred).
+- Full mobile emulator (real touch events, viewport meta emulation) - device frames are
   CSS-only.
 - Editing the previewed page from within the panel (this is a preview, not a canvas).
-- Port scanning (Q3 D — rejected).
+- Port scanning (Q3 D - rejected).
 
 ## Verification
 

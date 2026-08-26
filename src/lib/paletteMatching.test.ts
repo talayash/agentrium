@@ -49,7 +49,7 @@ describe('fuzzyMatch', () => {
   });
 
   it('treats an empty query as a match with score 0', () => {
-    // Added for Phase 5 — lets callers pipe unfiltered input through the same
+    // Added for Phase 5 - lets callers pipe unfiltered input through the same
     // scoring path instead of guarding externally.
     expect(fuzzyMatch('anything', '')).toEqual({
       matches: true,

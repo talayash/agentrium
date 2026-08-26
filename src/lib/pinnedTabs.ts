@@ -3,7 +3,7 @@
  *
  * Kept out of the store so the toggling logic is trivially unit-testable
  * without hydrating Zustand. Callers (see `appStore.ts`) feed the current
- * `pinnedTabIds` array in and set the result back — no in-place mutation,
+ * `pinnedTabIds` array in and set the result back - no in-place mutation,
  * so React/Zustand change detection is preserved.
  */
 

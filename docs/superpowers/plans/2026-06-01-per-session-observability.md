@@ -2,17 +2,17 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Surface live per-session token usage, estimated USD cost, and tool activity for each Claude Code terminal — with per-tab cost chips, a detail panel, and an optional per-session budget cap that warns/auto-stops a runaway agent.
+**Goal:** Surface live per-session token usage, estimated USD cost, and tool activity for each Claude Code terminal - with per-tab cost chips, a detail panel, and an optional per-session budget cap that warns/auto-stops a runaway agent.
 
-**Architecture:** ClaudeTerminal already spawns each `claude` process via `portable-pty` and controls its child environment (`terminal.rs:206`). We exploit the Claude Code CLI's built-in OpenTelemetry: per terminal we inject `CLAUDE_CODE_ENABLE_TELEMETRY=1` + `OTEL_*` env vars pointing the CLI's OTLP/HTTP metrics exporter at a tiny localhost receiver embedded in the Rust backend. Each child is tagged with `OTEL_RESOURCE_ATTRIBUTES=terminal.id=<our-uuid>` so incoming metrics are attributed back to the exact terminal without needing Claude's internal `session.id`. The receiver parses OTLP/JSON, accumulates cumulative counters per terminal, and emits a `terminal-metrics` Tauri event — the same channel→event→store pattern already used for `terminal-output`. No CLI fork, no protocol work beyond a JSON parser.
+**Architecture:** ClaudeTerminal already spawns each `claude` process via `portable-pty` and controls its child environment (`terminal.rs:206`). We exploit the Claude Code CLI's built-in OpenTelemetry: per terminal we inject `CLAUDE_CODE_ENABLE_TELEMETRY=1` + `OTEL_*` env vars pointing the CLI's OTLP/HTTP metrics exporter at a tiny localhost receiver embedded in the Rust backend. Each child is tagged with `OTEL_RESOURCE_ATTRIBUTES=terminal.id=<our-uuid>` so incoming metrics are attributed back to the exact terminal without needing Claude's internal `session.id`. The receiver parses OTLP/JSON, accumulates cumulative counters per terminal, and emits a `terminal-metrics` Tauri event - the same channel→event→store pattern already used for `terminal-output`. No CLI fork, no protocol work beyond a JSON parser.
 
 **Tech Stack:** Rust (`tiny_http` for the embedded OTLP receiver, `serde_json` already present), Tauri 2 events, React + Zustand, Vitest (frontend) + `cargo test` (backend).
 
 **Decisions locked in (from deep research, 2026-06-01):**
-- **Embedded OTLP/HTTP-JSON receiver** over log-parsing or a bundled collector — fully local, no telemetry egress, smallest dependency (`tiny_http`).
+- **Embedded OTLP/HTTP-JSON receiver** over log-parsing or a bundled collector - fully local, no telemetry egress, smallest dependency (`tiny_http`).
 - **Single shared receiver** on one ephemeral localhost port; metrics routed by the `terminal.id` resource attribute (not per-session ports).
-- **Budget enforcement by watching the cost metric and calling the existing `close_terminal`** — NOT migrating to the Agent SDK (`max_budget_usd` is SDK-only; out of scope for the raw-PTY model).
-- Cost is the CLI's **estimated** USD per request — label it "est." in the UI.
+- **Budget enforcement by watching the cost metric and calling the existing `close_terminal`** - NOT migrating to the Agent SDK (`max_budget_usd` is SDK-only; out of scope for the raw-PTY model).
+- Cost is the CLI's **estimated** USD per request - label it "est." in the UI.
 
 **⚠️ Verify-first (Task 1 gate):** Three upstream behaviors must be confirmed against the installed `claude` build before building on them, because OTel env var handling is the load-bearing assumption: (1) `OTEL_EXPORTER_OTLP_PROTOCOL=http/json` is honored (vs. forcing protobuf), (2) `OTEL_RESOURCE_ATTRIBUTES=terminal.id=…` appears in the exported resource, (3) the metric names below (`claude_code.cost.usage`, `claude_code.token.usage`) match. Task 1 captures a real payload and turns it into the test fixture; **do not skip it.**
 
@@ -23,21 +23,21 @@
 ## File Structure
 
 **Create:**
-- `src-tauri/src/otel_receiver.rs` — embedded OTLP/HTTP-JSON receiver: server thread, pure parser, per-terminal cumulative aggregator, emits `terminal-metrics`.
-- `src-tauri/tests/otlp_fixture.json` — captured real OTLP/JSON metrics payload (test fixture).
-- `src/lib/sessionMetrics.ts` — `SessionMetrics` type + pure merge helper (shared by store + tests).
-- `src/components/SessionMetricsPanel.tsx` — detail panel (token breakdown + cost + sparkline-free MVP).
+- `src-tauri/src/otel_receiver.rs` - embedded OTLP/HTTP-JSON receiver: server thread, pure parser, per-terminal cumulative aggregator, emits `terminal-metrics`.
+- `src-tauri/tests/otlp_fixture.json` - captured real OTLP/JSON metrics payload (test fixture).
+- `src/lib/sessionMetrics.ts` - `SessionMetrics` type + pure merge helper (shared by store + tests).
+- `src/components/SessionMetricsPanel.tsx` - detail panel (token breakdown + cost + sparkline-free MVP).
 
 **Modify:**
-- `src-tauri/Cargo.toml` — add `tiny_http`.
-- `src-tauri/src/main.rs` — declare `mod otel_receiver`; start receiver in `setup`; store port on `AppState`.
-- `src-tauri/src/commands.rs` — extend `AppState` with `otel_port`; pass endpoint + enable flag into `create_terminal`.
-- `src-tauri/src/terminal.rs` — generate `id` early; inject OTel env vars before spawn (`create_terminal` signature + body).
-- `src/store/terminalStore.ts` — `terminalMetrics` map + `setTerminalMetrics`; clear on close.
-- `src/App.tsx` — `listen('terminal-metrics')`.
-- `src/components/TerminalTabs.tsx` — per-tab cost chip.
-- `src/store/appStore.ts` — `costTrackingEnabled`, `sessionBudgetUsd` (persisted).
-- `src/components/SettingsModal.tsx` — toggle + budget input.
+- `src-tauri/Cargo.toml` - add `tiny_http`.
+- `src-tauri/src/main.rs` - declare `mod otel_receiver`; start receiver in `setup`; store port on `AppState`.
+- `src-tauri/src/commands.rs` - extend `AppState` with `otel_port`; pass endpoint + enable flag into `create_terminal`.
+- `src-tauri/src/terminal.rs` - generate `id` early; inject OTel env vars before spawn (`create_terminal` signature + body).
+- `src/store/terminalStore.ts` - `terminalMetrics` map + `setTerminalMetrics`; clear on close.
+- `src/App.tsx` - `listen('terminal-metrics')`.
+- `src/components/TerminalTabs.tsx` - per-tab cost chip.
+- `src/store/appStore.ts` - `costTrackingEnabled`, `sessionBudgetUsd` (persisted).
+- `src/components/SettingsModal.tsx` - toggle + budget input.
 
 ---
 
@@ -46,7 +46,7 @@
 **Files:**
 - Create: `src-tauri/tests/otlp_fixture.json`
 
-This task has no automated test — it is the empirical gate that de-risks every later task.
+This task has no automated test - it is the empirical gate that de-risks every later task.
 
 - [ ] **Step 1: Start a throwaway listener that prints whatever Claude posts**
 
@@ -80,11 +80,11 @@ Expected in the listener output:
 - `"key":"terminal.id"` with `"stringValue":"TEST-TERMINAL-1"` inside `resource.attributes` → confirms resource-attr correlation.
 - Metric names `claude_code.cost.usage` and `claude_code.token.usage` present.
 
-If `http/json` is NOT honored (binary body), STOP and escalate — the plan's parser assumes JSON; the fallback (protobuf decode) changes Task 2 materially.
+If `http/json` is NOT honored (binary body), STOP and escalate - the plan's parser assumes JSON; the fallback (protobuf decode) changes Task 2 materially.
 
 - [ ] **Step 4: Save the captured body verbatim as the fixture**
 
-Paste the exact JSON body posted to `/v1/metrics` into `src-tauri/tests/otlp_fixture.json`. This real payload — not the illustrative one in Task 2 — is the source of truth for the parser tests. Keep `terminal.id` = `TEST-TERMINAL-1`.
+Paste the exact JSON body posted to `/v1/metrics` into `src-tauri/tests/otlp_fixture.json`. This real payload - not the illustrative one in Task 2 - is the source of truth for the parser tests. Keep `terminal.id` = `TEST-TERMINAL-1`.
 
 - [ ] **Step 5: Commit**
 
@@ -111,7 +111,7 @@ use serde::Serialize;
 /// One terminal's metrics extracted from a single OTLP/JSON export.
 /// Fields are `Option` because a given export may carry only some metrics.
 /// VERIFIED (Task 1, claude v2.1.159): counters arrive as DELTA increments
-/// (aggregationTemporality=1) — each export is the delta since the last, so the
+/// (aggregationTemporality=1) - each export is the delta since the last, so the
 /// aggregator SUMS them. Token values are `asDouble` (JSON numbers), type key is
 /// `type` with camelCase values input/output/cacheRead/cacheCreation.
 #[derive(Debug, Clone, Serialize, Default, PartialEq)]
@@ -160,7 +160,7 @@ mod tests {
 
     #[test]
     fn extracts_cost_and_token_types_from_illustrative_payload() {
-        // Illustrative OTLP/JSON shape — asInt is a STRING per protobuf-JSON,
+        // Illustrative OTLP/JSON shape - asInt is a STRING per protobuf-JSON,
         // asDouble is a number. Verify the real fixture matches this shape in Task 1.
         let body = r#"{
           "resourceMetrics":[{
@@ -192,7 +192,7 @@ mod tests {
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `cd src-tauri; cargo test --lib otel_receiver`
-Expected: FAIL — `not yet implemented` panic (the `unimplemented!()` stub) on the parsing tests.
+Expected: FAIL - `not yet implemented` panic (the `unimplemented!()` stub) on the parsing tests.
 
 - [ ] **Step 3: Implement the parser**
 
@@ -324,7 +324,7 @@ pub fn parse_otlp_metrics(body: &str) -> Vec<SessionMetricUpdate> {
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `cd src-tauri; cargo test --lib otel_receiver`
-Expected: PASS (3 tests). If `parses_fixture_into_one_keyed_update` fails, the real fixture's metric names/shape differ from assumptions — adjust the `match` arms to the captured names and re-run.
+Expected: PASS (3 tests). If `parses_fixture_into_one_keyed_update` fails, the real fixture's metric names/shape differ from assumptions - adjust the `match` arms to the captured names and re-run.
 
 - [ ] **Step 5: Commit**
 
@@ -386,7 +386,7 @@ Append to the `tests` module in `otel_receiver.rs`:
 - [ ] **Step 3: Run it to verify failure**
 
 Run: `cd src-tauri; cargo test --lib otel_receiver`
-Expected: FAIL — `cannot find type MetricsAggregator`.
+Expected: FAIL - `cannot find type MetricsAggregator`.
 
 - [ ] **Step 4: Implement the aggregator**
 
@@ -445,7 +445,7 @@ impl MetricsAggregator {
 Run: `cd src-tauri; cargo test --lib otel_receiver`
 Expected: PASS (4 tests).
 
-- [ ] **Step 6: Implement the server entry point (no unit test — integration-covered in Task 5)**
+- [ ] **Step 6: Implement the server entry point (no unit test - integration-covered in Task 5)**
 
 Add to `otel_receiver.rs`:
 
@@ -570,7 +570,7 @@ In `src-tauri/src/main.rs`, replace the `app.manage(AppState { ... })` block (li
 - [ ] **Step 4: Build to verify it compiles**
 
 Run: `cd src-tauri; cargo build`
-Expected: compiles. (`tauri::Emitter` import in `otel_receiver.rs` must resolve — Tauri 2 re-exports it; if not, use `use tauri::Manager;` + `app.emit_to`/`app.emit` per the version. Match the import style already used in `commands.rs` for `app.emit`.)
+Expected: compiles. (`tauri::Emitter` import in `otel_receiver.rs` must resolve - Tauri 2 re-exports it; if not, use `use tauri::Manager;` + `app.emit_to`/`app.emit` per the version. Match the import style already used in `commands.rs` for `app.emit`.)
 
 - [ ] **Step 5: Commit**
 
@@ -586,7 +586,7 @@ git commit -m "feat: start OTLP receiver at app setup, expose port on AppState"
 **Files:**
 - Modify: `src-tauri/src/terminal.rs:74-86` (signature) and `:148-214` (id generation + env injection)
 
-This is the heart of the feature — the env injection at the PTY spawn point.
+This is the heart of the feature - the env injection at the PTY spawn point.
 
 - [ ] **Step 1: Add the telemetry params to `create_terminal`'s signature**
 
@@ -605,7 +605,7 @@ Currently `id` is created at line 214 (after spawn). Move it up. Immediately aft
 
 ```rust
         // Generate the id early so it can be injected as an OTel resource
-        // attribute (terminal.id) — the receiver routes metrics back by it.
+        // attribute (terminal.id) - the receiver routes metrics back by it.
         let id = Uuid::new_v4().to_string();
 ```
 
@@ -641,7 +641,7 @@ In `src-tauri/src/terminal.rs`, immediately AFTER the existing user-env loop (li
 - [ ] **Step 4: Build to verify the signature change ripples to callers**
 
 Run: `cd src-tauri; cargo build`
-Expected: FAIL — `create_terminal` now has an arg the caller in `commands.rs` doesn't pass. That compile error is the contract for Task 6. (`create_script_terminal` is a separate fn and is unaffected — scripts get no telemetry.)
+Expected: FAIL - `create_terminal` now has an arg the caller in `commands.rs` doesn't pass. That compile error is the contract for Task 6. (`create_script_terminal` is a separate fn and is unaffected - scripts get no telemetry.)
 
 - [ ] **Step 5: Commit**
 
@@ -703,7 +703,7 @@ In `src-tauri/src/commands.rs`, find `pub async fn close_terminal` (line 442). I
 - [ ] **Step 4: Build to verify it compiles**
 
 Run: `cd src-tauri; cargo build`
-Expected: PASS — the signature mismatch from Task 5 is resolved.
+Expected: PASS - the signature mismatch from Task 5 is resolved.
 
 - [ ] **Step 5: Manual integration check (the real end-to-end gate)**
 
@@ -755,7 +755,7 @@ describe('sessionMetrics', () => {
 - [ ] **Step 2: Run it to verify failure**
 
 Run: `npm run test:run -- sessionMetrics`
-Expected: FAIL — cannot resolve `./sessionMetrics`.
+Expected: FAIL - cannot resolve `./sessionMetrics`.
 
 - [ ] **Step 3: Implement the lib**
 
@@ -799,7 +799,7 @@ export function totalTokens(m: SessionMetrics): number {
 
 /** Apply an event payload over a prior snapshot. The BACKEND already summed the
  *  DELTA exports into a running total before emitting, so each payload is the
- *  full cumulative snapshot — the frontend takes latest-value-wins, NOT summing. */
+ *  full cumulative snapshot - the frontend takes latest-value-wins, NOT summing. */
 export function mergeMetrics(prev: SessionMetrics, p: TerminalMetricsPayload): SessionMetrics {
   const pick = (v: number | null | undefined, fallback: number) =>
     typeof v === 'number' ? v : fallback;
@@ -994,7 +994,7 @@ git commit -m "feat: live per-tab estimated-cost chip"
 
 ---
 
-## Task 10: Settings — enable toggle, budget input, and wire into createTerminal
+## Task 10: Settings - enable toggle, budget input, and wire into createTerminal
 
 **Files:**
 - Modify: `src/store/appStore.ts` (interface near line 61, defaults near line 400, persist `partialize`)
@@ -1033,7 +1033,7 @@ And with the other setters in the store body:
 
 - [ ] **Step 3: Persist the new fields**
 
-In `src/store/appStore.ts`, find the `persist(...)` config's `partialize` (search `partialize`). Add `costTrackingEnabled` and `sessionBudgetUsd` to the persisted object so they survive restart (match the existing style — list them alongside `notifyOnFinish`).
+In `src/store/appStore.ts`, find the `persist(...)` config's `partialize` (search `partialize`). Add `costTrackingEnabled` and `sessionBudgetUsd` to the persisted object so they survive restart (match the existing style - list them alongside `notifyOnFinish`).
 
 - [ ] **Step 4: Pass the flag from createTerminal**
 
@@ -1064,7 +1064,7 @@ In `src/store/terminalStore.ts`, the `createTerminal` action builds the `request
 In `src/components/SettingsModal.tsx`, locate the behavior toggles section (search for where `notifyOnFinish` is rendered) and add, matching the existing toggle markup:
 
 ```tsx
-      {/* Cost tracking toggle — mirror the notifyOnFinish toggle's markup */}
+      {/* Cost tracking toggle - mirror the notifyOnFinish toggle's markup */}
       <label className="flex items-center justify-between">
         <span>
           <span className="block text-text-primary text-[13px]">Track per-session cost</span>
@@ -1113,7 +1113,7 @@ git commit -m "feat: cost-tracking + budget settings, gate telemetry on toggle"
 
 ## Phase C
 
-## Task 11: Per-session budget cap — warn + offer to stop
+## Task 11: Per-session budget cap - warn + offer to stop
 
 **Files:**
 - Create: `src/components/SessionMetricsPanel.tsx` (detail panel; also the natural home for the budget bar)
@@ -1173,7 +1173,7 @@ In `src/App.tsx`, after the `terminal-metrics` listener effect (Task 8):
 
 (`notify` is already in scope from `useNotification()` at line 109; `useAppStore` is already imported.)
 
-> Design note: MVP is **warn-only** (non-destructive). Auto-stop would call the existing `closeTerminal(id)` here, but killing a session mid-write risks losing the user's in-flight turn — gate any auto-stop behind an explicit opt-in setting in a later iteration, not this task.
+> Design note: MVP is **warn-only** (non-destructive). Auto-stop would call the existing `closeTerminal(id)` here, but killing a session mid-write risks losing the user's in-flight turn - gate any auto-stop behind an explicit opt-in setting in a later iteration, not this task.
 
 - [ ] **Step 3: Create the detail panel with a budget progress bar**
 
@@ -1269,7 +1269,7 @@ Expected: all tests pass, both builds clean.
 
 - [ ] **Security sanity check**
 
-Confirm the OTel receiver binds `127.0.0.1` only (never `0.0.0.0`) — verify the `Server::http("127.0.0.1:0")` literal in `otel_receiver.rs`. The receiver accepts only localhost POSTs and emits to the frontend; no untrusted external input reaches it. Run the `security-review` skill on the diff.
+Confirm the OTel receiver binds `127.0.0.1` only (never `0.0.0.0`) - verify the `Server::http("127.0.0.1:0")` literal in `otel_receiver.rs`. The receiver accepts only localhost POSTs and emits to the frontend; no untrusted external input reaches it. Run the `security-review` skill on the diff.
 
 ---
 

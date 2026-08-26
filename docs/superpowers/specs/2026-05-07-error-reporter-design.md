@@ -1,4 +1,4 @@
-# Error Reporter — Design
+# Error Reporter - Design
 
 **Date:** 2026-05-07
 **Status:** Approved (awaiting implementation plan)
@@ -69,7 +69,7 @@ CREATE INDEX IF NOT EXISTS idx_errors_fingerprint ON errors(fingerprint);
 CREATE INDEX IF NOT EXISTS idx_errors_install     ON errors(installation_id);
 ```
 
-### 4.2 New route — `POST /error_report`
+### 4.2 New route - `POST /error_report`
 
 Wired into `workers/ct-analytics/src/index.ts` next to `/heartbeat` and `/update_check`. Mirrors `handleHeartbeat`:
 
@@ -81,9 +81,9 @@ Wired into `workers/ct-analytics/src/index.ts` next to `/heartbeat` and `/update
 6. Insert one row into `errors` (server-supplied `ts` = `new Date().toISOString()`).
 7. Return `{ ok: true }`.
 
-No `daily_stats` aggregation — wrangler-querying is sufficient for v1.
+No `daily_stats` aggregation - wrangler-querying is sufficient for v1.
 
-### 4.3 Retention cron — 90-day cleanup
+### 4.3 Retention cron - 90-day cleanup
 
 Worker cron added to `workers/ct-analytics/wrangler.jsonc`:
 
@@ -147,12 +147,12 @@ Internals:
 - `OnceCell<ReporterState>` initialized by `init()`. Holds:
   - `installation_id: String`
   - `app_version: String`
-  - `enabled: AtomicBool` (default **false** — flipped on by App.tsx after reading the persisted setting)
+  - `enabled: AtomicBool` (default **false** - flipped on by App.tsx after reading the persisted setting)
   - `dedup: Mutex<HashMap<String, Instant>>` (key = fingerprint, value = last-sent time)
-- `INGEST_TOKEN: Option<&str> = option_env!("CT_INGEST_TOKEN")` — same build-time gate as `telemetry.rs`. Unset → reporter no-ops.
-- `scrub(s: &str) -> String` — replaces `C:\Users\<name>\` and `file:///C:/Users/<name>/` with `<user>`. Applied to `message` and `stack` before send.
+- `INGEST_TOKEN: Option<&str> = option_env!("CT_INGEST_TOKEN")` - same build-time gate as `telemetry.rs`. Unset → reporter no-ops.
+- `scrub(s: &str) -> String` - replaces `C:\Users\<name>\` and `file:///C:/Users/<name>/` with `<user>`. Applied to `message` and `stack` before send.
 - Length clamps: `message` ≤ 2 KB, `stack` ≤ 8 KB after scrubbing.
-- `fingerprint(source: ErrorSource, kind: Option<&str>, message: &str, stack: Option<&str>) -> String` — first 16 hex chars of `sha256(format!("{source_tag}|{kind_str}|{first_line}"))`. `first_line` = first non-empty line of `stack` if `Some`, else first non-empty line of `message`. `kind_str` = `kind.unwrap_or("")`.
+- `fingerprint(source: ErrorSource, kind: Option<&str>, message: &str, stack: Option<&str>) -> String` - first 16 hex chars of `sha256(format!("{source_tag}|{kind_str}|{first_line}"))`. `first_line` = first non-empty line of `stack` if `Some`, else first non-empty line of `message`. `kind_str` = `kind.unwrap_or("")`.
 - Dedup window: 60s, scoped per-process (in-memory map; no persistence across restarts). `should_send(fp: &str, now: Instant) -> bool` returns `false` if the same `fp` was sent within the window; on `true`, updates the map. Map is opportunistically pruned (entries older than 60s removed) on each call. `now` is parameterized so unit tests can inject a fake clock.
 - `report()` flow: `enabled` check → scrub → fingerprint → dedup check → `tokio::spawn` POST with 5s `reqwest::Client` timeout. All errors `eprintln!`-logged; never propagated.
 - `report_blocking()` is the sync entry used by the panic hook. Strategy: `tokio::runtime::Handle::try_current()` → if `Ok`, `handle.spawn(...)`; else create a temporary `tokio::runtime::Builder::new_current_thread().enable_all().build()` and `block_on(timeout(send_future, 5s))`. This ensures panics on non-Tokio threads still get reported.
@@ -176,7 +176,7 @@ std::panic::set_hook(Box::new(|info| {
 
 `RUST_BACKTRACE=1` is not required because `Backtrace::force_capture()` always captures.
 
-### 5.3 Tauri command wrappers in `commands.rs` — Option A (explicit)
+### 5.3 Tauri command wrappers in `commands.rs` - Option A (explicit)
 
 Every existing `#[command]` returning `Result<T, String>` gets its error-construction site (whether `.map_err`, `?` with a `From` impl, or hand-written `Err(format!(...))`) wrapped so the string is reported before being returned. Commands with infallible bodies (no `Result` return) are skipped. Pattern:
 
@@ -197,7 +197,7 @@ fn report_command_err(name: &'static str, err: &str) {
 
 Mechanical, ~25 sites, grep-able. No macro.
 
-### 5.4 New IPC command — `report_error`
+### 5.4 New IPC command - `report_error`
 
 ```rust
 #[derive(Deserialize)]
@@ -219,9 +219,9 @@ async fn report_error(payload: FrontendErrorPayload) -> Result<(), String> {
 }
 ```
 
-This command never returns `Err` — even if reporting fails internally, we don't want to surface that to the frontend (which would just trigger another error report). Registered in `tauri::Builder::default().invoke_handler(...)`.
+This command never returns `Err` - even if reporting fails internally, we don't want to surface that to the frontend (which would just trigger another error report). Registered in `tauri::Builder::default().invoke_handler(...)`.
 
-### 5.5 New IPC command — `set_error_reporting_enabled`
+### 5.5 New IPC command - `set_error_reporting_enabled`
 
 ```rust
 #[command]
@@ -235,8 +235,8 @@ fn set_error_reporting_enabled(enabled: bool) -> Result<(), String> {
 
 Order:
 
-1. `std::panic::set_hook(...)` — first, so panics during init are caught.
-2. `error_reporter::init(installation_id, app_version)` — alongside the existing `telemetry::send_heartbeat(...)` setup. Default `enabled = false`.
+1. `std::panic::set_hook(...)` - first, so panics during init are caught.
+2. `error_reporter::init(installation_id, app_version)` - alongside the existing `telemetry::send_heartbeat(...)` setup. Default `enabled = false`.
 3. Tauri builder runs.
 4. Frontend mounts, reads persisted setting, calls `set_error_reporting_enabled(true|false)`.
 
@@ -250,7 +250,7 @@ import { invoke } from '@tauri-apps/api/core';
 export function reportError(kind: string, message: string, stack?: string) {
   invoke('report_error', {
     payload: { kind, message: scrub(message), stack: stack ? scrub(stack) : null },
-  }).catch(() => { /* swallow — never let reporter break the app */ });
+  }).catch(() => { /* swallow - never let reporter break the app */ });
 }
 
 function scrub(s: string): string {
@@ -322,7 +322,7 @@ App.tsx:
 
 ```
 [x] Send error reports
-    Helps fix crashes. No personal data — Windows usernames are scrubbed.
+    Helps fix crashes. No personal data - Windows usernames are scrubbed.
 ```
 
 ### 7.2 Persistence
@@ -352,7 +352,7 @@ Identical to `telemetry.rs`: `option_env!("CT_INGEST_TOKEN")` at compile time. W
 - `should_send(fp, now)` returns `false` for a fingerprint sent within the last 60s and `true` after the window expires (test passes a fake `Instant`).
 - `enabled = false` causes `report()` to short-circuit before hashing.
 
-### 9.2 Worker — manual
+### 9.2 Worker - manual
 
 ```bash
 curl -X POST https://ct-analytics.claude-terminal.workers.dev/error_report \

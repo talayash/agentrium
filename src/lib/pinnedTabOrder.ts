@@ -2,7 +2,7 @@
  * Pure helper for rendering a tab strip with pinned tabs first.
  *
  * Kept separate from `pinnedTabs.ts` (which is add/remove/toggle) because
- * ordering is a distinct concern — the tab-strip needs a stable "pinned
+ * ordering is a distinct concern - the tab-strip needs a stable "pinned
  * block, then everything else" view without touching the underlying
  * insertion-order source of truth.
  */
@@ -12,7 +12,7 @@
  * group's original insertion order. Ids not in `pinnedIds` retain their
  * original relative order after the pinned block.
  *
- * The order of `pinnedIds` is intentionally ignored — only `tabIds`
+ * The order of `pinnedIds` is intentionally ignored - only `tabIds`
  * insertion order drives the final sequence. This matches how users
  * perceive tab pinning: pinning doesn't rearrange, it just partitions.
  *
@@ -21,7 +21,7 @@
  *
  * Example:
  *   tabIds     = ['a', 'b', 'c', 'd', 'e']
- *   pinnedIds  = ['c', 'a']  // (pin order doesn't matter — insertion order wins)
+ *   pinnedIds  = ['c', 'a']  // (pin order doesn't matter - insertion order wins)
  *   result     = ['a', 'c', 'b', 'd', 'e']
  */
 export function orderTabsPinnedFirst(

@@ -26,7 +26,7 @@ interface TransferDonePayload {
 
 /**
  * Create a new torn-off window at a physical screen position, carrying the
- * given terminal ids (which it adopts on boot). The PTYs are untouched — only a
+ * given terminal ids (which it adopts on boot). The PTYs are untouched - only a
  * new view is opened.
  */
 export async function createDetachedWindow(ids: string[], physX: number, physY: number): Promise<void> {
@@ -42,7 +42,7 @@ export async function createDetachedWindow(ids: string[], physX: number, physY: 
     minHeight: 320,
     decorations: false,
     transparent: true,
-    title: 'ADE-1',
+    title: 'Agentrium',
   });
 
   win.once('tauri://created', () => {
@@ -81,7 +81,7 @@ export async function restoreDetachedWindow(ids: string[], geometry?: WindowGeom
     minHeight: 320,
     decorations: false,
     transparent: true,
-    title: 'ADE-1',
+    title: 'Agentrium',
   });
 
   win.once('tauri://created', () => {
@@ -138,7 +138,7 @@ export async function routeTabDrop(ids: string[], sourceLabel: string): Promise<
         break;
       }
     } catch {
-      // Window may have closed mid-drag — skip it.
+      // Window may have closed mid-drag - skip it.
     }
   }
 
@@ -154,7 +154,7 @@ export async function routeTabDrop(ids: string[], sourceLabel: string): Promise<
 
   // Remove the tab(s) from the SOURCE window immediately so they don't linger
   // there while the destination renders them. The PTYs stay alive in the
-  // backend — the new/target window adopts them independently (and the DONE
+  // backend - the new/target window adopts them independently (and the DONE
   // event from a transfer makes this a harmless no-op if it lands again).
   useTerminalStore.getState().detachTerminals(ids);
 }
@@ -199,7 +199,7 @@ export function installTransferReceiver(
           try {
             log = (await invoke<string | null>('get_session_log', { terminalId: id })) ?? undefined;
           } catch {
-            /* no log — adopt without scrollback */
+            /* no log - adopt without scrollback */
           }
           adopt(cfg, log);
         }

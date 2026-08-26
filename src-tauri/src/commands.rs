@@ -73,7 +73,7 @@ pub fn set_error_reporting_enabled(enabled: bool) -> Result<(), String> {
 ///
 /// This helper takes an `Arc<std::sync::Mutex<Database>>` (the sync flavor
 /// so it can't be held across `.await`) and runs `f` on the blocking pool
-/// — the lock is held only for the duration of the sync work, and the
+/// - the lock is held only for the duration of the sync work, and the
 /// runtime workers stay free.
 async fn db_op<T, F>(
     db_arc: &std::sync::Arc<std::sync::Mutex<crate::database::Database>>,
@@ -709,9 +709,9 @@ pub async fn get_claude_version() -> Result<String, String> {
 /// semver-shaped line from either stdout or stderr; if that succeeds we
 /// return it. (2) If the version call failed, or exited zero with no
 /// version output, fall back to `where`/`which` to prove the binary is
-/// on PATH — in which case we return the marker "installed" so the UI
+/// on PATH - in which case we return the marker "installed" so the UI
 /// stops falsely claiming "Not installed" for agents whose `--version`
-/// format we can't parse (or which don't ship one — Cursor's `agent`,
+/// format we can't parse (or which don't ship one - Cursor's `agent`,
 /// for instance, is primarily an interactive REPL).
 ///
 /// Claude keeps its dedicated cached-path helper so users with PATH set
@@ -985,8 +985,8 @@ pub(crate) fn shell_command(program: &str, args: &[&str]) -> std::process::Comma
 /// SECURITY: On Windows we must NOT route git through `cmd /C` the way the
 /// generic `shell_command` helper does for `.cmd`/`.bat` shims (npm/claude).
 /// `git` is a real `.exe`, so we invoke it directly. Going through cmd.exe
-/// lets cmd metacharacters (`& | ( ) ^ !`) in user-controlled args — branch
-/// names, file paths, remotes coming from a hostile repository — break out
+/// lets cmd metacharacters (`& | ( ) ^ !`) in user-controlled args - branch
+/// names, file paths, remotes coming from a hostile repository - break out
 /// into command execution, because Rust's std only quotes args containing
 /// whitespace and its cmd.exe caret-escaping (the CVE-2024-24576 fix) only
 /// triggers when the spawned program itself is a `.bat`/`.cmd`, not `cmd.exe`.
@@ -1261,7 +1261,7 @@ pub async fn trash_path(state: State<'_, AppState>, path: String) -> Result<(), 
         validate_path(&path)?;
         let p = std::path::PathBuf::from(&path);
         if !p.exists() {
-            // Race with the filesystem (external delete, stale FileTree row) — user-visible, not a bug.
+            // Race with the filesystem (external delete, stale FileTree row) - user-visible, not a bug.
             return Err(error_reporter::user_err("Path does not exist"));
         }
         // Only allow trashing paths under an active terminal's working directory.
@@ -1305,7 +1305,7 @@ pub async fn move_into_dir(
                 "A file with that name already exists in the destination",
             ));
         }
-        // Everything below is sync fs work — canonicalize, rename, and the
+        // Everything below is sync fs work - canonicalize, rename, and the
         // cross-volume fallback copy+delete (which may recurse for a dir).
         // Run it on the blocking pool so the tokio runtime keeps serving
         // other IPC while a large tree copies.
@@ -1367,7 +1367,7 @@ pub async fn copy_into_dir(
                 "A file with that name already exists in the destination",
             ));
         }
-        // Sync fs work (canonicalize + copy, possibly recursive) — off-runtime.
+        // Sync fs work (canonicalize + copy, possibly recursive) - off-runtime.
         tokio::task::spawn_blocking(move || -> Result<(), String> {
             let src_canon = std::fs::canonicalize(&src).map_err(|e| e.to_string())?;
             let dst_dir_canon = std::fs::canonicalize(&dst_dir).map_err(|e| e.to_string())?;
@@ -2021,7 +2021,7 @@ pub async fn get_worktree_info(
             })
             .flatten();
 
-        // Working-tree cleanliness — count of modified/staged/untracked files
+        // Working-tree cleanliness - count of modified/staged/untracked files
         // via `--porcelain=v1` (stable, machine-readable). Empty output = clean.
         let dirty_count = git_cmd_async(&["status", "--porcelain=v1"])
             .current_dir(&path)
@@ -2036,7 +2036,7 @@ pub async fn get_worktree_info(
                     .count() as u32
             });
 
-        // Ahead/behind vs upstream — `rev-list --left-right --count HEAD...@{u}`
+        // Ahead/behind vs upstream - `rev-list --left-right --count HEAD...@{u}`
         // emits "<ahead>\t<behind>". Fails silently when no upstream is tracked.
         let (ahead, behind) = git_cmd_async(&["rev-list", "--left-right", "--count", "HEAD...@{u}"])
             .current_dir(&path)
@@ -2784,7 +2784,7 @@ pub async fn checkout_branch(
             let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
             let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
             // git checkout failure is a user/environment condition (dirty tree,
-            // unknown branch, etc.) — surface to UI but skip telemetry.
+            // unknown branch, etc.) - surface to UI but skip telemetry.
             return Err(error_reporter::user_err(
                 if !stderr.is_empty() { stderr } else { stdout },
             ));
@@ -2832,7 +2832,7 @@ pub async fn create_worktree(
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-            // Branch already exists / worktree path taken / dirty index — user-caused.
+            // Branch already exists / worktree path taken / dirty index - user-caused.
             return Err(error_reporter::user_err(stderr));
         }
 
@@ -2882,7 +2882,7 @@ pub async fn remove_worktree(
             .map_err(|e| format!("Failed to remove worktree: {}", e))?;
 
         if !output.status.success() {
-            // Worktree still has uncommitted changes / already gone — user-caused.
+            // Worktree still has uncommitted changes / already gone - user-caused.
             return Err(error_reporter::user_err(
                 String::from_utf8_lossy(&output.stderr).trim().to_string(),
             ));
@@ -3005,7 +3005,7 @@ pub async fn get_session_log(
         }
 
         // Read the last 512 KB via seek. The old code loaded the whole file
-        // then sliced the tail, which allocated the entire log — 500 MB logs
+        // then sliced the tail, which allocated the entire log - 500 MB logs
         // would pin 500 MB per call. Now we seek to len - 512 KB and read
         // only the tail.
         const MAX_BYTES: u64 = 512 * 1024;
@@ -3325,7 +3325,7 @@ pub async fn summarize_session(log_path: String) -> Result<Option<String>, Strin
         };
         let log_content = String::from_utf8_lossy(truncated);
 
-        // Strip ANSI escape sequences. Compile the pattern once — this handler
+        // Strip ANSI escape sequences. Compile the pattern once - this handler
         // is called on every terminal-finished event, and recompiling a 3-alt
         // regex per call was a real per-call cost.
         static ANSI_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
@@ -3365,7 +3365,7 @@ pub async fn summarize_session(log_path: String) -> Result<Option<String>, Strin
         }
 
         // 60s cap: haiku on a 100 KB log typically completes in <20s; longer
-        // means it's stuck. Timeout returns Ok(None) — the UI treats "no
+        // means it's stuck. Timeout returns Ok(None) - the UI treats "no
         // summary" as a silent skip, which is the right behaviour on hang.
         let output = match tokio::time::timeout(Duration::from_secs(60), child.wait_with_output()).await {
             Ok(Ok(o)) => o,
@@ -3446,7 +3446,7 @@ pub async fn get_team_tasks(team_name: String) -> Result<Vec<TaskInfo>, String> 
         }
 
         // read_dir + per-file read_to_string + JSON parse for every task file
-        // — off-runtime so a directory with hundreds of tasks doesn't stall
+        // - off-runtime so a directory with hundreds of tasks doesn't stall
         // other IPC.
         let tasks = tokio::task::spawn_blocking(move || -> Result<Vec<TaskInfo>, String> {
             let entries = std::fs::read_dir(&tasks_dir).map_err(|e| e.to_string())?;
@@ -3603,7 +3603,7 @@ pub async fn list_memory_files(project_path: Option<String>) -> Result<Vec<Memor
             validate_claude_path(specific_project)?;
         }
 
-        // Nested read_dir + per-file metadata for every project — off-runtime.
+        // Nested read_dir + per-file metadata for every project - off-runtime.
         let files = tokio::task::spawn_blocking(move || -> Vec<MemoryFileInfo> {
             let mut files = Vec::new();
             let scan_project = |project_dir: &std::path::Path, files: &mut Vec<MemoryFileInfo>| {
@@ -3702,7 +3702,7 @@ pub async fn list_claude_md_files() -> Result<Vec<ClaudeMdInfo>, String> {
             });
         }
 
-        // Project-level CLAUDE.md files in ~/.claude/projects/*/ — off-runtime.
+        // Project-level CLAUDE.md files in ~/.claude/projects/*/ - off-runtime.
         let projects_dir = claude_dir.join("projects");
         if projects_dir.exists() {
             let more = tokio::task::spawn_blocking(move || -> Vec<ClaudeMdInfo> {
@@ -3980,7 +3980,7 @@ pub async fn scan_git_repos(
         // that on a runtime worker starves other IPC (terminal-output delivery
         // stalls). spawn_blocking sends the whole walk to the blocking pool.
         // Making the recursive helpers async instead would require boxed
-        // futures at every recursion — this is simpler and equivalent.
+        // futures at every recursion - this is simpler and equivalent.
         let results = tokio::task::spawn_blocking(move || {
             let mut results = Vec::new();
             // max_depth 4 handles common monorepo layouts (apps/x, packages/y/z)
@@ -4700,7 +4700,7 @@ pub async fn list_directory(
             return Ok(Vec::new());
         }
 
-        // read_dir + per-entry metadata for the whole directory — off-runtime.
+        // read_dir + per-entry metadata for the whole directory - off-runtime.
         let entries = tokio::task::spawn_blocking(move || -> Result<Vec<DirEntryInfo>, String> {
             let mut entries: Vec<DirEntryInfo> = Vec::new();
             let read_dir = std::fs::read_dir(&path).map_err(|e| format!("Failed to read directory: {}", e))?;
@@ -4789,7 +4789,7 @@ pub async fn write_text_file(
         // Resolve the path once and write via the canonical form. Between
         // validation (which canonicalises) and the actual write, the input
         // `path` string could be swapped for a symlink pointing outside the
-        // trusted tree — following the untrusted string would land the write
+        // trusted tree - following the untrusted string would land the write
         // on the swap target. Canonicalising here means we write to the
         // already-resolved absolute path, closing that TOCTOU window.
         let canonical = tokio::fs::canonicalize(&path)
@@ -5034,7 +5034,7 @@ pub async fn search_in_files(
             return Err(error_reporter::user_err("Search root is not a directory"));
         }
 
-        // Recursive tree walk with per-file read + substring scan — inherently
+        // Recursive tree walk with per-file read + substring scan - inherently
         // sync-blocking and CPU-heavy. Run on the blocking pool so the tokio
         // runtime keeps serving terminal-output events while a big repo scans.
         let query_lower = query.to_lowercase();
@@ -5158,7 +5158,7 @@ pub async fn lsp_did_close(
 /// Contract: `root` must match the *effective* root used for document sync.
 /// did_open/did_change/did_close rewrite the root for rust via
 /// `rust_project_root` (crate root, not git root), so rust callers must pass
-/// `path` (the file the request targets) so the same rewrite is applied here —
+/// `path` (the file the request targets) so the same rewrite is applied here -
 /// otherwise the request would spawn a second rust-analyzer with no open docs.
 #[command]
 pub async fn lsp_request(
@@ -5176,7 +5176,7 @@ pub async fn lsp_request(
         };
         // Two-phase locking: hold the manager lock only long enough to
         // get/spawn the client, then release it for the request round-trip.
-        // The client request timeout is 120s — holding the manager lock that
+        // The client request timeout is 120s - holding the manager lock that
         // long would block every other LSP command on one wedged server.
         let client = {
             let mut mgr = state.lsp.lock().await;

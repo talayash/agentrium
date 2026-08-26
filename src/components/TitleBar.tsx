@@ -169,7 +169,7 @@ export function TitleBar() {
             onClick={toggleSidebar}
             className="no-drag w-7 h-7 flex items-center justify-center rounded-[6px] transition-colors text-text-secondary hover:bg-white/[0.06] hover:text-text-primary"
           >
-            <img src={appIcon} alt="ADE-1" className="w-[20px] h-[20px]" />
+            <img src={appIcon} alt="Agentrium" className="w-[20px] h-[20px]" />
           </button>
         </Tooltip>
 
@@ -301,7 +301,7 @@ export function TitleBar() {
       <div className="flex-1 flex items-center justify-center min-w-0 px-3">
         {!compactTitleBar && (
           <span className="text-text-tertiary text-[11px] tracking-[0.02em] truncate">
-            ADE-1
+            Agentrium
             {appVersion && <span className="text-text-tertiary/60 ml-1.5 font-mono">{appVersion}</span>}
           </span>
         )}

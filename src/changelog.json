@@ -18,10 +18,10 @@
     "version": "1.31.3",
     "date": "2026-08-21",
     "features": [
-      { "title": "Faster UI under load", "description": "Git operations, file-tree scans, in-repo search, and log reads no longer block the runtime — the UI stays responsive while big trees or slow disks are being read." },
+      { "title": "Faster UI under load", "description": "Git operations, file-tree scans, in-repo search, and log reads no longer block the runtime - the UI stays responsive while big trees or slow disks are being read." },
       { "title": "Fewer silent copy/paste failures on Windows", "description": "File-tree paths, terminal output, and paste-as-file now route through the reliable clipboard path (fixes WebView2 focus-gating races)." },
       { "title": "Monaco diff editor no longer errors on file switch", "description": "Rapidly toggling between files in Diff mode used to throw \"TextModel got disposed before DiffEditorWidget model got reset\" in the console." },
-      { "title": "Log viewer streams the tail instead of loading whole files", "description": "Session logs are read via a seek to the last 512 KB — huge logs no longer allocate the full file into memory per view." },
+      { "title": "Log viewer streams the tail instead of loading whole files", "description": "Session logs are read via a seek to the last 512 KB - huge logs no longer allocate the full file into memory per view." },
       { "title": "Telemetry redacts more secrets", "description": "GitHub PATs, Anthropic keys, Bearer tokens, npm auth tokens, and Unix home paths are now scrubbed before reports leave the app." }
     ]
   },
@@ -29,9 +29,9 @@
     "version": "1.31.2",
     "date": "2026-08-10",
     "features": [
-      { "title": "New terminals no longer open blank", "description": "Fixed a race where output arriving before the terminal view finished mounting was silently dropped — losing the start of Claude's welcome banner could wedge the renderer and leave the tab empty with a stray '[' character. Early output is now buffered and replayed once the terminal attaches." },
+      { "title": "New terminals no longer open blank", "description": "Fixed a race where output arriving before the terminal view finished mounting was silently dropped - losing the start of Claude's welcome banner could wedge the renderer and leave the tab empty with a stray '[' character. Early output is now buffered and replayed once the terminal attaches." },
       { "title": "Terminal exit status no longer gets stuck", "description": "Removed a false-positive 2-second lock timeout in the terminal exit handlers that could leave a finished terminal showing as 'Running' and fire spurious error telemetry under normal load." },
-      { "title": "Diagnostics for the ghost-character bug", "description": "Added timestamped [pty-size] logging on both the frontend and Rust sides to correlate PTY spawn, terminal fit, and resize timing — groundwork for fixing the stray characters some users see after /clear." }
+      { "title": "Diagnostics for the ghost-character bug", "description": "Added timestamped [pty-size] logging on both the frontend and Rust sides to correlate PTY spawn, terminal fit, and resize timing - groundwork for fixing the stray characters some users see after /clear." }
     ]
   },
   {
@@ -45,29 +45,29 @@
     "version": "1.31.0",
     "date": "2026-08-08",
     "features": [
-      { "title": "Pinned tabs", "description": "Right-click any terminal tab to Pin it — pinned sessions stay at the front of the strip, get a Pin glyph, and survive 'Close Others' and 'Close All But Pinned' bulk actions. Middle-click still closes any tab." },
+      { "title": "Pinned tabs", "description": "Right-click any terminal tab to Pin it - pinned sessions stay at the front of the strip, get a Pin glyph, and survive 'Close Others' and 'Close All But Pinned' bulk actions. Middle-click still closes any tab." },
       { "title": "Show Hidden Tabs", "description": "When the tab strip overflows, a chevron with a count badge appears at the right end. Click it to see the tabs that don't fit; picking one activates it and pops it back into view. Also right-clickable from inside the dropdown." },
       { "title": "Tab height is yours to pick", "description": "Settings → Appearance → Tab height: Small (24px), Medium (28px, default), Large (32px). Matches IntelliJ's New UI editor tab sizing." },
-      { "title": "Search Everywhere with source chips", "description": "The command palette (Ctrl+P) now shows visible source-filter chips at the top — All / Terminals / Commands / Hints / Snippets. Ctrl+Tab cycles through them. Matched characters in results render in the accent color so you can see exactly why a fuzzy match ranked high." },
-      { "title": "Welcome hub replaces the empty state", "description": "First-launch and no-terminal states now show a proper welcome screen with hero, four action cards (New Terminal / Search Everywhere / Grid View / Preferences), and a keyboard-shortcut cheatsheet — less desert, more onboarding." },
+      { "title": "Search Everywhere with source chips", "description": "The command palette (Ctrl+P) now shows visible source-filter chips at the top - All / Terminals / Commands / Hints / Snippets. Ctrl+Tab cycles through them. Matched characters in results render in the accent color so you can see exactly why a fuzzy match ranked high." },
+      { "title": "Welcome hub replaces the empty state", "description": "First-launch and no-terminal states now show a proper welcome screen with hero, four action cards (New Terminal / Search Everywhere / Grid View / Preferences), and a keyboard-shortcut cheatsheet - less desert, more onboarding." },
       { "title": "Status bar shows the actual state", "description": "New live 'last event: Xs ago' ticker; git branch chip with ✓ when clean, NΔ when modified, ↑N/↓N when ahead/behind upstream; 'N terminals · M running' count. Everything that used to live in the git dropdown is now visible at a glance." },
-      { "title": "Consolidated left tool rail", "description": "All tool-window toggles — Project, Git, Agent Teams, Commands, Preview — now stack vertically in one left rail. Settings pinned to the bottom. The right-side rail is gone, giving the editor its full width." },
-      { "title": "Cleaner file tree", "description": "Folder icons now render as uniform yellow by default — much calmer than the multi-color 'per-folder-name' palette. Prefer the colored ones? Flip 'Colorful folder icons' back on in Settings → Appearance." },
+      { "title": "Consolidated left tool rail", "description": "All tool-window toggles - Project, Git, Agent Teams, Commands, Preview - now stack vertically in one left rail. Settings pinned to the bottom. The right-side rail is gone, giving the editor its full width." },
+      { "title": "Cleaner file tree", "description": "Folder icons now render as uniform yellow by default - much calmer than the multi-color 'per-folder-name' palette. Prefer the colored ones? Flip 'Colorful folder icons' back on in Settings → Appearance." },
       { "title": "Update pill actually looks like an update", "description": "The 'update available' pill in the titlebar is now a real gradient blue chip with an inset highlight, matching the design spec. Session widget in the titlebar gets a filled Play icon tinted by session state." },
       { "title": "Grid cell polish", "description": "Grid mode cell headers now include the pin glyph (for pinned terminals) and a pulsing status dot alongside the maximize/close controls. Focused cells still glow in the accent color." },
-      { "title": "Under the hood", "description": "New pure-logic libs for tab overflow math, pinned-tab ordering, palette matching, and grid empty-cell math — 64 new tests covering these paths (363 total, all green). No new dependencies." }
+      { "title": "Under the hood", "description": "New pure-logic libs for tab overflow math, pinned-tab ordering, palette matching, and grid empty-cell math - 64 new tests covering these paths (363 total, all green). No new dependencies." }
     ]
   },
   {
     "version": "1.30.0",
     "date": "2026-08-08",
     "features": [
-      { "title": "Search Everywhere", "description": "A new Search Everywhere button (Ctrl+P) sits in the titlebar — the one-stop finder you'd hit in IntelliJ, ready to jump to any terminal, session, profile, or command from a single overlay." },
-      { "title": "Grid cells feel like cards", "description": "Terminals in grid mode gain a subtle card treatment — bordered, rounded, with just enough elevation to separate them from empty cells and from each other. The 4/6/8 grid layouts read cleaner at a glance." },
+      { "title": "Search Everywhere", "description": "A new Search Everywhere button (Ctrl+P) sits in the titlebar - the one-stop finder you'd hit in IntelliJ, ready to jump to any terminal, session, profile, or command from a single overlay." },
+      { "title": "Grid cells feel like cards", "description": "Terminals in grid mode gain a subtle card treatment - bordered, rounded, with just enough elevation to separate them from empty cells and from each other. The 4/6/8 grid layouts read cleaner at a glance." },
       { "title": "Sidebar and header on the new token system", "description": "Rail width, panel width, and header height now flow from CSS custom properties (--w-rail, --w-panel, --h-header) instead of hard-coded pixels. Density and font-scale changes propagate consistently across the entire shell." },
       { "title": "Refined theme tokens", "description": "New semantic color tokens (theme-aware for both light and dark modes), typography scales for headings, and layout dimensions form the foundation for the ongoing IntelliJ New UI refresh." },
       { "title": "Telemetry: no more races on closed terminals", "description": "Writing to or resizing a terminal whose PTY had already exited could race and log noisy errors. That path is now guarded, and error coverage across the terminal command surface is much broader." },
-      { "title": "Under-the-hood modernization", "description": "Bumped Tauri to 2.11.5, rusqlite to 0.40 (newer SQLite bindings), Vite to 8, Vitest to 4, and moved CI to Node 22. Nothing you should notice — except things start faster and build faster." }
+      { "title": "Under-the-hood modernization", "description": "Bumped Tauri to 2.11.5, rusqlite to 0.40 (newer SQLite bindings), Vite to 8, Vitest to 4, and moved CI to Node 22. Nothing you should notice - except things start faster and build faster." }
     ]
   },
   {
@@ -75,7 +75,7 @@
     "date": "2026-07-23",
     "features": [
       { "title": "Live preview panel for GUI projects", "description": "A new right-docked Preview panel renders your dev server side-by-side with the terminal. Detects the URL automatically from Vite, Next.js, Astro, Nuxt, SvelteKit, Remix, Angular, CRA, and Expo dev-server output. Toggle it from the right toolbar or Ctrl+Alt+P. Drag the left edge to resize. Includes URL bar, reload, and open-in-browser." },
-      { "title": "Profiles that have a GUI", "description": "Profiles gained a 'Has GUI preview' checkbox with optional URL override — terminals launched from a GUI profile open the preview panel automatically. Ad-hoc terminals get a subtle inline hint when a dev-server URL is detected." },
+      { "title": "Profiles that have a GUI", "description": "Profiles gained a 'Has GUI preview' checkbox with optional URL override - terminals launched from a GUI profile open the preview panel automatically. Ad-hoc terminals get a subtle inline hint when a dev-server URL is detected." },
       { "title": "Preview allow-list", "description": "Localhost is always allowed. To preview through a tunnel, add hostname globs (e.g. *.ngrok.io) in Settings → Preview. Anything outside the allow-list is blocked with a clear inline explanation." },
       { "title": "F5 no longer nukes your terminals", "description": "Pressing F5 or Ctrl+R in the app now reloads the preview iframe when the preview panel is open, or does nothing when it's closed - it no longer reloads the whole app and closes every open terminal." },
       { "title": "Security hardening", "description": "Closes a git-injection surface and tightens filesystem-trust checks in the backend, addresses medium-severity findings from a security audit, and disables the WebView2 right-click context menu (Back/Refresh/Save-as/Inspect) at the shell level on Windows so a stray right-click can no longer reload the app and close every open terminal." },

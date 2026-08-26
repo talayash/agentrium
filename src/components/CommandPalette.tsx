@@ -91,7 +91,7 @@ export function CommandPalette() {
   const [snippets, setSnippets] = useState<Snippet[]>([]);
   // Chip-strip filter. 'all' means no chip filter is active; a source id
   // (e.g. 'terminals') restricts results to that source. Typed prefix chars
-  // still take precedence — see `wantSource` below.
+  // still take precedence - see `wantSource` below.
   const [activeSourceId, setActiveSourceId] = useState<string>('all');
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -100,7 +100,7 @@ export function CommandPalette() {
     inputRef.current?.focus();
     // Reset chip filter each time the palette is (re)opened.
     setActiveSourceId('all');
-    // Hints and snippets are best-effort — the palette is usable without them,
+    // Hints and snippets are best-effort - the palette is usable without them,
     // so a load failure just leaves those sections empty.
     invoke<HintCategory[]>('get_hints').then(setHints).catch(() => {});
     invoke<Snippet[]>('get_snippets').then(setSnippets).catch(() => {});
@@ -408,7 +408,7 @@ export function CommandPalette() {
             {PALETTE_SOURCES.map((src) => {
               // Highlight the chip when either (a) it's the active chip and
               // no typed prefix is fighting it, or (b) the typed prefix
-              // matches this source — so muscle-memory users still see
+              // matches this source - so muscle-memory users still see
               // which source their prefix maps to.
               const active =
                 (activeSourceId === src.id && prefixMode === 'all') ||

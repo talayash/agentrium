@@ -8,12 +8,12 @@
 
 **Tech Stack:** React 18 + TypeScript + Zustand + Framer Motion (frontend). Rust + Tauri 2 + `rusqlite` (backend). Vitest (unit tests).
 
-**Test approach:** Vitest for all pure functions (`allowlist`, `detector`, `framework`) and store lifecycle. Component tests via `@testing-library/react` **only** if it's already a dev dependency — otherwise stick to pure-fn tests + manual QA (following the project's existing pattern in `src/lib/*.test.ts`). Rust unit tests via `#[cfg(test)]` for `PreviewProfile` serde round-trip.
+**Test approach:** Vitest for all pure functions (`allowlist`, `detector`, `framework`) and store lifecycle. Component tests via `@testing-library/react` **only** if it's already a dev dependency - otherwise stick to pure-fn tests + manual QA (following the project's existing pattern in `src/lib/*.test.ts`). Rust unit tests via `#[cfg(test)]` for `PreviewProfile` serde round-trip.
 
 **Milestones:**
-- **M1 — Foundation (Stage 1 from spec):** allow-list + detector + framework + store + basic iframe panel + `ToolStripe` toggle + `App.tsx` wiring. Ships as a working preview panel with manual URL entry.
-- **M2 — URL bar + auto-detect UX (Stages 2-3):** toolbar with reload/external-open/URL bar, allow-list Settings, inline hint on ad-hoc detection, profile flag, Rust schema, terminalStore seeding. Ships as full "profiles that have GUI" experience.
-- **M3 — Polish (Stages 4-7):** resize handle, device frames, back/forward, network-status pill, pop-out `WebviewWindow`. Task-level detail deferred to a follow-up plan drafted after M2 lands.
+- **M1 - Foundation (Stage 1 from spec):** allow-list + detector + framework + store + basic iframe panel + `ToolStripe` toggle + `App.tsx` wiring. Ships as a working preview panel with manual URL entry.
+- **M2 - URL bar + auto-detect UX (Stages 2-3):** toolbar with reload/external-open/URL bar, allow-list Settings, inline hint on ad-hoc detection, profile flag, Rust schema, terminalStore seeding. Ships as full "profiles that have GUI" experience.
+- **M3 - Polish (Stages 4-7):** resize handle, device frames, back/forward, network-status pill, pop-out `WebviewWindow`. Task-level detail deferred to a follow-up plan drafted after M2 lands.
 
 ---
 
@@ -52,7 +52,7 @@
 
 ---
 
-# MILESTONE 1 — Foundation
+# MILESTONE 1 - Foundation
 
 ## Task 1: URL allow-list validation
 
@@ -109,7 +109,7 @@ describe('isUrlAllowed', () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/lib/preview/allowlist.test.ts`
-Expected: FAIL — module `./allowlist` not found.
+Expected: FAIL - module `./allowlist` not found.
 
 - [ ] **Step 3: Implement**
 
@@ -118,7 +118,7 @@ Expected: FAIL — module `./allowlist` not found.
 const LOCALHOST_HOSTS = new Set(['localhost', '127.0.0.1', '0.0.0.0']);
 
 function hostMatchesGlob(host: string, pattern: string): boolean {
-  // Only supports a single leading '*.' — 'foo.*' or 'a*b' are literal.
+  // Only supports a single leading '*.' - 'foo.*' or 'a*b' are literal.
   if (!pattern.startsWith('*.')) {
     return host === pattern;
   }
@@ -216,7 +216,7 @@ describe('detectUrl', () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/lib/preview/detector.test.ts`
-Expected: FAIL — module `./detector` not found.
+Expected: FAIL - module `./detector` not found.
 
 - [ ] **Step 3: Implement**
 
@@ -479,7 +479,7 @@ describe('previewStore', () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/store/previewStore.test.ts`
-Expected: FAIL — module not found.
+Expected: FAIL - module not found.
 
 - [ ] **Step 3: Implement**
 
@@ -785,7 +785,7 @@ try {
 } catch { /* ignore decode errors */ }
 ```
 
-Place it right after the existing `loopMatch` detection block. The `TextDecoder` allocation per chunk is fine — the loop-mode detector already does the same thing on the line above.
+Place it right after the existing `loopMatch` detection block. The `TextDecoder` allocation per chunk is fine - the loop-mode detector already does the same thing on the line above.
 
 - [ ] **Step 4: Mount `<PreviewPanel/>` in the dock area**
 
@@ -795,7 +795,7 @@ Inside the right-side panel `AnimatePresence` cluster (after `<HintsPanel/>`, be
 <PreviewPanel />
 ```
 
-`PreviewPanel` handles its own visibility (returns null unless `globalOpen && activeId`), so wrapping it in another `AnimatePresence` is unnecessary — but ensure it renders BETWEEN the other right-docked panels and the right-side `<ToolStripe/>` so it stacks correctly.
+`PreviewPanel` handles its own visibility (returns null unless `globalOpen && activeId`), so wrapping it in another `AnimatePresence` is unnecessary - but ensure it renders BETWEEN the other right-docked panels and the right-side `<ToolStripe/>` so it stacks correctly.
 
 - [ ] **Step 5: Type check + smoke build**
 
@@ -825,11 +825,11 @@ Look for how `changesOpen`, `hintsOpen`, `orchestrationOpen` toggles are rendere
 
 Import `usePreviewStore`. On the right side, add a button that:
 - Icon: use a "monitor" or "eye" icon from `lucide-react` (already a dep). `Monitor` is the natural choice.
-- Tooltip: `Preview (Ctrl+Shift+V)` — final shortcut confirmed in Step 4.
+- Tooltip: `Preview (Ctrl+Shift+V)` - final shortcut confirmed in Step 4.
 - Active state: `globalOpen === true` renders with the same active styling as sibling toggles.
 - onClick: `usePreviewStore.getState().toggleGlobal()`.
 
-Follow the exact JSX pattern of the adjacent toggle. This is a small mechanical edit — don't refactor surrounding code.
+Follow the exact JSX pattern of the adjacent toggle. This is a small mechanical edit - don't refactor surrounding code.
 
 - [ ] **Step 3: Type check**
 
@@ -880,17 +880,17 @@ Because the Tauri dev app can't be automated (see project memory), verify by han
 4. Once Vite prints `➜  Local: http://localhost:5173/`, the iframe should populate within one output chunk.
 5. Switch to another (non-web) terminal. Preview panel should show "Waiting for a dev-server URL…"
 6. Switch back. iframe should re-mount with the same URL (`reloadCounter` unchanged → same `key`).
-7. Try setting `allowList = []` and pointing a manual override at `https://example.com` — should show the "URL not allowed" blocked state.
+7. Try setting `allowList = []` and pointing a manual override at `https://example.com` - should show the "URL not allowed" blocked state.
 
 - [ ] **Step 4: M1 tag commit**
 
 ```bash
-git commit --allow-empty -m "chore(preview): M1 foundation shipped — panel + detector + toggle"
+git commit --allow-empty -m "chore(preview): M1 foundation shipped - panel + detector + toggle"
 ```
 
 ---
 
-# MILESTONE 2 — URL bar + auto-detect UX + profile flag
+# MILESTONE 2 - URL bar + auto-detect UX + profile flag
 
 ## Task 9: PreviewToolbar with URL bar, reload, external open
 
@@ -1010,7 +1010,7 @@ pub struct PreviewProfile {
     pub framework_hint: Option<String>,
 }
 
-// In ConfigProfile — add this field, keeping serde defaults so old rows keep parsing:
+// In ConfigProfile - add this field, keeping serde defaults so old rows keep parsing:
 // #[serde(default)]
 // pub preview: Option<PreviewProfile>,
 ```
@@ -1041,7 +1041,7 @@ mod tests {
 }
 ```
 
-Note: the second test requires that all other fields have serde defaults or are still present in the JSON above. If `ConfigProfile` has additional non-defaultable fields (e.g. `id`, timestamps), extend the JSON accordingly — but the field being tested is `preview`, so keep the fixture minimal.
+Note: the second test requires that all other fields have serde defaults or are still present in the JSON above. If `ConfigProfile` has additional non-defaultable fields (e.g. `id`, timestamps), extend the JSON accordingly - but the field being tested is `preview`, so keep the fixture minimal.
 
 - [ ] **Step 4: Run Rust tests**
 
@@ -1068,7 +1068,7 @@ Find the `CREATE TABLE IF NOT EXISTS profiles (...)` block and the profile read/
 
 - [ ] **Step 2: Add migration**
 
-Add to the schema init: `preview_json TEXT` column with default NULL. Because SQLite allows `ALTER TABLE ADD COLUMN` at any time and this is additive, follow the existing migration pattern in `database.rs`. If the project already has a migration versioning system (e.g. `PRAGMA user_version`), add a new migration step. Otherwise use `ALTER TABLE profiles ADD COLUMN preview_json TEXT` inside a defensive `let _ = ...;` (SQLite raises if the column exists — swallow that specific error).
+Add to the schema init: `preview_json TEXT` column with default NULL. Because SQLite allows `ALTER TABLE ADD COLUMN` at any time and this is additive, follow the existing migration pattern in `database.rs`. If the project already has a migration versioning system (e.g. `PRAGMA user_version`), add a new migration step. Otherwise use `ALTER TABLE profiles ADD COLUMN preview_json TEXT` inside a defensive `let _ = ...;` (SQLite raises if the column exists - swallow that specific error).
 
 - [ ] **Step 3: Update profile serialization**
 
@@ -1094,14 +1094,14 @@ git commit -m "feat(preview): sqlite profiles.preview_json column + round-trip"
 
 ---
 
-## Task 12: ProfileModal — "Has GUI preview" checkbox
+## Task 12: ProfileModal - "Has GUI preview" checkbox
 
 **Files:**
 - Modify: `src/components/ProfileModal.tsx`
 
 - [ ] **Step 1: Read the modal to find where to add fields**
 
-Locate the form section — likely a series of labeled inputs. Match the visual pattern.
+Locate the form section - likely a series of labeled inputs. Match the visual pattern.
 
 - [ ] **Step 2: Add fields**
 
@@ -1109,7 +1109,7 @@ Locate the form section — likely a series of labeled inputs. Match the visual 
 - When checked, reveal an optional `<input>` "Preview URL (optional override)" bound to `profile.preview?.url_override`.
 - Save handler serializes into a `preview: PreviewProfile | undefined` field on the profile before invoking `save_profile`.
 
-Keep changes surgical — don't refactor unrelated fields.
+Keep changes surgical - don't refactor unrelated fields.
 
 - [ ] **Step 3: Type check + build**
 
@@ -1235,7 +1235,7 @@ if (profile?.preview?.enabled && !usePreviewStore.getState().globalOpen) {
 }
 ```
 
-Note: `createTerminal` in this codebase may not currently accept a full `profile` — check the signature. If not, thread the `preview` block through by adding a small optional parameter, or read it from an in-memory profile cache. Don't over-engineer; a minimal `previewInit?: Partial<PreviewState>` param works if profile plumbing is deep.
+Note: `createTerminal` in this codebase may not currently accept a full `profile` - check the signature. If not, thread the `preview` block through by adding a small optional parameter, or read it from an in-memory profile cache. Don't over-engineer; a minimal `previewInit?: Partial<PreviewState>` param works if profile plumbing is deep.
 
 - [ ] **Step 2: On `closeTerminal`, drop preview state**
 
@@ -1280,7 +1280,7 @@ async function seedFrameworkHint(terminalId: string, cwd: string) {
     if (hint !== 'unknown') {
       usePreviewStore.getState().seedTerminal(terminalId, { frameworkHint: hint });
     }
-  } catch { /* no package.json, or unreadable — silent */ }
+  } catch { /* no package.json, or unreadable - silent */ }
 }
 ```
 
@@ -1349,14 +1349,14 @@ Expected: everything green.
 1. Create a profile with "Has GUI preview" checked and URL override `http://localhost:3000`. Launch a terminal from that profile in a Next.js project. Verify: preview panel opens automatically, iframe loads override URL immediately.
 2. In the same terminal, run `npm run dev`. Once Next prints its URL, verify the panel keeps the user override (override wins over detected).
 3. Uncheck override, restart. Confirm detected URL fills in automatically after `npm run dev`.
-4. Open a non-GUI-profile terminal, run `npm run dev` in a Vite project. Verify inline hint appears within a few seconds. Click "Open preview" — panel opens, hint dismisses.
+4. Open a non-GUI-profile terminal, run `npm run dev` in a Vite project. Verify inline hint appears within a few seconds. Click "Open preview" - panel opens, hint dismisses.
 5. Enter `https://example.com` in the URL bar. Panel shows blocked state. Add `example.com` to the allow-list in Settings. URL now loads.
-6. Close the terminal. Verify no console errors — state is dropped.
+6. Close the terminal. Verify no console errors - state is dropped.
 7. Restart the app. Confirm `allowList` and `panelWidthPx` persist; `perTerminal` does not.
 
 - [ ] **Step 3: Changelog entry**
 
-Add to `src/changelog.json` a new top entry for the next version — sample text:
+Add to `src/changelog.json` a new top entry for the next version - sample text:
 
 ```json
 {
@@ -1367,7 +1367,7 @@ Add to `src/changelog.json` a new top entry for the next version — sample text
     "New right-docked Preview panel with auto-detected dev-server URL (Vite, Next.js, Astro, Nuxt, SvelteKit, Remix, Angular, CRA, Expo).",
     "Per-profile 'Has GUI preview' flag opens the panel automatically for a profile.",
     "Inline hint offers to open the preview when a URL is detected in any terminal.",
-    "Allow-list in Settings — localhost is always allowed; add glob patterns like *.ngrok.io for tunnels."
+    "Allow-list in Settings - localhost is always allowed; add glob patterns like *.ngrok.io for tunnels."
   ]
 }
 ```
@@ -1379,24 +1379,24 @@ Confirm actual version target via `package.json` before locking in the number.
 ```bash
 git add src/changelog.json
 git commit -m "docs(changelog): 1.28.0 preview panel"
-git commit --allow-empty -m "chore(preview): M2 shipped — url bar + auto-detect + profile flag"
+git commit --allow-empty -m "chore(preview): M2 shipped - url bar + auto-detect + profile flag"
 ```
 
 ---
 
-# MILESTONE 3 — Polish (device frames, resize, back/forward, pop-out)
+# MILESTONE 3 - Polish (device frames, resize, back/forward, pop-out)
 
 Deferred until M1 + M2 are merged and verified. When ready, invoke `superpowers:writing-plans` again with the same spec (`docs/superpowers/specs/2026-07-23-preview-panel-design.md`) to generate M3 task-level detail. M3 scope from the spec:
 
 - Drag-resize handle on the left edge of `PreviewPanel` (persist `panelWidthPx`).
-- Device mode toggle (desktop / tablet 768px / mobile 375px) — pure CSS wrapping.
-- Back/forward navigation using `history` + `historyIndex` in the store; capture iframe `location.href` on load events (guarded — cross-origin will throw; that's fine, we track only what we set).
+- Device mode toggle (desktop / tablet 768px / mobile 375px) - pure CSS wrapping.
+- Back/forward navigation using `history` + `historyIndex` in the store; capture iframe `location.href` on load events (guarded - cross-origin will throw; that's fine, we track only what we set).
 - Dev-server network-status pill (probe iframe URL with a `HEAD` fetch from the parent window, show green/red dot).
-- Pop-out via `WebviewWindow` — reuse the detached-window infra; label prefix `preview-*`; capability entry.
+- Pop-out via `WebviewWindow` - reuse the detached-window infra; label prefix `preview-*`; capability entry.
 
 ---
 
-## Self-review — spec coverage
+## Self-review - spec coverage
 
 Cross-checking the spec against the plan:
 
@@ -1440,6 +1440,6 @@ git commit -m "feat(preview): honour keepAliveAcrossTabs (multi-iframe hidden mo
 ## Notes for the implementing engineer
 
 - Every task is intended to be executable by a fresh subagent given only the spec + this plan + the current codebase. Don't infer requirements not written down.
-- Where a step says "check the existing pattern in file X" — do that read before editing. The paste-as-file plan (already merged) is a good reference for how M2's `terminalStore` seeding maps onto the existing store shape.
+- Where a step says "check the existing pattern in file X" - do that read before editing. The paste-as-file plan (already merged) is a good reference for how M2's `terminalStore` seeding maps onto the existing store shape.
 - The keyboard shortcut choice is the most likely conflict. If `Ctrl+Shift+V` collides, the fallbacks are `Ctrl+Shift+G`, `Ctrl+Alt+P`. Record the final choice in the commit message.
 - Don't add polish features from M3 to M1 or M2 tasks. Ship the milestone, then invoke `writing-plans` for M3.
