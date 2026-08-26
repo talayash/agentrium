@@ -57,7 +57,7 @@ export function Segmented<T extends string>({ value, options, onChange }: SegPro
   );
 }
 
-interface SectionProps { title: string; description?: string; children: ReactNode }
+interface SectionProps { title: ReactNode; description?: string; children: ReactNode }
 export function PageHeader({ title, description }: { title: string; description?: string }) {
   return (
     <header className="mb-4">

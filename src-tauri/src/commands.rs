@@ -703,6 +703,32 @@ pub async fn get_claude_version() -> Result<String, String> {
     .await
 }
 
+/// Generic per-agent `<binary> --version` runner. Claude routes through
+/// the cached-path helper (`run_claude`) so users with PATH only in
+/// `.zshrc` still resolve it; other agents fall through the shell lookup.
+/// Returns a cleaned single-line version string or an error message.
+#[command]
+pub async fn get_agent_version(agent: crate::config::AgentKind) -> Result<String, String> {
+    wrap_cmd("get_agent_version", async move {
+        let output = if agent == crate::config::AgentKind::Claude {
+            run_claude(&["--version"])
+                .await
+                .map_err(|e| e.to_string())?
+        } else {
+            let binary = crate::agents::spec_for(agent).binary;
+            let mut cmd: tokio::process::Command = shell_command(binary, &["--version"]).into();
+            cmd.output().await.map_err(|e| e.to_string())?
+        };
+
+        if !output.status.success() {
+            return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+        }
+        let stdout = String::from_utf8(output.stdout).map_err(|e| e.to_string())?;
+        Ok(extract_version_line(&stdout))
+    })
+    .await
+}
+
 /// Run `claude` with the given args. Prefers the cached absolute path resolved
 /// via an interactive login shell (so users with PATH set in `.zshrc` work);
 /// falls back to the shell-PATH lookup if resolution failed.

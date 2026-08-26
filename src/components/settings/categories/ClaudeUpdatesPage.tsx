@@ -7,18 +7,94 @@ import { toast } from '../../../store/toastStore';
 import { PageHeader, PageSection } from '../SettingRow';
 import { Button } from '../../ui/Button';
 import { registerSetting } from '../index';
+import { AGENT_SPECS, type AgentKind, type AgentSpec } from '../../../lib/agents';
+import { BrandIcon } from '../../BrandIcon';
 
 registerSetting({
   category: { group: 'claude', page: 'updates' },
   id: 'app-and-cli-updates',
-  label: 'App + Claude CLI updates',
-  keywords: ['update', 'upgrade', 'app', 'cli', 'version'],
+  label: 'App + agent CLI updates',
+  keywords: ['update', 'upgrade', 'app', 'cli', 'version', 'agent', 'claude', 'codex', 'cursor', 'gemini'],
 });
 
 interface UpdateCheckResult {
   current_version: string;
   latest_version: string;
   update_available: boolean;
+}
+
+/**
+ * Per-agent version card. Claude Code (the only agent with a proper
+ * update-check backend right now) gets the full check + update UI. The
+ * others show a version line, a Docs link, and — when not installed —
+ * a one-line install hint. Update flows for Codex/Cursor/Gemini are a
+ * follow-up (each has its own installer path, so unifying them is real
+ * work).
+ */
+function AgentUpdateSection({ spec }: { spec: AgentSpec }) {
+  const [version, setVersion] = useState<string>('');
+  const [checking, setChecking] = useState(false);
+  const [notInstalled, setNotInstalled] = useState(false);
+
+  async function refresh() {
+    setChecking(true);
+    try {
+      const v = await invoke<string>('get_agent_version', { agent: spec.kind });
+      setVersion(v || '');
+      setNotInstalled(!v);
+    } catch {
+      setVersion('');
+      setNotInstalled(true);
+    }
+    setChecking(false);
+  }
+
+  useEffect(() => { refresh(); }, [spec.kind]);
+
+  return (
+    <PageSection
+      title={
+        <span className="flex items-center gap-2">
+          <BrandIcon kind={spec.kind} size={14} />
+          {spec.displayName}
+        </span>
+      }
+    >
+      <div className="flex items-center justify-between py-2 px-1">
+        <div>
+          <p className="text-text-primary text-[13px]">
+            {checking ? 'Checking…' : notInstalled ? 'Not installed' : version}
+          </p>
+          {notInstalled && (
+            <p className="text-text-tertiary text-[11px] mt-1 font-mono">{spec.installHint}</p>
+          )}
+        </div>
+        <div className="flex gap-2">
+          <Button
+            variant="secondary"
+            onClick={() => invoke('open_external_url', { url: spec.installUrl })}
+            icon={<ExternalLink size={12} />}
+          >
+            Docs
+          </Button>
+          {notInstalled ? (
+            <Button
+              variant="secondary"
+              onClick={refresh}
+              disabled={checking}
+              icon={<RefreshCw size={14} className={checking ? 'animate-spin' : ''} />}
+            >
+              Recheck
+            </Button>
+          ) : (
+            <div className="flex items-center gap-2 bg-success/10 text-success h-9 px-4 rounded-md text-[12px] font-medium">
+              <Check size={14} /> Detected
+            </div>
+          )}
+        </div>
+      </div>
+    </PageSection>
+  );
 }
 
 export default function ClaudeUpdatesPage() {
@@ -67,6 +143,9 @@ export default function ClaudeUpdatesPage() {
     }
     setIsUpdating(false);
   }
+
+  const claudeSpec = AGENT_SPECS.find((s) => s.kind === 'claude')!;
+  const otherAgents = AGENT_SPECS.filter((s) => s.kind !== 'claude');
 
   return (
     <div>
@@ -124,7 +203,15 @@ export default function ClaudeUpdatesPage() {
         )}
       </PageSection>
 
-      <PageSection title="Claude Code CLI">
+      {/* Claude Code CLI: the only agent with a full check + update backend. */}
+      <PageSection
+        title={
+          <span className="flex items-center gap-2">
+            <BrandIcon kind="claude" size={14} />
+            {claudeSpec.displayName}
+          </span>
+        }
+      >
         <div className="flex items-center justify-between py-2 px-1">
           <div>
             <p className="text-text-primary text-[13px]">{isChecking ? 'Checking…' : claudeVersion || 'Not installed'}</p>
@@ -135,7 +222,7 @@ export default function ClaudeUpdatesPage() {
           <div className="flex gap-2">
             <Button
               variant="secondary"
-              onClick={() => invoke('open_external_url', { url: 'https://docs.anthropic.com/en/docs/claude-code' })}
+              onClick={() => invoke('open_external_url', { url: claudeSpec.installUrl })}
               icon={<ExternalLink size={12} />}
             >
               Docs
@@ -158,6 +245,13 @@ export default function ClaudeUpdatesPage() {
           </div>
         </div>
       </PageSection>
+
+      {otherAgents.map((spec: AgentSpec) => (
+        <AgentUpdateSection key={spec.kind} spec={spec} />
+      ))}
     </div>
   );
 }
+
+// Kept so future refactors can reference the enum value alongside the spec.
+export type { AgentKind };
