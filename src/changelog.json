@@ -1,9 +1,17 @@
 [
   {
     "version": "1.32.0",
-    "date": "2026-08-25",
+    "date": "2026-08-26",
     "features": [
-      { "title": "Codex support and agent picker", "description": "New Terminal now shows a Claude Code / Codex toggle above the profile grid. Each profile is bound to an agent, so grids can mix both CLIs in the same view. Existing profiles are unchanged and default to Claude Code." }
+      { "title": "Multi-agent terminals: Claude Code, Codex, Cursor", "description": "New Terminal now shows a three-way agent picker with brand icons. Pick Claude Code, Codex, or Cursor per terminal and mix them freely in the grid. Existing profiles are unchanged and default to Claude." },
+      { "title": "Profiles are shared across agents", "description": "A saved profile now appears no matter which agent is selected. Picking a profile also seeds sensible defaults from what it was saved with." }
+    ]
+  },
+  {
+    "version": "1.31.4",
+    "date": "2026-08-23",
+    "features": [
+      { "title": "Ctrl+Tab switches tabs", "description": "Ctrl+Tab moves to the next terminal tab and Ctrl+Shift+Tab moves back, following the order shown in the tab strip. The shortcut was previously swallowed before it could run." }
     ]
   },
   {
