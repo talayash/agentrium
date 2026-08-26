@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, memo, useCallback, useMemo } from 'react';
 import { AnimatePresence } from 'framer-motion';
-import { X, Maximize2, Minimize2, Plus, Grid3X3, LayoutGrid, Columns, Rows, Square, Layers, Pin } from 'lucide-react';
+import { X, Maximize2, Minimize2, Plus, Grid3X3, Layers, Pin } from 'lucide-react';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore, GridLayout } from '../store/appStore';
 import { TerminalView } from './TerminalView';
@@ -23,13 +23,44 @@ const GRID_CONFIGS: Record<GridLayout, { cols: number; rows: number }> = {
   '4x2': { cols: 2, rows: 4 },
 };
 
-const LAYOUT_OPTIONS: { layout: GridLayout; icon: React.ReactNode; label: string }[] = [
-  { layout: '1x1', icon: <Square size={14} />, label: 'Single' },
-  { layout: '1x2', icon: <Columns size={14} />, label: '2 Columns' },
-  { layout: '2x1', icon: <Rows size={14} />, label: '2 Rows' },
-  { layout: '2x2', icon: <Grid3X3 size={14} />, label: '2x2 Grid' },
-  { layout: '2x3', icon: <LayoutGrid size={14} />, label: '2x3 Grid' },
-  { layout: '2x4', icon: <LayoutGrid size={14} />, label: '2x4 Grid' },
+/**
+ * A miniature schematic of the actual grid layout, so the picker's icon
+ * always matches the layout it applies. Replaces the earlier scheme where
+ * '2x2' rendered a 3x3 lucide icon and '2x3'/'2x4' shared the same icon.
+ */
+function LayoutIcon({ rows, cols, size = 14 }: { rows: number; cols: number; size?: number }) {
+  const cellW = 24 / cols;
+  const cellH = 24 / rows;
+  const cells = [];
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      cells.push(
+        <rect
+          key={`${r}-${c}`}
+          x={c * cellW + 1.5}
+          y={r * cellH + 1.5}
+          width={cellW - 3}
+          height={cellH - 3}
+          rx="1"
+          fill="currentColor"
+        />
+      );
+    }
+  }
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
+      {cells}
+    </svg>
+  );
+}
+
+const LAYOUT_OPTIONS: { layout: GridLayout; label: string }[] = [
+  { layout: '1x1', label: 'Single' },
+  { layout: '1x2', label: '2 Columns' },
+  { layout: '2x1', label: '2 Rows' },
+  { layout: '2x2', label: '2x2 Grid' },
+  { layout: '2x3', label: '2x3 Grid' },
+  { layout: '2x4', label: '2x4 Grid' },
 ];
 
 interface TerminalCellProps {
@@ -43,11 +74,23 @@ interface TerminalCellProps {
 
 const TerminalCell = memo(function TerminalCell({ terminalId, index, isFocused, onFocus, onRemove, onMaximize }: TerminalCellProps) {
   const { terminals } = useTerminalStore();
-  const { swapGridPositions, replaceInGrid } = useAppStore();
+  const { swapGridPositions, replaceInGrid, removeFromGrid } = useAppStore();
   const pinnedTabIds = useAppStore((s) => s.pinnedTabIds);
   const isPinned = pinnedTabIds.includes(terminalId);
   const [dropOver, setDropOver] = useState(false);
   const terminal = terminals.get(terminalId);
+
+  // Grid cells hold onto ids that may become stale: a right-click restart
+  // gives a terminal a new id, and app restart repopulates terminals with
+  // fresh ids. Auto-prune those stale entries once the terminals map has
+  // actually been populated (guards against pruning during first mount
+  // before session restore lands). Without this, cells rendered forever
+  // as "Terminal not found".
+  useEffect(() => {
+    if (!terminal && terminals.size > 0) {
+      removeFromGrid(terminalId);
+    }
+  }, [terminal, terminals.size, terminalId, removeFromGrid]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     if (isTerminalDrag(e)) {
@@ -378,20 +421,23 @@ export function TerminalGrid() {
         <div className="flex items-center gap-2">
           {/* Layout Selector */}
           <div className="flex items-center gap-0.5 bg-bg-primary rounded-md p-0.5">
-            {LAYOUT_OPTIONS.map((option) => (
-              <button
-                key={option.layout}
-                onClick={() => setGridLayout(option.layout)}
-                className={`p-1 rounded transition-colors ${
-                  gridLayout === option.layout
-                    ? 'bg-accent-primary text-white'
-                    : 'text-text-tertiary hover:text-text-secondary hover:bg-white/[0.04]'
-                }`}
-                title={option.label}
-              >
-                {option.icon}
-              </button>
-            ))}
+            {LAYOUT_OPTIONS.map((option) => {
+              const cfg = GRID_CONFIGS[option.layout];
+              return (
+                <button
+                  key={option.layout}
+                  onClick={() => setGridLayout(option.layout)}
+                  className={`p-1 rounded transition-colors ${
+                    gridLayout === option.layout
+                      ? 'bg-accent-primary text-white'
+                      : 'text-text-tertiary hover:text-text-secondary hover:bg-white/[0.04]'
+                  }`}
+                  title={option.label}
+                >
+                  <LayoutIcon rows={cfg.rows} cols={cfg.cols} />
+                </button>
+              );
+            })}
           </div>
 
           {/* New Terminal Button */}

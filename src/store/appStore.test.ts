@@ -237,6 +237,24 @@ describe('appStore - grid actions', () => {
     expect(useAppStore.getState().gridLayout).toBe('2x2');
   });
 
+  it('addToGrid preserves the current layout when it still has capacity', () => {
+    // Bug from GH #52.3: picking 2x2 then adding a 3rd terminal used to
+    // silently switch the layout to 1x3. Now the user's manual choice
+    // stays until the layout is actually full.
+    useAppStore.setState({ gridTerminalIds: ['a', 'b'], gridLayout: '2x2' });
+    useAppStore.getState().addToGrid('c');
+    const state = useAppStore.getState();
+    expect(state.gridTerminalIds).toEqual(['a', 'b', 'c']);
+    expect(state.gridLayout).toBe('2x2');
+  });
+
+  it('addToGrid grows the layout only when the current one is full', () => {
+    useAppStore.setState({ gridTerminalIds: ['a', 'b'], gridLayout: '1x2' });
+    useAppStore.getState().addToGrid('c');
+    // 1x2 holds 2 tabs; adding a 3rd must grow the layout.
+    expect(useAppStore.getState().gridLayout).toBe('1x3');
+  });
+
   it('removeFromGrid clears focused index when it falls out of range', () => {
     useAppStore.setState({ gridTerminalIds: ['a', 'b', 'c'], gridFocusedIndex: 2 });
 

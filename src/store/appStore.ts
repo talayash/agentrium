@@ -472,6 +472,18 @@ export function getOptimalLayout(count: number): GridLayout {
   }
 }
 
+// How many cells each layout holds. Used by `addToGrid` to decide whether the
+// user's manual layout choice can accommodate a new terminal without being
+// silently changed by `getOptimalLayout`.
+export const GRID_CAPACITIES: Record<GridLayout, number> = {
+  '1x1': 1,
+  '1x2': 2, '2x1': 2,
+  '1x3': 3, '3x1': 3,
+  '2x2': 4,
+  '2x3': 6, '3x2': 6,
+  '2x4': 8, '4x2': 8,
+};
+
 export const useAppStore = create<AppState>()(
   persist(
     (set) => ({
@@ -957,9 +969,17 @@ export const useAppStore = create<AppState>()(
         if (state.gridTerminalIds.includes(terminalId)) return state;
         if (state.gridTerminalIds.length >= MAX_GRID_TERMINALS) return state;
         const newIds = [...state.gridTerminalIds, terminalId];
+        // Preserve the user's manual layout choice if it can still hold the
+        // new terminal (e.g., 2x2 stays 2x2 when going from 3 -> 4 tabs).
+        // Only grow to a bigger optimal layout when the current layout is
+        // actually full.
+        const capacity = GRID_CAPACITIES[state.gridLayout] ?? 1;
+        const nextLayout = newIds.length > capacity
+          ? getOptimalLayout(newIds.length)
+          : state.gridLayout;
         return {
           gridTerminalIds: newIds,
-          gridLayout: getOptimalLayout(newIds.length),
+          gridLayout: nextLayout,
         };
       }),
       removeFromGrid: (terminalId) => set((state) => {
