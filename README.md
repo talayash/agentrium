@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="src-tauri/icons/icon.png" alt="ClaudeTerminal Logo" width="160" height="160">
+  <img src="src-tauri/icons/icon.png" alt="ADE-1 Logo" width="160" height="160">
 </p>
 
-<h1 align="center">ClaudeTerminal</h1>
+<h1 align="center">ADE-1</h1>
 
 <p align="center">
   <strong>A Modern Multi-Instance Terminal Manager for Claude Code</strong>
@@ -29,7 +29,7 @@
 
 ## Overview
 
-**ClaudeTerminal** is a sleek, modern cross-platform desktop application (Windows and macOS) designed to help developers manage multiple [Claude Code](https://docs.anthropic.com/en/docs/claude-code) terminal instances from a unified interface. Built with Tauri and React, it provides a powerful workspace for running parallel Claude Code sessions with custom configurations, real-time monitoring, and intelligent command assistance.
+**ADE-1** (Agent Desktop Environment) is a cross-platform desktop application (Windows and macOS) for running multiple coding-agent CLIs — [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Codex](https://github.com/openai/codex), [Cursor](https://cursor.com/cli), and [Gemini](https://github.com/google-gemini/gemini-cli) — side by side in one unified interface. Built with Tauri and React, it provides a powerful workspace for running parallel Claude Code sessions with custom configurations, real-time monitoring, and intelligent command assistance.
 
 ## Screenshots
 
@@ -109,7 +109,7 @@
 
 ### Prerequisites
 
-Before installing ClaudeTerminal, ensure you have:
+Before installing ADE-1, ensure you have:
 
 1. **Node.js** (v22 LTS or higher) - [Download](https://nodejs.org/)
 2. **Claude Code** - Install via npm:
@@ -133,7 +133,7 @@ Download the latest release for your platform from the [Releases page](https://g
 ### First Launch
 
 1. Run the installer and follow the setup wizard
-2. Launch ClaudeTerminal from the Start Menu or Desktop
+2. Launch ADE-1 from the Start Menu or Desktop
 3. If Claude Code is not detected, the setup wizard will guide you through installation
 4. Click "New Terminal" to create your first Claude Code session
 
@@ -279,7 +279,7 @@ likely downloaded from an older release before code signing was enabled — grab
 the latest installer from the
 [Releases page](https://github.com/talayash/claude-terminal/releases/latest).
 
-#### macOS — "ClaudeTerminal is damaged and can't be opened"
+#### macOS — "ADE-1 is damaged and can't be opened"
 
 This message is misleading: the app is intact, but the macOS `.dmg` is not yet
 notarized through Apple's notary service, so Gatekeeper rejects it after the
@@ -288,10 +288,10 @@ from Terminal:
 
 ```bash
 # Before opening the DMG
-xattr -d com.apple.quarantine ~/Downloads/ClaudeTerminal_*.dmg
+xattr -d com.apple.quarantine ~/Downloads/ADE-1_*.dmg
 
 # Or, if you've already dragged the app to /Applications
-xattr -cr /Applications/ClaudeTerminal.app
+xattr -cr /Applications/ADE-1.app
 ```
 
 Then open the app normally. The right-click → **Open** workaround does not
@@ -305,7 +305,7 @@ work for the "damaged" variant of the error — only `xattr` does.
 
 1. Ensure Node.js is installed: `node --version`
 2. Install Claude Code globally: `npm install -g @anthropic-ai/claude-code`
-3. Restart ClaudeTerminal
+3. Restart ADE-1
 
 ### Terminal not responding
 

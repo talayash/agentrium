@@ -1,7 +1,7 @@
 {
-  "name": "claude-terminal",
+  "name": "ade-1",
   "version": "1.31.4",
-  "description": "Modern cross-platform (Windows and macOS) desktop application for managing multiple Claude Code terminal instances",
+  "description": "ADE-1 - Agent Desktop Environment. Cross-platform desktop app for running Claude Code, Codex, Cursor, and Gemini CLIs side by side.",
   "type": "module",
   "scripts": {
     "dev": "vite",

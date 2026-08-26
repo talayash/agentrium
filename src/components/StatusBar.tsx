@@ -276,7 +276,7 @@ export function StatusBar() {
         )}
 
         {/* App version */}
-        <Tooltip label={`ClaudeTerminal v${appVersion}`} side="top">
+        <Tooltip label={`ADE-1 v${appVersion}`} side="top">
           <span className="text-text-tertiary px-1.5 font-mono">v{appVersion}</span>
         </Tooltip>
       </div>

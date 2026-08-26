@@ -109,7 +109,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
           <div className="w-12 h-12 mx-auto mb-4 rounded-lg bg-bg-surface flex items-center justify-center">
             <Terminal size={24} className="text-text-secondary" />
           </div>
-          <h1 className="text-[length:var(--text-h1)] font-semibold text-text-primary mb-1">Welcome to ClaudeTerminal</h1>
+          <h1 className="text-[length:var(--text-h1)] font-semibold text-text-primary mb-1">Welcome to ADE-1</h1>
           <p className="text-text-secondary text-[13px]">Let's make sure everything is set up correctly</p>
         </div>
 

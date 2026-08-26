@@ -8,7 +8,7 @@ import { registerSetting } from '../index';
 registerSetting({
   category: { group: 'privacy-about', page: 'about' },
   id: 'about',
-  label: 'About ClaudeTerminal',
+  label: 'About ADE-1',
   keywords: ['version', 'about', 'github', 'license'],
 });
 
@@ -23,11 +23,11 @@ export default function AboutPage() {
 
   return (
     <div>
-      <PageHeader title="About ClaudeTerminal" />
+      <PageHeader title="About ADE-1" />
 
       <PageSection title="Versions">
         <div className="py-2 text-[12.5px] text-text-primary space-y-1">
-          <p>ClaudeTerminal <span className="font-mono text-text-secondary">v{appVersion}</span></p>
+          <p>ADE-1 <span className="font-mono text-text-secondary">v{appVersion}</span></p>
           <p>Claude Code CLI <span className="font-mono text-text-secondary">{claudeVersion || 'not installed'}</span></p>
         </div>
       </PageSection>

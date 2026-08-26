@@ -42,7 +42,7 @@ export async function createDetachedWindow(ids: string[], physX: number, physY: 
     minHeight: 320,
     decorations: false,
     transparent: true,
-    title: 'ClaudeTerminal',
+    title: 'ADE-1',
   });
 
   win.once('tauri://created', () => {
@@ -81,7 +81,7 @@ export async function restoreDetachedWindow(ids: string[], geometry?: WindowGeom
     minHeight: 320,
     decorations: false,
     transparent: true,
-    title: 'ClaudeTerminal',
+    title: 'ADE-1',
   });
 
   win.once('tauri://created', () => {

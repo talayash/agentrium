@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "ClaudeTerminal",
+  "productName": "ADE-1",
   "version": "1.31.4",
   "identifier": "com.claudeterminal.desktop",
   "build": {
@@ -14,7 +14,7 @@
     "withGlobalTauri": false,
     "windows": [
       {
-        "title": "ClaudeTerminal",
+        "title": "ADE-1",
         "width": 1400,
         "height": 900,
         "minWidth": 900,
@@ -42,11 +42,11 @@
       "icons/icon.png"
     ],
     "resources": [],
-    "copyright": "Copyright 2024 ClaudeTerminal",
-    "shortDescription": "Multi-Instance Claude Code Terminal Manager",
-    "longDescription": "ClaudeTerminal is a modern desktop application for managing multiple Claude Code terminal instances. Features include multi-terminal management, configuration profiles, command hints, and a beautiful glassmorphic interface.",
+    "copyright": "Copyright 2026 ADE-1",
+    "shortDescription": "Agent Desktop Environment - multi-agent CLI terminal manager",
+    "longDescription": "ADE-1 is a desktop application for running Claude Code, Codex, Cursor, and Gemini CLIs side by side in tabbed and grid views. Features include per-agent profiles, worktree lifecycle, hunk review, and session restore.",
     "category": "DeveloperTool",
-    "publisher": "ClaudeTerminal",
+    "publisher": "ADE-1",
     "windows": {
       "certificateThumbprint": null,
       "digestAlgorithm": "sha256",

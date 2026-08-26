@@ -7,6 +7,7 @@ import { TerminalView } from './TerminalView';
 import { setDragData, getDragData, isTerminalDrag } from '../utils/dragDrop';
 import { computeGridNavTarget } from '../lib/gridNav';
 import { computeEmptyCellCount } from '../lib/gridEmptyCells';
+import { BrandIcon } from './BrandIcon';
 
 // Grid layout configurations
 const GRID_CONFIGS: Record<GridLayout, { cols: number; rows: number }> = {
@@ -124,6 +125,9 @@ const TerminalCell = memo(function TerminalCell({ terminalId, index, isFocused, 
           {isPinned && (
             <Pin size={10} strokeWidth={2} className="text-accent-primary flex-shrink-0" />
           )}
+          <span className="opacity-70 flex-shrink-0 flex items-center" title={`Agent: ${terminal.config.agent}`}>
+            <BrandIcon kind={terminal.config.agent} size={12} />
+          </span>
           <span className={`text-[11px] truncate font-medium cursor-grab ${
             isFocused ? 'text-text-primary' : 'text-text-secondary'
           }`}>
@@ -254,6 +258,9 @@ function AddTerminalCell() {
                       }}
                       className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-white/[0.06] text-left"
                     >
+                      <span className="opacity-70 flex-shrink-0 flex items-center">
+                        <BrandIcon kind={t.config.agent} size={12} />
+                      </span>
                       <span className="text-text-primary text-[12px] truncate">
                         {t.config.nickname || t.config.label}
                       </span>

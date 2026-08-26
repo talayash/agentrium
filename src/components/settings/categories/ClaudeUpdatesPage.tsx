@@ -72,7 +72,7 @@ export default function ClaudeUpdatesPage() {
     <div>
       <PageHeader title="Updates" />
 
-      <PageSection title="ClaudeTerminal">
+      <PageSection title="ADE-1">
         <div className="flex items-center justify-between py-2 px-1">
           <div>
             <p className="text-text-primary text-[13px]">v{appVersion}</p>

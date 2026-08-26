@@ -802,7 +802,7 @@ export function TerminalTabs() {
                   style={{ imageRendering: 'pixelated' }}
                 />
                 <h1 className="text-[length:var(--text-h1)] font-semibold text-text-primary mb-1.5 tracking-tight">
-                  Welcome to ClaudeTerminal
+                  Welcome to ADE-1
                 </h1>
                 <p className="text-[13px] text-text-tertiary mb-8 text-center max-w-[420px]">
                   Manage multiple Claude Code sessions from a single native window.
