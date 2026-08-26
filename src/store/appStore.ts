@@ -61,6 +61,16 @@ interface AppState {
   pushModalOpen: boolean;
   pushModalRepoPath: string | null;
   defaultClaudeArgs: string[];
+  /**
+   * Per-agent default arguments, pre-filled in the New Terminal args
+   * textarea when creating a terminal for that agent. Kept alongside
+   * `defaultClaudeArgs` for back-compat: `defaultAgentArgs.claude` is the
+   * source of truth, `defaultClaudeArgs` is a mirror that stays in sync via
+   * setDefaultClaudeArgs. Codex/Cursor/Gemini defaults start empty and
+   * can be edited in Settings (planned) or inline in the modal.
+   */
+  defaultAgentArgs: Record<import('../lib/agents').AgentKind, string[]>;
+  setDefaultAgentArgs: (agent: import('../lib/agents').AgentKind, args: string[]) => void;
   notifyOnFinish: boolean;
   /** Count of terminal-finished events fired while the app was hidden and not
    *  yet acknowledged by the user. Renders the accent dot on the status-bar bell. */
@@ -479,6 +489,7 @@ export const useAppStore = create<AppState>()(
       pushModalOpen: false,
       pushModalRepoPath: null,
       defaultClaudeArgs: [],
+      defaultAgentArgs: { claude: [], codex: [], cursor: [], gemini: [] },
       notifyOnFinish: true,
       unreadNotificationCount: 0,
       incrementUnreadNotifications: () =>
@@ -659,7 +670,19 @@ export const useAppStore = create<AppState>()(
       closeWorktreeModal: () => set({ worktreeModalOpen: false, worktreeModalRepoPath: null }),
       openPushModal: (repoPath) => set({ pushModalOpen: true, pushModalRepoPath: repoPath }),
       closePushModal: () => set({ pushModalOpen: false, pushModalRepoPath: null }),
-      setDefaultClaudeArgs: (args) => set({ defaultClaudeArgs: args }),
+      setDefaultClaudeArgs: (args) =>
+        // Mirror into defaultAgentArgs.claude so both the legacy and the
+        // per-agent readers stay in sync from any writer.
+        set((s) => ({
+          defaultClaudeArgs: args,
+          defaultAgentArgs: { ...s.defaultAgentArgs, claude: args },
+        })),
+      setDefaultAgentArgs: (agent, args) =>
+        set((s) => ({
+          defaultAgentArgs: { ...s.defaultAgentArgs, [agent]: args },
+          // Keep the legacy field aligned when the caller updates claude.
+          defaultClaudeArgs: agent === 'claude' ? args : s.defaultClaudeArgs,
+        })),
       setNotifyOnFinish: (enabled) => set({ notifyOnFinish: enabled }),
       setRestoreSession: (enabled) => set({ restoreSession: enabled }),
       setTelemetryEnabled: (enabled) => set({ telemetryEnabled: enabled }),
@@ -1081,7 +1104,7 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: 'claude-terminal-app',
-      version: 2,
+      version: 3,
       migrate: (persistedState, version) => {
         const s = (persistedState as Partial<AppState>) ?? {};
         if (version < 1) {
@@ -1097,6 +1120,18 @@ export const useAppStore = create<AppState>()(
           // never explicitly chose 'ctrl+v'. Reset it so paste works again.
           s.terminalPasteShortcut = 'ctrl+v';
         }
+        if (version < 3) {
+          // Multi-agent support: seed defaultAgentArgs from the legacy
+          // defaultClaudeArgs so users who had Claude args set don't lose
+          // them. Codex/Cursor/Gemini start empty; users can configure per
+          // agent from Settings or inline in the New Terminal modal.
+          s.defaultAgentArgs = {
+            claude: s.defaultClaudeArgs ?? [],
+            codex: [],
+            cursor: [],
+            gemini: [],
+          };
+        }
         return s as AppState;
       },
       partialize: (state) => ({
@@ -1105,6 +1140,7 @@ export const useAppStore = create<AppState>()(
         hintsOpen: state.hintsOpen,
         changesOpen: state.changesOpen,
         defaultClaudeArgs: state.defaultClaudeArgs,
+        defaultAgentArgs: state.defaultAgentArgs,
         notifyOnFinish: state.notifyOnFinish,
         restoreSession: state.restoreSession,
         telemetryEnabled: state.telemetryEnabled,

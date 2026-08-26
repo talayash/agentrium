@@ -6,6 +6,12 @@ export interface AgentSpec {
   binary: string;
   installUrl: string;
   installHint: string;
+  /**
+   * Placeholder text shown in the args textarea. Not persisted, purely
+   * a hint — real defaults live in `appStore.defaultAgentArgs[kind]`.
+   * Newline-separated so it can preview a multi-flag setup.
+   */
+  defaultArgsHint: string;
 }
 
 export const AGENT_SPECS: readonly AgentSpec[] = [
@@ -15,6 +21,7 @@ export const AGENT_SPECS: readonly AgentSpec[] = [
     binary: 'claude',
     installUrl: 'https://docs.claude.com/claude-code',
     installHint: 'npm install -g @anthropic-ai/claude-code',
+    defaultArgsHint: '--dangerously-skip-permissions\n--model opus',
   },
   {
     kind: 'codex',
@@ -22,6 +29,7 @@ export const AGENT_SPECS: readonly AgentSpec[] = [
     binary: 'codex',
     installUrl: 'https://github.com/openai/codex',
     installHint: 'npm install -g @openai/codex',
+    defaultArgsHint: '--dangerously-bypass-approvals-and-sandbox',
   },
   {
     kind: 'cursor',
@@ -30,6 +38,7 @@ export const AGENT_SPECS: readonly AgentSpec[] = [
     binary: 'agent',
     installUrl: 'https://cursor.com/cli',
     installHint: "curl https://cursor.com/install -fsS | bash  (or  irm 'https://cursor.com/install?win32=true' | iex on Windows)",
+    defaultArgsHint: '--print       # non-interactive mode',
   },
   {
     kind: 'gemini',
@@ -37,6 +46,7 @@ export const AGENT_SPECS: readonly AgentSpec[] = [
     binary: 'gemini',
     installUrl: 'https://github.com/google-gemini/gemini-cli',
     installHint: 'npm install -g @google/gemini-cli',
+    defaultArgsHint: '--yolo\n--model gemini-2.5-pro',
   },
 ];
 

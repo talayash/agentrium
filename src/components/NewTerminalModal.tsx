@@ -45,14 +45,14 @@ const TAG_COLORS = [
 ];
 
 export function NewTerminalModal() {
-  const { closeNewTerminalModal, defaultClaudeArgs, openProfileModal, profileModalOpen, gridMode, addToGrid } = useAppStore();
+  const { closeNewTerminalModal, defaultAgentArgs, openProfileModal, profileModalOpen, gridMode, addToGrid } = useAppStore();
   const { terminals, createTerminal, createShellTerminalTab } = useTerminalStore();
 
   const [profiles, setProfiles] = useState<ConfigProfile[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
   const [nickname, setNickname] = useState('');
   const [workingDirectory, setWorkingDirectory] = useState('');
-  const [claudeArgs, setClaudeArgs] = useState<string[]>(defaultClaudeArgs);
+  const [claudeArgs, setClaudeArgs] = useState<string[]>(defaultAgentArgs.claude);
   const [envVars, setEnvVars] = useState<Record<string, string>>({});
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -98,20 +98,26 @@ export function NewTerminalModal() {
     // recent agent choice always wins - clicking a profile after picking
     // Codex/Cursor shouldn't snap back to Claude. The default profile's
     // agent is only used as the initial seed (see loadProfiles).
+    //
+    // For args: profile args win when a profile is selected. When "No
+    // Profile" is selected, args = the CURRENT agent's defaults - so
+    // switching between Claude/Codex/Cursor/Gemini (with no profile)
+    // reflects the right agent-specific starter set. `selectedAgent` is
+    // in the deps for this reason.
     if (selectedProfileId) {
       const profile = profiles.find(p => p.id === selectedProfileId);
       if (profile) {
         setWorkingDirectory(profile.working_directory || defaultDirectory);
-        setClaudeArgs(profile.claude_args.length > 0 ? profile.claude_args : defaultClaudeArgs);
+        setClaudeArgs(profile.claude_args.length > 0 ? profile.claude_args : defaultAgentArgs[selectedAgent]);
         setEnvVars(profile.env_vars || {});
       }
     } else {
-      // Reset to defaults when "No Profile" is selected
+      // Reset to the selected agent's defaults when "No Profile" is picked.
       setWorkingDirectory(defaultDirectory);
-      setClaudeArgs(defaultClaudeArgs);
+      setClaudeArgs(defaultAgentArgs[selectedAgent]);
       setEnvVars({});
     }
-  }, [selectedProfileId, profiles, defaultDirectory, defaultClaudeArgs]);
+  }, [selectedProfileId, profiles, defaultDirectory, defaultAgentArgs, selectedAgent]);
 
   // Debounced git detection when working directory changes
   const detectGitRepo = useCallback(async (dir: string) => {
@@ -637,7 +643,7 @@ export function NewTerminalModal() {
               value={claudeArgs.join('\n')}
               onChange={(e) => setClaudeArgs(e.target.value.split('\n').filter(Boolean))}
               className="w-full bg-bg-primary ring-1 ring-border-light rounded-md py-2 px-3 text-text-primary text-[13px] focus:outline-none focus:ring-accent-primary font-mono h-20 resize-none transition-colors"
-              placeholder="--dangerously-skip-permissions&#10;--model opus"
+              placeholder={specFor(selectedAgent).defaultArgsHint}
             />
             <p className="text-text-tertiary text-[11px] mt-1">
               Command: <code className="text-text-secondary">{specFor(selectedAgent).binary} {claudeArgs.join(' ')}</code>
