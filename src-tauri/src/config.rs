@@ -10,6 +10,7 @@ pub enum AgentKind {
     #[default]
     Claude,
     Codex,
+    Cursor,
 }
 
 impl AgentKind {
@@ -19,6 +20,7 @@ impl AgentKind {
         match self {
             AgentKind::Claude => "claude",
             AgentKind::Codex => "codex",
+            AgentKind::Cursor => "cursor",
         }
     }
 
@@ -30,6 +32,7 @@ impl AgentKind {
     pub fn from_str_lossy(s: &str) -> Self {
         match s {
             "codex" => AgentKind::Codex,
+            "cursor" => AgentKind::Cursor,
             _ => AgentKind::Claude,
         }
     }
@@ -463,11 +466,13 @@ mod tests {
     fn agent_kind_as_str_matches_wire_format() {
         assert_eq!(AgentKind::Claude.as_str(), "claude");
         assert_eq!(AgentKind::Codex.as_str(), "codex");
+        assert_eq!(AgentKind::Cursor.as_str(), "cursor");
     }
 
     #[test]
     fn agent_kind_from_str_lossy_defaults_unknown_to_claude() {
         assert_eq!(AgentKind::from_str_lossy("codex"), AgentKind::Codex);
+        assert_eq!(AgentKind::from_str_lossy("cursor"), AgentKind::Cursor);
         assert_eq!(AgentKind::from_str_lossy("claude"), AgentKind::Claude);
         assert_eq!(AgentKind::from_str_lossy("something-new"), AgentKind::Claude);
         assert_eq!(AgentKind::from_str_lossy(""), AgentKind::Claude);

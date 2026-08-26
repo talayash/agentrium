@@ -10,11 +10,19 @@ describe('agents catalog', () => {
     expect(specFor('codex').binary).toBe('codex');
   });
 
+  it('resolves cursor by kind', () => {
+    // Cursor CLI's binary is literally `agent` (per cursor.com/docs/cli),
+    // NOT `cursor`. This test guards against future edits that "correct"
+    // this to the intuitive-but-wrong `cursor`.
+    expect(specFor('cursor').binary).toBe('agent');
+  });
+
   it('lists every agent kind exactly once', () => {
     const kinds = AGENT_SPECS.map(s => s.kind);
     expect(new Set(kinds).size).toBe(kinds.length);
     expect(kinds).toContain('claude');
     expect(kinds).toContain('codex');
+    expect(kinds).toContain('cursor');
   });
 
   it('throws on unknown kind', () => {

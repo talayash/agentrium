@@ -93,13 +93,18 @@ export function NewTerminalModal() {
   }, [profileModalOpen]);
 
   useEffect(() => {
-    // When profile is selected, update form with profile settings
+    // When profile is selected, update form with profile settings AND
+    // sync the picked agent to whatever the profile is bound to, so the
+    // user gets a coherent preview. The agent picker still lets the user
+    // override afterward - profiles no longer restrict agent selection,
+    // they just provide sensible defaults.
     if (selectedProfileId) {
       const profile = profiles.find(p => p.id === selectedProfileId);
       if (profile) {
         setWorkingDirectory(profile.working_directory || defaultDirectory);
         setClaudeArgs(profile.claude_args.length > 0 ? profile.claude_args : defaultClaudeArgs);
         setEnvVars(profile.env_vars || {});
+        setSelectedAgent(profile.agent);
       }
     } else {
       // Reset to defaults when "No Profile" is selected
@@ -108,15 +113,6 @@ export function NewTerminalModal() {
       setEnvVars({});
     }
   }, [selectedProfileId, profiles, defaultDirectory, defaultClaudeArgs]);
-
-  useEffect(() => {
-    if (selectedProfileId) {
-      const profile = profiles.find(p => p.id === selectedProfileId);
-      if (profile && profile.agent !== selectedAgent) {
-        setSelectedProfileId(null);
-      }
-    }
-  }, [selectedAgent, profiles, selectedProfileId]);
 
   // Debounced git detection when working directory changes
   const detectGitRepo = useCallback(async (dir: string) => {
@@ -424,7 +420,7 @@ export function NewTerminalModal() {
                   <p className="text-text-primary text-[12px] font-medium">No Profile</p>
                   <p className="text-text-tertiary text-[11px]">Custom settings</p>
                 </button>
-                {profiles.filter(p => p.agent === selectedAgent).map((profile) => (
+                {profiles.map((profile) => (
                   <div
                     key={profile.id}
                     className={`relative group rounded-md transition-colors ${

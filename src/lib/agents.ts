@@ -1,4 +1,4 @@
-export type AgentKind = 'claude' | 'codex';
+export type AgentKind = 'claude' | 'codex' | 'cursor';
 
 export interface AgentSpec {
   kind: AgentKind;
@@ -22,6 +22,14 @@ export const AGENT_SPECS: readonly AgentSpec[] = [
     binary: 'codex',
     installUrl: 'https://github.com/openai/codex',
     installHint: 'npm install -g @openai/codex',
+  },
+  {
+    kind: 'cursor',
+    displayName: 'Cursor',
+    // Cursor's CLI binary is `agent`, not `cursor` (per cursor.com/docs/cli).
+    binary: 'agent',
+    installUrl: 'https://cursor.com/cli',
+    installHint: "curl https://cursor.com/install -fsS | bash  (or  irm 'https://cursor.com/install?win32=true' | iex on Windows)",
   },
 ];
 

@@ -29,13 +29,27 @@ pub fn spec_for(kind: AgentKind) -> AgentSpec {
             install_url: "https://github.com/openai/codex",
             install_hint: "npm install -g @openai/codex",
         },
+        AgentKind::Cursor => AgentSpec {
+            kind: AgentKind::Cursor,
+            // Cursor's CLI binary is literally named `agent` (per
+            // https://cursor.com/docs/cli). Generic, but that's what
+            // resolves through PATH after the official installer.
+            display_name: "Cursor",
+            binary: "agent",
+            install_url: "https://cursor.com/cli",
+            install_hint: "curl https://cursor.com/install -fsS | bash",
+        },
     }
 }
 
 // Called from the frontend via reflected metadata; Rust itself never calls this.
 #[allow(dead_code)]
 pub fn all_specs() -> Vec<AgentSpec> {
-    vec![spec_for(AgentKind::Claude), spec_for(AgentKind::Codex)]
+    vec![
+        spec_for(AgentKind::Claude),
+        spec_for(AgentKind::Codex),
+        spec_for(AgentKind::Cursor),
+    ]
 }
 
 #[cfg(test)]
@@ -53,12 +67,21 @@ mod tests {
     }
 
     #[test]
+    fn cursor_spec_has_agent_binary() {
+        // Cursor's official CLI binary is `agent`, not `cursor` (which is
+        // the editor's file-opener command). Guard against future edits
+        // that "correct" this to `cursor` and break the spawn path.
+        assert_eq!(spec_for(AgentKind::Cursor).binary, "agent");
+    }
+
+    #[test]
     fn all_specs_lists_every_agent_kind() {
         // If a new AgentKind variant is added and forgotten here, this test
         // fails - forces the catalog to stay in sync with the enum.
         let specs = all_specs();
         assert!(specs.iter().any(|s| s.kind == AgentKind::Claude));
         assert!(specs.iter().any(|s| s.kind == AgentKind::Codex));
-        assert_eq!(specs.len(), 2);
+        assert!(specs.iter().any(|s| s.kind == AgentKind::Cursor));
+        assert_eq!(specs.len(), 3);
     }
 }
