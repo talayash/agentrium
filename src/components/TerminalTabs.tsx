@@ -487,9 +487,11 @@ export function TerminalTabs() {
                   {sessionState !== 'idle' && showTabActivity && (
                     <StateDot state={sessionState} />
                   )}
-                  {terminal.color_tag && (
-                    <div className={`w-2 h-2 rounded-full ${terminal.color_tag} flex-shrink-0`} />
-                  )}
+                  {/* Color-tag dot removed: per-terminal identity is now
+                      carried by the agent BrandIcon below, so the
+                      auto-cycled TAG_COLORS dot was redundant noise.
+                      The `color_tag` field is still stored on the config
+                      in case a future feature uses it. */}
                   {/* Badges */}
                   {model && (
                     <span className={`text-[9px] px-1 rounded font-medium flex-shrink-0 ${
