@@ -7,6 +7,7 @@ import { useAppStore } from '../../../store/appStore';
 import { PageHeader, PageSection, SettingRow, Toggle } from '../SettingRow';
 import { registerSetting } from '../index';
 import { toast } from '../../../store/toastStore';
+import { reportInvokeFailure } from '../../../lib/errorReporter';
 
 registerSetting({
   category: { group: 'editor', page: 'language-servers' },
@@ -68,7 +69,12 @@ export default function LanguageServersPage() {
   };
 
   const restart = async (language: string) => {
-    await invoke('lsp_restart_server', { language }).catch(() => {});
+    try {
+      await invoke('lsp_restart_server', { language });
+    } catch (err) {
+      toast.error('Restart failed', typeof err === 'string' ? err : 'Could not restart server');
+      reportInvokeFailure('lsp_restart_server', err);
+    }
     refresh();
   };
 
@@ -77,9 +83,14 @@ export default function LanguageServersPage() {
       setLogFor(null);
       return;
     }
-    const lines = await invoke<string[]>('lsp_server_log', { language }).catch(() => []);
-    setLogLines(lines as string[]);
-    setLogFor(language);
+    try {
+      const lines = await invoke<string[]>('lsp_server_log', { language });
+      setLogLines(lines);
+      setLogFor(language);
+    } catch (err) {
+      toast.error('Log unavailable', typeof err === 'string' ? err : 'Could not read server log');
+      reportInvokeFailure('lsp_server_log', err);
+    }
   };
 
   return (

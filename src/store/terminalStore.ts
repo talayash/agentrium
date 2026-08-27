@@ -4,6 +4,7 @@ import { Terminal } from '@xterm/xterm';
 import type { WorktreeDetectResult } from '../types/git';
 import type { AgentKind } from '../lib/agents';
 import { markTerminalActive, clearTerminalActivity } from '../lib/terminalActivity';
+import { reportInvokeFailure } from '../lib/errorReporter';
 import { chunkUtf8Bytes } from '../lib/chunkUtf8';
 import type { SessionState } from '../lib/terminalState';
 import { mergeMetrics, emptyMetrics, type SessionMetrics, type TerminalMetricsPayload } from '../lib/sessionMetrics';
@@ -305,7 +306,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
 
       return config.id;
     } catch (error) {
-      console.error('Failed to create terminal:', error);
+      reportInvokeFailure('create_terminal', error);
       throw error;
     }
   },
@@ -349,7 +350,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
 
       return patchedConfig.id;
     } catch (error) {
-      console.error('Failed to create shell terminal tab:', error);
+      reportInvokeFailure('create_shell_terminal', error);
       throw error;
     }
   },

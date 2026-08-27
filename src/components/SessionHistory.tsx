@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { X, Trash2, Clock, FileText } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from '../store/appStore';
+import { reportInvokeFailure } from '../lib/errorReporter';
 import { ListRow } from './ui/ListRow';
 import { EmptyState } from './ui/EmptyState';
 
@@ -31,7 +32,7 @@ export function SessionHistory() {
       const history = await invoke<SessionHistoryEntry[]>('get_session_history');
       setEntries(history);
     } catch (err) {
-      console.error('Failed to load session history:', err);
+      reportInvokeFailure('get_session_history', err);
     }
   };
 
@@ -45,6 +46,7 @@ export function SessionHistory() {
         setLogContent(content);
       } catch (err) {
         setLogContent(`Failed to load log: ${err}`);
+        reportInvokeFailure('read_log_file', err);
       } finally {
         setLoadingLog(false);
       }
@@ -60,7 +62,7 @@ export function SessionHistory() {
       }
       await loadHistory();
     } catch (err) {
-      console.error('Failed to delete session history:', err);
+      reportInvokeFailure('delete_session_history', err);
     }
   };
 

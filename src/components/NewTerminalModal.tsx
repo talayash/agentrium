@@ -231,7 +231,7 @@ export function NewTerminalModal() {
         setSelectedProfileId(defaultProfile.id);
       }
     } catch (error) {
-      console.error('Failed to load profiles:', error);
+      reportInvokeFailure('get_profiles', error);
     }
   };
 
@@ -241,7 +241,7 @@ export function NewTerminalModal() {
       setWorkingDirectory(home);
       setDefaultDirectory(home);
     } catch (error) {
-      console.error('Failed to get home directory:', error);
+      reportInvokeFailure('home_dir', error);
     }
   };
 
@@ -256,7 +256,7 @@ export function NewTerminalModal() {
         setWorkingDirectory(selected);
       }
     } catch (error) {
-      console.error('Failed to open directory picker:', error);
+      reportInvokeFailure('dialog_open_directory', error);
     }
   };
 

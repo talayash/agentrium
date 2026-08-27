@@ -4,6 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
 import { toast } from '../store/toastStore';
+import { reportInvokeFailure } from '../lib/errorReporter';
 import { Modal } from './ui/Modal';
 import { Button } from './ui/Button';
 import type { AgentKind } from '../lib/agents';
@@ -43,7 +44,7 @@ export function WorkspaceModal() {
       const loaded = await invoke<WorkspaceInfo[]>('get_workspaces');
       setWorkspaces(loaded);
     } catch (err) {
-      console.error('Failed to load workspaces:', err);
+      reportInvokeFailure('get_workspaces', err);
     }
   };
 
@@ -58,8 +59,8 @@ export function WorkspaceModal() {
       await loadWorkspaces();
       toast.success('Workspace Saved', `"${name}" with ${configs.length} terminal${configs.length !== 1 ? 's' : ''}.`);
     } catch (err) {
-      console.error('Failed to save workspace:', err);
       toast.error('Save Failed', 'Could not save workspace.');
+      reportInvokeFailure('save_workspace', err);
     } finally {
       setSaving(false);
     }
@@ -88,8 +89,8 @@ export function WorkspaceModal() {
       toast.success('Workspace Loaded', `"${selectedWorkspace.name}" with ${configs.length} terminal${configs.length !== 1 ? 's' : ''}.`);
       closeWorkspaceModal();
     } catch (err) {
-      console.error('Failed to load workspace:', err);
       toast.error('Load Failed', 'Could not load workspace.');
+      reportInvokeFailure('load_workspace', err);
     } finally {
       setLoading(false);
     }
@@ -104,8 +105,8 @@ export function WorkspaceModal() {
       await loadWorkspaces();
       toast.success('Workspace Deleted', `"${name}" has been removed.`);
     } catch (err) {
-      console.error('Failed to delete workspace:', err);
       toast.error('Delete Failed', 'Could not delete workspace.');
+      reportInvokeFailure('delete_workspace', err);
     }
   };
 

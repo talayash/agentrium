@@ -4,6 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { useAppStore } from '../store/appStore';
 import { toast } from '../store/toastStore';
+import { reportInvokeFailure } from '../lib/errorReporter';
 import { v4 as uuidv4 } from 'uuid';
 import { specFor, type AgentKind } from '../lib/agents';
 import { AgentPicker } from './AgentPicker';
@@ -52,7 +53,7 @@ export function ProfileModal() {
       const loadedProfiles = await invoke<ConfigProfile[]>('get_profiles');
       setProfiles(loadedProfiles);
     } catch (err) {
-      console.error('Failed to load profiles:', err);
+      reportInvokeFailure('get_profiles', err);
     }
   };
 
@@ -81,9 +82,9 @@ export function ProfileModal() {
       setIsCreating(false);
       toast.success('Profile Saved', `"${selectedProfile.name}" has been saved.`);
     } catch (err) {
-      console.error('Failed to save profile:', err);
       setSaveError(String(err));
       toast.error('Save Failed', String(err));
+      reportInvokeFailure('save_profile', err);
     }
   };
 
@@ -99,7 +100,7 @@ export function ProfileModal() {
         setSelectedProfile({ ...selectedProfile, working_directory: selected });
       }
     } catch (error) {
-      console.error('Failed to open directory picker:', error);
+      reportInvokeFailure('dialog_open_directory', error);
     }
   };
 
@@ -114,9 +115,9 @@ export function ProfileModal() {
       }
       toast.success('Profile Deleted', `"${profileName}" has been removed.`);
     } catch (err) {
-      console.error('Failed to delete profile:', err);
       setSaveError(String(err));
       toast.error('Delete Failed', String(err));
+      reportInvokeFailure('delete_profile', err);
     }
   };
 

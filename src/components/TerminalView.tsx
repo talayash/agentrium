@@ -15,6 +15,7 @@ import { toast } from '../store/toastStore';
 import { resolveTerminalTheme } from '../lib/terminalThemes';
 import { copyText, readClipboardText } from '../lib/clipboard';
 import { reportInvokeFailure } from '../lib/errorReporter';
+import { classifyPasteInput } from '../lib/pasteWarning';
 import { isVisibilityHidden } from '../utils/dragDrop';
 import { TerminalSearch } from './TerminalSearch';
 import { TerminalStatusBar } from './TerminalStatusBar';
@@ -350,38 +351,32 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
 
     // Track time of the last input event so we can identify chunks that arrive
     // as a single block (clipboard paste) vs. interactive typing.
-    let lastDataTs = 0;
-    let bypassDetectOnce = false;
+    let lastDataTs: number | null = null;
+
+    const forwardToPty = (data: string) => {
+      writeToTerminal(terminalId, data).catch((err) => {
+        reportInvokeFailure('write_to_terminal', err);
+      });
+    };
 
     terminal.onData((data) => {
       const now = performance.now();
-      const isLikelyPaste = data.length > 64 && (now - lastDataTs > 16 || lastDataTs === 0);
+      const msSinceLastInput = lastDataTs === null ? Number.POSITIVE_INFINITY : now - lastDataTs;
       lastDataTs = now;
-
-      if (bypassDetectOnce) {
-        bypassDetectOnce = false;
-        writeToTerminal(terminalId, data).catch((err) => {
-          console.error(`Failed to write to terminal ${terminalId}:`, err); reportInvokeFailure('write_to_terminal', err);
-        });
-        return;
-      }
 
       // Pull the latest settings each call - these change in Settings without
       // re-rendering this terminal.
       const app = useAppStore.getState();
-      if (!isLikelyPaste || !app.pasteAutoDetectEnabled) {
-        writeToTerminal(terminalId, data).catch((err) => {
-          console.error(`Failed to write to terminal ${terminalId}:`, err); reportInvokeFailure('write_to_terminal', err);
-        });
-        return;
-      }
+      const verdict = classifyPasteInput({
+        data,
+        msSinceLastInput,
+        autoDetectEnabled: app.pasteAutoDetectEnabled,
+        thresholdBytes: app.pasteAutoDetectThresholdBytes,
+        thresholdLines: app.pasteAutoDetectThresholdLines,
+      });
 
-      const bytes = new TextEncoder().encode(data).length;
-      const lines = data.split('\n').length;
-      if (bytes < app.pasteAutoDetectThresholdBytes && lines < app.pasteAutoDetectThresholdLines) {
-        writeToTerminal(terminalId, data).catch((err) => {
-          console.error(`Failed to write to terminal ${terminalId}:`, err); reportInvokeFailure('write_to_terminal', err);
-        });
+      if (verdict.action === 'forward') {
+        forwardToPty(data);
         return;
       }
 
@@ -390,7 +385,7 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
       // which the user said felt easy to miss.
       toast.warning(
         'Large paste detected',
-        `${(bytes / 1024).toFixed(1)} KB · ${lines} lines - pasting this directly can hang the agent. Save it as a file and reference it instead?`,
+        `${(verdict.bytes / 1024).toFixed(1)} KB · ${verdict.lines} lines - pasting this directly can hang the agent. Save it as a file and reference it instead?`,
         {
           duration: 15000,
           actions: [
@@ -408,10 +403,7 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
               label: 'Paste anyway',
               variant: 'neutral',
               onClick: () => {
-                bypassDetectOnce = true;
-                writeToTerminal(terminalId, data).catch((err) => {
-                  console.error(`Failed to write to terminal ${terminalId}:`, err); reportInvokeFailure('write_to_terminal', err);
-                });
+                forwardToPty(data);
               },
             },
             {
@@ -419,9 +411,7 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
               variant: 'danger',
               onClick: () => {
                 useAppStore.getState().setPasteAutoDetectEnabled(false);
-                writeToTerminal(terminalId, data).catch((err) => {
-                  console.error(`Failed to write to terminal ${terminalId}:`, err); reportInvokeFailure('write_to_terminal', err);
-                });
+                forwardToPty(data);
               },
             },
           ],

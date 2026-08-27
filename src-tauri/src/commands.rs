@@ -3335,7 +3335,8 @@ pub async fn summarize_session(log_path: String) -> Result<Option<String>, Strin
         // regex per call was a real per-call cost.
         static ANSI_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
         let ansi_re = ANSI_RE.get_or_init(|| {
-            regex::Regex::new(r"\x1b\[[0-9;]*[a-zA-Z]|\x1b\].*?\x07|\x1b\[.*?[A-Za-z]").unwrap()
+            regex::Regex::new(r"\x1b\[[0-9;]*[a-zA-Z]|\x1b\].*?\x07|\x1b\[.*?[A-Za-z]")
+                .expect("ANSI escape regex must compile - see summarize_session")
         });
         let clean_content = ansi_re.replace_all(&log_content, "").to_string();
 
@@ -4485,6 +4486,7 @@ pub async fn create_script_terminal(
 
         let terminal_id = config.id.clone();
         let terminals_arc = state.terminals.clone();
+        let otel_agg = state.otel_agg.clone();
         let app_clone = app.clone();
         tokio::spawn(async move {
             while let Some((id, data)) = rx.recv().await {
@@ -4503,6 +4505,13 @@ pub async fn create_script_terminal(
             {
                 let mut manager = terminals_arc.lock().await;
                 let _ = manager.update_status(&terminal_id, crate::terminal::TerminalStatus::Stopped);
+            }
+            // Match create_terminal's exit path: drop any aggregator entry so it
+            // doesn't outlive the terminal id. Script terminals don't currently
+            // emit OTEL, but keeping the cleanup consistent prevents a silent
+            // leak the day they do.
+            if let Ok(mut agg) = otel_agg.lock() {
+                agg.forget(&terminal_id);
             }
             if let Err(e) = app_clone.emit("terminal-finished", serde_json::json!({ "id": terminal_id })) {
                 eprintln!("Failed to emit terminal-finished: {}", e);
@@ -4542,6 +4551,7 @@ pub async fn create_shell_terminal(
 
         let terminal_id = config.id.clone();
         let terminals_arc = state.terminals.clone();
+        let otel_agg = state.otel_agg.clone();
         let app_clone = app.clone();
         tokio::spawn(async move {
             while let Some((id, data)) = rx.recv().await {
@@ -4560,6 +4570,10 @@ pub async fn create_shell_terminal(
             {
                 let mut manager = terminals_arc.lock().await;
                 let _ = manager.update_status(&terminal_id, crate::terminal::TerminalStatus::Stopped);
+            }
+            // Same defensive cleanup as create_script_terminal - see comment there.
+            if let Ok(mut agg) = otel_agg.lock() {
+                agg.forget(&terminal_id);
             }
             if let Err(e) = app_clone.emit("terminal-finished", serde_json::json!({ "id": terminal_id })) {
                 eprintln!("Failed to emit terminal-finished: {}", e);

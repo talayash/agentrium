@@ -4,6 +4,7 @@ import { GitBranch, GitFork, Plus, Trash2, Terminal, Loader2, ChevronDown, Alert
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
+import { reportInvokeFailure } from '../lib/errorReporter';
 import type { WorktreeInfo } from '../types/git';
 import { Modal } from './ui/Modal';
 import { Button } from './ui/Button';
@@ -153,7 +154,7 @@ export function WorktreeModal() {
       await createTerminal(label, selectedPath, defaultClaudeArgs, {}, colorTag, nickname);
       closeWorktreeModal();
     } catch (err) {
-      console.error('Failed to create terminal:', err);
+      reportInvokeFailure('create_terminal_from_worktree', err);
     } finally {
       setOpeningTerminal(false);
     }

@@ -221,10 +221,15 @@ function App() {
   }, [showSetup, lastSeenVersion, setLastSeenVersion, openWhatsNew]);
 
   // Push the persisted error-reporting preference to Rust on mount.
-  // The Rust flag defaults to false, so until this fires no panics are reported.
+  // The Rust flag defaults to false, so until this fires no panics are reported -
+  // meaning if THIS sync silently fails, the user's opt-in never lands and their
+  // startup crashes go unreported. Report the failure via the global handler so
+  // at least the sync-failure itself becomes visible.
   useEffect(() => {
     const enabled = useAppStore.getState().errorReportingEnabled;
-    invoke('set_error_reporting_enabled', { enabled }).catch(() => {});
+    invoke('set_error_reporting_enabled', { enabled }).catch((err) => {
+      reportInvokeFailure('set_error_reporting_enabled', err);
+    });
   }, []);
 
   // Initialize the LSP client singleton once on mount. Subscribes to
@@ -336,7 +341,7 @@ function App() {
           }
         }
       } catch (err) {
-        console.error('[detached] failed to adopt terminals:', err);
+        reportInvokeFailure('adopt_detached_terminals', err);
       } finally {
         if (!cancelled) hasAdoptedRef.current = true;
       }
@@ -735,7 +740,7 @@ function App() {
         removeEntry(label); // stale label; the reopened window re-persists fresh
       }
     } catch (err) {
-      console.error('Failed to restore detached windows:', err);
+      reportInvokeFailure('restore_detached_windows', err);
     }
 
     // Ghost-pin GC after restore. Restored terminals got fresh UUIDs above,

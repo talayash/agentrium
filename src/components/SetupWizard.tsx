@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { CheckCircle, XCircle, Download, ExternalLink, Loader2, Terminal, Box, RefreshCw } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
+import { reportInvokeFailure } from '../lib/errorReporter';
 import { Modal } from './ui/Modal';
 import { Button } from './ui/Button';
 
@@ -39,7 +40,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
         }, 1500);
       }
     } catch (error) {
-      console.error('Failed to check requirements:', error);
+      reportInvokeFailure('check_system_requirements', error);
     }
     if (mountedRef.current) setIsChecking(false);
   };

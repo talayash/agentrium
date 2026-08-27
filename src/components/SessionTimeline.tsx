@@ -5,6 +5,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
 import { toast } from '../store/toastStore';
+import { reportInvokeFailure } from '../lib/errorReporter';
 
 interface SessionHistoryEntry {
   id: number;
@@ -57,7 +58,7 @@ export function SessionTimeline() {
       const result = await invoke<SessionHistoryEntry[]>('get_session_history');
       setSessions(result);
     } catch (err) {
-      console.error('Failed to fetch session history:', err);
+      reportInvokeFailure('get_session_history', err);
     } finally {
       setLoading(false);
     }
@@ -96,8 +97,8 @@ export function SessionTimeline() {
       }
       closeSessionTimeline();
     } catch (err) {
-      console.error('Failed to resume session:', err);
       toast.error('Could not resume session', String(err));
+      reportInvokeFailure('resume_session', err);
     } finally {
       setResuming(null);
     }

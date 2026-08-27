@@ -41,7 +41,7 @@ export function SnippetsModal() {
       const loaded = await invoke<Snippet[]>('get_snippets');
       setSnippets(loaded);
     } catch (err) {
-      console.error('Failed to load snippets:', err);
+      reportInvokeFailure('get_snippets', err);
     }
   };
 
@@ -91,8 +91,8 @@ export function SnippetsModal() {
       setEditing(false);
       toast.success('Snippet Saved', `"${snippet.title}" has been saved.`);
     } catch (err) {
-      console.error('Failed to save snippet:', err);
       toast.error('Save Failed', 'Could not save snippet.');
+      reportInvokeFailure('save_snippet', err);
     }
   };
 
@@ -107,8 +107,8 @@ export function SnippetsModal() {
       await loadSnippets();
       toast.success('Snippet Deleted', `"${title}" has been removed.`);
     } catch (err) {
-      console.error('Failed to delete snippet:', err);
       toast.error('Delete Failed', 'Could not delete snippet.');
+      reportInvokeFailure('delete_snippet', err);
     }
   };
 

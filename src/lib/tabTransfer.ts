@@ -183,9 +183,22 @@ export function installTransferReceiver(
   adopt: (config: TerminalConfig, restoredOutput?: string) => void,
   detach: (ids: string[]) => void,
 ): () => void {
-  const pending: Array<Promise<() => void>> = [];
+  // Track pending listen() promises AND resolved unlisten fns separately so a
+  // cleanup that fires before listen() resolves can still cancel the pending
+  // registration - see the same pattern in App.tsx's terminal-output listener.
+  let cancelled = false;
+  const unlisteners: Array<() => void> = [];
 
-  pending.push(
+  const track = (p: Promise<() => void>) => {
+    p.then((fn) => {
+      if (cancelled) fn();
+      else unlisteners.push(fn);
+    }).catch(() => {
+      // listen() failing is a Tauri-side error; nothing to unlisten in that case.
+    });
+  };
+
+  track(
     listen<TransferPayload>(TRANSFER_EVENT, async (event) => {
       const { targetLabel, ids, sourceLabel } = event.payload;
       if (targetLabel !== myLabel || sourceLabel === myLabel) return;
@@ -215,7 +228,7 @@ export function installTransferReceiver(
     }),
   );
 
-  pending.push(
+  track(
     listen<TransferDonePayload>(TRANSFER_DONE_EVENT, (event) => {
       const { ids, byLabel } = event.payload;
       if (byLabel === myLabel) return; // I'm the adopter; keep them
@@ -224,6 +237,7 @@ export function installTransferReceiver(
   );
 
   return () => {
-    pending.forEach((p) => p.then((fn) => fn()).catch(() => {}));
+    cancelled = true;
+    for (const fn of unlisteners) fn();
   };
 }
