@@ -765,7 +765,12 @@ pub async fn get_agent_version(agent: crate::config::AgentKind) -> Result<String
             }
         }
 
-        Err(format!("`{}` not found on PATH", binary))
+        // Optional agent CLIs (agent, gemini, codex, ...) are commonly not
+        // installed - that's a user-environment state, not a bug. Tag with
+        // `user_err` so wrap_cmd suppresses telemetry; the UI still receives
+        // the plain message and treats it as "not installed" (both callers
+        // just .catch and clear the version, they don't inspect the text).
+        Err(error_reporter::user_err(format!("`{}` not found on PATH", binary)))
     })
     .await
 }
