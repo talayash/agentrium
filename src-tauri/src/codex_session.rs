@@ -77,15 +77,22 @@ fn read_first_user_preview(path: &Path, max_lines: usize, max_chars: usize) -> O
         let v: serde_json::Value = match serde_json::from_str(&line) {
             Ok(v) => v, Err(_) => continue,
         };
-        let payload = v.get("payload")?;
+        // `continue` (not `?`) so a malformed or non-user line doesn't stop the
+        // whole scan - the actual first user turn may be several lines in.
+        let Some(payload) = v.get("payload") else { continue };
         if payload.get("role").and_then(|r| r.as_str()) != Some("user") { continue; }
-        let content = payload.get("content")?.as_array()?;
-        let text = content.iter().find_map(|p| p.get("text").and_then(|t| t.as_str()))?;
+        let Some(content) = payload.get("content").and_then(|c| c.as_array()) else { continue };
+        let Some(text) = content.iter().find_map(|p| p.get("text").and_then(|t| t.as_str())) else { continue };
+        // Codex 0.150.1 prepends `<environment_context>...</environment_context>`
+        // as the first user turn - that's boilerplate identical across every
+        // session in the same cwd and would make picker previews useless.
+        // Skip it and look for the next user turn (the real prompt).
+        if text.trim_start().starts_with("<environment_context>") { continue; }
         let mut t: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
         if t.chars().count() > max_chars {
             t = t.chars().take(max_chars).collect::<String>() + "…";
         }
-        if t.is_empty() { return None; }
+        if t.is_empty() { continue; }
         return Some(t);
     }
     None
@@ -175,6 +182,35 @@ mod tests {
         assert_eq!(read_first_user_preview(&p, 10, 40).as_deref(), Some("hello world"));
     }
 
+    #[test]
+    fn read_first_user_preview_skips_environment_context_prelude() {
+        // Regression: Codex 0.150.1 prepends a boilerplate <environment_context>
+        // user turn before the real prompt. Every session in the same cwd gets
+        // the same prelude so if we don't skip it, all picker previews look
+        // identical.
+        let tmp = tempfile::tempdir().unwrap();
+        let extra = [
+            r#"{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<environment_context>\n<cwd>C:\\proj</cwd>\n</environment_context>"}]}}"#,
+            r#"{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"fix the bug in main.rs"}]}}"#,
+        ];
+        let p = write_rollout(tmp.path(), "r.jsonl", "s", r"C:\proj", &extra);
+        assert_eq!(read_first_user_preview(&p, 20, 80).as_deref(), Some("fix the bug in main.rs"));
+    }
+
+    #[test]
+    fn read_first_user_preview_continues_past_malformed_user_lines() {
+        // Regression: the previous impl used `?` operators inside the loop
+        // which short-circuited the WHOLE function when a user line lacked
+        // the expected shape. Behavior must be `continue`, not `return None`.
+        let tmp = tempfile::tempdir().unwrap();
+        let extra = [
+            r#"{"type":"response_item","payload":{"type":"message","role":"user","content":[]}}"#,
+            r#"{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"real prompt"}]}}"#,
+        ];
+        let p = write_rollout(tmp.path(), "r.jsonl", "s", r"C:\a", &extra);
+        assert_eq!(read_first_user_preview(&p, 20, 80).as_deref(), Some("real prompt"));
+    }
+
     /// Serialize env-var tests: they mutate process-wide state and would race
     /// under `cargo test`'s default parallel runner.
     static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
@@ -227,4 +263,5 @@ mod tests {
         assert_eq!(got[0].id, "yes");
         clear_root();
     }
+
 }
