@@ -13,6 +13,7 @@ mod pastes;
 mod changelists;
 mod otel_receiver;
 mod lsp;
+mod session_provider;
 
 use tauri::Manager;
 use std::sync::Arc;

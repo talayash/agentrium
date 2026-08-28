@@ -1,0 +1,69 @@
+//! Per-agent session providers. Abstracts over the four agents' on-disk
+//! conventions so `terminal.rs` and IPC commands can call one interface.
+//!
+//! The trait, its impls, and `provider_for` are unused until Tasks 5 and 6
+//! wire them into `terminal.rs` and `commands.rs`. Suppressing dead-code
+//! warnings during the intermediate commits keeps CI clean.
+
+#![allow(dead_code)]
+
+use crate::config::AgentKind;
+use serde::Serialize;
+use std::collections::HashSet;
+use std::path::PathBuf;
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AgentSessionInfo {
+    pub id: String,
+    pub modified_at: String,
+    pub preview: Option<String>,
+}
+
+pub trait SessionProvider {
+    /// Files present before spawn - the diff after spawn isolates the new one.
+    fn snapshot(&self) -> HashSet<PathBuf>;
+    /// New session id in `cwd`, excluding ids already claimed by other terminals.
+    fn find_new_for_cwd(&self, snapshot: &HashSet<PathBuf>, cwd: &str, exclude: &HashSet<String>) -> Option<String>;
+    /// Every session for `cwd`, newest first, for the picker UI.
+    fn list_for_cwd(&self, cwd: &str) -> Vec<AgentSessionInfo>;
+}
+
+pub fn provider_for(agent: AgentKind) -> Box<dyn SessionProvider> {
+    match agent {
+        AgentKind::Claude => Box::new(crate::claude_session::ClaudeSessionProvider),
+        // Placeholder impls until later tasks land.
+        AgentKind::Codex => Box::new(NoOpProvider),
+        AgentKind::Cursor => Box::new(NoOpProvider),
+        AgentKind::Antigravity => Box::new(NoOpProvider),
+    }
+}
+
+struct NoOpProvider;
+impl SessionProvider for NoOpProvider {
+    fn snapshot(&self) -> HashSet<PathBuf> { HashSet::new() }
+    fn find_new_for_cwd(&self, _s: &HashSet<PathBuf>, _c: &str, _e: &HashSet<String>) -> Option<String> { None }
+    fn list_for_cwd(&self, _c: &str) -> Vec<AgentSessionInfo> { Vec::new() }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn claude_provider_is_wired() {
+        let p = provider_for(AgentKind::Claude);
+        // list_for_cwd on a non-existent path returns empty, not panic.
+        let out = p.list_for_cwd("Z:\\does\\not\\exist");
+        assert!(out.is_empty());
+    }
+
+    #[test]
+    fn other_agents_return_noop_for_now() {
+        for a in [AgentKind::Codex, AgentKind::Cursor, AgentKind::Antigravity] {
+            let p = provider_for(a);
+            assert!(p.snapshot().is_empty());
+            assert!(p.find_new_for_cwd(&HashSet::new(), "x", &HashSet::new()).is_none());
+            assert!(p.list_for_cwd("x").is_empty());
+        }
+    }
+}
