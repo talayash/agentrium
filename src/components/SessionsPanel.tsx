@@ -130,18 +130,25 @@ export function SessionsPanel() {
         undefined,
         undefined,
         undefined,
-        session.id,  // resumeSessionId → backend prepends --resume <id>
+        session.id,  // resumeSessionId → backend prepends the right resume form
+        undefined,   // continueRecent
+        undefined,   // previewInit
+        activeAgent, // agent must match the picker's source, or the wrong CLI gets the id
       );
     } catch (err) {
       toast.error('Could not open session', String(err));
     }
-  }, [cwd, createTerminal]);
+  }, [cwd, createTerminal, activeAgent]);
 
   const resumeInCurrentTerminal = useCallback(async (session: AgentSessionInfo) => {
     if (!cwd || !activeTerminalId || !activeTerminal) return;
+    const agentLabel = activeAgent === 'claude' ? 'Claude'
+      : activeAgent === 'codex' ? 'Codex'
+      : activeAgent === 'cursor' ? 'Cursor'
+      : 'Antigravity';
     const ok = window.confirm(
-      `Replace the current Claude in "${activeTerminal.config.nickname || activeTerminal.config.label}" with session ${session.id.slice(0, 8)}?\n\n` +
-        `If Claude is mid-response, that work will be cancelled. The session you're leaving is saved on disk and resumable.`,
+      `Replace the current ${agentLabel} in "${activeTerminal.config.nickname || activeTerminal.config.label}" with session ${session.id.slice(0, 8)}?\n\n` +
+        `If the agent is mid-response, that work will be cancelled. The session you're leaving is saved on disk and resumable.`,
     );
     if (!ok) return;
     // Snapshot the current terminal's user-facing config so the replacement
@@ -158,11 +165,14 @@ export function SessionsPanel() {
         cfg.nickname ?? undefined,
         undefined,
         session.id,
+        undefined,   // continueRecent
+        undefined,   // previewInit
+        cfg.agent,   // match the terminal being replaced
       );
     } catch (err) {
       toast.error('Could not resume session', String(err));
     }
-  }, [cwd, activeTerminalId, activeTerminal, closeTerminal, createTerminal]);
+  }, [cwd, activeAgent, activeTerminalId, activeTerminal, closeTerminal, createTerminal]);
 
   const revealJsonl = useCallback(async (session: AgentSessionInfo) => {
     if (!cwd) return;
