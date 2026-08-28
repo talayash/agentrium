@@ -32,7 +32,7 @@ pub fn provider_for(agent: AgentKind) -> Box<dyn SessionProvider> {
     match agent {
         AgentKind::Claude => Box::new(crate::claude_session::ClaudeSessionProvider),
         // Placeholder impls until later tasks land.
-        AgentKind::Codex => Box::new(NoOpProvider),
+        AgentKind::Codex => Box::new(crate::codex_session::CodexSessionProvider),
         AgentKind::Cursor => Box::new(NoOpProvider),
         AgentKind::Antigravity => Box::new(NoOpProvider),
     }
@@ -59,7 +59,9 @@ mod tests {
 
     #[test]
     fn other_agents_return_noop_for_now() {
-        for a in [AgentKind::Codex, AgentKind::Cursor, AgentKind::Antigravity] {
+        // Codex is wired up via CodexSessionProvider now; Cursor and Antigravity
+        // are still the placeholder NoOpProvider until later tasks land.
+        for a in [AgentKind::Cursor, AgentKind::Antigravity] {
             let p = provider_for(a);
             assert!(p.snapshot().is_empty());
             assert!(p.find_new_for_cwd(&HashSet::new(), "x", &HashSet::new()).is_none());
