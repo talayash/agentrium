@@ -96,24 +96,35 @@ export function NewTerminalModal() {
     prevProfileModalOpen.current = profileModalOpen;
   }, [profileModalOpen]);
 
+  // Profile-scoped fields (working directory + env vars) only reset when the
+  // profile itself changes. Keeping them out of the args-resolution effect
+  // below means switching agent AFTER picking a project doesn't clobber the
+  // user's chosen directory. Bug: previously typing/browsing a WD and then
+  // clicking a different agent snapped WD back to the profile's default,
+  // making Antigravity (and any post-picked agent) spawn in the wrong dir.
   useEffect(() => {
-    // When a profile is selected, apply its working dir / args / env, but
-    // DO NOT sync selectedAgent to the profile's agent. The user's most
-    // recent agent choice always wins - clicking a profile after picking
-    // Codex/Cursor shouldn't snap back to Claude. The default profile's
-    // agent is only used as the initial seed (see loadProfiles).
-    //
-    // For args: a profile now stores a distinct list per agent
-    // (agent_args). We resolve them in priority order:
-    //   1. profile.agent_args[selectedAgent]  - what the user saved for
-    //      this specific agent inside this profile
-    //   2. profile.claude_args (only when selectedAgent matches the
-    //      profile's default agent) - legacy fallback for pre-multi-agent
-    //      profile rows that only have the flat claude_args field
-    //   3. defaultAgentArgs[selectedAgent] - the global per-agent starter
-    // Without step 1 the args field looked "stuck" whenever the user
-    // switched agent while a profile was selected (bug: same list for
-    // every agent).
+    if (selectedProfileId) {
+      const profile = profiles.find(p => p.id === selectedProfileId);
+      if (profile) {
+        setWorkingDirectory(profile.working_directory || defaultDirectory);
+        setEnvVars(profile.env_vars || {});
+      }
+    } else {
+      setWorkingDirectory(defaultDirectory);
+      setEnvVars({});
+    }
+  }, [selectedProfileId, profiles, defaultDirectory]);
+
+  // Args are per-agent, so they must resync on either profile OR agent change.
+  // Resolution priority:
+  //   1. profile.agent_args[selectedAgent]  - what the user saved for this
+  //      specific agent inside this profile
+  //   2. profile.claude_args (only when selectedAgent matches the profile's
+  //      default agent) - legacy fallback for pre-multi-agent rows
+  //   3. defaultAgentArgs[selectedAgent] - the global per-agent starter
+  // Without step 1 the args field looked "stuck" when switching agent while
+  // a profile was selected (every agent got the same list).
+  useEffect(() => {
     if (selectedProfileId) {
       const profile = profiles.find(p => p.id === selectedProfileId);
       if (profile) {
@@ -126,17 +137,12 @@ export function NewTerminalModal() {
           savedForAgent && savedForAgent.length > 0
             ? savedForAgent
             : legacyForDefault ?? defaultAgentArgs[selectedAgent];
-        setWorkingDirectory(profile.working_directory || defaultDirectory);
         setClaudeArgs(resolved);
-        setEnvVars(profile.env_vars || {});
       }
     } else {
-      // Reset to the selected agent's defaults when "No Profile" is picked.
-      setWorkingDirectory(defaultDirectory);
       setClaudeArgs(defaultAgentArgs[selectedAgent]);
-      setEnvVars({});
     }
-  }, [selectedProfileId, profiles, defaultDirectory, defaultAgentArgs, selectedAgent]);
+  }, [selectedProfileId, profiles, defaultAgentArgs, selectedAgent]);
 
   // Debounced git detection when working directory changes
   const detectGitRepo = useCallback(async (dir: string) => {
