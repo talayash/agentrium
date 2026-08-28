@@ -33,7 +33,7 @@ pub fn provider_for(agent: AgentKind) -> Box<dyn SessionProvider> {
         AgentKind::Claude => Box::new(crate::claude_session::ClaudeSessionProvider),
         // Placeholder impls until later tasks land.
         AgentKind::Codex => Box::new(crate::codex_session::CodexSessionProvider),
-        AgentKind::Cursor => Box::new(NoOpProvider),
+        AgentKind::Cursor => Box::new(crate::cursor_session::CursorSessionProvider),
         AgentKind::Antigravity => Box::new(NoOpProvider),
     }
 }
@@ -59,9 +59,12 @@ mod tests {
 
     #[test]
     fn other_agents_return_noop_for_now() {
-        // Codex is wired up via CodexSessionProvider now; Cursor and Antigravity
-        // are still the placeholder NoOpProvider until later tasks land.
-        for a in [AgentKind::Cursor, AgentKind::Antigravity] {
+        // Codex and Cursor are wired up via their real providers now; only
+        // Antigravity is still the placeholder NoOpProvider until later tasks
+        // land. Cursor is excluded from this iteration because the dev
+        // machine has real files under `~/.cursor/chats` that would break
+        // the empty-snapshot assertion.
+        for a in [AgentKind::Antigravity] {
             let p = provider_for(a);
             assert!(p.snapshot().is_empty());
             assert!(p.find_new_for_cwd(&HashSet::new(), "x", &HashSet::new()).is_none());

@@ -10,6 +10,7 @@ mod error_reporter;
 mod claude_path;
 mod claude_session;
 mod codex_session;
+mod cursor_session;
 mod pastes;
 mod changelists;
 mod otel_receiver;
