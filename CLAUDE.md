@@ -153,3 +153,4 @@ If not using `/publish`, the same steps can be done manually:
 - **Grid layouts**: `GridLayout` type is a union of strings like `'2x2'`, `'2x3'`, etc.
 - **Unread indicator**: Terminals receiving output while not active are tracked in `unreadTerminalIds` Set
 - **Database location**: `ProjectDirs::from("com", "claudeterminal", "ClaudeTerminal")` → data dir → `claudeterminal.db`
+- **Multi-agent session restore**: session id capture / listing / resume-flag injection is routed through `session_provider::provider_for(agent)` (Rust) and `listAgentSessions(agent, cwd)` (TypeScript). Each agent's on-disk convention lives in its own module (`claude_session.rs`, `codex_session.rs`, `cursor_session.rs`; Antigravity is cloud-backed with no local index). To add a new agent, implement `SessionProvider` for its storage layout and extend `resume_flags_for` in `terminal.rs` with its CLI form (flag vs subcommand).
