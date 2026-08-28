@@ -14,6 +14,14 @@ use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 
 fn codex_sessions_root() -> Option<PathBuf> {
+    // Env-var override lets integration tests point at a temp tree; only
+    // read in debug builds to prevent surprising prod behavior if the
+    // variable is left in the environment.
+    if cfg!(debug_assertions) {
+        if let Ok(override_dir) = std::env::var("AGENTRIUM_CODEX_SESSIONS_DIR") {
+            return Some(PathBuf::from(override_dir));
+        }
+    }
     directories::BaseDirs::new().map(|d| d.home_dir().join(".codex").join("sessions"))
 }
 
@@ -165,5 +173,58 @@ mod tests {
         let extra = [r#"{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"hello world"}]}}"#];
         let p = write_rollout(tmp.path(), "r.jsonl", "s", r"C:\a", &extra);
         assert_eq!(read_first_user_preview(&p, 10, 40).as_deref(), Some("hello world"));
+    }
+
+    /// Serialize env-var tests: they mutate process-wide state and would race
+    /// under `cargo test`'s default parallel runner.
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn set_root(tmp: &tempfile::TempDir) {
+        std::env::set_var("AGENTRIUM_CODEX_SESSIONS_DIR", tmp.path());
+    }
+    fn clear_root() {
+        std::env::remove_var("AGENTRIUM_CODEX_SESSIONS_DIR");
+    }
+
+    #[test]
+    fn find_new_returns_only_files_absent_from_snapshot() {
+        let _g = ENV_LOCK.lock().unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        set_root(&tmp);
+        let day = tmp.path().join("2026").join("08").join("28");
+        let old = write_rollout(&day, "rollout-old.jsonl", "old-sid", r"C:\proj", &[]);
+        let snapshot: HashSet<PathBuf> = [old].into_iter().collect();
+        write_rollout(&day, "rollout-new.jsonl", "new-sid", r"C:\proj", &[]);
+        let got = CodexSessionProvider.find_new_for_cwd(&snapshot, r"C:\proj", &HashSet::new());
+        assert_eq!(got.as_deref(), Some("new-sid"));
+        clear_root();
+    }
+
+    #[test]
+    fn find_new_skips_excluded_ids() {
+        let _g = ENV_LOCK.lock().unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        set_root(&tmp);
+        let day = tmp.path().join("2026").join("08").join("28");
+        write_rollout(&day, "r1.jsonl", "claimed-elsewhere", r"C:\p", &[]);
+        write_rollout(&day, "r2.jsonl", "mine", r"C:\p", &[]);
+        let exclude: HashSet<String> = ["claimed-elsewhere".to_string()].into_iter().collect();
+        let got = CodexSessionProvider.find_new_for_cwd(&HashSet::new(), r"C:\p", &exclude);
+        assert_eq!(got.as_deref(), Some("mine"));
+        clear_root();
+    }
+
+    #[test]
+    fn list_for_cwd_filters_by_normalized_cwd() {
+        let _g = ENV_LOCK.lock().unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        set_root(&tmp);
+        let day = tmp.path().join("2026").join("08").join("28");
+        write_rollout(&day, "match.jsonl", "yes", r"C:\Users\Talay", &[]);
+        write_rollout(&day, "other.jsonl", "no", r"C:\Users\Someone", &[]);
+        let got = CodexSessionProvider.list_for_cwd("c:/users/talay");
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].id, "yes");
+        clear_root();
     }
 }
