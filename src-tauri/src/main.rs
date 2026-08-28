@@ -9,10 +9,13 @@ mod telemetry;
 mod error_reporter;
 mod claude_path;
 mod claude_session;
+mod codex_session;
+mod cursor_session;
 mod pastes;
 mod changelists;
 mod otel_receiver;
 mod lsp;
+mod session_provider;
 
 use tauri::Manager;
 use std::sync::Arc;
@@ -163,6 +166,7 @@ fn main() {
             commands::install_claude_code,
             commands::open_external_url,
             commands::reveal_in_file_manager,
+            commands::list_agent_sessions,
             commands::list_claude_sessions,
             commands::rename_path,
             commands::trash_path,

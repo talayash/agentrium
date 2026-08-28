@@ -250,3 +250,29 @@ mod tests {
         assert_eq!(find_new_session_in_dir(tmp.path(), &snapshot, &HashSet::new()), None);
     }
 }
+
+pub struct ClaudeSessionProvider;
+
+impl crate::session_provider::SessionProvider for ClaudeSessionProvider {
+    fn snapshot(&self) -> std::collections::HashSet<std::path::PathBuf> {
+        snapshot_session_files()
+    }
+    fn find_new_for_cwd(
+        &self,
+        snapshot: &std::collections::HashSet<std::path::PathBuf>,
+        cwd: &str,
+        exclude: &std::collections::HashSet<String>,
+    ) -> Option<String> {
+        find_new_session_for_cwd(snapshot, cwd, exclude)
+    }
+    fn list_for_cwd(&self, cwd: &str) -> Vec<crate::session_provider::AgentSessionInfo> {
+        list_sessions_for_cwd(cwd)
+            .into_iter()
+            .map(|s| crate::session_provider::AgentSessionInfo {
+                id: s.id,
+                modified_at: s.modified_at,
+                preview: s.preview,
+            })
+            .collect()
+    }
+}

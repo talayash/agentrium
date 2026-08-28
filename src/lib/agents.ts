@@ -62,43 +62,56 @@ export function specFor(kind: AgentKind): AgentSpec {
   return spec;
 }
 
-// Flags Claude Code accepts that Codex/Cursor reject at arg-parse. Kept
-// small on purpose: only strip flags we know are Claude-specific. Unknown
-// flags pass through and surface as a CLI error, which is the right signal.
-const CLAUDE_ONLY_FLAGS = new Set<string>([
-  '--dangerously-skip-permissions',
-  '--continue',
-  '--worktree',
-]);
-const CLAUDE_ONLY_FLAGS_WITH_VALUE = new Set<string>([
-  '--model',
-  '--effort',
-  '--resume',
-]);
+// Per-agent set of flags that must be stripped before spawning that agent
+// because they either mean something Claude-specific or would be an
+// arg-parse error on the target.
+// - `--dangerously-skip-permissions`: Claude-only permission bypass.
+// - `--worktree`: Claude-only spawn mode.
+// - `--continue`: valid on Claude/Cursor/Antigravity, but Codex uses the
+//   `resume --last` subcommand instead - a raw `--continue` on Codex errors.
+const NO_VALUE_STRIP: Record<AgentKind, ReadonlySet<string>> = {
+  claude: new Set(),
+  codex: new Set(['--dangerously-skip-permissions', '--worktree', '--continue']),
+  cursor: new Set(['--dangerously-skip-permissions', '--worktree']),
+  antigravity: new Set(['--dangerously-skip-permissions', '--worktree']),
+};
+
+// Flags that consume the next token as their value; the value must be
+// dropped alongside the flag. `--resume` is Claude-shape - other agents
+// have their own resume form injected by the backend's resume_flags_for.
+// `--model` / `--effort` are Claude flag names other CLIs don't recognize.
+const WITH_VALUE_STRIP: Record<AgentKind, ReadonlySet<string>> = {
+  claude: new Set(),
+  codex: new Set(['--model', '--effort', '--resume']),
+  cursor: new Set(['--model', '--effort', '--resume']),
+  antigravity: new Set(['--model', '--effort', '--resume']),
+};
 
 /**
- * Remove flags that only make sense for Claude Code so they don't reach a
- * non-Claude agent. Handles both `--flag value` and `--flag=value` forms.
- * When the target agent IS Claude, args are returned unchanged (a shallow
- * copy so the caller can safely mutate).
+ * Remove flags that the target agent can't accept. Handles both
+ * `--flag value` and `--flag=value` forms. When the target agent
+ * is Claude, args are returned unchanged (a shallow copy so the
+ * caller can safely mutate).
  */
 export function filterArgsForAgent(agent: AgentKind, args: string[]): string[] {
   if (agent === 'claude') return [...args];
+  const noValue = NO_VALUE_STRIP[agent];
+  const withValue = WITH_VALUE_STRIP[agent];
   const out: string[] = [];
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
-    if (CLAUDE_ONLY_FLAGS.has(a)) continue;
-    if (CLAUDE_ONLY_FLAGS_WITH_VALUE.has(a)) {
-      // Skip the value that follows, unless the next token is another flag
-      // (which would mean the value was omitted - unusual but not our
-      // problem to diagnose here).
+    if (noValue.has(a)) continue;
+    if (withValue.has(a)) {
+      // Skip the value that follows, unless the next token looks like
+      // another flag (which would mean the value was omitted - unusual
+      // but not our problem to diagnose here).
       if (i + 1 < args.length && !args[i + 1].startsWith('--')) i++;
       continue;
     }
     const eq = a.indexOf('=');
     if (eq > 0) {
       const name = a.slice(0, eq);
-      if (CLAUDE_ONLY_FLAGS.has(name) || CLAUDE_ONLY_FLAGS_WITH_VALUE.has(name)) continue;
+      if (noValue.has(name) || withValue.has(name)) continue;
     }
     out.push(a);
   }

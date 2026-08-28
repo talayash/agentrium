@@ -63,6 +63,67 @@ pub fn build_agent_command(agent: crate::config::AgentKind, args: &[String]) -> 
     (spec.binary.to_string(), args.to_vec())
 }
 
+/// The bits `create_terminal` injects to open a prior conversation for a
+/// given agent. `subcommand` is prepended as the first positional (Codex
+/// uses `codex resume <id> ...`). `leading` goes after the subcommand
+/// (if any) and before the user's persisted args.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct ResumeInjection {
+    pub subcommand: Option<String>,
+    pub leading: Vec<String>,
+}
+
+/// Compute the resume/continue argv injection for `agent`. Returns an
+/// empty injection when neither a session id nor `continue_recent` is set.
+pub(crate) fn resume_flags_for(
+    agent: crate::config::AgentKind,
+    resume_id: Option<&str>,
+    continue_recent: bool,
+) -> ResumeInjection {
+    use crate::config::AgentKind;
+    match (agent, resume_id) {
+        // Claude: `--resume=<id>` is the only safe binding form because
+        // Commander.js parses `--resume <id>` as "open picker" plus a
+        // stray positional (see the existing comment we inherited).
+        (AgentKind::Claude, Some(id)) => ResumeInjection {
+            subcommand: None,
+            leading: vec![format!("--resume={}", id)],
+        },
+        (AgentKind::Claude, None) if continue_recent => ResumeInjection {
+            subcommand: None,
+            leading: vec!["--continue".to_string()],
+        },
+        // Codex: subcommand form `codex resume <id>` / `codex resume --last`.
+        (AgentKind::Codex, Some(id)) => ResumeInjection {
+            subcommand: Some("resume".to_string()),
+            leading: vec![id.to_string()],
+        },
+        (AgentKind::Codex, None) if continue_recent => ResumeInjection {
+            subcommand: Some("resume".to_string()),
+            leading: vec!["--last".to_string()],
+        },
+        // Cursor: standard `--resume <id>` / `--continue` (space separator).
+        (AgentKind::Cursor, Some(id)) => ResumeInjection {
+            subcommand: None,
+            leading: vec!["--resume".to_string(), id.to_string()],
+        },
+        (AgentKind::Cursor, None) if continue_recent => ResumeInjection {
+            subcommand: None,
+            leading: vec!["--continue".to_string()],
+        },
+        // Antigravity: `--conversation <id>` / `--continue`.
+        (AgentKind::Antigravity, Some(id)) => ResumeInjection {
+            subcommand: None,
+            leading: vec!["--conversation".to_string(), id.to_string()],
+        },
+        (AgentKind::Antigravity, None) if continue_recent => ResumeInjection {
+            subcommand: None,
+            leading: vec!["--continue".to_string()],
+        },
+        _ => ResumeInjection::default(),
+    }
+}
+
 pub struct Terminal {
     pub config: TerminalConfig,
     /// Kept alive to maintain the PTY connection
@@ -138,37 +199,21 @@ impl TerminalManager {
             }
         }
 
-        // Inject a resume flag for spawn-only - `claude_args` persisted on
-        // the config stays untouched so the next restore can re-decide which
-        // flag to inject.
-        // `--resume <id>` wins over `--continue` when we have an exact id;
-        // both are exclusive of plain (no-flag) spawn.
-        // The session id is a UUID Claude generates, but we still run it
-        // through the metacharacter check as defense-in-depth.
-        // Codex does not have `--resume` / `--continue`; those flags would
-        // be arg-parse errors, so we skip injection for non-Claude agents.
-        let injected: Vec<String> = if agent == crate::config::AgentKind::Claude {
-            if let Some(id) = resume_session_id.as_deref() {
-                if id.contains(Self::SHELL_METACHARACTERS) {
-                    return Err(error_reporter::user_err("Invalid session id"));
-                }
-                // `--resume` is `[value]` in Claude's help (optional argument), so
-                // Commander.js parses `--resume <id>` as "open picker" plus `<id>`
-                // as a stray positional. The `=` form is the only safe way to
-                // bind an optional argument.
-                vec![format!("--resume={}", id)]
-            } else if continue_recent {
-                vec!["--continue".to_string()]
-            } else {
-                vec![]
+        // Inject resume flags per-agent. Any injection is spawn-only: the
+        // persisted `claude_args` on the config stay untouched so the next
+        // restore is free to re-decide which mode to use.
+        // Defense-in-depth: any session id must be free of shell metachars.
+        if let Some(id) = resume_session_id.as_deref() {
+            if id.contains(Self::SHELL_METACHARACTERS) {
+                return Err(error_reporter::user_err("Invalid session id"));
             }
-        } else {
-            vec![]
-        };
-        let injected_len = injected.len();
+        }
+        let injection = resume_flags_for(agent, resume_session_id.as_deref(), continue_recent);
+        let injected_len = injection.subcommand.as_ref().map_or(0, |_| 1) + injection.leading.len();
         let claude_args: Vec<String> = if injected_len > 0 {
             let mut v = Vec::with_capacity(claude_args.len() + injected_len);
-            v.extend(injected);
+            if let Some(sub) = injection.subcommand.clone() { v.push(sub); }
+            v.extend(injection.leading.iter().cloned());
             v.extend(claude_args);
             v
         } else {
@@ -1030,5 +1075,88 @@ mod tests {
         let (bin, args) = build_agent_command(crate::config::AgentKind::Codex, &[]);
         assert_eq!(bin, "codex");
         assert!(args.is_empty());
+    }
+
+    use crate::config::AgentKind;
+
+    #[test]
+    fn resume_flags_for_claude_use_equals_form() {
+        let out = super::resume_flags_for(AgentKind::Claude, Some("abc-123"), false);
+        assert_eq!(out.leading, vec!["--resume=abc-123".to_string()]);
+        assert!(out.subcommand.is_none());
+    }
+
+    #[test]
+    fn continue_flag_for_claude() {
+        let out = super::resume_flags_for(AgentKind::Claude, None, true);
+        assert_eq!(out.leading, vec!["--continue".to_string()]);
+        assert!(out.subcommand.is_none());
+    }
+
+    #[test]
+    fn resume_for_codex_uses_subcommand() {
+        let out = super::resume_flags_for(AgentKind::Codex, Some("sess-9"), false);
+        assert_eq!(out.subcommand.as_deref(), Some("resume"));
+        assert_eq!(out.leading, vec!["sess-9".to_string()]);
+    }
+
+    #[test]
+    fn continue_for_codex_uses_resume_last_subcommand() {
+        let out = super::resume_flags_for(AgentKind::Codex, None, true);
+        assert_eq!(out.subcommand.as_deref(), Some("resume"));
+        assert_eq!(out.leading, vec!["--last".to_string()]);
+    }
+
+    #[test]
+    fn resume_for_cursor_uses_flag() {
+        let out = super::resume_flags_for(AgentKind::Cursor, Some("chat-77"), false);
+        assert_eq!(out.leading, vec!["--resume".to_string(), "chat-77".to_string()]);
+        assert!(out.subcommand.is_none());
+    }
+
+    #[test]
+    fn continue_for_cursor() {
+        let out = super::resume_flags_for(AgentKind::Cursor, None, true);
+        assert_eq!(out.leading, vec!["--continue".to_string()]);
+    }
+
+    #[test]
+    fn resume_for_antigravity_uses_conversation_flag() {
+        let out = super::resume_flags_for(AgentKind::Antigravity, Some("conv-1"), false);
+        assert_eq!(out.leading, vec!["--conversation".to_string(), "conv-1".to_string()]);
+    }
+
+    #[test]
+    fn continue_for_antigravity() {
+        let out = super::resume_flags_for(AgentKind::Antigravity, None, true);
+        assert_eq!(out.leading, vec!["--continue".to_string()]);
+    }
+
+    #[test]
+    fn no_flags_when_neither_resume_nor_continue_codex() {
+        let out = super::resume_flags_for(AgentKind::Codex, None, false);
+        assert!(out.leading.is_empty());
+        assert!(out.subcommand.is_none());
+    }
+
+    #[test]
+    fn no_flags_when_neither_resume_nor_continue_claude() {
+        let out = super::resume_flags_for(AgentKind::Claude, None, false);
+        assert!(out.leading.is_empty());
+        assert!(out.subcommand.is_none());
+    }
+
+    #[test]
+    fn no_flags_when_neither_resume_nor_continue_cursor() {
+        let out = super::resume_flags_for(AgentKind::Cursor, None, false);
+        assert!(out.leading.is_empty());
+        assert!(out.subcommand.is_none());
+    }
+
+    #[test]
+    fn no_flags_when_neither_resume_nor_continue_antigravity() {
+        let out = super::resume_flags_for(AgentKind::Antigravity, None, false);
+        assert!(out.leading.is_empty());
+        assert!(out.subcommand.is_none());
     }
 }
