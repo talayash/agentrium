@@ -78,13 +78,21 @@ describe('filterArgsForAgent', () => {
       .toEqual(['--keep']);
   });
 
-  it('strips multiple Claude-only flags in one pass', () => {
+  it('strips multiple Claude-only flags in one pass for cursor', () => {
+    // --continue is preserved for Cursor - it's a valid Cursor flag.
     expect(filterArgsForAgent('cursor', [
       '--dangerously-skip-permissions',
       '--model', 'opus',
       '--continue',
       '--user-flag',
       '--another',
-    ])).toEqual(['--user-flag', '--another']);
+    ])).toEqual(['--continue', '--user-flag', '--another']);
+  });
+
+  it('preserves --continue for cursor and antigravity but strips it for codex', () => {
+    const args = ['--continue', '--dangerously-skip-permissions'];
+    expect(filterArgsForAgent('codex', args)).toEqual([]);
+    expect(filterArgsForAgent('cursor', args)).toEqual(['--continue']);
+    expect(filterArgsForAgent('antigravity', args)).toEqual(['--continue']);
   });
 });
