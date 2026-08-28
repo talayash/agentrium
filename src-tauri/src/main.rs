@@ -166,6 +166,7 @@ fn main() {
             commands::install_claude_code,
             commands::open_external_url,
             commands::reveal_in_file_manager,
+            commands::list_agent_sessions,
             commands::list_claude_sessions,
             commands::rename_path,
             commands::trash_path,

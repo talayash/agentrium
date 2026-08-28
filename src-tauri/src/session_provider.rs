@@ -28,7 +28,7 @@ pub trait SessionProvider {
     fn list_for_cwd(&self, cwd: &str) -> Vec<AgentSessionInfo>;
 }
 
-pub fn provider_for(agent: AgentKind) -> Box<dyn SessionProvider> {
+pub fn provider_for(agent: AgentKind) -> Box<dyn SessionProvider + Send + Sync> {
     match agent {
         AgentKind::Claude => Box::new(crate::claude_session::ClaudeSessionProvider),
         // Placeholder impls until later tasks land.
