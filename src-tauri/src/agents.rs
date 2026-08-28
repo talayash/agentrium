@@ -39,12 +39,16 @@ pub fn spec_for(kind: AgentKind) -> AgentSpec {
             install_url: "https://cursor.com/cli",
             install_hint: "curl https://cursor.com/install -fsS | bash",
         },
-        AgentKind::Gemini => AgentSpec {
-            kind: AgentKind::Gemini,
-            display_name: "Gemini",
-            binary: "gemini",
-            install_url: "https://github.com/google-gemini/gemini-cli",
-            install_hint: "npm install -g @google/gemini-cli",
+        AgentKind::Antigravity => AgentSpec {
+            kind: AgentKind::Antigravity,
+            // Antigravity CLI ships as a native binary named `agy` (not
+            // `antigravity`) via a Go-built install script. There is no
+            // npm package as of the CLI's Aug 2026 release, so the hint
+            // is the curl one-liner from antigravity.google/docs/cli.
+            display_name: "Antigravity",
+            binary: "agy",
+            install_url: "https://antigravity.google/docs/cli/install/",
+            install_hint: "curl -fsSL https://antigravity.google/cli/install.sh | bash",
         },
     }
 }
@@ -56,7 +60,7 @@ pub fn all_specs() -> Vec<AgentSpec> {
         spec_for(AgentKind::Claude),
         spec_for(AgentKind::Codex),
         spec_for(AgentKind::Cursor),
-        spec_for(AgentKind::Gemini),
+        spec_for(AgentKind::Antigravity),
     ]
 }
 
@@ -83,8 +87,11 @@ mod tests {
     }
 
     #[test]
-    fn gemini_spec_has_gemini_binary() {
-        assert_eq!(spec_for(AgentKind::Gemini).binary, "gemini");
+    fn antigravity_spec_has_agy_binary() {
+        // Antigravity's official CLI binary is `agy` (per
+        // antigravity.google/docs/cli), NOT `antigravity`. Guard against
+        // future edits that "correct" it to the intuitive-but-wrong name.
+        assert_eq!(spec_for(AgentKind::Antigravity).binary, "agy");
     }
 
     #[test]
@@ -95,7 +102,7 @@ mod tests {
         assert!(specs.iter().any(|s| s.kind == AgentKind::Claude));
         assert!(specs.iter().any(|s| s.kind == AgentKind::Codex));
         assert!(specs.iter().any(|s| s.kind == AgentKind::Cursor));
-        assert!(specs.iter().any(|s| s.kind == AgentKind::Gemini));
+        assert!(specs.iter().any(|s| s.kind == AgentKind::Antigravity));
         assert_eq!(specs.len(), 4);
     }
 }

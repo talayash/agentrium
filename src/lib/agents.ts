@@ -1,4 +1,4 @@
-export type AgentKind = 'claude' | 'codex' | 'cursor' | 'gemini';
+export type AgentKind = 'claude' | 'codex' | 'cursor' | 'antigravity';
 
 export interface AgentSpec {
   kind: AgentKind;
@@ -41,12 +41,18 @@ export const AGENT_SPECS: readonly AgentSpec[] = [
     defaultArgsHint: '--print       # non-interactive mode',
   },
   {
-    kind: 'gemini',
-    displayName: 'Gemini',
-    binary: 'gemini',
-    installUrl: 'https://github.com/google-gemini/gemini-cli',
-    installHint: 'npm install -g @google/gemini-cli',
-    defaultArgsHint: '--yolo\n--model gemini-2.5-pro',
+    kind: 'antigravity',
+    displayName: 'Antigravity',
+    // Antigravity CLI's binary is literally `agy` (per
+    // antigravity.google/docs/cli), NOT `antigravity`. Guard against
+    // future edits that "correct" this to the intuitive-but-wrong name.
+    binary: 'agy',
+    installUrl: 'https://antigravity.google/docs/cli/install/',
+    installHint: 'curl -fsSL https://antigravity.google/cli/install.sh | bash',
+    // Antigravity runs Google's Gemini models under the hood, so
+    // `--model gemini-2.5-pro` is a reasonable starter hint; check
+    // antigravity.google/docs/cli for the current flag list.
+    defaultArgsHint: '--model gemini-2.5-pro',
   },
 ];
 

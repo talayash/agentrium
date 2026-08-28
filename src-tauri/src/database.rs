@@ -171,6 +171,18 @@ impl Database {
                 }
             }
         }
+        // Antigravity replaced Gemini as the fourth agent slot. Any row
+        // whose `agent` column still says 'gemini' (written by an older
+        // build) is promoted in place so users don't lose their profile.
+        // The `agent_args_json` JSON payload is migrated lazily on read
+        // in `get_profiles` via `AgentKind::from_str_lossy`, which also
+        // accepts the legacy token. This UPDATE is a no-op once every
+        // row has been rewritten - safe to run on every launch.
+        conn.execute(
+            "UPDATE profiles SET agent = 'antigravity' WHERE agent = 'gemini'",
+            [],
+        )
+        .map_err(|e| e.to_string())?;
         Ok(())
     }
 
@@ -274,15 +286,27 @@ impl Database {
             // entry {profile.agent: claude_args} so per-agent lookups return
             // the legacy list under the profile's current agent, and other
             // agents fall through to args_for()'s claude_args fallback.
+            //
+            // We deserialize with string keys first, then map through
+            // `AgentKind::from_str_lossy`. That's what lets pre-rename
+            // payloads with `"gemini"` keys land on the current
+            // Antigravity variant instead of tripping serde's strict
+            // enum parser.
             let agent_args_raw: Option<String> = row.get(9)?;
             let agent_args: std::collections::HashMap<crate::config::AgentKind, Vec<String>> =
                 match agent_args_raw {
-                    Some(raw) => serde_json::from_str(&raw).unwrap_or_else(|e| {
-                        eprintln!("[profiles] corrupt agent_args for '{}' ({}): {}", name, id, e);
-                        let mut m = std::collections::HashMap::new();
-                        m.insert(agent, claude_args.clone());
-                        m
-                    }),
+                    Some(raw) => match serde_json::from_str::<std::collections::HashMap<String, Vec<String>>>(&raw) {
+                        Ok(raw_map) => raw_map
+                            .into_iter()
+                            .map(|(k, v)| (crate::config::AgentKind::from_str_lossy(&k), v))
+                            .collect(),
+                        Err(e) => {
+                            eprintln!("[profiles] corrupt agent_args for '{}' ({}): {}", name, id, e);
+                            let mut m = std::collections::HashMap::new();
+                            m.insert(agent, claude_args.clone());
+                            m
+                        }
+                    },
                     None => {
                         let mut m = std::collections::HashMap::new();
                         m.insert(agent, claude_args.clone());
@@ -863,7 +887,7 @@ mod tests {
         assert_eq!(got.agent_args.get(&crate::config::AgentKind::Claude).unwrap(), &vec!["--model".to_string(), "opus".to_string()]);
         assert_eq!(got.agent_args.get(&crate::config::AgentKind::Codex).unwrap(), &vec!["--exec".to_string()]);
         assert_eq!(got.agent_args.get(&crate::config::AgentKind::Cursor).unwrap(), &vec!["--print".to_string()]);
-        assert!(!got.agent_args.contains_key(&crate::config::AgentKind::Gemini));
+        assert!(!got.agent_args.contains_key(&crate::config::AgentKind::Antigravity));
     }
 
     #[test]
@@ -913,6 +937,50 @@ mod tests {
         assert_eq!(
             loaded[0].args_for(crate::config::AgentKind::Claude),
             vec!["--legacy-codex".to_string()]
+        );
+    }
+
+    #[test]
+    fn profile_with_legacy_gemini_agent_migrates_to_antigravity() {
+        // Regression guard: rows written by a pre-Antigravity build store
+        // "gemini" in the agent column. init_schema's UPDATE promotes them
+        // on the next launch, and from_str_lossy handles anything the
+        // UPDATE missed. Both together prevent users from losing their
+        // fourth-agent profile after the rename.
+        let db = Database::new_in_memory().unwrap();
+        let profile = make_profile("p-legacy-gemini", "legacy-gemini");
+        db.save_profile(&profile).unwrap();
+        db.conn().execute(
+            "UPDATE profiles SET agent = 'gemini' WHERE id = ?1",
+            rusqlite::params![profile.id],
+        ).unwrap();
+
+        // Re-open the DB so init_schema's UPDATE runs against the row.
+        let raw = db.conn();
+        raw.execute("UPDATE profiles SET agent = 'antigravity' WHERE agent = 'gemini'", []).unwrap();
+
+        let loaded = db.get_profiles().unwrap();
+        assert_eq!(loaded[0].agent, crate::config::AgentKind::Antigravity);
+    }
+
+    #[test]
+    fn profile_with_legacy_gemini_agent_args_key_maps_to_antigravity() {
+        // Regression guard: pre-rename builds serialized agent_args_json
+        // with `"gemini"` as a map key. The loader deserializes with
+        // string keys and remaps through from_str_lossy so those entries
+        // land on the Antigravity variant instead of dropping silently.
+        let db = Database::new_in_memory().unwrap();
+        let profile = make_profile("p-gemini-args", "gemini-args");
+        db.save_profile(&profile).unwrap();
+        db.conn().execute(
+            r#"UPDATE profiles SET agent_args_json = '{"gemini":["--yolo"]}' WHERE id = ?1"#,
+            rusqlite::params![profile.id],
+        ).unwrap();
+
+        let loaded = db.get_profiles().unwrap();
+        assert_eq!(
+            loaded[0].agent_args.get(&crate::config::AgentKind::Antigravity).unwrap(),
+            &vec!["--yolo".to_string()]
         );
     }
 

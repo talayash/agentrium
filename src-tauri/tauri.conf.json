@@ -44,7 +44,7 @@
     "resources": [],
     "copyright": "Copyright 2026 Agentrium",
     "shortDescription": "Agent Desktop Environment - multi-agent CLI terminal manager",
-    "longDescription": "Agentrium is a desktop application for running Claude Code, Codex, Cursor, and Gemini CLIs side by side in tabbed and grid views. Features include per-agent profiles, worktree lifecycle, hunk review, and session restore.",
+    "longDescription": "Agentrium is a desktop application for running Claude Code, Codex, Cursor, and Antigravity CLIs side by side in tabbed and grid views. Features include per-agent profiles, worktree lifecycle, hunk review, and session restore.",
     "category": "DeveloperTool",
     "publisher": "Agentrium",
     "windows": {

@@ -27,7 +27,7 @@ function resetAppStore() {
     worktreeModalOpen: false,
     worktreeModalRepoPath: null,
     defaultClaudeArgs: [],
-    defaultAgentArgs: { claude: [], codex: [], cursor: [], gemini: [] },
+    defaultAgentArgs: { claude: [], codex: [], cursor: [], antigravity: [] },
     notifyOnFinish: true,
     restoreSession: true,
     telemetryEnabled: true,
@@ -616,6 +616,43 @@ describe('appStore - notifications + session v1.22.0 setters', () => {
     expect(useAppStore.getState().sessionAutoSaveIntervalSec).toBe(600);
     setSessionAutoSaveIntervalSec(45.6);
     expect(useAppStore.getState().sessionAutoSaveIntervalSec).toBe(46);
+  });
+});
+
+describe('appStore - persist migration v3 → v4 (gemini → antigravity)', () => {
+  it('rekeys defaultAgentArgs.gemini to defaultAgentArgs.antigravity on rehydrate', async () => {
+    // Simulate a persisted state written by a pre-Antigravity build: the
+    // legacy `gemini` slot carries the user's args, and the top-level
+    // `version` is 3 (the version right before the rename shipped).
+    localStorage.setItem(
+      PERSIST_KEY,
+      JSON.stringify({
+        version: 3,
+        state: {
+          defaultClaudeArgs: ['--model', 'opus'],
+          defaultAgentArgs: {
+            claude: ['--model', 'opus'],
+            codex: ['--exec'],
+            cursor: ['--print'],
+            gemini: ['--yolo', '--model', 'gemini-2.5-pro'],
+          },
+        },
+      }),
+    );
+
+    // Force a rehydrate so the migrate() chain runs against the primed
+    // payload. Without this the store still holds the beforeEach reset
+    // state; rehydrate swaps it for the migrated one.
+    await useAppStore.persist.rehydrate();
+
+    const args = useAppStore.getState().defaultAgentArgs;
+    expect(args.antigravity).toEqual(['--yolo', '--model', 'gemini-2.5-pro']);
+    expect(args.claude).toEqual(['--model', 'opus']);
+    expect(args.codex).toEqual(['--exec']);
+    expect(args.cursor).toEqual(['--print']);
+    // The legacy key should not survive - future writes must use the new
+    // shape or the persisted payload will grow stale entries forever.
+    expect((args as Record<string, unknown>).gemini).toBeUndefined();
   });
 });
 

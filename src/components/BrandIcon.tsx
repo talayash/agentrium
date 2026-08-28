@@ -2,9 +2,11 @@ import type { AgentKind } from '../lib/agents';
 
 // Official brand marks used under nominative fair use to identify which CLI
 // a terminal is running. SVG paths sourced from simple-icons (CC0) for
-// Anthropic, Cursor, and Google Gemini; OpenAI's well-known hexagram path is
-// inlined directly (simple-icons no longer ships it). All paths use viewBox
-// 0 0 24 24 and `fill="currentColor"` so the wrapping span drives the hue.
+// Anthropic and Cursor; OpenAI's well-known hexagram path is inlined directly
+// (simple-icons no longer ships it). Antigravity uses an original mark - a
+// bold "A" with a tilted orbital ring - since Google has not published an
+// open-license CLI mark. All paths use viewBox 0 0 24 24 and
+// `fill="currentColor"` so the wrapping span drives the hue.
 
 function AnthropicMark({ size }: { size: number }) {
   return (
@@ -30,11 +32,27 @@ function CursorMark({ size }: { size: number }) {
   );
 }
 
-function GeminiMark({ size }: { size: number }) {
-  // Google Gemini's four-pointed star. Path from simple-icons googlegemini (CC0).
+function AntigravityMark({ size }: { size: number }) {
+  // Original mark: a bold "A" with a tilted orbital ring around it,
+  // evoking Antigravity's gravity/orbit motif. Uses currentColor for
+  // both the letter fill and the ring stroke so a single wrapping span
+  // sets the hue - same contract as the other three agent marks.
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-      <path d="M11.04 19.32Q12 21.51 12 24q0-2.49.93-4.68.96-2.19 2.58-3.81t3.81-2.55Q21.51 12 24 12q-2.49 0-4.68-.93a12.3 12.3 0 0 1-3.81-2.58 12.3 12.3 0 0 1-2.58-3.81Q12 2.49 12 0q0 2.49-.96 4.68-.93 2.19-2.55 3.81a12.3 12.3 0 0 1-3.81 2.58Q2.49 12 0 12q2.49 0 4.68.96 2.19.93 3.81 2.55t2.55 3.81" />
+      <path
+        d="M12 3 L19 21 H15.5 L14 17 H10 L8.5 21 H5 L12 3 Z M11.4 13.5 H12.6 L12 11.5 Z"
+        fillRule="evenodd"
+      />
+      <ellipse
+        cx="12"
+        cy="12"
+        rx="10.5"
+        ry="3.5"
+        transform="rotate(-20 12 12)"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.2"
+      />
     </svg>
   );
 }
@@ -49,7 +67,8 @@ export interface BrandIconProps {
  * Renders the official brand mark for a given agent kind. Anthropic and
  * OpenAI use their fixed brand hues (coral and emerald - both readable on
  * light and dark themes). Cursor is monochromatic and inherits the theme
- * text color via `text-text-primary`. Gemini uses Google blue.
+ * text color via `text-text-primary`. Antigravity uses a violet tint that
+ * stays legible on both dark and light surfaces.
  *
  * Sizes: 22 for the picker (primary CTA), 14 for the tab strip / sidebar
  * (identity indicator). The wrapping span is what colors the SVG via
@@ -64,7 +83,7 @@ export function BrandIcon({ kind, size = 22 }: BrandIconProps) {
       return <span style={{ color: '#10A37F' }}><OpenAIMark size={size} /></span>;
     case 'cursor':
       return <span className="text-text-primary"><CursorMark size={size} /></span>;
-    case 'gemini':
-      return <span style={{ color: '#4285F4' }}><GeminiMark size={size} /></span>;
+    case 'antigravity':
+      return <span style={{ color: '#7C3AED' }}><AntigravityMark size={size} /></span>;
   }
 }

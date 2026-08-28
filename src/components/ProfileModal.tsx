@@ -76,7 +76,7 @@ export function ProfileModal() {
       env_vars: {},
       is_default: false,
       agent: 'claude',
-      agent_args: { claude: [], codex: [], cursor: [], gemini: [] },
+      agent_args: { claude: [], codex: [], cursor: [], antigravity: [] },
     });
   };
 

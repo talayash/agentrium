@@ -11,7 +11,7 @@ pub enum AgentKind {
     Claude,
     Codex,
     Cursor,
-    Gemini,
+    Antigravity,
 }
 
 impl AgentKind {
@@ -22,7 +22,7 @@ impl AgentKind {
             AgentKind::Claude => "claude",
             AgentKind::Codex => "codex",
             AgentKind::Cursor => "cursor",
-            AgentKind::Gemini => "gemini",
+            AgentKind::Antigravity => "antigravity",
         }
     }
 
@@ -31,11 +31,16 @@ impl AgentKind {
     /// missing fields. This means an unrecognized value (e.g., a future
     /// agent name loaded by an older build) is silently downgraded rather
     /// than crashing at startup.
+    ///
+    /// The legacy `"gemini"` token maps to `Antigravity`: Antigravity
+    /// replaced Gemini as the fourth agent slot, so rows written by an
+    /// older build should upgrade in place rather than be silently
+    /// downgraded to Claude and lose their args.
     pub fn from_str_lossy(s: &str) -> Self {
         match s {
             "codex" => AgentKind::Codex,
             "cursor" => AgentKind::Cursor,
-            "gemini" => AgentKind::Gemini,
+            "antigravity" | "gemini" => AgentKind::Antigravity,
             _ => AgentKind::Claude,
         }
     }
@@ -67,10 +72,10 @@ pub struct ConfigProfile {
     #[serde(default)]
     pub preview: Option<PreviewProfile>,
     /// Per-agent args: the same profile can hold a distinct arg list for
-    /// each supported agent (Claude/Codex/Cursor/Gemini). Consumers should
-    /// prefer `args_for(kind)` over indexing directly - it falls back to
-    /// `claude_args` when a kind isn't present, which preserves behavior
-    /// for profiles saved before this field existed.
+    /// each supported agent (Claude/Codex/Cursor/Antigravity). Consumers
+    /// should prefer `args_for(kind)` over indexing directly - it falls
+    /// back to `claude_args` when a kind isn't present, which preserves
+    /// behavior for profiles saved before this field existed.
     #[serde(default)]
     pub agent_args: HashMap<AgentKind, Vec<String>>,
 }
@@ -492,7 +497,7 @@ mod tests {
         assert_eq!(AgentKind::Claude.as_str(), "claude");
         assert_eq!(AgentKind::Codex.as_str(), "codex");
         assert_eq!(AgentKind::Cursor.as_str(), "cursor");
-        assert_eq!(AgentKind::Gemini.as_str(), "gemini");
+        assert_eq!(AgentKind::Antigravity.as_str(), "antigravity");
     }
 
     #[test]
@@ -540,21 +545,31 @@ mod tests {
 
     #[test]
     fn args_for_falls_back_to_claude_args_when_kind_missing() {
-        // No per-agent entry for Gemini -> caller sees the legacy list. This
-        // is what preserves behavior for profiles that predate agent_args.
+        // No per-agent entry for Antigravity -> caller sees the legacy
+        // list. This is what preserves behavior for profiles that predate
+        // agent_args.
         let mut p = sample_profile();
         p.claude_args = vec!["--legacy".into()];
         p.agent_args.clear();
-        assert_eq!(p.args_for(AgentKind::Gemini), vec!["--legacy".to_string()]);
+        assert_eq!(p.args_for(AgentKind::Antigravity), vec!["--legacy".to_string()]);
     }
 
     #[test]
     fn agent_kind_from_str_lossy_defaults_unknown_to_claude() {
         assert_eq!(AgentKind::from_str_lossy("codex"), AgentKind::Codex);
         assert_eq!(AgentKind::from_str_lossy("cursor"), AgentKind::Cursor);
-        assert_eq!(AgentKind::from_str_lossy("gemini"), AgentKind::Gemini);
+        assert_eq!(AgentKind::from_str_lossy("antigravity"), AgentKind::Antigravity);
         assert_eq!(AgentKind::from_str_lossy("claude"), AgentKind::Claude);
         assert_eq!(AgentKind::from_str_lossy("something-new"), AgentKind::Claude);
         assert_eq!(AgentKind::from_str_lossy(""), AgentKind::Claude);
+    }
+
+    #[test]
+    fn agent_kind_from_str_lossy_migrates_gemini_to_antigravity() {
+        // Regression guard: rows written by pre-Antigravity builds carry
+        // "gemini" in the agent column. Silent-downgrade to Claude here
+        // would wipe user config on upgrade, so the loader promotes the
+        // legacy value to the current fourth-agent slot.
+        assert_eq!(AgentKind::from_str_lossy("gemini"), AgentKind::Antigravity);
     }
 }

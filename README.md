@@ -5,7 +5,7 @@
 <h1 align="center">Agentrium</h1>
 
 <p align="center">
-  <strong>Run Claude Code, Codex, Cursor, and Gemini side by side in one native desktop app.</strong>
+  <strong>Run Claude Code, Codex, Cursor, and Antigravity side by side in one native desktop app.</strong>
 </p>
 
 <p align="center">
@@ -43,7 +43,7 @@ Each terminal you spawn can target any of the four agents below. Switch between 
 | **Claude Code** | `claude` | `npm install -g @anthropic-ai/claude-code` | [docs.claude.com/claude-code](https://docs.claude.com/claude-code) |
 | **Codex** | `codex` | `npm install -g @openai/codex` | [github.com/openai/codex](https://github.com/openai/codex) |
 | **Cursor** | `agent` | `curl https://cursor.com/install -fsS \| bash` (or `irm 'https://cursor.com/install?win32=true' \| iex` on Windows) | [cursor.com/cli](https://cursor.com/cli) |
-| **Gemini** | `gemini` | `npm install -g @google/gemini-cli` | [github.com/google-gemini/gemini-cli](https://github.com/google-gemini/gemini-cli) |
+| **Antigravity** | `agy` | `curl -fsSL https://antigravity.google/cli/install.sh \| bash` | [antigravity.google/docs/cli](https://antigravity.google/docs/cli/install/) |
 
 Only Claude Code is required to get started. The other three are opt-in and auto-detected once installed - Settings > Updates shows what's on your PATH.
 
@@ -73,7 +73,7 @@ Only Claude Code is required to get started. The other three are opt-in and auto
 
 ### Multi-agent architecture
 
-- Pick per terminal between Claude Code, Codex, Cursor, and Gemini
+- Pick per terminal between Claude Code, Codex, Cursor, and Antigravity
 - Brand icon on every tab and every grid cell so you always know what's running
 - Per-agent default arguments in Settings; per-profile args stored in SQLite
 - Claude-only flags (`--dangerously-skip-permissions`, `--model`, `--effort`, `--continue`, `--resume`, `--worktree`) are stripped automatically when spawning other agents so profiles are portable
@@ -99,7 +99,7 @@ Only Claude Code is required to get started. The other three are opt-in and auto
 ### Configuration profiles
 
 - Save named profiles with a working directory, per-agent arguments, and env vars
-- Profiles are agent-agnostic in the picker - the same profile appears whether Claude Code, Codex, Cursor, or Gemini is selected
+- Profiles are agent-agnostic in the picker - the same profile appears whether Claude Code, Codex, Cursor, or Antigravity is selected
 - SQLite storage, transparent migration for existing profiles
 
 ### Git worktree lifecycle
@@ -135,7 +135,7 @@ Only Claude Code is required to get started. The other three are opt-in and auto
 
 ### Command hints, snippets, prompt editor
 
-- Built-in Claude Code command reference (Codex/Cursor/Gemini hint packs planned)
+- Built-in Claude Code command reference (Codex/Cursor/Antigravity hint packs planned)
 - Snippet manager with import/export
 - Full prompt editor drawer for composing large multi-line prompts
 
@@ -150,7 +150,7 @@ Before installing Agentrium, ensure you have:
    - Claude Code (recommended - detected by the setup wizard)
    - Codex
    - Cursor
-   - Gemini
+   - Antigravity
 
 ### Download
 
@@ -179,7 +179,7 @@ Download the latest release for your platform from the [Releases page](https://g
 ### Creating a terminal
 
 1. Click **New Terminal** in the sidebar, or press `Ctrl+Shift+N`
-2. Pick the **agent** from the four brand buttons (Claude Code / Codex / Cursor / Gemini)
+2. Pick the **agent** from the four brand buttons (Claude Code / Codex / Cursor / Antigravity)
 3. Optionally pick a **profile** from the grid
 4. Optionally set a **nickname** for easy identification
 5. Choose the **working directory** for the session
@@ -211,7 +211,7 @@ Press `F1` or click the lightbulb icon to open the Hints panel:
 - Categorized Claude Code commands
 - Click any hint to copy it to clipboard
 - Search bar for filtering
-- Codex/Cursor/Gemini hint packs are planned
+- Codex/Cursor/Antigravity hint packs are planned
 
 ## Keyboard Shortcuts
 
@@ -282,7 +282,7 @@ Press `F1` or click the lightbulb icon to open the Hints panel:
 | Database | SQLite via `rusqlite` (bundled) |
 | PTY | `portable-pty` |
 | Notifications | `notify-rust` |
-| Icons | Lucide React + inline brand SVGs (simple-icons for Anthropic / Cursor / Gemini, official OpenAI mark for Codex) |
+| Icons | Lucide React + inline brand SVGs (simple-icons for Anthropic / Cursor, official OpenAI mark for Codex, original mark for Antigravity) |
 | Build | Vite |
 
 ## Project Structure
@@ -399,7 +399,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [Anthropic](https://www.anthropic.com/) for Claude Code
 - [OpenAI](https://openai.com/) for Codex
 - [Cursor](https://cursor.com/) for the Cursor CLI
-- [Google](https://ai.google.dev/) for the Gemini CLI
+- [Google](https://antigravity.google/) for the Antigravity CLI
 - [Tauri](https://tauri.app/) for the framework
 - [xterm.js](https://xtermjs.org/) for terminal emulation
 - [simple-icons](https://simpleicons.org/) for the brand marks

@@ -73,8 +73,8 @@ interface AppState {
    * textarea when creating a terminal for that agent. Kept alongside
    * `defaultClaudeArgs` for back-compat: `defaultAgentArgs.claude` is the
    * source of truth, `defaultClaudeArgs` is a mirror that stays in sync via
-   * setDefaultClaudeArgs. Codex/Cursor/Gemini defaults start empty and
-   * can be edited in Settings (planned) or inline in the modal.
+   * setDefaultClaudeArgs. Codex/Cursor/Antigravity defaults start empty
+   * and can be edited in Settings (planned) or inline in the modal.
    */
   defaultAgentArgs: Record<import('../lib/agents').AgentKind, string[]>;
   setDefaultAgentArgs: (agent: import('../lib/agents').AgentKind, args: string[]) => void;
@@ -512,7 +512,7 @@ export const useAppStore = create<AppState>()(
       pushModalOpen: false,
       pushModalRepoPath: null,
       defaultClaudeArgs: [],
-      defaultAgentArgs: { claude: [], codex: [], cursor: [], gemini: [] },
+      defaultAgentArgs: { claude: [], codex: [], cursor: [], antigravity: [] },
       notifyOnFinish: true,
       unreadNotificationCount: 0,
       incrementUnreadNotifications: () =>
@@ -1156,7 +1156,7 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: 'claude-terminal-app',
-      version: 3,
+      version: 4,
       migrate: (persistedState, version) => {
         const s = (persistedState as Partial<AppState>) ?? {};
         if (version < 1) {
@@ -1175,13 +1175,27 @@ export const useAppStore = create<AppState>()(
         if (version < 3) {
           // Multi-agent support: seed defaultAgentArgs from the legacy
           // defaultClaudeArgs so users who had Claude args set don't lose
-          // them. Codex/Cursor/Gemini start empty; users can configure per
-          // agent from Settings or inline in the New Terminal modal.
+          // them. Codex/Cursor/Antigravity start empty; users can configure
+          // per agent from Settings or inline in the New Terminal modal.
           s.defaultAgentArgs = {
             claude: s.defaultClaudeArgs ?? [],
             codex: [],
             cursor: [],
-            gemini: [],
+            antigravity: [],
+          };
+        }
+        if (version < 4) {
+          // Antigravity replaced Gemini as the fourth agent slot. Move
+          // any args a user had configured under `gemini` to
+          // `antigravity` so their setup carries over. Read via a
+          // permissive index so we can access the legacy `gemini` key
+          // that is no longer part of the AgentKind union.
+          const legacy = (s.defaultAgentArgs ?? {}) as Record<string, string[] | undefined>;
+          s.defaultAgentArgs = {
+            claude: legacy.claude ?? s.defaultClaudeArgs ?? [],
+            codex: legacy.codex ?? [],
+            cursor: legacy.cursor ?? [],
+            antigravity: legacy.antigravity ?? legacy.gemini ?? [],
           };
         }
         return s as AppState;

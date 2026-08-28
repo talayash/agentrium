@@ -14,7 +14,7 @@ registerSetting({
   category: { group: 'claude', page: 'updates' },
   id: 'app-and-cli-updates',
   label: 'App + agent CLI updates',
-  keywords: ['update', 'upgrade', 'app', 'cli', 'version', 'agent', 'claude', 'codex', 'cursor', 'gemini'],
+  keywords: ['update', 'upgrade', 'app', 'cli', 'version', 'agent', 'claude', 'codex', 'cursor', 'antigravity'],
 });
 
 interface UpdateCheckResult {
@@ -27,8 +27,8 @@ interface UpdateCheckResult {
  * Per-agent version card. Claude Code (the only agent with a proper
  * update-check backend right now) gets the full check + update UI. The
  * others show a version line, a Docs link, and - when not installed -
- * a one-line install hint. Update flows for Codex/Cursor/Gemini are a
- * follow-up (each has its own installer path, so unifying them is real
+ * a one-line install hint. Update flows for Codex/Cursor/Antigravity are
+ * a follow-up (each has its own installer path, so unifying them is real
  * work).
  */
 function AgentUpdateSection({ spec }: { spec: AgentSpec }) {

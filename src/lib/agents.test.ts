@@ -17,8 +17,12 @@ describe('agents catalog', () => {
     expect(specFor('cursor').binary).toBe('agent');
   });
 
-  it('resolves gemini by kind', () => {
-    expect(specFor('gemini').binary).toBe('gemini');
+  it('resolves antigravity by kind', () => {
+    // Antigravity CLI's binary is literally `agy` (per
+    // antigravity.google/docs/cli), NOT `antigravity`. This test guards
+    // against future edits that "correct" this to the intuitive-but-
+    // wrong `antigravity`.
+    expect(specFor('antigravity').binary).toBe('agy');
   });
 
   it('lists every agent kind exactly once', () => {
@@ -27,7 +31,7 @@ describe('agents catalog', () => {
     expect(kinds).toContain('claude');
     expect(kinds).toContain('codex');
     expect(kinds).toContain('cursor');
-    expect(kinds).toContain('gemini');
+    expect(kinds).toContain('antigravity');
   });
 
   it('throws on unknown kind', () => {

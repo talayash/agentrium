@@ -20,7 +20,7 @@ export default function AboutPage() {
     claude: null,
     codex: null,
     cursor: null,
-    gemini: null,
+    antigravity: null,
   });
 
   useEffect(() => {

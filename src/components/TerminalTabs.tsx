@@ -805,7 +805,7 @@ export function TerminalTabs() {
                   Welcome to Agentrium
                 </h1>
                 <p className="text-[13px] text-text-tertiary mb-8 text-center max-w-[420px]">
-                  Run Claude Code, Codex, Cursor, and Gemini agents side by side
+                  Run Claude Code, Codex, Cursor, and Antigravity agents side by side
                   in one native window. Start a new terminal, or press{' '}
                   <kbd className="px-1.5 py-0.5 rounded bg-elevation-2 text-text-secondary text-[11px] font-sans border border-[var(--ij-divider-soft)] mx-0.5">
                     {isMac ? '⌘' : 'Ctrl'}
