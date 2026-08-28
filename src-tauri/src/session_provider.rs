@@ -1,11 +1,5 @@
 //! Per-agent session providers. Abstracts over the four agents' on-disk
 //! conventions so `terminal.rs` and IPC commands can call one interface.
-//!
-//! The trait, its impls, and `provider_for` are unused until Tasks 5 and 6
-//! wire them into `terminal.rs` and `commands.rs`. Suppressing dead-code
-//! warnings during the intermediate commits keeps CI clean.
-
-#![allow(dead_code)]
 
 use crate::config::AgentKind;
 use serde::Serialize;
@@ -19,7 +13,10 @@ pub struct AgentSessionInfo {
     pub preview: Option<String>,
 }
 
-pub trait SessionProvider {
+/// `Send + Sync` on the trait itself (not just at the `Box<dyn ...>` site)
+/// so any provider held across `.await` in the session-detect watcher loop
+/// is required to be thread-safe by the compiler, not by convention.
+pub trait SessionProvider: Send + Sync {
     /// Files present before spawn - the diff after spawn isolates the new one.
     fn snapshot(&self) -> HashSet<PathBuf>;
     /// New session id in `cwd`, excluding ids already claimed by other terminals.
@@ -28,7 +25,7 @@ pub trait SessionProvider {
     fn list_for_cwd(&self, cwd: &str) -> Vec<AgentSessionInfo>;
 }
 
-pub fn provider_for(agent: AgentKind) -> Box<dyn SessionProvider + Send + Sync> {
+pub fn provider_for(agent: AgentKind) -> Box<dyn SessionProvider> {
     match agent {
         AgentKind::Claude => Box::new(crate::claude_session::ClaudeSessionProvider),
         // Placeholder impls until later tasks land.

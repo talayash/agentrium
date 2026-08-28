@@ -251,8 +251,6 @@ mod tests {
     }
 }
 
-// Unused until Task 5 wires this provider into `terminal.rs`.
-#[allow(dead_code)]
 pub struct ClaudeSessionProvider;
 
 impl crate::session_provider::SessionProvider for ClaudeSessionProvider {
