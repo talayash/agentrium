@@ -5,6 +5,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { reportInvokeFailure } from '../lib/errorReporter';
 import { Modal } from './ui/Modal';
 import { Button } from './ui/Button';
+import { LatestRequest } from '../lib/latestRequest';
 
 interface SystemStatus {
   node_installed: boolean;
@@ -26,28 +27,41 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
   const [installError, setInstallError] = useState<string | null>(null);
 
   const mountedRef = useRef(true);
+  const requirementsRequestRef = useRef(new LatestRequest());
+  const completionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const checkRequirements = async () => {
+    const requestId = requirementsRequestRef.current.begin();
     setIsChecking(true);
     try {
       const result = await invoke<SystemStatus>('check_system_requirements');
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || !requirementsRequestRef.current.isCurrent(requestId)) return;
       setStatus(result);
 
       if (result.claude_installed) {
-        setTimeout(() => {
+        if (completionTimerRef.current) clearTimeout(completionTimerRef.current);
+        completionTimerRef.current = setTimeout(() => {
           if (mountedRef.current) onComplete();
         }, 1500);
       }
     } catch (error) {
       reportInvokeFailure('check_system_requirements', error);
     }
-    if (mountedRef.current) setIsChecking(false);
+    if (mountedRef.current && requirementsRequestRef.current.isCurrent(requestId)) {
+      setIsChecking(false);
+    }
   };
 
   useEffect(() => {
+    // React StrictMode intentionally runs effect setup -> cleanup -> setup in
+    // development. Re-arm the mounted guard for that second setup.
+    mountedRef.current = true;
     checkRequirements();
-    return () => { mountedRef.current = false; };
+    return () => {
+      mountedRef.current = false;
+      requirementsRequestRef.current.invalidate();
+      if (completionTimerRef.current) clearTimeout(completionTimerRef.current);
+    };
   }, []);
 
   const handleInstallClaude = async () => {

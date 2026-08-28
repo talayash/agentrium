@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { X, Trash2, Clock, FileText } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
@@ -6,6 +6,7 @@ import { useAppStore } from '../store/appStore';
 import { reportInvokeFailure } from '../lib/errorReporter';
 import { ListRow } from './ui/ListRow';
 import { EmptyState } from './ui/EmptyState';
+import { LatestRequest } from '../lib/latestRequest';
 
 interface SessionHistoryEntry {
   id: number;
@@ -22,6 +23,7 @@ export function SessionHistory() {
   const [selectedEntry, setSelectedEntry] = useState<SessionHistoryEntry | null>(null);
   const [logContent, setLogContent] = useState<string>('');
   const [loadingLog, setLoadingLog] = useState(false);
+  const logRequestRef = useRef(new LatestRequest());
 
   useEffect(() => {
     loadHistory();
@@ -37,19 +39,19 @@ export function SessionHistory() {
   };
 
   const handleSelect = async (entry: SessionHistoryEntry) => {
+    const requestId = logRequestRef.current.begin();
     setSelectedEntry(entry);
     setLogContent('');
-    if (entry.log_path) {
-      setLoadingLog(true);
-      try {
-        const content = await invoke<string>('read_log_file', { path: entry.log_path });
-        setLogContent(content);
-      } catch (err) {
-        setLogContent(`Failed to load log: ${err}`);
-        reportInvokeFailure('read_log_file', err);
-      } finally {
-        setLoadingLog(false);
-      }
+    setLoadingLog(Boolean(entry.log_path));
+    if (!entry.log_path) return;
+    try {
+      const content = await invoke<string>('read_log_file', { path: entry.log_path });
+      if (logRequestRef.current.isCurrent(requestId)) setLogContent(content);
+    } catch (err) {
+      if (logRequestRef.current.isCurrent(requestId)) setLogContent(`Failed to load log: ${err}`);
+      reportInvokeFailure('read_log_file', err);
+    } finally {
+      if (logRequestRef.current.isCurrent(requestId)) setLoadingLog(false);
     }
   };
 
@@ -57,8 +59,10 @@ export function SessionHistory() {
     try {
       await invoke('delete_session_history', { id: entry.id, logPath: entry.log_path });
       if (selectedEntry?.id === entry.id) {
+        logRequestRef.current.invalidate();
         setSelectedEntry(null);
         setLogContent('');
+        setLoadingLog(false);
       }
       await loadHistory();
     } catch (err) {

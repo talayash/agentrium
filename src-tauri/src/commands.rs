@@ -4834,6 +4834,81 @@ pub struct SearchMatch {
     pub column: u32,
     pub line_text: String,
     pub match_length: u32,
+    pub preview_column: u32,
+}
+
+/// Convert a match range in the searched string back to byte and UTF-16
+/// coordinates in the original line. The frontend uses JavaScript/Monaco, so
+/// columns and lengths must be UTF-16 code units rather than UTF-8 bytes.
+fn original_match_coordinates(
+    line: &str,
+    match_start: usize,
+    match_end: usize,
+    case_sensitive: bool,
+) -> (usize, usize, u32, u32) {
+    if case_sensitive {
+        let start_utf16 = line[..match_start].encode_utf16().count() as u32;
+        let len_utf16 = line[match_start..match_end].encode_utf16().count() as u32;
+        return (match_start, match_end, start_utf16 + 1, len_utf16);
+    }
+
+    let mut folded_offset = 0usize;
+    let mut original_utf16 = 0u32;
+    let mut original_start = 0usize;
+    let mut original_end = line.len();
+    let mut start_utf16 = 0u32;
+    let mut end_utf16 = line.encode_utf16().count() as u32;
+    let mut found_start = false;
+
+    for (byte_idx, ch) in line.char_indices() {
+        let folded_len = ch.to_lowercase().collect::<String>().len();
+        let folded_next = folded_offset + folded_len;
+        let utf16_next = original_utf16 + ch.len_utf16() as u32;
+
+        if !found_start && match_start < folded_next {
+            original_start = byte_idx;
+            start_utf16 = original_utf16;
+            found_start = true;
+        }
+        if found_start && match_end <= folded_next {
+            original_end = byte_idx + ch.len_utf8();
+            end_utf16 = utf16_next;
+            break;
+        }
+
+        folded_offset = folded_next;
+        original_utf16 = utf16_next;
+    }
+
+    (original_start, original_end, start_utf16 + 1, end_utf16 - start_utf16)
+}
+
+fn search_line_preview(
+    line: &str,
+    match_start: usize,
+    match_end: usize,
+) -> (String, u32) {
+    const BEFORE_CHARS: usize = 80;
+    const MAX_PREVIEW_CHARS: usize = 400;
+
+    let offsets: Vec<usize> = line.char_indices().map(|(i, _)| i).chain(std::iter::once(line.len())).collect();
+    let match_char = offsets.partition_point(|&offset| offset < match_start);
+    let end_char = offsets.partition_point(|&offset| offset < match_end);
+    let window_start_char = match_char.saturating_sub(BEFORE_CHARS);
+    let window_end_char = offsets.len().saturating_sub(1).min(
+        window_start_char + MAX_PREVIEW_CHARS.max(end_char.saturating_sub(window_start_char)),
+    );
+    let window_start = offsets[window_start_char];
+    let window_end = offsets[window_end_char];
+    let has_prefix = window_start > 0;
+    let has_suffix = window_end < line.len();
+    let mut preview = String::new();
+    if has_prefix { preview.push('…'); }
+    preview.push_str(&line[window_start..window_end]);
+    if has_suffix { preview.push('…'); }
+    let preview_column = line[window_start..match_start].encode_utf16().count() as u32
+        + if has_prefix { 2 } else { 1 };
+    (preview, preview_column)
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -4981,18 +5056,21 @@ fn search_walk(
                             let mut start = 0;
                             while let Some(idx) = haystack[start..].find(needle) {
                                 let abs_idx = start + idx;
-                                // Trim very long lines for transport.
-                                let truncated_line = if line.len() > 400 {
-                                    let cut = line.char_indices().nth(400).map(|(i, _)| i).unwrap_or(line.len());
-                                    format!("{}…", &line[..cut])
-                                } else {
-                                    line.to_string()
-                                };
+                                let (original_start, original_end, column, match_length) =
+                                    original_match_coordinates(
+                                        line,
+                                        abs_idx,
+                                        abs_idx + needle.len(),
+                                        case_sensitive,
+                                    );
+                                let (line_text, preview_column) =
+                                    search_line_preview(line, original_start, original_end);
                                 matches.push(SearchMatch {
                                     line: line_no,
-                                    column: (abs_idx as u32) + 1,
-                                    line_text: truncated_line,
-                                    match_length: needle.chars().count() as u32,
+                                    column,
+                                    line_text,
+                                    match_length,
+                                    preview_column,
                                 });
                                 *total_matches += 1;
                                 if *total_matches >= SEARCH_MAX_TOTAL_MATCHES
@@ -5387,5 +5465,50 @@ mod tests {
         }"#;
         let req: CreateTerminalRequest = serde_json::from_str(json).unwrap();
         assert_eq!(req.agent, crate::config::AgentKind::Codex);
+    }
+}
+
+#[cfg(test)]
+mod search_coordinate_tests {
+    use super::{original_match_coordinates, search_line_preview};
+
+    #[test]
+    fn converts_utf8_byte_offsets_to_javascript_utf16_columns() {
+        let line = "é🙂 target";
+        let start = line.find("target").unwrap();
+        let (_, _, column, length) =
+            original_match_coordinates(line, start, start + "target".len(), true);
+        // é = one UTF-16 unit, 🙂 = two, then one space.
+        assert_eq!(column, 5);
+        assert_eq!(length, 6);
+    }
+
+    #[test]
+    fn maps_case_fold_expansions_back_to_the_original_character() {
+        let line = "İstanbul";
+        let folded = line.to_lowercase();
+        let start = folded.find("i\u{307}").unwrap();
+        let (byte_start, byte_end, column, length) =
+            original_match_coordinates(line, start, start + "i\u{307}".len(), false);
+        assert_eq!(&line[byte_start..byte_end], "İ");
+        assert_eq!(column, 1);
+        assert_eq!(length, 1);
+    }
+
+    #[test]
+    fn long_line_preview_keeps_the_match_and_reports_preview_column() {
+        let line = format!("{}needle{}", "a".repeat(600), "z".repeat(600));
+        let start = line.find("needle").unwrap();
+        let (preview, preview_column) = search_line_preview(&line, start, start + 6);
+        assert!(preview.starts_with('…'));
+        assert!(preview.ends_with('…'));
+        assert!(preview.len() < line.len());
+        let highlighted: String = preview
+            .encode_utf16()
+            .skip((preview_column - 1) as usize)
+            .take(6)
+            .map(|unit| char::from_u32(unit as u32).unwrap())
+            .collect();
+        assert_eq!(highlighted, "needle");
     }
 }

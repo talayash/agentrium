@@ -19,6 +19,7 @@ interface SearchMatch {
   column: number;
   line_text: string;
   match_length: number;
+  preview_column: number;
 }
 
 interface FileSearchResult {
@@ -69,6 +70,7 @@ function HighlightedLine({
 export function GlobalSearchModal() {
   const closeGlobalSearch = useAppStore((s) => s.closeGlobalSearch);
   const openFileTab = useAppStore((s) => s.openFileTab);
+  const requestEditorNavigation = useAppStore((s) => s.requestEditorNavigation);
   const pinnedRepoPath = useAppStore((s) => s.pinnedRepoPath);
   const activeCwd = useTerminalStore((s) => {
     const id = s.activeTerminalId;
@@ -160,15 +162,16 @@ export function GlobalSearchModal() {
   }, [flatNav, selected]);
 
   const openMatch = useCallback(
-    async (file: FileSearchResult) => {
+    async (file: FileSearchResult, match?: SearchMatch) => {
       try {
         await openFileTab(file.file_path);
+        if (match) requestEditorNavigation(file.file_path, match.line, match.column);
         closeGlobalSearch();
       } catch {
         /* errors surface via the file tab itself */
       }
     },
-    [openFileTab, closeGlobalSearch],
+    [openFileTab, requestEditorNavigation, closeGlobalSearch],
   );
 
   const toggleFile = (filePath: string) => {
@@ -207,7 +210,7 @@ export function GlobalSearchModal() {
     } else if (e.key === 'Enter') {
       e.preventDefault();
       const file = results[selected.fileIdx];
-      if (file) openMatch(file);
+      if (file) openMatch(file, selected.matchIdx >= 0 ? file.matches[selected.matchIdx] : undefined);
     }
   };
 
@@ -371,7 +374,7 @@ export function GlobalSearchModal() {
                             data-nav={`${fileIdx}-${matchIdx}`}
                             onClick={() => {
                               setSelected({ fileIdx, matchIdx });
-                              openMatch(file);
+                              openMatch(file, m);
                             }}
                             onMouseEnter={() => setSelected({ fileIdx, matchIdx })}
                             className={`w-full flex items-baseline gap-2 px-3 py-0.5 text-left transition-colors ${
@@ -384,7 +387,7 @@ export function GlobalSearchModal() {
                             <span className="text-[12px] font-mono truncate flex-1 min-w-0">
                               <HighlightedLine
                                 text={m.line_text}
-                                column={m.column}
+                                column={m.preview_column}
                                 matchLength={m.match_length}
                               />
                             </span>

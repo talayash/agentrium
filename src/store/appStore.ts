@@ -46,6 +46,13 @@ export interface FileTabState {
   relativePath: string | null;
 }
 
+export interface EditorNavigationTarget {
+  path: string;
+  line: number;
+  column: number;
+  requestId: number;
+}
+
 interface AppState {
   sidebarOpen: boolean;
   sidebarCollapsed: boolean;  // widths driven by --w-rail / --w-panel tokens
@@ -170,6 +177,8 @@ interface AppState {
   // File tabs (Monaco editor tabs living next to terminal tabs)
   openFiles: FileTabState[];
   activeFilePath: string | null;
+  editorNavigationTarget: EditorNavigationTarget | null;
+  editorNavigationSequence: number;
 
   // Sidebar layout
   explorerHeightRatio: number; // 0.15..0.85, portion of sidebar height reserved for Explorer
@@ -349,6 +358,8 @@ interface AppState {
 
   setPinnedRepoPath: (path: string | null) => void;
   openFileTab: (path: string) => Promise<void>;
+  requestEditorNavigation: (path: string, line: number, column: number) => void;
+  clearEditorNavigation: (requestId: number) => void;
   openDiffTab: (path: string, repoRoot: string, relativePath: string) => Promise<void>;
   closeFileTab: (path: string) => void;
   setActiveFilePath: (path: string | null) => void;
@@ -583,6 +594,8 @@ export const useAppStore = create<AppState>()(
       // File tabs
       openFiles: [],
       activeFilePath: null,
+      editorNavigationTarget: null,
+      editorNavigationSequence: 0,
 
       // Sidebar explorer ratio (default: explorer takes 45% of sidebar height)
       explorerHeightRatio: 0.45,
@@ -789,6 +802,25 @@ export const useAppStore = create<AppState>()(
       toggleGlobalSearch: () => set((state) => ({ globalSearchOpen: !state.globalSearchOpen })),
 
       setActiveFilePath: (path) => set({ activeFilePath: path }),
+
+      requestEditorNavigation: (path, line, column) => set((state) => {
+        const requestId = state.editorNavigationSequence + 1;
+        return {
+          editorNavigationSequence: requestId,
+          editorNavigationTarget: {
+            path,
+            line: Math.max(1, Math.floor(line)),
+            column: Math.max(1, Math.floor(column)),
+            requestId,
+          },
+        };
+      }),
+
+      clearEditorNavigation: (requestId) => set((state) => (
+        state.editorNavigationTarget?.requestId === requestId
+          ? { editorNavigationTarget: null }
+          : {}
+      )),
 
       setFileTabContent: (path, content) => set((state) => ({
         openFiles: state.openFiles.map((t) =>

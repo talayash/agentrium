@@ -46,6 +46,8 @@ function resetAppStore() {
     pinnedRepoPath: null,
     openFiles: [],
     activeFilePath: null,
+    editorNavigationTarget: null,
+    editorNavigationSequence: 0,
     explorerHeightRatio: 0.45,
     toolsCollapsed: true,
     repositoriesHeightRatio: 0.35,
@@ -341,6 +343,26 @@ describe('appStore - closeFileTab focus rules', () => {
     seedFiles(['a', 'b'], 'a');
     useAppStore.getState().closeFileTab('b');
     expect(useAppStore.getState().activeFilePath).toBe('a');
+  });
+});
+
+describe('appStore - editor navigation', () => {
+  it('normalizes coordinates and ignores stale clear requests', () => {
+    const store = useAppStore.getState();
+    store.requestEditorNavigation('a.ts', 0, -4);
+    const first = useAppStore.getState().editorNavigationTarget!;
+    expect(first).toMatchObject({ path: 'a.ts', line: 1, column: 1 });
+
+    useAppStore.getState().requestEditorNavigation('b.ts', 12.8, 7.9);
+    const second = useAppStore.getState().editorNavigationTarget!;
+    expect(second).toMatchObject({ path: 'b.ts', line: 12, column: 7 });
+    expect(second.requestId).toBeGreaterThan(first.requestId);
+
+    useAppStore.getState().clearEditorNavigation(first.requestId);
+    expect(useAppStore.getState().editorNavigationTarget).toEqual(second);
+
+    useAppStore.getState().clearEditorNavigation(second.requestId);
+    expect(useAppStore.getState().editorNavigationTarget).toBeNull();
   });
 });
 

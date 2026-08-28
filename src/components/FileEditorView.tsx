@@ -22,6 +22,8 @@ export function FileEditorView({ path }: FileEditorViewProps) {
   const setFileTabMode = useAppStore((s) => s.setFileTabMode);
   const saveFileTab = useAppStore((s) => s.saveFileTab);
   const reloadFileTab = useAppStore((s) => s.reloadFileTab);
+  const navigationTarget = useAppStore((s) => s.editorNavigationTarget);
+  const clearEditorNavigation = useAppStore((s) => s.clearEditorNavigation);
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const diffEditorRef = useRef<editor.IStandaloneDiffEditor | null>(null);
 
@@ -31,6 +33,22 @@ export function FileEditorView({ path }: FileEditorViewProps) {
   // monaco.Uri.parse() treat 'C:' as a scheme and percent-encode the
   // backslashes, so LSP diagnostics (matched via pathKey) would never attach.
   const modelUri = useMemo(() => pathToFileUri(path), [path]);
+
+  const applyNavigation = (ed: editor.IStandaloneCodeEditor) => {
+    if (!navigationTarget || navigationTarget.path !== path) return;
+    const position = { lineNumber: navigationTarget.line, column: navigationTarget.column };
+    ed.setPosition(position);
+    ed.revealPositionInCenter(position);
+    ed.focus();
+    clearEditorNavigation(navigationTarget.requestId);
+  };
+
+  useEffect(() => {
+    const ed = tab?.mode === 'diff'
+      ? diffEditorRef.current?.getModifiedEditor()
+      : editorRef.current;
+    if (ed) applyNavigation(ed);
+  }, [navigationTarget, path, tab?.mode]);
 
   // Ctrl/Cmd+S saves the active file. Only active when this path is the
   // currently-focused file tab (the parent only mounts us for the active tab).
@@ -52,6 +70,7 @@ export function FileEditorView({ path }: FileEditorViewProps) {
   const onMount: OnMount = (ed) => {
     editorRef.current = ed;
     ed.focus();
+    applyNavigation(ed);
   };
 
   const onDiffMount: DiffOnMount = (ed) => {
@@ -63,6 +82,7 @@ export function FileEditorView({ path }: FileEditorViewProps) {
       setFileTabContent(path, modified.getValue());
     });
     modified.focus();
+    applyNavigation(modified);
   };
 
   if (!tab) return null;
