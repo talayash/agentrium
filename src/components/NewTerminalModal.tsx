@@ -32,6 +32,10 @@ interface ConfigProfile {
   is_default: boolean;
   agent: AgentKind;
   preview?: PreviewProfile | null;
+  // Per-agent args map. When the modal's selectedAgent switches, the args
+  // textarea should reflect that agent's stored entry from this profile
+  // (falling back to claude_args if none is stored - e.g. legacy rows).
+  agent_args?: Partial<Record<AgentKind, string[]>>;
 }
 
 const TAG_COLORS = [
@@ -99,16 +103,31 @@ export function NewTerminalModal() {
     // Codex/Cursor shouldn't snap back to Claude. The default profile's
     // agent is only used as the initial seed (see loadProfiles).
     //
-    // For args: profile args win when a profile is selected. When "No
-    // Profile" is selected, args = the CURRENT agent's defaults - so
-    // switching between Claude/Codex/Cursor/Gemini (with no profile)
-    // reflects the right agent-specific starter set. `selectedAgent` is
-    // in the deps for this reason.
+    // For args: a profile now stores a distinct list per agent
+    // (agent_args). We resolve them in priority order:
+    //   1. profile.agent_args[selectedAgent]  - what the user saved for
+    //      this specific agent inside this profile
+    //   2. profile.claude_args (only when selectedAgent matches the
+    //      profile's default agent) - legacy fallback for pre-multi-agent
+    //      profile rows that only have the flat claude_args field
+    //   3. defaultAgentArgs[selectedAgent] - the global per-agent starter
+    // Without step 1 the args field looked "stuck" whenever the user
+    // switched agent while a profile was selected (bug: same list for
+    // every agent).
     if (selectedProfileId) {
       const profile = profiles.find(p => p.id === selectedProfileId);
       if (profile) {
+        const savedForAgent = profile.agent_args?.[selectedAgent];
+        const legacyForDefault =
+          selectedAgent === profile.agent && profile.claude_args.length > 0
+            ? profile.claude_args
+            : undefined;
+        const resolved =
+          savedForAgent && savedForAgent.length > 0
+            ? savedForAgent
+            : legacyForDefault ?? defaultAgentArgs[selectedAgent];
         setWorkingDirectory(profile.working_directory || defaultDirectory);
-        setClaudeArgs(profile.claude_args.length > 0 ? profile.claude_args : defaultAgentArgs[selectedAgent]);
+        setClaudeArgs(resolved);
         setEnvVars(profile.env_vars || {});
       }
     } else {

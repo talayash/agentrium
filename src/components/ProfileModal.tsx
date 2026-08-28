@@ -24,11 +24,19 @@ interface ConfigProfile {
   name: string;
   description: string | null;
   working_directory: string;
+  // Legacy single args list. The backend mirrors agent_args[profile.agent]
+  // into this field on save, so any read that hasn't been updated still
+  // gets the args a launch would actually use.
   claude_args: string[];
   env_vars: Record<string, string>;
   is_default: boolean;
   agent: AgentKind;
   preview?: PreviewProfile | null;
+  // Per-agent args map. When the user picks Claude, we show/edit
+  // agent_args.claude; picking Codex switches to agent_args.codex; etc.
+  // A missing entry falls back to claude_args (for profiles saved before
+  // this field existed).
+  agent_args?: Partial<Record<AgentKind, string[]>>;
 }
 
 export function ProfileModal() {
@@ -68,6 +76,7 @@ export function ProfileModal() {
       env_vars: {},
       is_default: false,
       agent: 'claude',
+      agent_args: { claude: [], codex: [], cursor: [], gemini: [] },
     });
   };
 
@@ -190,7 +199,20 @@ export function ProfileModal() {
                   <label className="block text-text-secondary text-[12px] mb-1.5">Agent</label>
                   <AgentPicker
                     value={selectedProfile.agent}
-                    onChange={(kind) => setSelectedProfile({ ...selectedProfile, agent: kind })}
+                    onChange={(kind) => {
+                      // Mirror the newly-shown agent's stored args into
+                      // claude_args so a save-without-edit writes the right
+                      // list. When the target agent has no entry yet, show
+                      // empty - NOT the previous agent's list. Falling back
+                      // to claude_args here caused the switched-to agent to
+                      // inherit whatever the previous agent had staged.
+                      const nextArgs = selectedProfile.agent_args?.[kind] ?? [];
+                      setSelectedProfile({
+                        ...selectedProfile,
+                        agent: kind,
+                        claude_args: nextArgs,
+                      });
+                    }}
                   />
                   <p className="text-text-tertiary text-[11px] mt-1">
                     Runs as <code className="text-text-secondary">{specFor(selectedProfile.agent).binary} ...</code>
@@ -239,13 +261,32 @@ export function ProfileModal() {
                 </div>
 
                 <div className="border-t border-[var(--ij-divider-soft)] pt-4">
-                  <label className="block text-text-secondary text-[12px] mb-1.5">{specFor(selectedProfile.agent).displayName} Arguments (one per line)</label>
+                  <label className="block text-text-secondary text-[12px] mb-1.5">
+                    {specFor(selectedProfile.agent).displayName} Arguments (one per line)
+                  </label>
                   <textarea
-                    value={selectedProfile.claude_args.join('\n')}
-                    onChange={(e) => setSelectedProfile({ ...selectedProfile, claude_args: e.target.value.split('\n').filter(Boolean) })}
+                    value={(selectedProfile.agent_args?.[selectedProfile.agent] ?? []).join('\n')}
+                    onChange={(e) => {
+                      const nextArgs = e.target.value.split('\n').filter(Boolean);
+                      const nextAgentArgs = {
+                        ...(selectedProfile.agent_args ?? {}),
+                        [selectedProfile.agent]: nextArgs,
+                      };
+                      // Mirror the currently-edited agent's args into
+                      // claude_args so the legacy field stays consistent
+                      // client-side; the backend also enforces this on save.
+                      setSelectedProfile({
+                        ...selectedProfile,
+                        agent_args: nextAgentArgs,
+                        claude_args: nextArgs,
+                      });
+                    }}
                     className="w-full bg-bg-primary ring-1 ring-border-light rounded-md py-2 px-3 text-text-primary text-[13px] focus:outline-none focus:ring-accent-primary font-mono h-24 resize-none transition-colors"
                     placeholder="--model opus&#10;--verbose"
                   />
+                  <p className="text-text-tertiary text-[11px] mt-1">
+                    Switch the Agent above to edit args for another agent - each agent keeps its own list.
+                  </p>
                 </div>
 
                 <div className="border-t border-[var(--ij-divider-soft)] pt-4">

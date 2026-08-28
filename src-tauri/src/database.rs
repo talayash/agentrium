@@ -156,7 +156,14 @@ impl Database {
         // profile has no preview config, matching the Option<PreviewProfile>
         // shape in Rust. `agent` stores the agent kind as a lowercase string;
         // the NOT NULL DEFAULT 'claude' ensures existing rows get a valid value.
-        for column in ["preview_json TEXT", "agent TEXT NOT NULL DEFAULT 'claude'"] {
+        for column in [
+            "preview_json TEXT",
+            "agent TEXT NOT NULL DEFAULT 'claude'",
+            // Per-agent args (multi-agent profiles). Nullable JSON so a row
+            // written before this column existed reads as NULL; the loader
+            // then migrates in-memory by seeding {profile.agent: claude_args}.
+            "agent_args_json TEXT",
+        ] {
             let sql = format!("ALTER TABLE profiles ADD COLUMN {}", column);
             if let Err(e) = conn.execute(&sql, []) {
                 if !e.to_string().contains("duplicate column name") {
@@ -182,7 +189,17 @@ impl Database {
         if profile.name.is_empty() || profile.name.len() > 255 {
             return Err("Profile name must be 1-255 characters".to_string());
         }
-        let claude_args_json = serde_json::to_string(&profile.claude_args)
+        // Keep the legacy `claude_args` column in sync with the currently
+        // selected agent's per-agent list, so any consumer that still reads
+        // only `claude_args` sees the args a launch would actually use.
+        // Falls back to whatever the caller sent when agent_args has no
+        // entry for the default agent (fresh profile / partial payload).
+        let effective_claude_args: Vec<String> = profile
+            .agent_args
+            .get(&profile.agent)
+            .cloned()
+            .unwrap_or_else(|| profile.claude_args.clone());
+        let claude_args_json = serde_json::to_string(&effective_claude_args)
             .map_err(|e| format!("Failed to serialize claude_args: {}", e))?;
         let env_vars_json = serde_json::to_string(&profile.env_vars)
             .map_err(|e| format!("Failed to serialize env_vars: {}", e))?;
@@ -196,9 +213,11 @@ impl Database {
             ),
             None => None,
         };
+        let agent_args_json = serde_json::to_string(&profile.agent_args)
+            .map_err(|e| format!("Failed to serialize agent_args: {}", e))?;
         self.conn.execute(
-            "INSERT OR REPLACE INTO profiles (id, name, description, working_directory, claude_args, env_vars, is_default, preview_json, agent)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            "INSERT OR REPLACE INTO profiles (id, name, description, working_directory, claude_args, env_vars, is_default, preview_json, agent, agent_args_json)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             params![
                 profile.id,
                 profile.name,
@@ -209,6 +228,7 @@ impl Database {
                 profile.is_default as i32,
                 preview_json,
                 profile.agent.as_str(),
+                agent_args_json,
             ],
         ).map_err(|e| e.to_string())?;
         Ok(())
@@ -216,7 +236,7 @@ impl Database {
 
     pub fn get_profiles(&self) -> Result<Vec<ConfigProfile>, String> {
         let mut stmt = self.conn
-            .prepare("SELECT id, name, description, working_directory, claude_args, env_vars, is_default, preview_json, agent FROM profiles")
+            .prepare("SELECT id, name, description, working_directory, claude_args, env_vars, is_default, preview_json, agent, agent_args_json FROM profiles")
             .map_err(|e| e.to_string())?;
 
         let profiles = stmt.query_map([], |row| {
@@ -228,7 +248,7 @@ impl Database {
             // vars - a silent behaviour change that's hard to diagnose. Log it
             // (with the profile identity) before falling back, rather than
             // swallowing it, so it shows up in stderr/telemetry.
-            let claude_args = serde_json::from_str(&args_raw).unwrap_or_else(|e| {
+            let claude_args: Vec<String> = serde_json::from_str(&args_raw).unwrap_or_else(|e| {
                 eprintln!("[profiles] corrupt claude_args for '{}' ({}): {}", name, id, e);
                 Default::default()
             });
@@ -248,6 +268,27 @@ impl Database {
                 None => None,
             };
             let agent_raw: String = row.get(8)?;
+            let agent = crate::config::AgentKind::from_str_lossy(&agent_raw);
+            // agent_args_json is nullable. Rows written before this column
+            // existed read as NULL - migrate in-memory by seeding a single
+            // entry {profile.agent: claude_args} so per-agent lookups return
+            // the legacy list under the profile's current agent, and other
+            // agents fall through to args_for()'s claude_args fallback.
+            let agent_args_raw: Option<String> = row.get(9)?;
+            let agent_args: std::collections::HashMap<crate::config::AgentKind, Vec<String>> =
+                match agent_args_raw {
+                    Some(raw) => serde_json::from_str(&raw).unwrap_or_else(|e| {
+                        eprintln!("[profiles] corrupt agent_args for '{}' ({}): {}", name, id, e);
+                        let mut m = std::collections::HashMap::new();
+                        m.insert(agent, claude_args.clone());
+                        m
+                    }),
+                    None => {
+                        let mut m = std::collections::HashMap::new();
+                        m.insert(agent, claude_args.clone());
+                        m
+                    }
+                };
             Ok(ConfigProfile {
                 id,
                 name,
@@ -256,8 +297,9 @@ impl Database {
                 claude_args,
                 env_vars,
                 is_default: row.get::<_, i32>(6)? != 0,
-                agent: crate::config::AgentKind::from_str_lossy(&agent_raw),
+                agent,
                 preview,
+                agent_args,
             })
         }).map_err(|e| e.to_string())?;
 
@@ -541,6 +583,7 @@ mod tests {
             is_default: false,
             agent: crate::config::AgentKind::default(),
             preview: None,
+            agent_args: HashMap::new(),
         }
     }
 
@@ -802,6 +845,75 @@ mod tests {
         let loaded = db.get_profiles().unwrap();
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded[0].agent, crate::config::AgentKind::Codex);
+    }
+
+    #[test]
+    fn profile_round_trips_per_agent_args_across_all_kinds() {
+        let db = Database::new_in_memory().unwrap();
+        let mut p = make_profile("p-multi", "multi");
+        p.agent = crate::config::AgentKind::Claude;
+        p.agent_args.insert(crate::config::AgentKind::Claude, vec!["--model".into(), "opus".into()]);
+        p.agent_args.insert(crate::config::AgentKind::Codex, vec!["--exec".into()]);
+        p.agent_args.insert(crate::config::AgentKind::Cursor, vec!["--print".into()]);
+        db.save_profile(&p).unwrap();
+
+        let loaded = db.get_profiles().unwrap();
+        assert_eq!(loaded.len(), 1);
+        let got = &loaded[0];
+        assert_eq!(got.agent_args.get(&crate::config::AgentKind::Claude).unwrap(), &vec!["--model".to_string(), "opus".to_string()]);
+        assert_eq!(got.agent_args.get(&crate::config::AgentKind::Codex).unwrap(), &vec!["--exec".to_string()]);
+        assert_eq!(got.agent_args.get(&crate::config::AgentKind::Cursor).unwrap(), &vec!["--print".to_string()]);
+        assert!(!got.agent_args.contains_key(&crate::config::AgentKind::Gemini));
+    }
+
+    #[test]
+    fn save_profile_mirrors_agent_args_into_claude_args_column() {
+        // Legacy consumers still reading claude_args must see the args for
+        // the profile's default agent, not whatever stale value the caller
+        // sent in the ConfigProfile.claude_args field.
+        let db = Database::new_in_memory().unwrap();
+        let mut p = make_profile("p-mirror", "mirror");
+        p.agent = crate::config::AgentKind::Codex;
+        p.claude_args = vec!["stale-from-old-client".into()];
+        p.agent_args.insert(crate::config::AgentKind::Codex, vec!["--codex-real".into()]);
+        p.agent_args.insert(crate::config::AgentKind::Claude, vec!["--claude-real".into()]);
+        db.save_profile(&p).unwrap();
+
+        let loaded = db.get_profiles().unwrap();
+        assert_eq!(loaded[0].claude_args, vec!["--codex-real".to_string()]);
+    }
+
+    #[test]
+    fn profile_without_agent_args_column_migrates_from_claude_args() {
+        // Simulate a row saved before the agent_args_json column was ever
+        // written. We can't literally test the pre-migration state without
+        // the column existing, but we CAN force the column to NULL to model
+        // "row from before this feature shipped".
+        let db = Database::new_in_memory().unwrap();
+        let mut p = make_profile("p-legacy", "legacy");
+        p.agent = crate::config::AgentKind::Codex;
+        p.claude_args = vec!["--legacy-codex".into()];
+        db.save_profile(&p).unwrap();
+        db.conn()
+            .execute(
+                "UPDATE profiles SET agent_args_json = NULL WHERE id = ?1",
+                rusqlite::params![p.id],
+            )
+            .unwrap();
+
+        let loaded = db.get_profiles().unwrap();
+        // In-memory migration puts claude_args under the profile's agent so
+        // args_for(Codex) returns the legacy list.
+        assert_eq!(
+            loaded[0].agent_args.get(&crate::config::AgentKind::Codex).unwrap(),
+            &vec!["--legacy-codex".to_string()]
+        );
+        // Other agents fall through to args_for()'s claude_args fallback.
+        assert!(!loaded[0].agent_args.contains_key(&crate::config::AgentKind::Claude));
+        assert_eq!(
+            loaded[0].args_for(crate::config::AgentKind::Claude),
+            vec!["--legacy-codex".to_string()]
+        );
     }
 
     #[test]

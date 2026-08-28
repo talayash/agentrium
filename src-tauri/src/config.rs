@@ -4,7 +4,7 @@ use std::collections::HashMap;
 /// The coding-agent CLI a terminal should launch. `Default` is `Claude` so
 /// profile rows written before this field existed migrate transparently on
 /// their next deserialize.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum AgentKind {
     #[default]
@@ -55,9 +55,10 @@ pub struct ConfigProfile {
     pub name: String,
     pub description: Option<String>,
     pub working_directory: String,
-    // Field is named `claude_args` for JSON back-compat with existing rows.
-    // Semantically it's "agent args" - passed to whichever agent binary this
-    // profile launches. Rename is deferred to its own PR.
+    // Legacy single-agent args list. Kept for wire back-compat and so any
+    // caller that hasn't been updated to the per-agent map still gets a
+    // usable value. On save we mirror `agent_args[profile.agent]` here so
+    // it always represents the currently-selected agent's args.
     pub claude_args: Vec<String>,
     pub env_vars: HashMap<String, String>,
     pub is_default: bool,
@@ -65,6 +66,25 @@ pub struct ConfigProfile {
     pub agent: AgentKind,
     #[serde(default)]
     pub preview: Option<PreviewProfile>,
+    /// Per-agent args: the same profile can hold a distinct arg list for
+    /// each supported agent (Claude/Codex/Cursor/Gemini). Consumers should
+    /// prefer `args_for(kind)` over indexing directly - it falls back to
+    /// `claude_args` when a kind isn't present, which preserves behavior
+    /// for profiles saved before this field existed.
+    #[serde(default)]
+    pub agent_args: HashMap<AgentKind, Vec<String>>,
+}
+
+impl ConfigProfile {
+    /// Args to pass when launching this profile with `kind`. Returns the
+    /// per-agent list if set; otherwise falls back to the legacy
+    /// `claude_args` (which itself mirrors the profile's default agent).
+    pub fn args_for(&self, kind: AgentKind) -> Vec<String> {
+        self.agent_args
+            .get(&kind)
+            .cloned()
+            .unwrap_or_else(|| self.claude_args.clone())
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -325,6 +345,7 @@ mod tests {
             is_default: true,
             agent: AgentKind::default(),
             preview: None,
+            agent_args: HashMap::new(),
         }
     }
 
@@ -355,6 +376,7 @@ mod tests {
             is_default: false,
             agent: AgentKind::default(),
             preview: None,
+            agent_args: HashMap::new(),
         };
         let json = serde_json::to_string(&p).unwrap();
         let back: ConfigProfile = serde_json::from_str(&json).unwrap();
@@ -471,6 +493,59 @@ mod tests {
         assert_eq!(AgentKind::Codex.as_str(), "codex");
         assert_eq!(AgentKind::Cursor.as_str(), "cursor");
         assert_eq!(AgentKind::Gemini.as_str(), "gemini");
+    }
+
+    #[test]
+    fn agent_args_round_trip_preserves_per_agent_lists() {
+        let mut p = sample_profile();
+        let mut map: HashMap<AgentKind, Vec<String>> = HashMap::new();
+        map.insert(AgentKind::Claude, vec!["--model".into(), "opus".into()]);
+        map.insert(AgentKind::Codex, vec!["--exec".into()]);
+        p.agent_args = map;
+        let json = serde_json::to_string(&p).unwrap();
+        let back: ConfigProfile = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.agent_args.get(&AgentKind::Claude).unwrap(), &vec!["--model".to_string(), "opus".to_string()]);
+        assert_eq!(back.agent_args.get(&AgentKind::Codex).unwrap(), &vec!["--exec".to_string()]);
+        assert!(!back.agent_args.contains_key(&AgentKind::Cursor));
+    }
+
+    #[test]
+    fn missing_agent_args_field_deserializes_as_empty_map() {
+        // Legacy profile JSON (pre-multi-agent-args) must still deserialize
+        // without agent_args, and the field must default to an empty map so
+        // args_for() falls back to claude_args.
+        let json = r#"{
+            "id": "p1",
+            "name": "legacy",
+            "description": null,
+            "working_directory": "/tmp",
+            "claude_args": ["--model", "opus"],
+            "env_vars": {},
+            "is_default": false
+        }"#;
+        let cfg: ConfigProfile = serde_json::from_str(json).unwrap();
+        assert!(cfg.agent_args.is_empty());
+        assert_eq!(
+            cfg.args_for(AgentKind::Claude),
+            vec!["--model".to_string(), "opus".to_string()]
+        );
+    }
+
+    #[test]
+    fn args_for_returns_per_agent_list_when_present() {
+        let mut p = sample_profile();
+        p.agent_args.insert(AgentKind::Codex, vec!["--codex-flag".into()]);
+        assert_eq!(p.args_for(AgentKind::Codex), vec!["--codex-flag".to_string()]);
+    }
+
+    #[test]
+    fn args_for_falls_back_to_claude_args_when_kind_missing() {
+        // No per-agent entry for Gemini -> caller sees the legacy list. This
+        // is what preserves behavior for profiles that predate agent_args.
+        let mut p = sample_profile();
+        p.claude_args = vec!["--legacy".into()];
+        p.agent_args.clear();
+        assert_eq!(p.args_for(AgentKind::Gemini), vec!["--legacy".to_string()]);
     }
 
     #[test]
