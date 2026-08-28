@@ -68,14 +68,14 @@ pub fn build_agent_command(agent: crate::config::AgentKind, args: &[String]) -> 
 /// uses `codex resume <id> ...`). `leading` goes after the subcommand
 /// (if any) and before the user's persisted args.
 #[derive(Debug, Clone, Default)]
-pub struct ResumeInjection {
+pub(crate) struct ResumeInjection {
     pub subcommand: Option<String>,
     pub leading: Vec<String>,
 }
 
 /// Compute the resume/continue argv injection for `agent`. Returns an
 /// empty injection when neither a session id nor `continue_recent` is set.
-pub fn resume_flags_for(
+pub(crate) fn resume_flags_for(
     agent: crate::config::AgentKind,
     resume_id: Option<&str>,
     continue_recent: bool,
@@ -1133,8 +1133,29 @@ mod tests {
     }
 
     #[test]
-    fn no_flags_when_neither_resume_nor_continue() {
+    fn no_flags_when_neither_resume_nor_continue_codex() {
         let out = super::resume_flags_for(AgentKind::Codex, None, false);
+        assert!(out.leading.is_empty());
+        assert!(out.subcommand.is_none());
+    }
+
+    #[test]
+    fn no_flags_when_neither_resume_nor_continue_claude() {
+        let out = super::resume_flags_for(AgentKind::Claude, None, false);
+        assert!(out.leading.is_empty());
+        assert!(out.subcommand.is_none());
+    }
+
+    #[test]
+    fn no_flags_when_neither_resume_nor_continue_cursor() {
+        let out = super::resume_flags_for(AgentKind::Cursor, None, false);
+        assert!(out.leading.is_empty());
+        assert!(out.subcommand.is_none());
+    }
+
+    #[test]
+    fn no_flags_when_neither_resume_nor_continue_antigravity() {
+        let out = super::resume_flags_for(AgentKind::Antigravity, None, false);
         assert!(out.leading.is_empty());
         assert!(out.subcommand.is_none());
     }
