@@ -14,20 +14,16 @@ import { toast } from '../store/toastStore';
 import { PanelHeader } from './ui/PanelHeader';
 import { ListRow } from './ui/ListRow';
 import { EmptyState } from './ui/EmptyState';
+import { listAgentSessions, type AgentSessionInfo } from '../lib/agentSessions';
+import type { AgentKind } from '../lib/agents';
 
 const isMac = navigator.platform.toUpperCase().includes('MAC');
 const REVEAL_LABEL = isMac ? 'Reveal in Finder' : 'Show in File Explorer';
 
-interface ClaudeSessionInfo {
-  id: string;
-  modified_at: string;
-  preview: string | null;
-}
-
 interface ContextMenuState {
   x: number;
   y: number;
-  session: ClaudeSessionInfo;
+  session: AgentSessionInfo;
 }
 
 function basename(p: string): string {
@@ -69,11 +65,12 @@ export function SessionsPanel() {
   const activeTerminal = activeTerminalId ? terminals.get(activeTerminalId) : null;
   const activeCwd = activeTerminal?.config.working_directory ?? null;
   const activeSessionId = activeTerminal?.config.claude_session_id ?? null;
+  const activeAgent: AgentKind = activeTerminal?.config.agent ?? 'claude';
 
   // The Explorer's pinned repo wins, mirroring FileTreePanel.
   const cwd = pinnedRepoPath ?? activeCwd;
 
-  const [sessions, setSessions] = useState<ClaudeSessionInfo[]>([]);
+  const [sessions, setSessions] = useState<AgentSessionInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
@@ -87,7 +84,7 @@ export function SessionsPanel() {
     setLoading(true);
     setError(null);
     try {
-      const data = await invoke<ClaudeSessionInfo[]>('list_claude_sessions', { cwd });
+      const data = await listAgentSessions(activeAgent, cwd);
       setSessions(data);
     } catch (err) {
       setError(typeof err === 'string' ? err : 'Failed to list sessions');
@@ -95,7 +92,7 @@ export function SessionsPanel() {
     } finally {
       setLoading(false);
     }
-  }, [cwd]);
+  }, [cwd, activeAgent]);
 
   useEffect(() => {
     if (collapsed) return;
@@ -121,7 +118,7 @@ export function SessionsPanel() {
     };
   }, [contextMenu]);
 
-  const openInNewTab = useCallback(async (session: ClaudeSessionInfo) => {
+  const openInNewTab = useCallback(async (session: AgentSessionInfo) => {
     if (!cwd) return;
     const label = `Resumed ${session.id.slice(0, 8)}`;
     try {
@@ -140,7 +137,7 @@ export function SessionsPanel() {
     }
   }, [cwd, createTerminal]);
 
-  const resumeInCurrentTerminal = useCallback(async (session: ClaudeSessionInfo) => {
+  const resumeInCurrentTerminal = useCallback(async (session: AgentSessionInfo) => {
     if (!cwd || !activeTerminalId || !activeTerminal) return;
     const ok = window.confirm(
       `Replace the current Claude in "${activeTerminal.config.nickname || activeTerminal.config.label}" with session ${session.id.slice(0, 8)}?\n\n` +
@@ -167,8 +164,12 @@ export function SessionsPanel() {
     }
   }, [cwd, activeTerminalId, activeTerminal, closeTerminal, createTerminal]);
 
-  const revealJsonl = useCallback(async (session: ClaudeSessionInfo) => {
+  const revealJsonl = useCallback(async (session: AgentSessionInfo) => {
     if (!cwd) return;
+    if (activeAgent !== 'claude') {
+      toast.error('Reveal not supported', 'File-manager reveal is only implemented for Claude sessions today.');
+      return;
+    }
     try {
       const home = await homeDir();
       const sep = home.includes('\\') ? '\\' : '/';
@@ -177,9 +178,9 @@ export function SessionsPanel() {
     } catch (err) {
       toast.error('Reveal failed', String(err));
     }
-  }, [cwd]);
+  }, [cwd, activeAgent]);
 
-  const openContextMenu = useCallback((e: React.MouseEvent, session: ClaudeSessionInfo) => {
+  const openContextMenu = useCallback((e: React.MouseEvent, session: AgentSessionInfo) => {
     e.preventDefault();
     e.stopPropagation();
     const margin = 4;
@@ -238,12 +239,21 @@ export function SessionsPanel() {
                 <div className="px-3 py-2 text-red-400 text-[11px]">{error}</div>
               )}
               {!error && sessions.length === 0 && !loading && (
-                <EmptyState
-                  icon={<MessageSquare size={20} strokeWidth={1.75} />}
-                  title="No sessions yet"
-                  description="Resumable Claude sessions in this folder will appear here."
-                  compact
-                />
+                activeAgent === 'antigravity' ? (
+                  <EmptyState
+                    icon={<MessageSquare size={20} strokeWidth={1.75} />}
+                    title="No local session index"
+                    description="Antigravity conversations are server-side. Use --continue when you open a new terminal to resume the most recent."
+                    compact
+                  />
+                ) : (
+                  <EmptyState
+                    icon={<MessageSquare size={20} strokeWidth={1.75} />}
+                    title="No sessions yet"
+                    description="Resumable sessions in this folder will appear here."
+                    compact
+                  />
+                )
               )}
               {sessions.map((s) => {
                 const isActive = activeSessionId === s.id;
@@ -267,6 +277,7 @@ export function SessionsPanel() {
         <SessionContextMenu
           state={contextMenu}
           activeSessionId={activeSessionId}
+          activeAgent={activeAgent}
           hasActiveTerminal={!!activeTerminalId}
           onOpenInNewTab={openInNewTab}
           onResumeInCurrent={resumeInCurrentTerminal}
@@ -279,10 +290,10 @@ export function SessionsPanel() {
 }
 
 interface SessionRowProps {
-  session: ClaudeSessionInfo;
+  session: AgentSessionInfo;
   active: boolean;
-  onOpenInNewTab: (s: ClaudeSessionInfo) => void;
-  onContextMenu: (e: React.MouseEvent, s: ClaudeSessionInfo) => void;
+  onOpenInNewTab: (s: AgentSessionInfo) => void;
+  onContextMenu: (e: React.MouseEvent, s: AgentSessionInfo) => void;
 }
 
 function SessionRow({ session, active, onOpenInNewTab, onContextMenu }: SessionRowProps) {
@@ -319,16 +330,18 @@ function SessionRow({ session, active, onOpenInNewTab, onContextMenu }: SessionR
 interface SessionContextMenuProps {
   state: ContextMenuState;
   activeSessionId: string | null;
+  activeAgent: AgentKind;
   hasActiveTerminal: boolean;
-  onOpenInNewTab: (s: ClaudeSessionInfo) => void;
-  onResumeInCurrent: (s: ClaudeSessionInfo) => void;
-  onReveal: (s: ClaudeSessionInfo) => void;
+  onOpenInNewTab: (s: AgentSessionInfo) => void;
+  onResumeInCurrent: (s: AgentSessionInfo) => void;
+  onReveal: (s: AgentSessionInfo) => void;
   onClose: () => void;
 }
 
 function SessionContextMenu({
   state,
   activeSessionId,
+  activeAgent,
   hasActiveTerminal,
   onOpenInNewTab,
   onResumeInCurrent,
@@ -360,6 +373,7 @@ function SessionContextMenu({
       <MenuItem
         icon={<FolderOpen size={13} strokeWidth={1.75} />}
         label={REVEAL_LABEL}
+        disabled={activeAgent !== 'claude'}
         onClick={() => { onClose(); onReveal(session); }}
       />
     </div>
