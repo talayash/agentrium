@@ -1,5 +1,13 @@
 [
   {
+    "version": "1.32.1",
+    "date": "2026-08-28",
+    "features": [
+      { "title": "Improved reliability", "description": "Fixed silent-failure paths surfaced by an internal bug audit." },
+      { "title": "Cleaner telemetry", "description": "Missing optional agent CLIs (Codex, Cursor, Gemini) are no longer reported as errors." }
+    ]
+  },
+  {
     "version": "1.32.0",
     "date": "2026-08-26",
     "features": [
