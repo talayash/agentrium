@@ -1,5 +1,14 @@
 [
   {
+    "version": "1.32.2",
+    "date": "2026-08-28",
+    "features": [
+      { "title": "Antigravity replaces Gemini as the fourth agent", "description": "Google's Gemini CLI is retired and replaced with Google Antigravity (binary: agy). Existing profiles that had Gemini selected migrate to Antigravity automatically on first launch, preserving per-agent args and default args. New brand mark, install hint (curl -fsSL https://antigravity.google/cli/install.sh | bash), and docs link." },
+      { "title": "Per-agent CLI args stay separate per agent", "description": "Editing the args textarea for Codex no longer overwrites your Claude Code args (and vice versa). Each agent keeps its own list saved to the profile." },
+      { "title": "Search navigation and async UI races fixed", "description": "Cleaned up races in the Search Everywhere flow where results could open the wrong item under fast typing." }
+    ]
+  },
+  {
     "version": "1.32.1",
     "date": "2026-08-28",
     "features": [
