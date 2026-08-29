@@ -236,10 +236,10 @@ function AddTerminalCell() {
 
   return (
     <div
-      className={`h-full flex flex-col items-center justify-center bg-[#131313] rounded-md transition-all cursor-pointer group relative ${
+      className={`h-full flex flex-col items-center justify-center bg-elevation-0 rounded-xl transition-all cursor-pointer group relative ${
         dropOver
           ? 'ring-2 ring-accent-primary bg-accent-primary/5'
-          : 'ring-1 ring-border hover:ring-border-light hover:shadow-elevation-2'
+          : 'ring-1 ring-seam hover:ring-seam-strong hover:shadow-elevation-2'
       }`}
       onClick={() => setShowPicker(true)}
       onDragOver={(e) => {
