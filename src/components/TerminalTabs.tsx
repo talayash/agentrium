@@ -794,13 +794,13 @@ export function TerminalTabs() {
         {!activeTerminalId && !activeFilePath && (
             <div className="absolute inset-0 flex flex-col items-center justify-center text-text-secondary p-8">
               <div className="w-full max-w-[560px] flex flex-col items-center">
-                {/* Hero header - display type, deep-float icon */}
+                {/* Hero header - display type, the app mark (its own squircle
+                    shape + baked shadow; no CSS frame/ring). */}
                 <img
                   src={appIconUrl}
                   alt=""
-                  className="w-16 h-16 rounded-[14px] mb-6 select-none shadow-[0_10px_36px_rgba(0,0,0,0.5),0_2px_8px_rgba(0,0,0,0.35)] ring-1 ring-seam"
+                  className="w-20 h-20 mb-5 select-none"
                   draggable={false}
-                  style={{ imageRendering: 'pixelated' }}
                 />
                 <h1 className="text-[40px] font-bold text-text-primary mb-3 tracking-display leading-[1.08]">
                   Welcome to Agentrium
