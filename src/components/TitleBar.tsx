@@ -18,7 +18,6 @@ import {
 } from 'lucide-react';
 import { usePreviewStore } from '../store/previewStore';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { getVersion } from '@tauri-apps/api/app';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
@@ -39,7 +38,6 @@ export function TitleBar() {
     openSettings,
     openCommandPalette,
     triggerChangesRefresh,
-    compactTitleBar,
   } = useAppStore();
   const { terminals, activeTerminalId, gitInfoCache } = useTerminalStore();
   const fetchGitInfo = useTerminalStore.getState().fetchGitInfo;
@@ -53,17 +51,12 @@ export function TitleBar() {
   const previewOpen = usePreviewStore((s) => s.globalOpen);
   const togglePreview = usePreviewStore((s) => s.toggleGlobal);
   const appWindow = getCurrentWindow();
-  const [appVersion, setAppVersion] = useState('');
   const [branchMenuOpen, setBranchMenuOpen] = useState(false);
   const [branches, setBranches] = useState<string[]>([]);
   const [branchesLoading, setBranchesLoading] = useState(false);
   const [checkoutTarget, setCheckoutTarget] = useState<string | null>(null);
   const [branchFilter, setBranchFilter] = useState('');
   const branchMenuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    getVersion().then(setAppVersion);
-  }, []);
 
   const active = activeTerminalId ? terminals.get(activeTerminalId) : null;
   const gitInfo = activeTerminalId ? gitInfoCache.get(activeTerminalId) : null;
@@ -316,14 +309,24 @@ export function TitleBar() {
         <SessionWidget />
       </div>
 
-      {/* Center spacer + brand (small, right-aligned on the drag zone) */}
+      {/* Command spine: a prominent ⌘K field at the center of the toolbar -
+          the primary way to search or run any action (Apple/Linear). */}
       <div className="flex-1 flex items-center justify-center min-w-0 px-3">
-        {!compactTitleBar && (
-          <span className="text-text-tertiary text-[11px] tracking-[0.02em] truncate">
-            Agentrium
-            {appVersion && <span className="text-text-tertiary/60 ml-1.5 font-mono">{appVersion}</span>}
+        <button
+          onClick={openCommandPalette}
+          className="no-drag group flex items-center gap-2.5 h-8 w-full max-w-[440px] px-3 rounded-[10px] bg-fill-hover hover:bg-fill-active ring-1 ring-inset ring-seam text-text-tertiary hover:text-text-secondary transition-colors"
+        >
+          <SearchIcon size={14} strokeWidth={2} className="flex-shrink-0" />
+          <span className="text-[12.5px] truncate">Search or run a command…</span>
+          <span className="ml-auto flex items-center gap-1 flex-shrink-0">
+            <kbd className="px-1.5 h-[18px] flex items-center rounded-[5px] bg-elevation-3 ring-1 ring-seam text-text-tertiary text-[10.5px] font-sans">
+              {isMac ? '⌘' : 'Ctrl'}
+            </kbd>
+            <kbd className="px-1.5 h-[18px] flex items-center rounded-[5px] bg-elevation-3 ring-1 ring-seam text-text-tertiary text-[10.5px] font-sans">
+              P
+            </kbd>
           </span>
-        )}
+        </button>
       </div>
 
       {/* Right cluster - search, run, tool windows, settings, window controls */}
@@ -359,12 +362,6 @@ export function TitleBar() {
           <div className="w-px h-4 bg-[var(--seam-strong)] mx-1" />
 
           <ThemeToggle />
-
-          <Tooltip label="Search Everywhere" shortcut="Ctrl+P">
-            <button onClick={openCommandPalette} className={toolBtn(false)}>
-              <SearchIcon size={15} strokeWidth={2} />
-            </button>
-          </Tooltip>
 
           <Tooltip label="Settings" shortcut="Ctrl+,">
             <button onClick={openSettings} className={toolBtn(false)}>
