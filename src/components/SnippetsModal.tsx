@@ -218,12 +218,12 @@ export function SnippetsModal() {
                     value={editTitle}
                     onChange={(e) => setEditTitle(e.target.value)}
                     placeholder="Snippet title..."
-                    className="w-full bg-bg-primary ring-1 ring-border-light rounded-md h-8 px-3 text-text-primary text-[13px] focus:outline-none focus:ring-accent-primary transition-colors"
+                    className="w-full bg-bg-primary ring-1 ring-border-light rounded-md h-8 px-3 text-text-primary text-[13px] focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 transition-colors"
                   />
                   <select
                     value={editCategory}
                     onChange={(e) => setEditCategory(e.target.value)}
-                    className="bg-bg-primary ring-1 ring-border-light rounded-md h-8 px-2 text-text-primary text-[12px] focus:outline-none focus:ring-accent-primary transition-colors"
+                    className="bg-bg-primary ring-1 ring-border-light rounded-md h-8 px-2 text-text-primary text-[12px] focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 transition-colors"
                   >
                     {DEFAULT_CATEGORIES.map((cat) => (
                       <option key={cat} value={cat}>{cat}</option>
@@ -235,7 +235,7 @@ export function SnippetsModal() {
                     value={editContent}
                     onChange={(e) => setEditContent(e.target.value)}
                     placeholder="Snippet content..."
-                    className="w-full h-full bg-bg-primary ring-1 ring-border-light rounded-md py-2 px-3 text-text-primary text-[13px] font-mono focus:outline-none focus:ring-accent-primary resize-none transition-colors"
+                    className="w-full h-full bg-bg-primary ring-1 ring-border-light rounded-md py-2 px-3 text-text-primary text-[13px] font-mono focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 resize-none transition-colors"
                   />
                 </div>
                 <div className="flex gap-2 p-3 border-t border-border">

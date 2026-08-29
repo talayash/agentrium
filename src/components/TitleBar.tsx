@@ -242,7 +242,7 @@ export function TitleBar() {
                         value={branchFilter}
                         onChange={(e) => setBranchFilter(e.target.value)}
                         placeholder="Filter branches…"
-                        className="w-full bg-elevation-0 ring-1 ring-inset ring-[var(--ij-divider)] rounded-[4px] h-7 pl-7 pr-2 text-[12px] text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-accent-primary/60"
+                        className="w-full bg-elevation-0 ring-1 ring-inset ring-[var(--ij-divider)] rounded-[4px] h-7 pl-7 pr-2 text-[12px] text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45"
                       />
                     </div>
                   </div>

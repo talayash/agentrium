@@ -861,7 +861,7 @@ export function FileChangesPanel() {
             onChange={(e) => setCommitMessage(e.target.value)}
             placeholder="Commit Message"
             rows={4}
-            className="w-full bg-bg-primary ring-1 ring-inset ring-border rounded-[4px] px-2 py-1.5 text-[12px] text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-accent-primary/60 resize-none"
+            className="w-full bg-bg-primary ring-1 ring-inset ring-border rounded-[4px] px-2 py-1.5 text-[12px] text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 resize-none"
           />
           <div className="flex items-center mt-2 gap-1.5">
             <Button
@@ -1259,7 +1259,7 @@ function RepoRow({ repo }: { repo: ScannedGitRepo }) {
                 value={filter}
                 onChange={(e) => setFilter(e.target.value)}
                 placeholder="Filter branches…"
-                className="w-full bg-elevation-0 ring-1 ring-inset ring-[var(--ij-divider)] rounded-[4px] h-7 pl-7 pr-2 text-[12px] text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-accent-primary/60"
+                className="w-full bg-elevation-0 ring-1 ring-inset ring-[var(--ij-divider)] rounded-[4px] h-7 pl-7 pr-2 text-[12px] text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45"
               />
             </div>
           </div>
@@ -1273,14 +1273,14 @@ function RepoRow({ repo }: { repo: ScannedGitRepo }) {
                 onChange={(e) => setNewBranchName(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter' && !creating) handleCreateBranch(); }}
                 placeholder="new-branch-name"
-                className="w-full bg-elevation-0 ring-1 ring-inset ring-[var(--ij-divider)] rounded-[4px] h-7 px-2 text-[12px] font-mono text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-accent-primary/60"
+                className="w-full bg-elevation-0 ring-1 ring-inset ring-[var(--ij-divider)] rounded-[4px] h-7 px-2 text-[12px] font-mono text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45"
               />
               <div className="flex items-center gap-1.5">
                 <span className="text-[10.5px] text-text-tertiary flex-shrink-0">from</span>
                 <select
                   value={newBranchBase}
                   onChange={(e) => setNewBranchBase(e.target.value)}
-                  className="flex-1 bg-elevation-0 ring-1 ring-inset ring-[var(--ij-divider)] rounded-[4px] h-7 px-1.5 text-[12px] font-mono text-text-primary focus:outline-none focus:ring-accent-primary/60"
+                  className="flex-1 bg-elevation-0 ring-1 ring-inset ring-[var(--ij-divider)] rounded-[4px] h-7 px-1.5 text-[12px] font-mono text-text-primary focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45"
                 >
                   {branches.map((b) => (
                     <option key={b} value={b}>{b}</option>
@@ -1317,7 +1317,7 @@ function RepoRow({ repo }: { repo: ScannedGitRepo }) {
                   autoFocus
                   value={pullRef}
                   onChange={(e) => setPullRef(e.target.value)}
-                  className="flex-1 bg-elevation-0 ring-1 ring-inset ring-[var(--ij-divider)] rounded-[4px] h-7 px-1.5 text-[12px] font-mono text-text-primary focus:outline-none focus:ring-accent-primary/60"
+                  className="flex-1 bg-elevation-0 ring-1 ring-inset ring-[var(--ij-divider)] rounded-[4px] h-7 px-1.5 text-[12px] font-mono text-text-primary focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45"
                 >
                   {remoteRefs.length === 0 && <option value="">(no remote branches)</option>}
                   {remoteRefs.map((r) => (

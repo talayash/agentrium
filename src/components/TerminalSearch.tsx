@@ -101,7 +101,7 @@ export function TerminalSearch({ searchAddon, visible, onClose }: TerminalSearch
         onChange={(e) => handleQueryChange(e.target.value)}
         onKeyDown={handleKeyDown}
         placeholder="Search..."
-        className="w-48 bg-bg-primary ring-1 ring-border-light rounded px-2 py-1 text-[12px] text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-accent-primary transition-colors font-mono"
+        className="w-48 bg-bg-primary ring-1 ring-border-light rounded px-2 py-1 text-[12px] text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 transition-colors font-mono"
       />
 
       {/* Case sensitive toggle */}

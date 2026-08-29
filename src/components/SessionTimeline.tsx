@@ -145,7 +145,7 @@ export function SessionTimeline() {
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
               placeholder="Filter sessions..."
-              className="w-full bg-bg-primary ring-1 ring-border-light rounded-md py-1.5 pl-8 pr-3 text-[12px] text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-accent-primary transition-colors"
+              className="w-full bg-bg-primary ring-1 ring-border-light rounded-md py-1.5 pl-8 pr-3 text-[12px] text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 transition-colors"
             />
           </div>
         </div>

@@ -454,7 +454,7 @@ export function PromptEditorDrawer() {
                             placeholder="Search commands..."
                             value={guideSearch}
                             onChange={(e) => setGuideSearch(e.target.value)}
-                            className="w-full bg-bg-primary ring-1 ring-seam-strong rounded py-1.5 pl-7 pr-2 text-[12px] text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-accent-primary"
+                            className="w-full bg-bg-primary ring-1 ring-seam-strong rounded py-1.5 pl-7 pr-2 text-[12px] text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45"
                           />
                         </div>
                       </div>
@@ -535,7 +535,7 @@ export function PromptEditorDrawer() {
                   value={snippetTitle}
                   onChange={(e) => setSnippetTitle(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') handleSaveSnippet(); }}
-                  className="flex-1 bg-bg-primary text-text-primary text-[13px] px-2 py-1.5 rounded ring-1 ring-seam-strong focus:outline-none focus:ring-accent-primary"
+                  className="flex-1 bg-bg-primary text-text-primary text-[13px] px-2 py-1.5 rounded ring-1 ring-seam-strong focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45"
                 />
                 <button
                   onClick={handleSaveSnippet}

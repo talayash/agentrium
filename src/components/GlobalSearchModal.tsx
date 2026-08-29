@@ -268,7 +268,7 @@ export function GlobalSearchModal() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search across the workspace…"
-              className="w-full bg-elevation-1 ring-1 ring-inset ring-border rounded-md h-9 pl-9 pr-24 text-[13px] text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-accent-primary/60"
+              className="w-full bg-elevation-1 ring-1 ring-inset ring-border rounded-md h-9 pl-9 pr-24 text-[13px] text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45"
             />
             <div className="absolute right-2 flex items-center gap-1">
               <button

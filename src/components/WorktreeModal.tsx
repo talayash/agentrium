@@ -262,7 +262,7 @@ export function WorktreeModal() {
                         value={newBranchName}
                         onChange={(e) => setNewBranchName(e.target.value)}
                         placeholder="feature/my-branch"
-                        className="w-full bg-bg-primary ring-1 ring-border-light rounded-md h-9 px-3 text-text-primary text-[13px] font-mono focus:outline-none focus:ring-accent-primary transition-colors"
+                        className="w-full bg-bg-primary ring-1 ring-border-light rounded-md h-9 px-3 text-text-primary text-[13px] font-mono focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 transition-colors"
                       />
                     </div>
                     <div>
@@ -271,7 +271,7 @@ export function WorktreeModal() {
                         <select
                           value={baseBranch}
                           onChange={(e) => setBaseBranch(e.target.value)}
-                          className="w-full bg-bg-primary ring-1 ring-border-light rounded-md h-9 px-3 pr-8 text-text-primary text-[13px] font-mono focus:outline-none focus:ring-accent-primary transition-colors appearance-none"
+                          className="w-full bg-bg-primary ring-1 ring-border-light rounded-md h-9 px-3 pr-8 text-text-primary text-[13px] font-mono focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 transition-colors appearance-none"
                         >
                           {branches.map(b => (
                             <option key={b} value={b}>{b}</option>
@@ -286,7 +286,7 @@ export function WorktreeModal() {
                         type="text"
                         value={newWorktreePath}
                         onChange={(e) => setNewWorktreePath(e.target.value)}
-                        className="w-full bg-bg-primary ring-1 ring-border-light rounded-md h-9 px-3 text-text-primary text-[13px] font-mono focus:outline-none focus:ring-accent-primary transition-colors"
+                        className="w-full bg-bg-primary ring-1 ring-border-light rounded-md h-9 px-3 text-text-primary text-[13px] font-mono focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 transition-colors"
                       />
                       <p className="text-text-tertiary text-[11px] mt-1">Auto-generated from branch name</p>
                     </div>

@@ -225,7 +225,7 @@ export function ProfileModal() {
                     type="text"
                     value={selectedProfile.name}
                     onChange={(e) => setSelectedProfile({ ...selectedProfile, name: e.target.value })}
-                    className="w-full bg-bg-primary ring-1 ring-border-light rounded-md h-9 px-3 text-text-primary text-[13px] focus:outline-none focus:ring-accent-primary transition-colors"
+                    className="w-full bg-bg-primary ring-1 ring-border-light rounded-md h-9 px-3 text-text-primary text-[13px] focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 transition-colors"
                   />
                 </div>
 
@@ -235,7 +235,7 @@ export function ProfileModal() {
                     type="text"
                     value={selectedProfile.description || ''}
                     onChange={(e) => setSelectedProfile({ ...selectedProfile, description: e.target.value })}
-                    className="w-full bg-bg-primary ring-1 ring-border-light rounded-md h-9 px-3 text-text-primary text-[13px] focus:outline-none focus:ring-accent-primary transition-colors"
+                    className="w-full bg-bg-primary ring-1 ring-border-light rounded-md h-9 px-3 text-text-primary text-[13px] focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 transition-colors"
                     placeholder="Optional description"
                   />
                 </div>
@@ -247,7 +247,7 @@ export function ProfileModal() {
                       type="text"
                       value={selectedProfile.working_directory}
                       onChange={(e) => setSelectedProfile({ ...selectedProfile, working_directory: e.target.value })}
-                      className="flex-1 bg-bg-primary ring-1 ring-border-light rounded-md h-9 px-3 text-text-primary text-[13px] focus:outline-none focus:ring-accent-primary transition-colors"
+                      className="flex-1 bg-bg-primary ring-1 ring-border-light rounded-md h-9 px-3 text-text-primary text-[13px] focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 transition-colors"
                       placeholder="C:\path\to\project"
                     />
                     <button
@@ -281,7 +281,7 @@ export function ProfileModal() {
                         claude_args: nextArgs,
                       });
                     }}
-                    className="w-full bg-bg-primary ring-1 ring-border-light rounded-md py-2 px-3 text-text-primary text-[13px] focus:outline-none focus:ring-accent-primary font-mono h-24 resize-none transition-colors"
+                    className="w-full bg-bg-primary ring-1 ring-border-light rounded-md py-2 px-3 text-text-primary text-[13px] focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 font-mono h-24 resize-none transition-colors"
                     placeholder="--model opus&#10;--verbose"
                   />
                   <p className="text-text-tertiary text-[11px] mt-1">
@@ -302,7 +302,7 @@ export function ProfileModal() {
                             entries[index] = [e.target.value, value];
                             setSelectedProfile({ ...selectedProfile, env_vars: Object.fromEntries(entries) });
                           }}
-                          className="flex-1 bg-bg-primary ring-1 ring-border-light rounded-md h-8 px-2 text-text-primary text-[12px] font-mono focus:outline-none focus:ring-accent-primary transition-colors"
+                          className="flex-1 bg-bg-primary ring-1 ring-border-light rounded-md h-8 px-2 text-text-primary text-[12px] font-mono focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 transition-colors"
                           placeholder="KEY"
                         />
                         <span className="text-text-tertiary text-[12px]">=</span>
@@ -312,7 +312,7 @@ export function ProfileModal() {
                           onChange={(e) => {
                             setSelectedProfile({ ...selectedProfile, env_vars: { ...selectedProfile.env_vars, [key]: e.target.value } });
                           }}
-                          className="flex-1 bg-bg-primary ring-1 ring-border-light rounded-md h-8 px-2 text-text-primary text-[12px] font-mono focus:outline-none focus:ring-accent-primary transition-colors"
+                          className="flex-1 bg-bg-primary ring-1 ring-border-light rounded-md h-8 px-2 text-text-primary text-[12px] font-mono focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 transition-colors"
                           placeholder="value"
                         />
                         <button
@@ -345,7 +345,7 @@ export function ProfileModal() {
                     id="is_default"
                     checked={selectedProfile.is_default}
                     onChange={(e) => setSelectedProfile({ ...selectedProfile, is_default: e.target.checked })}
-                    className="rounded border-border-light bg-bg-primary text-accent-primary focus:ring-accent-primary"
+                    className="rounded border-border-light bg-bg-primary text-accent-primary focus:ring-[3px] focus:ring-accent-primary/45"
                   />
                   <label htmlFor="is_default" className="text-text-primary text-[13px]">Set as default profile</label>
                 </div>
@@ -367,7 +367,7 @@ export function ProfileModal() {
                           : null;
                         setSelectedProfile({ ...selectedProfile, preview: nextPreview });
                       }}
-                      className="rounded border-border-light bg-bg-primary text-accent-primary focus:ring-accent-primary"
+                      className="rounded border-border-light bg-bg-primary text-accent-primary focus:ring-[3px] focus:ring-accent-primary/45"
                     />
                     <label htmlFor="preview_enabled" className="text-text-primary text-[13px]">
                       Has GUI preview
@@ -392,7 +392,7 @@ export function ProfileModal() {
                             },
                           });
                         }}
-                        className="w-full bg-bg-primary ring-1 ring-border-light rounded-md h-9 px-3 text-text-primary text-[13px] focus:outline-none focus:ring-accent-primary transition-colors"
+                        className="w-full bg-bg-primary ring-1 ring-border-light rounded-md h-9 px-3 text-text-primary text-[13px] focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 transition-colors"
                         placeholder="http://localhost:3000"
                       />
                     </div>

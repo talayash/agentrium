@@ -88,7 +88,7 @@ export default function PreviewPage() {
             onKeyDown={(e) => { if (e.key === 'Enter') handleAdd(); }}
             placeholder="*.ngrok.io"
             spellCheck={false}
-            className="flex-1 bg-elevation-0 text-text-primary text-[12px] font-mono px-2 h-8 rounded ring-1 ring-border-light focus:outline-none focus:ring-accent-primary transition-colors"
+            className="flex-1 bg-elevation-0 text-text-primary text-[12px] font-mono px-2 h-8 rounded ring-1 ring-border-light focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 transition-colors"
           />
           <button
             onClick={handleAdd}
