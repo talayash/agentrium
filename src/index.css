@@ -153,6 +153,12 @@
   /* Light catching the top edge of a material (Apple sheet/toolbar detail). */
   --edge-light: rgba(255, 255, 255, 0.07);
 
+  /* Float shadows - layered ambient+key. Light-mode overrides in
+     applyThemeMode(). Bundled into the .material-* classes (which own
+     box-shadow) and mirrored by Tailwind's shadow-elevation-3/4. */
+  --shadow-float-md: 0 2px 8px rgba(0, 0, 0, 0.32), 0 12px 32px rgba(0, 0, 0, 0.28);
+  --shadow-float-lg: 0 6px 20px rgba(0, 0, 0, 0.38), 0 28px 72px rgba(0, 0, 0, 0.42);
+
   /* Seams - translucent separation instead of opaque divider lines. The old
      --ij-* names stay as aliases (54 files consume them). */
   --seam: rgba(255, 255, 255, 0.055);
@@ -269,13 +275,15 @@
   background: var(--material-overlay-bg);
   backdrop-filter: blur(var(--material-blur)) saturate(var(--material-saturate));
   -webkit-backdrop-filter: blur(var(--material-blur)) saturate(var(--material-saturate));
-  box-shadow: inset 0 1px 0 var(--edge-light);
+  /* Owns box-shadow: light-catch edge + hairline + float. Don't add Tailwind
+     ring-/shadow- utilities on the same element - they'd fight this. */
+  box-shadow: inset 0 1px 0 var(--edge-light), 0 0 0 1px var(--seam), var(--shadow-float-lg);
 }
 .material-popover {
   background: var(--material-popover-bg);
   backdrop-filter: blur(24px) saturate(160%);
   -webkit-backdrop-filter: blur(24px) saturate(160%);
-  box-shadow: inset 0 1px 0 var(--edge-light);
+  box-shadow: inset 0 1px 0 var(--edge-light), 0 0 0 1px var(--seam), var(--shadow-float-md);
 }
 .material-thin {
   background: var(--material-thin-bg);
@@ -376,6 +384,16 @@
   height: 2px;
   border-radius: 2px 2px 0 0;
   animation: ct-tab-finish 800ms cubic-bezier(0.25, 0.1, 0.25, 1) forwards;
+}
+
+/* Popover/tooltip pop-in: materialize from the trigger's direction. Pair with
+   an inline transform-origin so it grows out of what opened it. */
+@keyframes ct-pop-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.ct-pop-in {
+  animation: ct-pop-in 130ms var(--ease-out);
 }
 
 /* Tab drag "pickup": the floating ghost fades + settles in when grabbed.

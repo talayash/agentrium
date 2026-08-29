@@ -55,6 +55,9 @@ export function applyThemeMode(mode: ThemeMode): void {
     root.style.setProperty('--material-overlay-bg', 'rgba(248, 248, 250, 0.78)');
     root.style.setProperty('--material-popover-bg', 'rgba(252, 252, 253, 0.84)');
     root.style.setProperty('--material-thin-bg', 'rgba(244, 244, 246, 0.62)');
+    // Softer float shadows over a light canvas.
+    root.style.setProperty('--shadow-float-md', '0 2px 8px rgba(0, 0, 0, 0.10), 0 12px 32px rgba(0, 0, 0, 0.12)');
+    root.style.setProperty('--shadow-float-lg', '0 6px 20px rgba(0, 0, 0, 0.12), 0 28px 72px rgba(0, 0, 0, 0.18)');
     root.style.setProperty('color', '#1D1D1F');
     // Flip the text tokens to dark-on-light. Without this the tokens stay at
     // their near-white dark-theme channels and become invisible on light
@@ -81,6 +84,8 @@ export function applyThemeMode(mode: ThemeMode): void {
     root.style.removeProperty('--material-overlay-bg');
     root.style.removeProperty('--material-popover-bg');
     root.style.removeProperty('--material-thin-bg');
+    root.style.removeProperty('--shadow-float-md');
+    root.style.removeProperty('--shadow-float-lg');
     root.style.removeProperty('color');
     // Revert to the dark channel triplets defined in index.css :root.
     root.style.removeProperty('--text-primary');

@@ -27,9 +27,11 @@ interface ListRowProps {
 }
 
 /**
- * Canonical selectable list item. Selected state gets an accent-blue tint
- * plus a 2 px stripe on the left (IntelliJ tool-window selection). Hover
- * state is `bg-white/[0.045]`, consistent across every migrated surface.
+ * Canonical selectable list item. Selected state is a macOS-sidebar-style
+ * inset rounded fill in the accent tint; hover is a fainter inset fill,
+ * consistent across every migrated surface. The fill is a positioned
+ * backdrop layer, so row geometry (full-width, px-3) is unchanged for
+ * consumers - only the paint is inset.
  *
  * When `as="button"` (default), the row is keyboard-focusable and inherits
  * the global `:focus-visible` outline from index.css.
@@ -55,23 +57,22 @@ export const ListRow = forwardRef<HTMLElement, ListRowProps>(function ListRow(
 ) {
   // `min-h` (not `h`) lets multi-line content (e.g. session widget) grow.
   const height = variant === 'compact' ? 'min-h-[22px]' : 'min-h-[26px]';
-  const base = `relative flex items-center gap-2 w-full px-3 py-0.5 text-left transition-colors ${height}`;
-  const state = selected
-    ? 'bg-accent-primary/12 text-text-primary'
-    : 'text-text-primary hover:bg-white/[0.045]';
+  const base = `group relative flex items-center gap-2 w-full px-3 py-0.5 text-left text-text-primary ${height}`;
   const disabledCls = disabled ? 'opacity-50 cursor-default pointer-events-none' : '';
 
   const content = (
     <>
-      {selected && (
-        <span
-          aria-hidden
-          className="absolute left-0 top-[3px] bottom-[3px] w-[2px] rounded-r-[2px] bg-accent-primary"
-        />
-      )}
-      {leading && <span className="flex-shrink-0 flex items-center">{leading}</span>}
-      <span className="flex-1 min-w-0 flex items-center gap-2 overflow-hidden">{children}</span>
-      {trailing && <span className="flex-shrink-0 flex items-center">{trailing}</span>}
+      {/* Inset rounded selection/hover backdrop (paints under the relative
+          content spans below). Instant on hover - feedback is response. */}
+      <span
+        aria-hidden
+        className={`absolute inset-y-[1px] left-1 right-1 rounded-md transition-colors duration-100 ${
+          selected ? 'bg-accent-primary/15' : 'bg-transparent group-hover:bg-white/[0.05]'
+        }`}
+      />
+      {leading && <span className="relative flex-shrink-0 flex items-center">{leading}</span>}
+      <span className="relative flex-1 min-w-0 flex items-center gap-2 overflow-hidden">{children}</span>
+      {trailing && <span className="relative flex-shrink-0 flex items-center">{trailing}</span>}
     </>
   );
 
@@ -88,7 +89,7 @@ export const ListRow = forwardRef<HTMLElement, ListRowProps>(function ListRow(
         onContextMenu={onContextMenu}
         onKeyDown={onKeyDown}
         style={style}
-        className={`${base} ${state} ${disabledCls} ${className}`}
+        className={`${base} ${disabledCls} ${className}`}
       >
         {content}
       </div>
@@ -107,7 +108,7 @@ export const ListRow = forwardRef<HTMLElement, ListRowProps>(function ListRow(
       onContextMenu={onContextMenu}
       onKeyDown={onKeyDown}
       style={style}
-      className={`${base} ${state} ${disabledCls} ${className}`}
+      className={`${base} ${disabledCls} ${className}`}
     >
       {content}
     </button>

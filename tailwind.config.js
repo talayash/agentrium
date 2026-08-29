@@ -56,9 +56,11 @@ export default {
         'glow-sm': '0 0 8px var(--accent-glow-sm)',
         'glow-md': '0 0 16px var(--accent-glow-md)',
         // Layered ambient+key shadows - surfaces float, they don't outline.
+        // elevation-3/4 read the theme-aware float tokens (light overrides in
+        // applyThemeMode) so shadows soften over a light canvas.
         'elevation-2': '0 1px 3px rgba(0, 0, 0, 0.28), 0 4px 12px rgba(0, 0, 0, 0.20)',
-        'elevation-3': '0 2px 8px rgba(0, 0, 0, 0.32), 0 12px 32px rgba(0, 0, 0, 0.28)',
-        'elevation-4': '0 6px 20px rgba(0, 0, 0, 0.38), 0 28px 72px rgba(0, 0, 0, 0.42)',
+        'elevation-3': 'var(--shadow-float-md)',
+        'elevation-4': 'var(--shadow-float-lg)',
       },
       borderRadius: {
         // Apple's softer, continuous-feel corners (tokens in index.css)

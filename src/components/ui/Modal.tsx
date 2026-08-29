@@ -121,18 +121,18 @@ export function Modal({
         // Stop bubbling so clicks inside the panel never reach the scrim handler.
         onClick={(e) => e.stopPropagation()}
         onDoubleClick={(e) => e.stopPropagation()}
-        className={`bg-elevation-1 ring-1 ring-[var(--ij-divider-soft)] rounded-lg overflow-hidden ${panelClassName}`}
+        className={`material-overlay rounded-lg overflow-hidden ${panelClassName}`}
       >
         {showHeader && (
-          <div className="flex items-center justify-between px-4 h-11 bg-elevation-2 border-b border-[var(--ij-divider-soft)]">
+          <div className="flex items-center justify-between px-4 h-11 border-b border-[var(--seam)]">
             <div className="flex items-center gap-2 min-w-0">
               {icon}
-              <h2 className="text-text-primary text-[14px] font-semibold truncate">{title}</h2>
+              <h2 className="text-text-primary text-[14px] font-semibold tracking-title truncate">{title}</h2>
             </div>
             <button
               onClick={onClose}
               aria-label="Close"
-              className="p-1.5 rounded hover:bg-white/[0.06] text-text-tertiary transition-colors"
+              className="p-1.5 rounded-full hover:bg-white/[0.08] active:bg-white/[0.12] active:scale-95 text-text-tertiary hover:text-text-secondary transition-[background-color,color,transform] duration-100"
             >
               <X size={14} />
             </button>
