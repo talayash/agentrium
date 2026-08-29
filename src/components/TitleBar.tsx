@@ -130,8 +130,9 @@ export function TitleBar() {
     : 'bg-text-tertiary';
 
   // Neutral monochrome styling for the right-side tool cluster.
+  // Instant press dip - feedback on pointer-down, not release.
   const toolBtn = (active: boolean) =>
-    `no-drag w-7 h-7 flex items-center justify-center rounded-[6px] transition-colors ${
+    `no-drag w-7 h-7 flex items-center justify-center rounded-[6px] transition-[background-color,color,transform] duration-100 active:scale-95 ${
       active
         ? 'bg-white/[0.08] text-text-primary'
         : 'text-text-secondary hover:bg-white/[0.06] hover:text-text-primary'
@@ -140,7 +141,7 @@ export function TitleBar() {
   return (
     <div
       onMouseDown={(e) => { if (e.buttons === 1 && (e.target as HTMLElement).closest('.no-drag') === null) appWindow.startDragging(); }}
-      className="h-[var(--h-header)] bg-elevation-1 flex items-center justify-between pl-2 pr-0 border-b border-[var(--ij-divider)] drag-region select-none"
+      className="h-[var(--h-header)] material-chrome flex items-center justify-between pl-2 pr-0 border-b border-[var(--ij-divider)] drag-region select-none"
     >
       {/* Left cluster - traffic lights (mac), sidebar toggle */}
       <div className="flex items-center gap-1 min-w-0">
@@ -220,7 +221,10 @@ export function TitleBar() {
               </Tooltip>
 
               {branchMenuOpen && (
-                <div className="absolute left-0 top-full mt-1 z-50 w-[260px] bg-elevation-3 ring-1 ring-white/[0.08] rounded-lg overflow-hidden">
+                <div
+                  className="absolute left-0 top-full mt-1 z-50 w-[260px] material-popover ct-pop-in rounded-lg overflow-hidden"
+                  style={{ transformOrigin: 'top left' }}
+                >
                   <div className="p-2 border-b border-[var(--ij-divider-soft)]">
                     <div className="relative">
                       <SearchIcon size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-text-tertiary" strokeWidth={1.75} />

@@ -8,7 +8,9 @@ interface Props {
 
 export function SettingsCategoryTree({ active, onSelect, highlightedPages }: Props) {
   return (
-    <div className="bg-elevation-1 border-r border-[var(--ij-divider-soft)] overflow-y-auto py-2 text-[12px]">
+    // Darker translucent zone over the sheet material - structure via material
+    // weight, not a second stacked surface.
+    <div className="bg-black/15 border-r border-[var(--seam)] overflow-y-auto py-2 text-[12px]">
       {CATEGORY_GROUPS.map((group) => {
         const groupHasMatch =
           !highlightedPages || group.pages.some((p) => highlightedPages.has(`${group.id}.${p.id}`));

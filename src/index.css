@@ -297,11 +297,19 @@
   background: var(--material-chrome-bg);
 }
 :root[data-vibrancy="on"] {
-  --material-chrome-bg: rgba(29, 29, 32, 0.72);
+  --material-chrome-bg: rgba(24, 24, 27, 0.55);
 }
 :root[data-vibrancy="on"] .material-chrome {
   backdrop-filter: blur(30px) saturate(170%);
   -webkit-backdrop-filter: blur(30px) saturate(170%);
+}
+/* Under vibrancy the app root goes clear so chrome regions reveal the OS
+   behind-window material; the content area paints its own opaque canvas. */
+:root[data-vibrancy="on"] .app-root {
+  background: transparent;
+}
+:root[data-vibrancy="on"][data-theme="light"] {
+  --material-chrome-bg: rgba(240, 240, 243, 0.72);
 }
 
 /* Reduced transparency: frost the materials into near-solids. */

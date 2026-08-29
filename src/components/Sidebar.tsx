@@ -53,7 +53,7 @@ export function Sidebar() {
   if (sidebarCollapsed) {
     return (
       <div
-        className="h-full bg-elevation-1 border-r border-[var(--ij-divider)] flex flex-col items-center py-2 gap-0.5"
+        className="h-full material-chrome border-r border-[var(--ij-divider)] flex flex-col items-center py-2 gap-0.5"
         style={{ width: 'var(--w-rail)' }}
       >
         <Tooltip label="Expand Sidebar" side="right">
@@ -81,7 +81,7 @@ export function Sidebar() {
   });
 
   return (
-    <div className="h-full bg-elevation-1 border-r border-[var(--ij-divider)] flex flex-col">
+    <div className="h-full material-chrome border-r border-[var(--ij-divider)] flex flex-col">
       <PanelHeader
         title={
           <>

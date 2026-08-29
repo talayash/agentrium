@@ -78,11 +78,16 @@ function ToastItem({ id, type, title, message, duration, actions }: {
   return (
     <motion.div
       layout
-      initial={{ opacity: 0, x: 80, scale: 0.95 }}
-      animate={{ opacity: 1, x: 0, scale: 1 }}
-      exit={{ opacity: 0, x: 80, scale: 0.95 }}
-      transition={{ duration: 0.2, ease: 'easeOut' }}
-      className={`relative overflow-hidden rounded-lg bg-elevation-3 ring-1 ${colors.ring} pointer-events-auto isolate ${
+      initial={{ opacity: 0, x: 88, scale: 0.96 }}
+      animate={{
+        opacity: 1,
+        x: 0,
+        scale: 1,
+        // Arrives with momentum - a slight settle is earned here.
+        transition: { type: 'spring', bounce: 0.18, duration: 0.42, opacity: { duration: 0.15, ease: 'easeOut' } },
+      }}
+      exit={{ opacity: 0, x: 88, scale: 0.96, transition: { duration: 0.16, ease: 'easeOut' } }}
+      className={`relative overflow-hidden rounded-lg bg-elevation-3 ring-1 ${colors.ring} shadow-elevation-3 pointer-events-auto isolate ${
         hasActions ? 'w-[420px]' : 'w-[320px]'
       }`}
     >

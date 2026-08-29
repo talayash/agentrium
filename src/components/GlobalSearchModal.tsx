@@ -227,11 +227,15 @@ export function GlobalSearchModal() {
       }}
     >
       <motion.div
-        initial={{ opacity: 0, scale: 0.97, y: -8 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.97, y: -8 }}
-        transition={{ duration: 0.15, ease: 'easeOut' }}
-        className="w-full max-w-[820px] mx-4 bg-elevation-3 ring-1 ring-white/[0.08] rounded-xl overflow-hidden flex flex-col"
+        initial={{ opacity: 0, scale: 0.97, y: -10 }}
+        animate={{
+          opacity: 1,
+          scale: 1,
+          y: 0,
+          transition: { type: 'spring', bounce: 0, duration: 0.3, opacity: { duration: 0.15, ease: 'easeOut' } },
+        }}
+        exit={{ opacity: 0, scale: 0.97, y: -8, transition: { duration: 0.12, ease: 'easeOut' } }}
+        className="w-full max-w-[820px] mx-4 material-overlay rounded-xl overflow-hidden flex flex-col"
         style={{ maxHeight: '80vh' }}
         onKeyDown={handleKeyDown}
       >

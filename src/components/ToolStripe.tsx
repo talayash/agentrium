@@ -16,9 +16,8 @@ interface StripeItem {
 }
 
 function StripeButton({ item, side }: { item: StripeItem; side: Side }) {
-  // The active indicator hugs the window edge (IntelliJ "stripe"): left rail →
-  // left edge, right rail → right edge. Tooltip opens toward the editor.
-  const stripeEdge = side === 'left' ? 'left-0' : 'right-0';
+  // Active = filled rounded square in the accent tint (macOS Finder-sidebar
+  // icon behavior) - no edge stripe. Tooltip opens toward the editor.
   const { Icon } = item;
 
   return (
@@ -27,21 +26,17 @@ function StripeButton({ item, side }: { item: StripeItem; side: Side }) {
         onClick={item.onClick}
         aria-label={`${item.label} (${item.shortcut})`}
         aria-pressed={item.active}
-        className={`group relative w-full h-9 flex items-center justify-center transition-colors ${
+        className={`group relative w-full h-9 flex items-center justify-center transition-[color,transform] duration-100 active:scale-95 ${
           item.active ? 'text-accent-primary' : 'text-text-tertiary hover:text-text-primary'
         }`}
       >
         {/* hover / active fill */}
         <span
-          className={`absolute inset-x-1 inset-y-0.5 rounded transition-colors ${
-            item.active ? 'bg-accent-primary/10' : 'group-hover:bg-white/[0.06]'
+          className={`absolute inset-x-1 inset-y-0.5 rounded-md transition-colors duration-100 ${
+            item.active ? 'bg-accent-primary/14' : 'group-hover:bg-white/[0.06]'
           }`}
         />
-        {/* active edge stripe */}
-        {item.active && (
-          <span className={`absolute ${stripeEdge} top-1.5 bottom-1.5 w-0.5 rounded-full bg-accent-primary`} />
-        )}
-        <Icon size={17} strokeWidth={1.75} />
+        <Icon size={17} strokeWidth={1.75} className="relative" />
       </button>
     </Tooltip>
   );
@@ -86,7 +81,7 @@ export function ToolStripe({ side }: { side: Side }) {
   ];
 
   return (
-    <div className="w-[var(--w-rail)] flex-shrink-0 h-full bg-elevation-1 border-r border-[var(--ij-divider)] flex flex-col py-1">
+    <div className="w-[var(--w-rail)] flex-shrink-0 h-full material-chrome border-r border-[var(--ij-divider)] flex flex-col py-1">
       <div className="flex flex-col">
         {top.map((it) => (
           <StripeButton key={it.id} item={it} side="left" />

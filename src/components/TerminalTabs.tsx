@@ -346,7 +346,7 @@ export function TerminalTabs() {
     return (
       <div className="h-full flex flex-col">
         {/* Split Toolbar */}
-        <div className="h-[var(--h-tab)] bg-elevation-1 border-b border-[var(--ij-divider)] flex items-center justify-between px-3">
+        <div className="h-[var(--h-tab)] material-chrome border-b border-[var(--ij-divider)] flex items-center justify-between px-3">
           <div className="flex items-center gap-2">
             <SplitSquareHorizontal size={13} className="text-accent-primary" strokeWidth={1.75} />
             <span className="text-text-primary text-[12px] font-medium">Split View</span>
@@ -395,7 +395,7 @@ export function TerminalTabs() {
   return (
     <div className="h-full flex flex-col">
       {/* Tab Bar - IntelliJ editor tabs */}
-      <div className="h-[var(--h-tab)] bg-elevation-1 border-b border-[var(--ij-divider)] flex items-center justify-between px-0.5">
+      <div className="h-[var(--h-tab)] material-chrome border-b border-[var(--ij-divider)] flex items-center justify-between px-0.5">
         <div ref={stripRef} className="relative flex items-center flex-1 min-w-0">
           {canScrollLeft && (
             <button
@@ -470,8 +470,12 @@ export function TerminalTabs() {
                     justFinishedAt.has(terminal.id) && !isActiveTab ? 'ct-tab-finish-inactive' : ''
                   }`}
                 >
-                  {/* IntelliJ-style bottom underline for active tab */}
-                  {(isActiveTab || splitDropTargetId === terminal.id) && (
+                  {/* macOS Terminal tabs carry no persistent underline - the
+                      active tab reads by sharing the canvas surface. The 2px
+                      strip renders only as a SIGNAL: the just-finished flash
+                      on the active tab, or the split-drop target cue. */}
+                  {(splitDropTargetId === terminal.id ||
+                    (isActiveTab && justFinishedAt.has(terminal.id))) && (
                     <span
                       className={`absolute left-2 right-2 bottom-0 h-[2px] rounded-t bg-accent-primary ${
                         justFinishedAt.has(terminal.id) ? 'ct-tab-finish-underline' : ''
@@ -653,9 +657,6 @@ export function TerminalTabs() {
                           : 'hover:bg-white/[0.045] text-text-secondary'
                       }`}
                     >
-                      {isActive && (
-                        <span className="absolute left-2 right-2 bottom-0 h-[2px] rounded-t bg-accent-primary" />
-                      )}
                       <FileIcon size={11} className="text-text-tertiary flex-shrink-0" strokeWidth={1.75} />
                       <span className="max-w-[140px] truncate">{fileBasename(tab.path)}</span>
                       <span
@@ -793,24 +794,24 @@ export function TerminalTabs() {
         {!activeTerminalId && !activeFilePath && (
             <div className="absolute inset-0 flex flex-col items-center justify-center text-text-secondary p-8">
               <div className="w-full max-w-[560px] flex flex-col items-center">
-                {/* Hero header - sketch's "welcome" moment */}
+                {/* Hero header - display type, deep-float icon */}
                 <img
                   src={appIconUrl}
                   alt=""
-                  className="w-14 h-14 rounded-[10px] mb-5 select-none shadow-[0_4px_20px_rgba(0,0,0,0.4)] ring-1 ring-white/[0.05]"
+                  className="w-16 h-16 rounded-[14px] mb-6 select-none shadow-[0_10px_36px_rgba(0,0,0,0.5),0_2px_8px_rgba(0,0,0,0.35)] ring-1 ring-white/[0.06]"
                   draggable={false}
                   style={{ imageRendering: 'pixelated' }}
                 />
-                <h1 className="text-[length:var(--text-h1)] font-semibold text-text-primary mb-1.5 tracking-tight">
+                <h1 className="text-[26px] font-semibold text-text-primary mb-2 tracking-display leading-[1.15]">
                   Welcome to Agentrium
                 </h1>
-                <p className="text-[13px] text-text-tertiary mb-8 text-center max-w-[420px]">
+                <p className="text-[13px] leading-relaxed text-text-secondary mb-9 text-center max-w-[420px]">
                   Run Claude Code, Codex, Cursor, and Antigravity agents side by side
                   in one native window. Start a new terminal, or press{' '}
-                  <kbd className="px-1.5 py-0.5 rounded bg-elevation-2 text-text-secondary text-[11px] font-sans border border-[var(--ij-divider-soft)] mx-0.5">
+                  <kbd className="px-1.5 py-0.5 rounded-[5px] bg-elevation-3 ring-1 ring-seam shadow-[0_1px_0_var(--ij-divider)] text-text-secondary text-[11px] font-sans mx-0.5">
                     {isMac ? '⌘' : 'Ctrl'}
                   </kbd>
-                  <kbd className="px-1.5 py-0.5 rounded bg-elevation-2 text-text-secondary text-[11px] font-sans border border-[var(--ij-divider-soft)] mx-0.5">
+                  <kbd className="px-1.5 py-0.5 rounded-[5px] bg-elevation-3 ring-1 ring-seam shadow-[0_1px_0_var(--ij-divider)] text-text-secondary text-[11px] font-sans mx-0.5">
                     P
                   </kbd>
                   {' '}for Search Everywhere.
@@ -820,9 +821,13 @@ export function TerminalTabs() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full mb-6">
                   <button
                     onClick={handleNewTab}
-                    className="group flex flex-col items-start gap-2 p-4 bg-elevation-1 border border-[var(--ij-divider-soft)] rounded-lg hover:border-accent-primary/60 hover:bg-elevation-2 hover:shadow-glow-md transition-all text-left"
+                    className="group relative isolate overflow-hidden flex flex-col items-start gap-3 p-5 material-thin rounded-xl shadow-elevation-2 hover:shadow-elevation-3 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.99] transition-[transform,box-shadow] duration-150 ease-out text-left"
                   >
-                    <div className="w-9 h-9 rounded-md bg-accent-primary/12 flex items-center justify-center text-accent-primary group-hover:bg-accent-primary/20 transition-colors">
+                    <span
+                      aria-hidden
+                      className="absolute inset-0 -z-10 rounded-xl bg-[var(--seam)] opacity-0 group-hover:opacity-100 transition-opacity duration-100"
+                    />
+                    <div className="w-10 h-10 rounded-[10px] bg-accent-primary/15 flex items-center justify-center text-accent-primary group-hover:bg-accent-primary/25 transition-colors duration-100">
                       <Plus size={18} strokeWidth={2.25} />
                     </div>
                     <div>
@@ -835,9 +840,13 @@ export function TerminalTabs() {
 
                   <button
                     onClick={() => useAppStore.getState().openCommandPalette()}
-                    className="group flex flex-col items-start gap-2 p-4 bg-elevation-1 border border-[var(--ij-divider-soft)] rounded-lg hover:border-accent-primary/60 hover:bg-elevation-2 hover:shadow-glow-md transition-all text-left"
+                    className="group relative isolate overflow-hidden flex flex-col items-start gap-3 p-5 material-thin rounded-xl shadow-elevation-2 hover:shadow-elevation-3 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.99] transition-[transform,box-shadow] duration-150 ease-out text-left"
                   >
-                    <div className="w-9 h-9 rounded-md bg-elevation-3 flex items-center justify-center text-text-secondary group-hover:text-accent-primary transition-colors">
+                    <span
+                      aria-hidden
+                      className="absolute inset-0 -z-10 rounded-xl bg-[var(--seam)] opacity-0 group-hover:opacity-100 transition-opacity duration-100"
+                    />
+                    <div className="w-10 h-10 rounded-[10px] bg-elevation-3 flex items-center justify-center text-text-secondary group-hover:text-accent-primary transition-colors duration-100">
                       <SearchIcon size={16} strokeWidth={2} />
                     </div>
                     <div>
@@ -851,9 +860,13 @@ export function TerminalTabs() {
                   {terminalList.length > 0 && (
                     <button
                       onClick={toggleGridMode}
-                      className="group flex flex-col items-start gap-2 p-4 bg-elevation-1 border border-[var(--ij-divider-soft)] rounded-lg hover:border-accent-primary/60 hover:bg-elevation-2 hover:shadow-glow-md transition-all text-left"
+                      className="group relative isolate overflow-hidden flex flex-col items-start gap-3 p-5 material-thin rounded-xl shadow-elevation-2 hover:shadow-elevation-3 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.99] transition-[transform,box-shadow] duration-150 ease-out text-left"
                     >
-                      <div className="w-9 h-9 rounded-md bg-elevation-3 flex items-center justify-center text-text-secondary group-hover:text-accent-primary transition-colors">
+                      <span
+                        aria-hidden
+                        className="absolute inset-0 -z-10 rounded-xl bg-[var(--seam)] opacity-0 group-hover:opacity-100 transition-opacity duration-100"
+                      />
+                      <div className="w-10 h-10 rounded-[10px] bg-elevation-3 flex items-center justify-center text-text-secondary group-hover:text-accent-primary transition-colors duration-100">
                         <Grid3X3 size={16} strokeWidth={2} />
                       </div>
                       <div>
@@ -867,9 +880,13 @@ export function TerminalTabs() {
 
                   <button
                     onClick={() => useAppStore.getState().openSettings()}
-                    className="group flex flex-col items-start gap-2 p-4 bg-elevation-1 border border-[var(--ij-divider-soft)] rounded-lg hover:border-accent-primary/60 hover:bg-elevation-2 hover:shadow-glow-md transition-all text-left"
+                    className="group relative isolate overflow-hidden flex flex-col items-start gap-3 p-5 material-thin rounded-xl shadow-elevation-2 hover:shadow-elevation-3 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.99] transition-[transform,box-shadow] duration-150 ease-out text-left"
                   >
-                    <div className="w-9 h-9 rounded-md bg-elevation-3 flex items-center justify-center text-text-secondary group-hover:text-accent-primary transition-colors">
+                    <span
+                      aria-hidden
+                      className="absolute inset-0 -z-10 rounded-xl bg-[var(--seam)] opacity-0 group-hover:opacity-100 transition-opacity duration-100"
+                    />
+                    <div className="w-10 h-10 rounded-[10px] bg-elevation-3 flex items-center justify-center text-text-secondary group-hover:text-accent-primary transition-colors duration-100">
                       <SlidersHorizontal size={16} strokeWidth={2} />
                     </div>
                     <div>
@@ -886,45 +903,45 @@ export function TerminalTabs() {
                   <div className="flex items-center justify-between text-text-tertiary">
                     <span>Search Everywhere</span>
                     <span className="flex items-center gap-0.5">
-                      <kbd className="px-1 py-0.5 rounded bg-elevation-2 text-text-secondary font-sans border border-[var(--ij-divider-soft)] text-[10px]">
+                      <kbd className="px-1 py-0.5 rounded-[4px] bg-elevation-3 ring-1 ring-seam shadow-[0_1px_0_var(--ij-divider)] text-text-secondary font-sans text-[10px]">
                         {isMac ? '⌘' : 'Ctrl'}
                       </kbd>
                       <span className="text-text-tertiary/60">+</span>
-                      <kbd className="px-1 py-0.5 rounded bg-elevation-2 text-text-secondary font-sans border border-[var(--ij-divider-soft)] text-[10px]">P</kbd>
+                      <kbd className="px-1 py-0.5 rounded-[4px] bg-elevation-3 ring-1 ring-seam shadow-[0_1px_0_var(--ij-divider)] text-text-secondary font-sans text-[10px]">P</kbd>
                     </span>
                   </div>
                   <div className="flex items-center justify-between text-text-tertiary">
                     <span>New Terminal</span>
                     <span className="flex items-center gap-0.5">
-                      <kbd className="px-1 py-0.5 rounded bg-elevation-2 text-text-secondary font-sans border border-[var(--ij-divider-soft)] text-[10px]">
+                      <kbd className="px-1 py-0.5 rounded-[4px] bg-elevation-3 ring-1 ring-seam shadow-[0_1px_0_var(--ij-divider)] text-text-secondary font-sans text-[10px]">
                         {isMac ? '⌘' : 'Ctrl'}
                       </kbd>
                       <span className="text-text-tertiary/60">+</span>
-                      <kbd className="px-1 py-0.5 rounded bg-elevation-2 text-text-secondary font-sans border border-[var(--ij-divider-soft)] text-[10px]">
+                      <kbd className="px-1 py-0.5 rounded-[4px] bg-elevation-3 ring-1 ring-seam shadow-[0_1px_0_var(--ij-divider)] text-text-secondary font-sans text-[10px]">
                         {isMac ? '⇧' : 'Shift'}
                       </kbd>
                       <span className="text-text-tertiary/60">+</span>
-                      <kbd className="px-1 py-0.5 rounded bg-elevation-2 text-text-secondary font-sans border border-[var(--ij-divider-soft)] text-[10px]">N</kbd>
+                      <kbd className="px-1 py-0.5 rounded-[4px] bg-elevation-3 ring-1 ring-seam shadow-[0_1px_0_var(--ij-divider)] text-text-secondary font-sans text-[10px]">N</kbd>
                     </span>
                   </div>
                   <div className="flex items-center justify-between text-text-tertiary">
                     <span>Toggle Sidebar</span>
                     <span className="flex items-center gap-0.5">
-                      <kbd className="px-1 py-0.5 rounded bg-elevation-2 text-text-secondary font-sans border border-[var(--ij-divider-soft)] text-[10px]">
+                      <kbd className="px-1 py-0.5 rounded-[4px] bg-elevation-3 ring-1 ring-seam shadow-[0_1px_0_var(--ij-divider)] text-text-secondary font-sans text-[10px]">
                         {isMac ? '⌘' : 'Ctrl'}
                       </kbd>
                       <span className="text-text-tertiary/60">+</span>
-                      <kbd className="px-1 py-0.5 rounded bg-elevation-2 text-text-secondary font-sans border border-[var(--ij-divider-soft)] text-[10px]">B</kbd>
+                      <kbd className="px-1 py-0.5 rounded-[4px] bg-elevation-3 ring-1 ring-seam shadow-[0_1px_0_var(--ij-divider)] text-text-secondary font-sans text-[10px]">B</kbd>
                     </span>
                   </div>
                   <div className="flex items-center justify-between text-text-tertiary">
                     <span>Toggle Grid</span>
                     <span className="flex items-center gap-0.5">
-                      <kbd className="px-1 py-0.5 rounded bg-elevation-2 text-text-secondary font-sans border border-[var(--ij-divider-soft)] text-[10px]">
+                      <kbd className="px-1 py-0.5 rounded-[4px] bg-elevation-3 ring-1 ring-seam shadow-[0_1px_0_var(--ij-divider)] text-text-secondary font-sans text-[10px]">
                         {isMac ? '⌘' : 'Ctrl'}
                       </kbd>
                       <span className="text-text-tertiary/60">+</span>
-                      <kbd className="px-1 py-0.5 rounded bg-elevation-2 text-text-secondary font-sans border border-[var(--ij-divider-soft)] text-[10px]">G</kbd>
+                      <kbd className="px-1 py-0.5 rounded-[4px] bg-elevation-3 ring-1 ring-seam shadow-[0_1px_0_var(--ij-divider)] text-text-secondary font-sans text-[10px]">G</kbd>
                     </span>
                   </div>
                 </div>

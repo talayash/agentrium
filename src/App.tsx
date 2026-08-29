@@ -60,6 +60,7 @@ import {
   applyReduceMotion,
   applyUiFontScale,
   applyTabHeight,
+  applyVibrancy,
 } from './lib/accentTheme';
 import { listen } from '@tauri-apps/api/event';
 import type { TerminalMetricsPayload } from './lib/sessionMetrics';
@@ -167,6 +168,17 @@ function App() {
     applyUiFontScale(uiFontScale);
     setColorfulFolderIcons(colorfulFolderIcons);
   }, [themeMode, uiDensity, tabHeight, accentColorHex, uiReduceMotion, uiFontScale, colorfulFolderIcons]);
+
+  // OS behind-window vibrancy (mica/acrylic) is deliberately OFF: on
+  // undecorated Windows windows the DWM backdrop re-extends a caption strip
+  // above the client area (verified live). The Apple material identity comes
+  // from in-app translucent layers (overlays/popovers/drawers) that blur real
+  // app content instead. clearEffects() also resets any effect a previous dev
+  // session left applied.
+  useEffect(() => {
+    applyVibrancy(false);
+    getCurrentWindow().clearEffects().catch(() => {}); // best-effort cleanup, safe to ignore
+  }, []);
 
   // Follow the OS "reduce motion" setting (WCAG 2.2 SC 2.3.3) on startup and
   // whenever it changes - but only until the user makes an explicit choice in
@@ -779,7 +791,7 @@ function App() {
 
   return (
     <div
-      className="h-screen w-screen bg-bg-primary flex flex-col overflow-hidden rounded-[4px]"
+      className="app-root h-screen w-screen bg-bg-primary flex flex-col overflow-hidden rounded-[4px]"
       style={{ boxShadow: '0 0 0 1px var(--ij-divider)' }}
     >
       <AnimatePresence>
@@ -843,7 +855,9 @@ function App() {
               )}
             </AnimatePresence>
 
-            <main className="flex-1 flex flex-col overflow-hidden">
+            {/* Content stays opaque even under vibrancy - only chrome reveals
+                the behind-window material. */}
+            <main className="flex-1 flex flex-col overflow-hidden bg-elevation-0">
               <TerminalTabs />
             </main>
 

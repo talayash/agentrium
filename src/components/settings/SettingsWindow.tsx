@@ -47,7 +47,7 @@ export function SettingsWindow() {
       closeOn="click"
       panelClassName="grid grid-rows-[44px_1fr] w-[92vw] max-w-[1100px] h-[80vh] max-h-[720px]"
     >
-      <div className="flex items-center justify-between px-3 bg-elevation-1 border-b border-[var(--ij-divider-soft)]">
+      <div className="flex items-center justify-between px-3 border-b border-[var(--seam)]">
         <div className="flex items-center gap-3">
           <span className="text-text-primary text-[13px] font-semibold">Settings</span>
           <SettingsSearch value={query} onChange={setQuery} />

@@ -363,14 +363,19 @@ export function CommandPalette() {
       onDoubleClick={closeCommandPalette}
     >
       <motion.div
-        initial={{ opacity: 0, scale: 0.96, y: -8 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.96, y: -8 }}
-        transition={{ duration: 0.15, ease: 'easeOut' }}
+        initial={{ opacity: 0, scale: 0.97, y: -10 }}
+        animate={{
+          opacity: 1,
+          scale: 1,
+          y: 0,
+          transition: { type: 'spring', bounce: 0, duration: 0.3, opacity: { duration: 0.15, ease: 'easeOut' } },
+        }}
+        exit={{ opacity: 0, scale: 0.97, y: -8, transition: { duration: 0.12, ease: 'easeOut' } }}
         className="mx-auto mt-[15vh] w-full max-w-[550px]"
         onDoubleClick={(e) => e.stopPropagation()}
       >
-        <div className="bg-elevation-4 ring-1 ring-white/[0.08] rounded-xl overflow-hidden">
+        {/* Spotlight-style glass panel */}
+        <div className="material-overlay rounded-xl overflow-hidden">
           {/* Search Input */}
           <div className="p-3 border-b border-border">
             <div className="relative flex items-center">
