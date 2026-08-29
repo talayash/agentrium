@@ -13,6 +13,7 @@ import { AgentPicker } from './AgentPicker';
 import { Button } from './ui/Button';
 import { Modal } from './ui/Modal';
 import { ListRow } from './ui/ListRow';
+import { Toggle } from './ui/Toggle';
 
 const isMac = navigator.platform.toUpperCase().includes('MAC');
 
@@ -413,18 +414,9 @@ export function NewTerminalModal() {
                 Run a regular shell so you can launch wrappers like <code className="text-text-secondary">ollama launch claude</code>
               </p>
             </div>
-            <button
-              onClick={() => setPlainShell(!plainShell)}
-              className={`relative w-9 h-5 rounded-full transition-colors flex-shrink-0 ml-3 ${
-                plainShell ? 'bg-accent-primary' : 'bg-border-light'
-              }`}
-            >
-              <div
-                className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
-                  plainShell ? 'translate-x-4' : 'translate-x-0.5'
-                }`}
-              />
-            </button>
+            <div className="ml-3">
+              <Toggle checked={plainShell} onChange={setPlainShell} ariaLabel="Plain shell (no Claude)" />
+            </div>
           </div>
 
           {/* Agent Selection */}
@@ -682,18 +674,7 @@ export function NewTerminalModal() {
               <label className="text-text-secondary text-[12px]">Isolated Worktree</label>
               <p className="text-text-tertiary text-[11px]">Run in a separate git worktree</p>
             </div>
-            <button
-              onClick={() => setUseWorktree(!useWorktree)}
-              className={`relative w-9 h-5 rounded-full transition-colors ${
-                useWorktree ? 'bg-accent-primary' : 'bg-border-light'
-              }`}
-            >
-              <div
-                className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
-                  useWorktree ? 'translate-x-4' : 'translate-x-0.5'
-                }`}
-              />
-            </button>
+            <Toggle checked={useWorktree} onChange={setUseWorktree} ariaLabel="Isolated Worktree" />
           </div>
           )}
 
