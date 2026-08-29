@@ -114,7 +114,7 @@ export function SessionWidget() {
         </button>
 
         {open && (
-          <div className="absolute left-0 top-full mt-1 z-50 w-[300px] bg-elevation-3 ring-1 ring-seam-strong rounded-lg overflow-hidden">
+          <div className="absolute left-0 top-full mt-1 z-50 w-[300px] material-popover rounded-lg overflow-hidden">
             <div className="px-3 py-2 border-b border-[var(--ij-divider-soft)] text-text-tertiary text-[10px] uppercase tracking-wider font-semibold">
               Sessions
             </div>

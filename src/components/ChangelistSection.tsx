@@ -460,7 +460,7 @@ export function ChangelistSection({
                 <MoreVertical size={12} />
               </button>
               {isMenuOpen && (
-                <div className="absolute right-0 top-full mt-1 z-50 w-[140px] bg-elevation-3 ring-1 ring-seam-strong rounded-lg overflow-hidden py-1">
+                <div className="absolute right-0 top-full mt-1 z-50 w-[140px] material-popover rounded-lg overflow-hidden py-1">
                   <button
                     onClick={() => { setEditingId(listId); setEditingName(headerName); setMenuListId(null); }}
                     className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] text-text-primary hover:bg-fill-hover"
@@ -494,7 +494,7 @@ export function ChangelistSection({
 
       {contextFile && (
         <div
-          className="fixed z-50 bg-elevation-3 ring-1 ring-seam-strong rounded-lg overflow-hidden py-1 min-w-[180px]"
+          className="fixed z-50 material-popover rounded-lg overflow-hidden py-1 min-w-[180px]"
           style={{ left: contextFile.x, top: contextFile.y }}
         >
           <div className="px-3 py-1 text-text-tertiary text-[10px] uppercase tracking-wider">

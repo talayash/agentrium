@@ -196,7 +196,7 @@ export function MemoryEditor() {
         exit={{ opacity: 0, scale: 0.98 }}
         transition={{ duration: 0.15 }}
         onDoubleClick={(e) => e.stopPropagation()}
-        className="bg-bg-elevated ring-1 ring-seam-strong rounded-lg w-full max-w-3xl overflow-hidden flex flex-col"
+        className="material-sheet rounded-lg w-full max-w-3xl overflow-hidden flex flex-col"
         style={{ height: '600px' }}
       >
         {/* Header */}

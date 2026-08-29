@@ -188,7 +188,7 @@ export function PushModal() {
                     <ChevronDown size={11} className="text-text-tertiary" />
                   </button>
                   {remoteMenuOpen && (
-                    <div className="absolute left-0 top-full mt-1 z-10 w-[160px] bg-elevation-3 border border-[var(--ij-divider-soft)] rounded-lg overflow-hidden py-1">
+                    <div className="absolute left-0 top-full mt-1 z-10 w-[160px] material-popover rounded-lg overflow-hidden py-1">
                       {preview.remotes.map((r) => (
                         <button
                           key={r}
@@ -384,7 +384,7 @@ export function PushModal() {
                 <ChevronDown size={13} />
               </button>
               {pushMenuOpen && (
-                <div className="absolute right-0 bottom-full mb-1 z-10 w-[220px] bg-elevation-3 border border-[var(--ij-divider-soft)] rounded-lg overflow-hidden py-1">
+                <div className="absolute right-0 bottom-full mb-1 z-10 w-[220px] material-popover rounded-lg overflow-hidden py-1">
                   <button
                     onClick={() => { setPushMenuOpen(false); setForceConfirmOpen(true); }}
                     className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] text-text-primary hover:bg-fill-hover transition-colors"

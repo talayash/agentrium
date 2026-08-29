@@ -111,7 +111,7 @@ export function SessionHistory() {
         exit={{ opacity: 0 }}
         transition={{ duration: 0.15 }}
         onDoubleClick={(e) => e.stopPropagation()}
-        className="bg-bg-elevated ring-1 ring-seam-strong rounded-lg w-full max-w-4xl overflow-hidden"
+        className="material-sheet rounded-lg w-full max-w-4xl overflow-hidden"
       >
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-border">

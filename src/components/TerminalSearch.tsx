@@ -92,7 +92,7 @@ export function TerminalSearch({ searchAddon, visible, onClose }: TerminalSearch
   if (!visible) return null;
 
   return (
-    <div className="absolute top-2 right-4 z-30 flex items-center gap-1 bg-bg-elevated ring-1 ring-seam-strong rounded-md px-2 py-1">
+    <div className="absolute top-2 right-4 z-30 flex items-center gap-1 material-popover rounded-md px-2 py-1">
       {/* Search input */}
       <input
         ref={inputRef}

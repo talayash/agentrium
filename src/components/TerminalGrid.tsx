@@ -286,7 +286,7 @@ function AddTerminalCell() {
               }}
             />
             <div
-              className="absolute z-50 bg-bg-elevated ring-1 ring-seam-strong rounded-lg p-2 min-w-[200px]"
+              className="absolute z-50 material-popover rounded-lg p-2 min-w-[200px]"
               onClick={(e) => e.stopPropagation()}
             >
               <p className="text-text-tertiary text-[11px] px-2 py-1 mb-1">Select Terminal</p>

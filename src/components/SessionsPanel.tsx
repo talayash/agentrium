@@ -364,7 +364,7 @@ function SessionContextMenu({
     <div
       role="menu"
       data-context-menu="sessions"
-      className="fixed z-[80] min-w-[220px] bg-bg-elevated ring-1 ring-seam-strong rounded-md py-1 select-none"
+      className="fixed z-[80] min-w-[220px] material-popover rounded-md py-1 select-none"
       style={{ left: x, top: y }}
     >
       <MenuItem

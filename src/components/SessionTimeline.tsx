@@ -119,7 +119,7 @@ export function SessionTimeline() {
         exit={{ opacity: 0, scale: 0.98 }}
         transition={{ duration: 0.15 }}
         onDoubleClick={(e) => e.stopPropagation()}
-        className="bg-bg-elevated ring-1 ring-seam-strong rounded-lg w-full max-w-2xl overflow-hidden max-h-[80vh] flex flex-col"
+        className="material-sheet rounded-lg w-full max-w-2xl overflow-hidden max-h-[80vh] flex flex-col"
       >
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-border">

@@ -624,7 +624,7 @@ export function FileTreePanel() {
         <div
           role="menu"
           data-context-menu="tree"
-          className="fixed z-[80] min-w-[220px] bg-bg-elevated ring-1 ring-seam-strong rounded-md py-1 select-none"
+          className="fixed z-[80] min-w-[220px] material-popover rounded-md py-1 select-none"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
           {menuItems.map((item, i) => {
@@ -671,7 +671,7 @@ export function FileTreePanel() {
           onClick={() => setPendingDelete(null)}
         >
           <div
-            className="bg-bg-elevated ring-1 ring-seam-strong rounded-md p-4 w-[360px]"
+            className="material-popover rounded-md p-4 w-[360px]"
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="text-text-primary text-[13px] font-semibold mb-1">

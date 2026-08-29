@@ -61,7 +61,7 @@ export function ToolsMenu() {
       </Tooltip>
 
       {open && (
-        <div className="absolute right-0 top-full mt-1 z-50 w-[220px] bg-elevation-3 ring-1 ring-seam-strong rounded-lg overflow-hidden py-1">
+        <div className="absolute right-0 top-full mt-1 z-50 w-[220px] material-popover rounded-lg overflow-hidden py-1">
           {items.map(({ id, label, icon: Icon, action }) => (
             <button
               key={id}

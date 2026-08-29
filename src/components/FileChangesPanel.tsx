@@ -895,7 +895,7 @@ export function FileChangesPanel() {
                 </button>
               </Tooltip>
               {commitMenuOpen && (
-                <div className="absolute right-0 bottom-full mb-1 z-50 w-[170px] bg-elevation-3 ring-1 ring-seam-strong rounded-lg overflow-hidden py-1">
+                <div className="absolute right-0 bottom-full mb-1 z-50 w-[170px] material-popover rounded-lg overflow-hidden py-1">
                   <button
                     onClick={() => { setCommitMenuOpen(false); handleStash(); }}
                     disabled={stashing || committing || pushing || result.changes.length === 0}
@@ -1249,7 +1249,7 @@ function RepoRow({ repo }: { repo: ScannedGitRepo }) {
       </div>
 
       {menuOpen && (
-        <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-elevation-3 ring-1 ring-seam-strong rounded-lg overflow-hidden">
+        <div className="absolute left-0 right-0 top-full mt-1 z-50 material-popover rounded-lg overflow-hidden">
           <div className="p-2 border-b border-[var(--ij-divider-soft)]">
             <div className="relative">
               <SearchIcon size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-text-tertiary" strokeWidth={1.75} />

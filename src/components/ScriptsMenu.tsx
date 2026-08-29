@@ -111,7 +111,7 @@ export function ScriptsMenu({ terminalId, cwd }: ScriptsMenuProps) {
       )}
 
       {open && scripts.length > 0 && (
-        <div className="absolute right-0 top-full mt-1 z-30 bg-elevation-3 ring-1 ring-seam-strong rounded-lg py-1 min-w-[240px] max-w-[360px] max-h-[50vh] overflow-y-auto">
+        <div className="absolute right-0 top-full mt-1 z-30 material-sheet rounded-lg py-1 min-w-[240px] max-w-[360px] max-h-[50vh] overflow-y-auto">
           <div className="px-3 py-1.5 text-[10.5px] uppercase tracking-wide text-text-tertiary border-b border-[var(--ij-divider-soft)] mb-1">
             package.json scripts
           </div>

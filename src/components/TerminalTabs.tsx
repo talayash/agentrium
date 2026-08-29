@@ -963,7 +963,7 @@ export function TerminalTabs() {
         return (
           <div
             data-hidden-tabs-menu
-            className="fixed z-[80] bg-bg-elevated ring-1 ring-seam-strong rounded-md shadow-elevation-4 py-1 min-w-[240px] max-h-[320px] overflow-y-auto"
+            className="fixed z-[80] material-popover rounded-md shadow-elevation-4 py-1 min-w-[240px] max-h-[320px] overflow-y-auto"
             style={{ left: clampedLeft, top: clampedTop }}
             onClick={(e) => e.stopPropagation()}
             role="menu"
@@ -1018,7 +1018,7 @@ export function TerminalTabs() {
           <div
             role="menu"
             data-context-menu="terminal-tabs"
-            className="fixed z-[80] min-w-[220px] bg-bg-elevated ring-1 ring-seam-strong rounded-md py-1 select-none"
+            className="fixed z-[80] min-w-[220px] material-popover rounded-md py-1 select-none"
             style={{ left: contextMenu.x, top: contextMenu.y }}
           >
             <TabMenuItem
