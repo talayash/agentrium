@@ -27,6 +27,10 @@ export default {
         'border-focus': 'var(--border-focus)',
         'seam': 'var(--seam)',
         'seam-strong': 'var(--seam-strong)',
+        // Theme-aware interactive fills (see index.css). Use bg-fill-hover etc.
+        'fill-hover': 'var(--fill-hover)',
+        'fill-active': 'var(--fill-active)',
+        'fill-sel': 'var(--fill-sel)',
         // Text tokens are theme-aware: dark channels live in index.css :root,
         // light channels are swapped in by applyThemeMode(). Channel-triplet
         // form keeps Tailwind's /opacity modifiers working.
@@ -40,8 +44,15 @@ export default {
         'error': 'var(--error)',
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
-        mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
+        // Apple system font first (real SF Pro on macOS / installed Windows),
+        // Inter as the SF-alike fallback everywhere else. Skill §15: prefer
+        // the platform system font - it ships optical sizing + tracking tables.
+        sans: [
+          '-apple-system', 'BlinkMacSystemFont',
+          'SF Pro Display', 'SF Pro Text', 'SF Pro',
+          'Inter', 'system-ui', 'sans-serif',
+        ],
+        mono: ['SF Mono', 'JetBrains Mono', 'Fira Code', 'monospace'],
       },
       letterSpacing: {
         // Optical tracking bands (see index.css) - use instead of raw values.
@@ -58,7 +69,7 @@ export default {
         // Layered ambient+key shadows - surfaces float, they don't outline.
         // elevation-3/4 read the theme-aware float tokens (light overrides in
         // applyThemeMode) so shadows soften over a light canvas.
-        'elevation-2': '0 1px 3px rgba(0, 0, 0, 0.28), 0 4px 12px rgba(0, 0, 0, 0.20)',
+        'elevation-2': 'var(--shadow-float-sm)',
         'elevation-3': 'var(--shadow-float-md)',
         'elevation-4': 'var(--shadow-float-lg)',
       },

@@ -802,10 +802,10 @@ export function TerminalTabs() {
                   draggable={false}
                   style={{ imageRendering: 'pixelated' }}
                 />
-                <h1 className="text-[26px] font-semibold text-text-primary mb-2 tracking-display leading-[1.15]">
+                <h1 className="text-[40px] font-bold text-text-primary mb-3 tracking-display leading-[1.08]">
                   Welcome to Agentrium
                 </h1>
-                <p className="text-[13px] leading-relaxed text-text-secondary mb-9 text-center max-w-[420px]">
+                <p className="text-[15px] leading-relaxed text-text-secondary mb-10 text-center max-w-[460px]">
                   Run Claude Code, Codex, Cursor, and Antigravity agents side by side
                   in one native window. Start a new terminal, or press{' '}
                   <kbd className="px-1.5 py-0.5 rounded-[5px] bg-elevation-3 ring-1 ring-seam shadow-[0_1px_0_var(--ij-divider)] text-text-secondary text-[11px] font-sans mx-0.5">

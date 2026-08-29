@@ -22,6 +22,7 @@ import { UpdatePill } from './UpdatePill';
 import { ToolsMenu } from './titlebar/ToolsMenu';
 import { SessionWidget } from './titlebar/SessionWidget';
 import { Tooltip } from './ui/Tooltip';
+import { ThemeToggle } from './ui/ThemeToggle';
 import { ListRow } from './ui/ListRow';
 import { pickBreadcrumb } from '../lib/breadcrumb';
 
@@ -318,6 +319,8 @@ export function TitleBar() {
           <ToolsMenu />
 
           <div className="w-px h-4 bg-[var(--ij-divider-soft)] mx-1" />
+
+          <ThemeToggle />
 
           <Tooltip label="Search Everywhere" shortcut="Ctrl+P">
             <button onClick={openCommandPalette} className={toolBtn(false)}>

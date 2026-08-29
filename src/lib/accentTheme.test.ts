@@ -42,7 +42,7 @@ describe('accentTheme', () => {
   it('applyThemeMode toggles the data-theme attribute and elevation tokens', () => {
     applyThemeMode('light');
     expect(document.documentElement.getAttribute('data-theme')).toBe('light');
-    expect(document.documentElement.style.getPropertyValue('--elevation-0')).toBe('#F5F5F6');
+    expect(document.documentElement.style.getPropertyValue('--elevation-0')).toBe('#FCFCFE');
     applyThemeMode('dark');
     expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
     expect(document.documentElement.style.getPropertyValue('--elevation-0')).toBe('');

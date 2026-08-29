@@ -85,7 +85,7 @@ function resetAppStore() {
     uiDensity: 'comfortable',
     tabHeight: 'medium',
     colorfulFolderIcons: false,
-    accentColorHex: '#0A84FF',
+    accentColorHex: '#007AFF',
     uiFontScale: 1.0,
     uiReduceMotion: false,
     notificationSoundEnabled: false,
@@ -554,7 +554,7 @@ describe('appStore - appearance v1.22.0 setters', () => {
     setAccentColorHex('#ABCDEF');
     expect(useAppStore.getState().accentColorHex).toBe('#ABCDEF');
     setAccentColorHex('not a color');
-    expect(useAppStore.getState().accentColorHex).toBe('#0A84FF');
+    expect(useAppStore.getState().accentColorHex).toBe('#007AFF');
   });
 
   it('setThemeMode / setUiDensity / setUiReduceMotion set as given', () => {

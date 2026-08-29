@@ -131,31 +131,39 @@
 :root {
   color-scheme: dark; /* native scrollbars/controls follow theme; applyThemeMode flips it */
 
-  /* Surface ramp (opaque bases). Neutral, no blue cast - macOS dark. */
-  --elevation-0: #161618;  /* Canvas / app background */
-  --elevation-1: #1D1D20;  /* Chrome: sidebar, titlebar, tab strip, status bar */
-  --elevation-2: #252528;  /* Cards, inline panels, inputs */
-  --elevation-3: #2E2E32;  /* Hover / selected fills */
-  --elevation-4: #36363B;  /* Floating: menus, popovers, modal base */
+  /* Deep macOS surface ramp. --canvas is the darkest tone shown in the gaps
+     between floating panels; chrome (elevation-1) and content (elevation-0)
+     float one step lighter above it. */
+  /* "Midnight" dark identity - deep blue-indigo, not neutral gray. Tinted so
+     the night gradient and glass read as one rich, alive surface. */
+  --canvas: #080A12;       /* Window backdrop / gaps between floating panels */
+  --elevation-0: #0F1320;  /* Content / terminal surface - deep midnight blue */
+  --elevation-1: #141828;  /* Chrome: sidebar, titlebar, tab strip, status bar */
+  --elevation-2: #1B2036;  /* Cards, inline panels, inputs */
+  --elevation-3: #252B45;  /* Hover / selected fills */
+  --elevation-4: #2E3454;  /* Floating: menus, popovers, modal base */
 
   /* Materials - translucent surfaces for floating layers. Weight = hierarchy:
      heavier (more opaque, more blur) separates structure; lighter draws focus.
      Chrome materials only turn translucent under data-vibrancy="on" (OS blur
      behind the window confirmed); overlay/popover materials blur app content
      behind them, which always exists. */
-  --material-chrome-bg: var(--elevation-1);          /* swapped to rgba under vibrancy */
+  --material-chrome-bg: rgba(18, 22, 42, 0.5);       /* midnight frosted glass - shows the night gradient through */
   --material-overlay-bg: rgba(37, 37, 41, 0.78);     /* modals, command palette */
   --material-popover-bg: rgba(46, 46, 51, 0.84);     /* menus, dropdowns, tooltips */
   --material-thin-bg: rgba(52, 52, 58, 0.62);        /* chips, inline hints */
-  --material-blur: 36px;
-  --material-saturate: 180%;
+  --material-blur: 40px;
+  --material-saturate: 200%;
 
-  /* Light catching the top edge of a material (Apple sheet/toolbar detail). */
-  --edge-light: rgba(255, 255, 255, 0.07);
+  /* Specular light catching the top edge of a glass material (Apple Liquid
+     Glass). Brighter = more "wet"/refractive. Light-mode override in
+     applyThemeMode() pushes this near-white. */
+  --edge-light: rgba(255, 255, 255, 0.14);
 
   /* Float shadows - layered ambient+key. Light-mode overrides in
      applyThemeMode(). Bundled into the .material-* classes (which own
      box-shadow) and mirrored by Tailwind's shadow-elevation-3/4. */
+  --shadow-float-sm: 0 1px 3px rgba(0, 0, 0, 0.28), 0 6px 20px rgba(0, 0, 0, 0.22);
   --shadow-float-md: 0 2px 8px rgba(0, 0, 0, 0.32), 0 12px 32px rgba(0, 0, 0, 0.28);
   --shadow-float-lg: 0 6px 20px rgba(0, 0, 0, 0.38), 0 28px 72px rgba(0, 0, 0, 0.42);
 
@@ -163,6 +171,14 @@
      --ij-* names stay as aliases (54 files consume them). */
   --seam: rgba(255, 255, 255, 0.055);
   --seam-strong: rgba(255, 255, 255, 0.09);
+
+  /* Interactive fills - theme-aware so hover/active/selection stay visible on
+     BOTH dark surfaces and the light glass. Light overrides in applyThemeMode.
+     Use bg-fill-hover / bg-fill-active / bg-fill-sel instead of hardcoded
+     bg-white/[x] (which vanishes on a light background). */
+  --fill-hover: rgba(255, 255, 255, 0.06);
+  --fill-active: rgba(255, 255, 255, 0.10);
+  --fill-sel: rgba(255, 255, 255, 0.08);
   --ij-stripe: #0A84FF;               /* Selection / focus stripe (accent-driven) */
   --ij-tab-underline: #0A84FF;        /* Active tab underline (accent-driven) */
   --ij-divider: rgba(0, 0, 0, 0.42);  /* Between tool windows / editor */
@@ -287,14 +303,19 @@
 }
 .material-thin {
   background: var(--material-thin-bg);
-  backdrop-filter: blur(16px) saturate(150%);
-  -webkit-backdrop-filter: blur(16px) saturate(150%);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  box-shadow: inset 0 1px 0 var(--edge-light);
 }
-/* Chrome material: opaque by default; translucent only once the OS-level
-   behind-window blur is confirmed (data-vibrancy="on" set at runtime).
-   Without that gate a transparent chrome would expose the raw desktop. */
+/* Chrome material: frosted glass in BOTH themes. It blurs the in-app pastel
+   (light) / night (dark) gradient painted on .app-root - real content always
+   exists behind it, so no OS-level vibrancy is needed. */
 .material-chrome {
   background: var(--material-chrome-bg);
+  backdrop-filter: blur(30px) saturate(190%);
+  -webkit-backdrop-filter: blur(30px) saturate(190%);
+  /* Specular top edge - the glass catches light along its top rim. */
+  box-shadow: inset 0 1px 0 var(--edge-light);
 }
 :root[data-vibrancy="on"] {
   --material-chrome-bg: rgba(24, 24, 27, 0.55);
@@ -310,6 +331,35 @@
 }
 :root[data-vibrancy="on"][data-theme="light"] {
   --material-chrome-bg: rgba(240, 240, 243, 0.72);
+}
+
+/* --- Bright-vibrant Apple identity (light) ---------------------------------
+   The window canvas is an in-app pastel gradient; floating panels are white
+   frosted glass that blur it. No OS vibrancy needed - the gradient lives
+   inside the window, so backdrop-filter always has real content to blur. */
+.app-root { background: var(--canvas); }
+/* Light: airy pastel field. */
+:root[data-theme="light"] .app-root {
+  background:
+    radial-gradient(1100px 760px at 14% 8%,  #bcd8ff 0%, transparent 55%),
+    radial-gradient(1000px 820px at 88% 92%, #ffcfe8 0%, transparent 55%),
+    radial-gradient(900px 720px at 74% 22%,  #c9f2ff 0%, transparent 60%),
+    radial-gradient(800px 700px at 30% 80%,  #e6dcff 0%, transparent 60%),
+    linear-gradient(140deg, #eaf1ff, #fbf3ff 72%);
+}
+/* Dark: rich night field - deep indigo / violet / blue, still dark enough to
+   keep the floating content card and its text high-contrast. */
+:root[data-theme="dark"] .app-root {
+  background:
+    radial-gradient(1100px 760px at 14% 8%,  #223163 0%, transparent 55%),
+    radial-gradient(1000px 820px at 88% 92%, #4a2158 0%, transparent 55%),
+    radial-gradient(900px 720px at 74% 22%,  #14406b 0%, transparent 60%),
+    radial-gradient(800px 700px at 30% 80%,  #2c1f52 0%, transparent 60%),
+    linear-gradient(140deg, #0a0c16, #0d0a18 72%);
+}
+@media (prefers-reduced-transparency: reduce) {
+  .app-root { background: var(--elevation-1) !important; }
+  .material-chrome { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
 }
 
 /* Reduced transparency: frost the materials into near-solids. */

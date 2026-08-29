@@ -791,7 +791,7 @@ function App() {
 
   return (
     <div
-      className="app-root h-screen w-screen bg-bg-primary flex flex-col overflow-hidden rounded-[4px]"
+      className="app-root h-screen w-screen flex flex-col overflow-hidden rounded-[10px]"
       style={{ boxShadow: '0 0 0 1px var(--ij-divider)' }}
     >
       <AnimatePresence>
@@ -841,13 +841,16 @@ function App() {
 
           <TitleBar />
 
-          <div className="flex-1 flex overflow-hidden">
+          {/* Floating-panel band: rail hugs the edge, then sidebar + content +
+              side panels float as rounded cards over the deep canvas (macOS
+              Sonoma). gap-2 p-2 opens the canvas seams between them. */}
+          <div className="flex-1 flex overflow-hidden gap-2 p-2">
             <ToolStripe side="left" />
 
             <AnimatePresence mode="wait">
               {sidebarOpen && (
                 <div
-                  className="h-full overflow-hidden transition-all duration-200 ease-out"
+                  className="h-full overflow-hidden rounded-2xl shadow-elevation-2 transition-all duration-200 ease-out"
                   style={{ width: sidebarCollapsed ? 'var(--w-rail)' : 'var(--w-panel)' }}
                 >
                   <Sidebar />
@@ -855,16 +858,14 @@ function App() {
               )}
             </AnimatePresence>
 
-            {/* Content stays opaque even under vibrancy - only chrome reveals
-                the behind-window material. */}
-            <main className="flex-1 flex flex-col overflow-hidden bg-elevation-0">
+            <main className="flex-1 flex flex-col overflow-hidden rounded-2xl bg-elevation-0 shadow-elevation-2 min-w-0">
               <TerminalTabs />
             </main>
 
             <AnimatePresence mode="wait">
               {changesOpen && (
                 <div
-                  className="h-full overflow-hidden transition-all duration-150 ease-out"
+                  className="h-full overflow-hidden rounded-2xl shadow-elevation-2 transition-all duration-150 ease-out"
                   style={{ width: 420 }}
                 >
                   <FileChangesPanel />
@@ -875,7 +876,7 @@ function App() {
             <AnimatePresence mode="wait">
               {orchestrationOpen && (
                 <div
-                  className="h-full overflow-hidden transition-all duration-150 ease-out"
+                  className="h-full overflow-hidden rounded-2xl shadow-elevation-2 transition-all duration-150 ease-out"
                   style={{ width: 320 }}
                 >
                   <OrchestrationPanel />
@@ -886,7 +887,7 @@ function App() {
             <AnimatePresence mode="wait">
               {hintsOpen && (
                 <div
-                  className="h-full overflow-hidden transition-all duration-150 ease-out"
+                  className="h-full overflow-hidden rounded-2xl shadow-elevation-2 transition-all duration-150 ease-out"
                   style={{ width: 320 }}
                 >
                   <HintsPanel />
