@@ -123,26 +123,56 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Elevation system - IntelliJ IDEA 2026.1 "New UI" (Dark) */
+/* Design system - Apple language (materials, springs, optical type).
+   Surfaces follow macOS dark-mode neutrals; floating layers are translucent
+   materials (backdrop-filter) whose weight encodes hierarchy. The historical
+   --elevation-* names are kept as the surface ramp so existing consumers
+   reskin in place. */
 :root {
-  --elevation-0: #1E1F22;  /* Editor / app background */
-  --elevation-1: #2B2D30;  /* Tool windows, sidebar, tab bar, status bar */
-  --elevation-2: #393B40;  /* Cards, hovered rows, inline panels */
-  --elevation-3: #43454A;  /* Floating overlays, dropdowns */
-  --elevation-4: #4E5157;  /* Modals, command palette */
+  color-scheme: dark; /* native scrollbars/controls follow theme; applyThemeMode flips it */
 
-  /* IntelliJ component tokens */
-  --ij-stripe: #3574F0;          /* Selection / focus stripe */
-  --ij-tab-underline: #3574F0;   /* Active tab underline */
-  --ij-divider: #181819;         /* Hard dividers between tool windows / editor */
-  --ij-divider-soft: #393B40;    /* Soft dividers inside a panel */
+  /* Surface ramp (opaque bases). Neutral, no blue cast - macOS dark. */
+  --elevation-0: #161618;  /* Canvas / app background */
+  --elevation-1: #1D1D20;  /* Chrome: sidebar, titlebar, tab strip, status bar */
+  --elevation-2: #252528;  /* Cards, inline panels, inputs */
+  --elevation-3: #2E2E32;  /* Hover / selected fills */
+  --elevation-4: #36363B;  /* Floating: menus, popovers, modal base */
 
-  /* Text tokens - stored as space-separated RGB channels so Tailwind's
-     /opacity modifiers resolve (rgb(var(--x) / <alpha-value>)) AND light mode
-     can override them in applyThemeMode(). These are the dark-theme values. */
-  --text-primary: 223 225 229;   /* #DFE1E5 */
-  --text-secondary: 157 160 168; /* #9DA0A8 */
-  --text-tertiary: 138 142 151;  /* #8A8E97 - WCAG AA (~5:1 on elevation-0) */
+  /* Materials - translucent surfaces for floating layers. Weight = hierarchy:
+     heavier (more opaque, more blur) separates structure; lighter draws focus.
+     Chrome materials only turn translucent under data-vibrancy="on" (OS blur
+     behind the window confirmed); overlay/popover materials blur app content
+     behind them, which always exists. */
+  --material-chrome-bg: var(--elevation-1);          /* swapped to rgba under vibrancy */
+  --material-overlay-bg: rgba(37, 37, 41, 0.78);     /* modals, command palette */
+  --material-popover-bg: rgba(46, 46, 51, 0.84);     /* menus, dropdowns, tooltips */
+  --material-thin-bg: rgba(52, 52, 58, 0.62);        /* chips, inline hints */
+  --material-blur: 36px;
+  --material-saturate: 180%;
+
+  /* Light catching the top edge of a material (Apple sheet/toolbar detail). */
+  --edge-light: rgba(255, 255, 255, 0.07);
+
+  /* Seams - translucent separation instead of opaque divider lines. The old
+     --ij-* names stay as aliases (54 files consume them). */
+  --seam: rgba(255, 255, 255, 0.055);
+  --seam-strong: rgba(255, 255, 255, 0.09);
+  --ij-stripe: #0A84FF;               /* Selection / focus stripe (accent-driven) */
+  --ij-tab-underline: #0A84FF;        /* Active tab underline (accent-driven) */
+  --ij-divider: rgba(0, 0, 0, 0.42);  /* Between tool windows / editor */
+  --ij-divider-soft: var(--seam);     /* Inside a panel */
+
+  /* Accent - Apple system blue (dark). applyAccentColor() overrides from the
+     user's choice; these keep first paint correct. */
+  --accent-primary: #0A84FF;
+  --accent-secondary: #3899FF;
+
+  /* Text tokens - space-separated RGB channels so Tailwind's /opacity
+     modifiers resolve AND light mode can override in applyThemeMode().
+     Dark values ~ macOS label/secondaryLabel/tertiaryLabel, AA-tuned. */
+  --text-primary: 245 245 247;   /* #F5F5F7 */
+  --text-secondary: 174 174 178; /* #AEAEB2 */
+  --text-tertiary: 152 152 159;  /* #98989F - WCAG AA (~5.2:1 on elevation-0) */
 
   /* Density tokens - driven by Appearance setting, default = comfortable */
   --ui-row-py: 6px;
@@ -151,14 +181,14 @@
   /* UI font scale (default 1.0, range 0.85..1.25). */
   --ui-font-scale: 1;
 
-  /* --- Phase 1 design tokens ------------------------------------------ */
-  /* Motion - calm, fast IntelliJ feel. Mirrored in lib/motionTokens.ts for
-     Framer Motion. reduce-motion neutralizes these via the cascade below. */
+  /* Motion - CSS side is for micro-transitions (hover tints, fades) only;
+     anything that moves uses springs from lib/motionTokens.ts. reduce-motion
+     neutralizes both via the cascade below. */
   --ease-out: cubic-bezier(0.25, 0.1, 0.25, 1);
   --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
   --dur-fast: 120ms;
-  --dur-base: 160ms;
-  --dur-slow: 220ms;
+  --dur-base: 180ms;
+  --dur-slow: 260ms;
 
   /* Spacing scale (4px base) */
   --space-1: 4px;
@@ -173,39 +203,53 @@
   --text-meta: 12px;
   --text-body: 13px;
   --text-title: 14px;
+  --text-h1: 18px;   /* modal titles, wizard headers */
+  --text-h2: 16px;   /* section headers */
 
-  /* Typography - IntelliJ New UI header scale (Inter, relative to 13px body) */
-  --text-h1: 18px;   /* +5 bold - modal titles, wizard headers */
-  --text-h2: 16px;   /* +3 bold - section headers */
+  /* Optical tracking - size-specific, never one global value. Large text
+     tightens, body sits slightly negative (SF-style crispness with Inter),
+     captions open up for legibility. */
+  --track-display: -0.022em;  /* >= 18px */
+  --track-title: -0.014em;    /* 14-16px */
+  --track-body: -0.006em;     /* 13px */
+  --track-caption: 0.01em;    /* <= 12px */
 
-  /* Layout dimension tokens (Phase-3 consumers: TitleBar, Sidebar, TerminalGrid) */
+  /* Radii - Apple's softer, continuous-feel corners. */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  /* Layout dimension tokens (chrome consumers: TitleBar, Sidebar, TerminalGrid) */
   --h-header: 40px;  /* Merged main window header */
   --h-tab:    32px;  /* Editor/terminal tab strip */
   --h-status: 24px;  /* Status bar */
   --w-rail:   48px;  /* Collapsed sidebar / tool-window stripe */
   --w-panel:  260px; /* Expanded sidebar panel */
 
-  /* Semantic colors - theme-aware. Dark defaults here; light overrides live
-     in accentTheme.applyThemeMode(). */
-  --success: #5FAD65;   /* ExpUI Green7 (dark) - desaturated so it doesn't fight ANSI green in Claude output */
-  --warning: #D6AE58;   /* ExpUI Yellow6 (dark) */
-  --error:   #DB5C5C;   /* ExpUI Red7 (dark) - matches current */
+  /* Semantic colors - Apple system palette (dark), slightly softened so they
+     don't fight ANSI colors in terminal output. Light overrides live in
+     accentTheme.applyThemeMode(). */
+  --success: #30C55E;
+  --warning: #FFA028;
+  --error:   #FA5A52;
 
-  /* Focus ring. --border-focus is normally (re)set by applyAccentColor();
-     this default keeps focus-visible visible on first paint before that runs. */
-  --focus-ring-width: 2px;
-  --border-focus: rgba(53, 116, 240, 0.55);
+  /* Focus ring - soft accent halo (macOS style). --border-focus is normally
+     (re)set by applyAccentColor(); this default keeps focus-visible visible
+     on first paint before that runs. */
+  --focus-ring-width: 3px;
+  --border-focus: rgba(10, 132, 255, 0.45);
 
-  /* Accent-derived shadow-glow tokens (Phase 2). Consumed by Tailwind's
-     shadow-glow-sm / shadow-glow-md utilities. applyAccentColor() rewrites
-     these from the user's chosen hex so focused surfaces glow in the current
-     accent instead of always-blue. --accent-glow (0.18), set elsewhere in
-     accentTheme.ts, is a distinct token - do not consolidate. */
-  --accent-glow-sm: rgba(53, 116, 240, 0.14);
-  --accent-glow-md: rgba(53, 116, 240, 0.22);
+  /* Accent-derived shadow-glow tokens. Consumed by Tailwind's shadow-glow-sm /
+     shadow-glow-md utilities. applyAccentColor() rewrites these from the
+     user's chosen hex so focused surfaces glow in the current accent.
+     --accent-glow (0.18), set elsewhere in accentTheme.ts, is a distinct
+     token - do not consolidate. */
+  --accent-glow-sm: rgba(10, 132, 255, 0.14);
+  --accent-glow-md: rgba(10, 132, 255, 0.22);
 }
 
-/* Standardized keyboard-focus ring (IntelliJ-style ~2px rectangle).
+/* Standardized keyboard-focus ring - soft accent halo (macOS style).
    Uses `outline` so it never affects layout and never collides with the
    Tailwind `ring-` (box-shadow) utilities used for selection/hover. Elements
    that define their own focus style via `focus:outline-none focus:ring-*`
@@ -214,7 +258,63 @@
 :focus-visible {
   outline: var(--focus-ring-width) solid var(--border-focus);
   outline-offset: 1px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
+}
+
+/* --- Materials ---------------------------------------------------------
+   Translucent functional layers (Apple). Each pairs a semi-transparent
+   background with backdrop blur+saturate and a light-catch top edge.
+   Never stack two thin/light materials - legibility collapses. */
+.material-overlay {
+  background: var(--material-overlay-bg);
+  backdrop-filter: blur(var(--material-blur)) saturate(var(--material-saturate));
+  -webkit-backdrop-filter: blur(var(--material-blur)) saturate(var(--material-saturate));
+  box-shadow: inset 0 1px 0 var(--edge-light);
+}
+.material-popover {
+  background: var(--material-popover-bg);
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  box-shadow: inset 0 1px 0 var(--edge-light);
+}
+.material-thin {
+  background: var(--material-thin-bg);
+  backdrop-filter: blur(16px) saturate(150%);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+}
+/* Chrome material: opaque by default; translucent only once the OS-level
+   behind-window blur is confirmed (data-vibrancy="on" set at runtime).
+   Without that gate a transparent chrome would expose the raw desktop. */
+.material-chrome {
+  background: var(--material-chrome-bg);
+}
+:root[data-vibrancy="on"] {
+  --material-chrome-bg: rgba(29, 29, 32, 0.72);
+}
+:root[data-vibrancy="on"] .material-chrome {
+  backdrop-filter: blur(30px) saturate(170%);
+  -webkit-backdrop-filter: blur(30px) saturate(170%);
+}
+
+/* Reduced transparency: frost the materials into near-solids. */
+@media (prefers-reduced-transparency: reduce) {
+  .material-overlay, .material-popover, .material-thin, .material-chrome {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  :root {
+    --material-overlay-bg: var(--elevation-2);
+    --material-popover-bg: var(--elevation-4);
+    --material-thin-bg: var(--elevation-3);
+    --material-chrome-bg: var(--elevation-1);
+  }
+}
+
+/* Increased contrast: defined borders on floating surfaces. */
+@media (prefers-contrast: more) {
+  .material-overlay, .material-popover {
+    box-shadow: inset 0 0 0 1px var(--seam-strong);
+  }
 }
 
 /* The xterm input proxy manages its own cursor/focus - never ring it. */
@@ -257,7 +357,7 @@
    for ~800 ms when a terminal transitions from busy → idle. Reduce-motion
    collapses to a static color change via the global cascade. */
 @keyframes ct-tab-finish {
-  0%   { background-color: #4ADE80; }               /* --success */
+  0%   { background-color: var(--success); }
   100% { background-color: var(--accent-primary); }
 }
 .ct-tab-finish-underline {
@@ -328,16 +428,22 @@ html, body, #root {
 
 body {
   font-feature-settings: 'cv02', 'cv03', 'cv04', 'ss03';
-  letter-spacing: 0.005em;
-  line-height: 1.45;
+  letter-spacing: var(--track-body); /* body tracking; headings tighten via --track-* */
+  line-height: 1.47;
   color: rgb(var(--text-primary)); /* theme-aware base text (flips in light mode) */
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-/* Custom scrollbar - IntelliJ New UI feel (thin, muted, visible on hover) */
+/* Optical tracking + leading per size band. Headings tighten as they grow,
+   captions open up - never one tracking value for all sizes. */
+h1, .text-display { letter-spacing: var(--track-display); line-height: 1.2; }
+h2, h3 { letter-spacing: var(--track-title); line-height: 1.3; }
+
+/* Custom scrollbar - macOS overlay feel (thin pill, neutral, fades up on hover) */
 ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 9px;
+  height: 9px;
 }
 
 ::-webkit-scrollbar-track {
@@ -345,14 +451,14 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(143, 146, 152, 0.22);
-  border-radius: 6px;
+  background: rgba(127, 127, 132, 0.32);
+  border-radius: 9px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(143, 146, 152, 0.42);
+  background: rgba(127, 127, 132, 0.55);
   background-clip: padding-box;
   border: 2px solid transparent;
 }
@@ -393,12 +499,12 @@ body {
 }
 
 .xterm-viewport.ct-sb-show::-webkit-scrollbar-thumb {
-  background: rgba(143, 146, 152, 0.22);
+  background: rgba(127, 127, 132, 0.32);
   background-clip: padding-box;
 }
 
 .xterm-viewport.ct-sb-show::-webkit-scrollbar-thumb:hover {
-  background: rgba(143, 146, 152, 0.42);
+  background: rgba(127, 127, 132, 0.55);
   background-clip: padding-box;
 }
 

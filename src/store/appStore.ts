@@ -21,7 +21,7 @@ export type TabHeight = 'small' | 'medium' | 'large';
 export type ThemeMode = 'dark' | 'light' | 'auto';
 export type AutoStageMode = 'none' | 'tracked' | 'all';
 export type MergeStrategy = 'merge' | 'rebase' | 'ff-only';
-export const DEFAULT_ACCENT_COLOR = '#3574F0';
+export const DEFAULT_ACCENT_COLOR = '#0A84FF'; // Apple system blue (dark)
 export const DEFAULT_UI_FONT_SCALE = 1.0;
 export const DEFAULT_EDITOR_FONT_FAMILY = '"JetBrains Mono", "Cascadia Code", Consolas, monospace';
 
@@ -1156,7 +1156,7 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: 'claude-terminal-app',
-      version: 4,
+      version: 5,
       migrate: (persistedState, version) => {
         const s = (persistedState as Partial<AppState>) ?? {};
         if (version < 1) {
@@ -1197,6 +1197,14 @@ export const useAppStore = create<AppState>()(
             cursor: legacy.cursor ?? [],
             antigravity: legacy.antigravity ?? legacy.gemini ?? [],
           };
+        }
+        if (version < 5) {
+          // Apple design language: the default accent moved from IntelliJ
+          // blue (#3574F0) to Apple system blue. Users who never changed the
+          // accent follow the new default; explicit choices are kept.
+          if (s.accentColorHex?.toUpperCase() === '#3574F0') {
+            s.accentColorHex = DEFAULT_ACCENT_COLOR;
+          }
         }
         return s as AppState;
       },

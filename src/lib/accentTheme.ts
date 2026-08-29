@@ -14,9 +14,9 @@ export const TAB_HEIGHT_PX: Record<TabHeight, number> = {
 
 export function applyAccentColor(hex: string): void {
   const rgb = hexToRgb(hex);
-  const r = rgb?.r ?? 53;
-  const g = rgb?.g ?? 116;
-  const b = rgb?.b ?? 240;
+  const r = rgb?.r ?? 10;
+  const g = rgb?.g ?? 132;
+  const b = rgb?.b ?? 255;
 
   const root = document.documentElement;
   root.style.setProperty('--accent-primary', hex);
@@ -39,27 +39,35 @@ export function applyThemeMode(mode: ThemeMode): void {
   document.documentElement.setAttribute('data-theme', effective);
 
   const root = document.documentElement;
+  root.style.colorScheme = effective; // native scrollbars/controls follow
   if (effective === 'light') {
-    root.style.setProperty('--elevation-0', '#F7F8FA');
-    root.style.setProperty('--elevation-1', '#EBECF0');
-    root.style.setProperty('--elevation-2', '#DFE1E5');
-    root.style.setProperty('--elevation-3', '#FFFFFF');
+    // Apple light ramp: soft page gray canvas, white floating surfaces.
+    root.style.setProperty('--elevation-0', '#F5F5F6');
+    root.style.setProperty('--elevation-1', '#EDEDEF');
+    root.style.setProperty('--elevation-2', '#FFFFFF');
+    root.style.setProperty('--elevation-3', '#E9E9EB');
     root.style.setProperty('--elevation-4', '#FFFFFF');
-    root.style.setProperty('--ij-divider', '#C9CCD0');
-    root.style.setProperty('--ij-divider-soft', '#E0E2E6');
-    root.style.setProperty('color', '#27282E');
+    root.style.setProperty('--ij-divider', 'rgba(0, 0, 0, 0.10)');
+    root.style.setProperty('--seam', 'rgba(0, 0, 0, 0.08)');
+    root.style.setProperty('--seam-strong', 'rgba(0, 0, 0, 0.14)');
+    root.style.setProperty('--edge-light', 'rgba(255, 255, 255, 0.55)');
+    // Light-mode materials: white glass.
+    root.style.setProperty('--material-overlay-bg', 'rgba(248, 248, 250, 0.78)');
+    root.style.setProperty('--material-popover-bg', 'rgba(252, 252, 253, 0.84)');
+    root.style.setProperty('--material-thin-bg', 'rgba(244, 244, 246, 0.62)');
+    root.style.setProperty('color', '#1D1D1F');
     // Flip the text tokens to dark-on-light. Without this the tokens stay at
     // their near-white dark-theme channels and become invisible on light
-    // surfaces. Values chosen for WCAG AA on the light elevation ramp:
-    // primary ~13:1, secondary ~6:1, tertiary ~4.8:1 (all on elevation-0).
-    root.style.setProperty('--text-primary', '39 40 46');     // #27282E
-    root.style.setProperty('--text-secondary', '92 96 107');  // #5C606B
-    root.style.setProperty('--text-tertiary', '107 111 121'); // #6B6F79
-    // Semantic overrides - ExpUI Green4/Yellow4/Red4 (vivid on light bg).
+    // surfaces. Apple light labels, WCAG AA-checked on the light ramp:
+    // primary ~15:1, secondary ~5.7:1, tertiary ~4.9:1 (all on elevation-0).
+    root.style.setProperty('--text-primary', '29 29 31');     // #1D1D1F
+    root.style.setProperty('--text-secondary', '99 99 102');  // #636366
+    root.style.setProperty('--text-tertiary', '108 108 114'); // #6C6C72
+    // Semantic overrides - Apple system palette, text-safe on light.
     // Dark defaults live in index.css :root.
-    root.style.setProperty('--success', '#208A3C');
-    root.style.setProperty('--warning', '#FFAF0F');
-    root.style.setProperty('--error',   '#DB3B4B');
+    root.style.setProperty('--success', '#1F8A3D');
+    root.style.setProperty('--warning', '#9A5B00');
+    root.style.setProperty('--error',   '#D70015');
   } else {
     root.style.removeProperty('--elevation-0');
     root.style.removeProperty('--elevation-1');
@@ -67,7 +75,12 @@ export function applyThemeMode(mode: ThemeMode): void {
     root.style.removeProperty('--elevation-3');
     root.style.removeProperty('--elevation-4');
     root.style.removeProperty('--ij-divider');
-    root.style.removeProperty('--ij-divider-soft');
+    root.style.removeProperty('--seam');
+    root.style.removeProperty('--seam-strong');
+    root.style.removeProperty('--edge-light');
+    root.style.removeProperty('--material-overlay-bg');
+    root.style.removeProperty('--material-popover-bg');
+    root.style.removeProperty('--material-thin-bg');
     root.style.removeProperty('color');
     // Revert to the dark channel triplets defined in index.css :root.
     root.style.removeProperty('--text-primary');
@@ -78,6 +91,15 @@ export function applyThemeMode(mode: ThemeMode): void {
     root.style.removeProperty('--warning');
     root.style.removeProperty('--error');
   }
+}
+
+/**
+ * Flag whether OS-level behind-window blur (mica/acrylic) is active.
+ * Chrome surfaces (.material-chrome) only turn translucent under
+ * data-vibrancy="on" - without the OS blur they'd expose the raw desktop.
+ */
+export function applyVibrancy(on: boolean): void {
+  document.documentElement.setAttribute('data-vibrancy', on ? 'on' : 'off');
 }
 
 export function applyDensity(density: UiDensity): void {

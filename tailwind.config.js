@@ -4,35 +4,37 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Legacy aliases (map to elevation system)
+        // Legacy aliases (map to the surface ramp)
         'bg-primary': 'var(--elevation-0)',
         'bg-secondary': 'var(--elevation-1)',
         'bg-elevated': 'var(--elevation-2)',
         'bg-surface': 'var(--elevation-3)',
-        // Elevation system - IntelliJ IDEA New UI (Dark)
-        'elevation-0': 'var(--elevation-0)', // Main editor bg
-        'elevation-1': 'var(--elevation-1)', // Tool windows, tabs, sidebar
-        'elevation-2': 'var(--elevation-2)', // Cards, panels
-        'elevation-3': 'var(--elevation-3)', // Hover / selected row
-        'elevation-4': 'var(--elevation-4)', // Popups, dropdowns, modals
-        // Accent - IntelliJ blue
-        'accent-primary': '#3574F0',
-        'accent-secondary': '#548AF7',
-        // Borders
-        'border': '#1E1F22',
-        'border-light': '#393B40',
-        'border-focus': 'rgba(53, 116, 240, 0.55)',
-        // Text (IntelliJ New UI tokens)
+        // Surface ramp - Apple dark/light neutrals (values live in index.css /
+        // accentTheme.applyThemeMode). Names kept from the elevation system so
+        // all consumers reskin in place.
+        'elevation-0': 'var(--elevation-0)', // Canvas / app background
+        'elevation-1': 'var(--elevation-1)', // Chrome: sidebar, tabs, status bar
+        'elevation-2': 'var(--elevation-2)', // Cards, panels, inputs
+        'elevation-3': 'var(--elevation-3)', // Hover / selected fills
+        'elevation-4': 'var(--elevation-4)', // Menus, popovers, modal base
+        // Accent - follows the user's accent via CSS vars (applyAccentColor).
+        // Defaults are Apple system blue, set in index.css :root.
+        'accent-primary': 'var(--accent-primary)',
+        'accent-secondary': 'var(--accent-secondary)',
+        // Borders / seams - translucent separation, not opaque lines
+        'border': 'var(--ij-divider)',
+        'border-light': 'var(--seam)',
+        'border-focus': 'var(--border-focus)',
+        'seam': 'var(--seam)',
+        'seam-strong': 'var(--seam-strong)',
         // Text tokens are theme-aware: dark channels live in index.css :root,
         // light channels are swapped in by applyThemeMode(). Channel-triplet
-        // form keeps Tailwind's /opacity modifiers working. text-tertiary was
-        // lifted to #8A8E97 (dark) for WCAG AA - the old #6F737A measured ~3.46:1
-        // on elevation-0 / ~2.90:1 on elevation-1, below the 4.5:1 floor.
+        // form keeps Tailwind's /opacity modifiers working.
         'text-primary': 'rgb(var(--text-primary) / <alpha-value>)',
         'text-secondary': 'rgb(var(--text-secondary) / <alpha-value>)',
         'text-tertiary': 'rgb(var(--text-tertiary) / <alpha-value>)',
-        // Semantic - IntelliJ palette (theme-aware via CSS vars; light overrides
-        // are applied by accentTheme.applyThemeMode()).
+        // Semantic - Apple system palette (theme-aware via CSS vars; light
+        // overrides are applied by accentTheme.applyThemeMode()).
         'success': 'var(--success)',
         'warning': 'var(--warning)',
         'error': 'var(--error)',
@@ -41,19 +43,29 @@ export default {
         sans: ['Inter', 'system-ui', 'sans-serif'],
         mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
       },
+      letterSpacing: {
+        // Optical tracking bands (see index.css) - use instead of raw values.
+        display: 'var(--track-display)',
+        title: 'var(--track-title)',
+        body: 'var(--track-body)',
+        caption: 'var(--track-caption)',
+      },
       boxShadow: {
         // Accent-aware - derived vars are (re)set by applyAccentColor() so the
         // glow follows the user's chosen accent instead of hardcoded blue.
         'glow-sm': '0 0 8px var(--accent-glow-sm)',
         'glow-md': '0 0 16px var(--accent-glow-md)',
-        'elevation-2': '0 1px 2px rgba(0, 0, 0, 0.35)',
-        'elevation-3': '0 4px 12px rgba(0, 0, 0, 0.45)',
-        'elevation-4': '0 8px 28px rgba(0, 0, 0, 0.55)',
+        // Layered ambient+key shadows - surfaces float, they don't outline.
+        'elevation-2': '0 1px 3px rgba(0, 0, 0, 0.28), 0 4px 12px rgba(0, 0, 0, 0.20)',
+        'elevation-3': '0 2px 8px rgba(0, 0, 0, 0.32), 0 12px 32px rgba(0, 0, 0, 0.28)',
+        'elevation-4': '0 6px 20px rgba(0, 0, 0, 0.38), 0 28px 72px rgba(0, 0, 0, 0.42)',
       },
       borderRadius: {
-        // IntelliJ prefers slightly softer radii
-        'md': '6px',
-        'lg': '8px',
+        // Apple's softer, continuous-feel corners (tokens in index.css)
+        'sm': 'var(--radius-sm)',
+        'md': 'var(--radius-md)',
+        'lg': 'var(--radius-lg)',
+        'xl': 'var(--radius-xl)',
       },
     },
   },
