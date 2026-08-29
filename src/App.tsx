@@ -4,7 +4,6 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { reportError, reportInvokeFailure } from './lib/errorReporter';
 import { TitleBar } from './components/TitleBar';
 import { Button } from './components/ui/Button';
-import { ToolStripe } from './components/ToolStripe';
 import { Sidebar } from './components/Sidebar';
 import { TerminalTabs } from './components/TerminalTabs';
 import { Inspector } from './components/Inspector';
@@ -843,8 +842,6 @@ function App() {
               side panels float as rounded cards over the deep canvas (macOS
               Sonoma). gap-2 p-2 opens the canvas seams between them. */}
           <div className="flex-1 flex overflow-hidden gap-2 p-2">
-            <ToolStripe side="left" />
-
             <AnimatePresence mode="wait">
               {sidebarOpen && (
                 <div
@@ -873,8 +870,6 @@ function App() {
             </AnimatePresence>
 
             <PreviewPanel />
-
-            <ToolStripe side="right" />
           </div>
 
           {showStatusBar && <StatusBar />}

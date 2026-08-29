@@ -11,7 +11,12 @@ import {
   Loader2,
   Search as SearchIcon,
   Upload,
+  FileDiff,
+  Users,
+  Lightbulb,
+  Monitor,
 } from 'lucide-react';
+import { usePreviewStore } from '../store/previewStore';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { getVersion } from '@tauri-apps/api/app';
 import { invoke } from '@tauri-apps/api/core';
@@ -38,6 +43,15 @@ export function TitleBar() {
   } = useAppStore();
   const { terminals, activeTerminalId, gitInfoCache } = useTerminalStore();
   const fetchGitInfo = useTerminalStore.getState().fetchGitInfo;
+  // Inspector triggers - relocated from the retired left ToolStripe rail.
+  const changesOpen = useAppStore((s) => s.changesOpen);
+  const orchestrationOpen = useAppStore((s) => s.orchestrationOpen);
+  const hintsOpen = useAppStore((s) => s.hintsOpen);
+  const toggleChanges = useAppStore((s) => s.toggleChanges);
+  const toggleOrchestration = useAppStore((s) => s.toggleOrchestration);
+  const toggleHints = useAppStore((s) => s.toggleHints);
+  const previewOpen = usePreviewStore((s) => s.globalOpen);
+  const togglePreview = usePreviewStore((s) => s.toggleGlobal);
   const appWindow = getCurrentWindow();
   const [appVersion, setAppVersion] = useState('');
   const [branchMenuOpen, setBranchMenuOpen] = useState(false);
@@ -318,7 +332,31 @@ export function TitleBar() {
           <UpdatePill />
           <ToolsMenu />
 
-          <div className="w-px h-4 bg-[var(--ij-divider-soft)] mx-1" />
+          <div className="w-px h-4 bg-[var(--seam-strong)] mx-1" />
+
+          {/* Inspector triggers (moved out of the old left rail) */}
+          <Tooltip label="Git" shortcut="F2">
+            <button onClick={toggleChanges} className={toolBtn(changesOpen)}>
+              <FileDiff size={15} strokeWidth={1.9} />
+            </button>
+          </Tooltip>
+          <Tooltip label="Agents" shortcut="F4">
+            <button onClick={toggleOrchestration} className={toolBtn(orchestrationOpen)}>
+              <Users size={15} strokeWidth={1.9} />
+            </button>
+          </Tooltip>
+          <Tooltip label="Commands" shortcut="F1">
+            <button onClick={toggleHints} className={toolBtn(hintsOpen)}>
+              <Lightbulb size={15} strokeWidth={1.9} />
+            </button>
+          </Tooltip>
+          <Tooltip label="Preview" shortcut="Ctrl+Alt+P">
+            <button onClick={togglePreview} className={toolBtn(previewOpen)}>
+              <Monitor size={15} strokeWidth={1.9} />
+            </button>
+          </Tooltip>
+
+          <div className="w-px h-4 bg-[var(--seam-strong)] mx-1" />
 
           <ThemeToggle />
 
