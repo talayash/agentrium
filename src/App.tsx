@@ -7,6 +7,7 @@ import { Button } from './components/ui/Button';
 import { Sidebar } from './components/Sidebar';
 import { TerminalTabs } from './components/TerminalTabs';
 import { Inspector } from './components/Inspector';
+import { Splash } from './components/Splash';
 import { SettingsWindow } from './components/settings/SettingsWindow';
 import { ProfileModal } from './components/ProfileModal';
 import { NewTerminalModal } from './components/NewTerminalModal';
@@ -137,6 +138,8 @@ function App() {
 
   // Detached windows skip the setup gate and render the app directly.
   const [showSetup, setShowSetup] = useState<boolean | null>(isDetached ? false : null);
+  // Launch splash - main window only, once per launch.
+  const [showSplash, setShowSplash] = useState(!isDetached);
   const { notify } = useNotification();
 
   // Detached-window close ("ask each time") state.
@@ -777,11 +780,12 @@ function App() {
     setPendingRestoreConfigs(null);
   };
 
-  // Show loading while checking
+  // Show loading while checking. Dark to match the splash so there's no white
+  // flash before the splash video mounts.
   if (showSetup === null) {
     return (
-      <div className="h-screen w-screen bg-bg-primary flex items-center justify-center">
-        <div className="text-text-secondary text-sm">Loading...</div>
+      <div className="h-screen w-screen bg-[#0a0a12] flex items-center justify-center">
+        <div className="text-white/35 text-sm">Loading…</div>
       </div>
     );
   }
@@ -791,6 +795,11 @@ function App() {
       className="app-root h-screen w-screen flex flex-col overflow-hidden rounded-[10px]"
       style={{ boxShadow: '0 0 0 1px var(--ij-divider)' }}
     >
+      {/* Launch splash - logo reveal video + loading bar, main window only. */}
+      <AnimatePresence>
+        {showSplash && <Splash onDone={() => setShowSplash(false)} />}
+      </AnimatePresence>
+
       <AnimatePresence>
         {showSetup && (
           <SetupWizard onComplete={() => setShowSetup(false)} />

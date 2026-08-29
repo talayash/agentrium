@@ -458,6 +458,29 @@
   animation: ct-tab-finish 800ms cubic-bezier(0.25, 0.1, 0.25, 1) forwards;
 }
 
+/* Welcome-screen ambient orbs - slow drifting accent glows behind the hero.
+   Reduced-motion collapses the drift via the global cascade (they stay put). */
+.ct-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(64px);
+  pointer-events: none;
+  z-index: 0;
+  will-change: transform;
+}
+.ct-orb-a {
+  width: 460px; height: 460px; top: 6%; left: 10%;
+  background: radial-gradient(circle, rgba(10, 132, 255, 0.30), transparent 70%);
+  animation: ct-orb-a 19s ease-in-out infinite;
+}
+.ct-orb-b {
+  width: 540px; height: 540px; bottom: 4%; right: 8%;
+  background: radial-gradient(circle, rgba(122, 91, 255, 0.26), transparent 70%);
+  animation: ct-orb-b 23s ease-in-out infinite;
+}
+@keyframes ct-orb-a { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(46px, -34px); } }
+@keyframes ct-orb-b { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(-40px, 30px); } }
+
 /* Popover/tooltip pop-in: materialize from the trigger's direction. Pair with
    an inline transform-origin so it grows out of what opened it. */
 @keyframes ct-pop-in {

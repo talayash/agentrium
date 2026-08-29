@@ -1,7 +1,6 @@
 import { useMemo, useState, useCallback, useRef, useEffect, useLayoutEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Plus, Grid3X3, SplitSquareHorizontal, RotateCw, GitBranch, ChevronLeft, ChevronRight, ChevronDown, Copy, File as FileIcon, Pin, PinOff, Search as SearchIcon, SlidersHorizontal } from 'lucide-react';
-import appIconUrl from '../assets/app-icon.png';
+import { X, Plus, Grid3X3, SplitSquareHorizontal, RotateCw, GitBranch, ChevronLeft, ChevronRight, ChevronDown, Copy, File as FileIcon, Pin, PinOff } from 'lucide-react';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
 import { toast } from '../store/toastStore';
@@ -12,6 +11,7 @@ import { SplitView } from './SplitView';
 import { SessionInsights } from './SessionInsights';
 import { SessionMetricsPanel } from './SessionMetricsPanel';
 import { FileEditorView } from './FileEditorView';
+import { WelcomeScreen } from './WelcomeScreen';
 import { ScriptsMenu } from './ScriptsMenu';
 import { ScriptChildPane } from './ScriptChildPane';
 import { BottomTerminalPane } from './BottomTerminalPane';
@@ -45,8 +45,6 @@ function formatCost(usd: number): string {
   if (usd < 0.01) return '<$0.01';
   return `$${usd.toFixed(2)}`;
 }
-
-const isMac = navigator.platform.toUpperCase().includes('MAC');
 
 // Width reserved for the "Show Hidden Tabs" chevron in the tab-strip overflow
 // calculation. Approx: ChevronDown 13px + 4px gap + badge (min 15px, growing
@@ -792,161 +790,11 @@ export function TerminalTabs() {
           </div>
         )}
         {!activeTerminalId && !activeFilePath && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center text-text-secondary p-8">
-              <div className="w-full max-w-[560px] flex flex-col items-center">
-                {/* Hero header - display type, the app mark (its own squircle
-                    shape + baked shadow; no CSS frame/ring). */}
-                <img
-                  src={appIconUrl}
-                  alt=""
-                  className="w-20 h-20 mb-5 select-none"
-                  draggable={false}
-                />
-                <h1 className="text-[40px] font-bold text-text-primary mb-3 tracking-display leading-[1.08]">
-                  Welcome to Agentrium
-                </h1>
-                <p className="text-[15px] leading-relaxed text-text-secondary mb-10 text-center max-w-[460px]">
-                  Run Claude Code, Codex, Cursor, and Antigravity agents side by side
-                  in one native window. Start a new terminal, or press{' '}
-                  <kbd className="px-1.5 py-0.5 rounded-[5px] bg-elevation-3 ring-1 ring-seam shadow-[0_1px_0_var(--ij-divider)] text-text-secondary text-[11px] font-sans mx-0.5">
-                    {isMac ? '⌘' : 'Ctrl'}
-                  </kbd>
-                  <kbd className="px-1.5 py-0.5 rounded-[5px] bg-elevation-3 ring-1 ring-seam shadow-[0_1px_0_var(--ij-divider)] text-text-secondary text-[11px] font-sans mx-0.5">
-                    P
-                  </kbd>
-                  {' '}for Search Everywhere.
-                </p>
-
-                {/* Action cards - sketch's "New Project / Open Project" pattern */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full mb-6">
-                  <button
-                    onClick={handleNewTab}
-                    className="group relative isolate overflow-hidden flex flex-col items-start gap-3 p-5 material-thin rounded-xl shadow-elevation-2 hover:shadow-elevation-3 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.99] transition-[transform,box-shadow] duration-150 ease-out text-left"
-                  >
-                    <span
-                      aria-hidden
-                      className="absolute inset-0 -z-10 rounded-xl bg-[var(--seam)] opacity-0 group-hover:opacity-100 transition-opacity duration-100"
-                    />
-                    <div className="w-10 h-10 rounded-[10px] bg-accent-primary/15 flex items-center justify-center text-accent-primary group-hover:bg-accent-primary/25 transition-colors duration-100">
-                      <Plus size={18} strokeWidth={2.25} />
-                    </div>
-                    <div>
-                      <div className="text-[13px] font-medium text-text-primary">New Terminal</div>
-                      <div className="text-[11.5px] text-text-tertiary mt-0.5">
-                        Start an agent session in any folder
-                      </div>
-                    </div>
-                  </button>
-
-                  <button
-                    onClick={() => useAppStore.getState().openCommandPalette()}
-                    className="group relative isolate overflow-hidden flex flex-col items-start gap-3 p-5 material-thin rounded-xl shadow-elevation-2 hover:shadow-elevation-3 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.99] transition-[transform,box-shadow] duration-150 ease-out text-left"
-                  >
-                    <span
-                      aria-hidden
-                      className="absolute inset-0 -z-10 rounded-xl bg-[var(--seam)] opacity-0 group-hover:opacity-100 transition-opacity duration-100"
-                    />
-                    <div className="w-10 h-10 rounded-[10px] bg-elevation-3 flex items-center justify-center text-text-secondary group-hover:text-accent-primary transition-colors duration-100">
-                      <SearchIcon size={16} strokeWidth={2} />
-                    </div>
-                    <div>
-                      <div className="text-[13px] font-medium text-text-primary">Search Everywhere</div>
-                      <div className="text-[11.5px] text-text-tertiary mt-0.5">
-                        Find sessions, actions, hints, and snippets
-                      </div>
-                    </div>
-                  </button>
-
-                  {terminalList.length > 0 && (
-                    <button
-                      onClick={toggleGridMode}
-                      className="group relative isolate overflow-hidden flex flex-col items-start gap-3 p-5 material-thin rounded-xl shadow-elevation-2 hover:shadow-elevation-3 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.99] transition-[transform,box-shadow] duration-150 ease-out text-left"
-                    >
-                      <span
-                        aria-hidden
-                        className="absolute inset-0 -z-10 rounded-xl bg-[var(--seam)] opacity-0 group-hover:opacity-100 transition-opacity duration-100"
-                      />
-                      <div className="w-10 h-10 rounded-[10px] bg-elevation-3 flex items-center justify-center text-text-secondary group-hover:text-accent-primary transition-colors duration-100">
-                        <Grid3X3 size={16} strokeWidth={2} />
-                      </div>
-                      <div>
-                        <div className="text-[13px] font-medium text-text-primary">Grid View</div>
-                        <div className="text-[11.5px] text-text-tertiary mt-0.5">
-                          Watch up to 8 sessions side-by-side
-                        </div>
-                      </div>
-                    </button>
-                  )}
-
-                  <button
-                    onClick={() => useAppStore.getState().openSettings()}
-                    className="group relative isolate overflow-hidden flex flex-col items-start gap-3 p-5 material-thin rounded-xl shadow-elevation-2 hover:shadow-elevation-3 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.99] transition-[transform,box-shadow] duration-150 ease-out text-left"
-                  >
-                    <span
-                      aria-hidden
-                      className="absolute inset-0 -z-10 rounded-xl bg-[var(--seam)] opacity-0 group-hover:opacity-100 transition-opacity duration-100"
-                    />
-                    <div className="w-10 h-10 rounded-[10px] bg-elevation-3 flex items-center justify-center text-text-secondary group-hover:text-accent-primary transition-colors duration-100">
-                      <SlidersHorizontal size={16} strokeWidth={2} />
-                    </div>
-                    <div>
-                      <div className="text-[13px] font-medium text-text-primary">Preferences</div>
-                      <div className="text-[11.5px] text-text-tertiary mt-0.5">
-                        Theme, accent, density, keybindings
-                      </div>
-                    </div>
-                  </button>
-                </div>
-
-                {/* Keyboard shortcut list - IDE-style discovery */}
-                <div className="w-full grid grid-cols-2 gap-x-6 gap-y-1.5 text-[11px]">
-                  <div className="flex items-center justify-between text-text-tertiary">
-                    <span>Search Everywhere</span>
-                    <span className="flex items-center gap-0.5">
-                      <kbd className="px-1 py-0.5 rounded-[4px] bg-elevation-3 ring-1 ring-seam shadow-[0_1px_0_var(--ij-divider)] text-text-secondary font-sans text-[10px]">
-                        {isMac ? '⌘' : 'Ctrl'}
-                      </kbd>
-                      <span className="text-text-tertiary/60">+</span>
-                      <kbd className="px-1 py-0.5 rounded-[4px] bg-elevation-3 ring-1 ring-seam shadow-[0_1px_0_var(--ij-divider)] text-text-secondary font-sans text-[10px]">P</kbd>
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between text-text-tertiary">
-                    <span>New Terminal</span>
-                    <span className="flex items-center gap-0.5">
-                      <kbd className="px-1 py-0.5 rounded-[4px] bg-elevation-3 ring-1 ring-seam shadow-[0_1px_0_var(--ij-divider)] text-text-secondary font-sans text-[10px]">
-                        {isMac ? '⌘' : 'Ctrl'}
-                      </kbd>
-                      <span className="text-text-tertiary/60">+</span>
-                      <kbd className="px-1 py-0.5 rounded-[4px] bg-elevation-3 ring-1 ring-seam shadow-[0_1px_0_var(--ij-divider)] text-text-secondary font-sans text-[10px]">
-                        {isMac ? '⇧' : 'Shift'}
-                      </kbd>
-                      <span className="text-text-tertiary/60">+</span>
-                      <kbd className="px-1 py-0.5 rounded-[4px] bg-elevation-3 ring-1 ring-seam shadow-[0_1px_0_var(--ij-divider)] text-text-secondary font-sans text-[10px]">N</kbd>
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between text-text-tertiary">
-                    <span>Toggle Sidebar</span>
-                    <span className="flex items-center gap-0.5">
-                      <kbd className="px-1 py-0.5 rounded-[4px] bg-elevation-3 ring-1 ring-seam shadow-[0_1px_0_var(--ij-divider)] text-text-secondary font-sans text-[10px]">
-                        {isMac ? '⌘' : 'Ctrl'}
-                      </kbd>
-                      <span className="text-text-tertiary/60">+</span>
-                      <kbd className="px-1 py-0.5 rounded-[4px] bg-elevation-3 ring-1 ring-seam shadow-[0_1px_0_var(--ij-divider)] text-text-secondary font-sans text-[10px]">B</kbd>
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between text-text-tertiary">
-                    <span>Toggle Grid</span>
-                    <span className="flex items-center gap-0.5">
-                      <kbd className="px-1 py-0.5 rounded-[4px] bg-elevation-3 ring-1 ring-seam shadow-[0_1px_0_var(--ij-divider)] text-text-secondary font-sans text-[10px]">
-                        {isMac ? '⌘' : 'Ctrl'}
-                      </kbd>
-                      <span className="text-text-tertiary/60">+</span>
-                      <kbd className="px-1 py-0.5 rounded-[4px] bg-elevation-3 ring-1 ring-seam shadow-[0_1px_0_var(--ij-divider)] text-text-secondary font-sans text-[10px]">G</kbd>
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
+          <WelcomeScreen
+            onNewTerminal={handleNewTab}
+            onToggleGrid={toggleGridMode}
+            hasTerminals={terminalList.length > 0}
+          />
         )}
       </div>
 
