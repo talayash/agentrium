@@ -247,7 +247,7 @@ export function GlobalSearchModal() {
           </div>
           <button
             onClick={closeGlobalSearch}
-            className="p-1 rounded hover:bg-white/[0.06] text-text-tertiary hover:text-text-primary transition-colors"
+            className="p-1 rounded hover:bg-fill-hover text-text-tertiary hover:text-text-primary transition-colors"
             title="Close (Esc)"
           >
             <X size={14} />
@@ -276,7 +276,7 @@ export function GlobalSearchModal() {
                 className={`h-7 w-7 flex items-center justify-center rounded transition-colors ${
                   caseSensitive
                     ? 'bg-accent-primary/20 text-accent-primary ring-1 ring-inset ring-accent-primary/40'
-                    : 'text-text-tertiary hover:bg-white/[0.06] hover:text-text-secondary'
+                    : 'text-text-tertiary hover:bg-fill-hover hover:text-text-secondary'
                 }`}
                 title="Match case (Aa)"
                 tabIndex={-1}
@@ -345,7 +345,7 @@ export function GlobalSearchModal() {
                     className={`w-full flex items-center gap-1.5 px-3 py-1 text-left transition-colors ${
                       fileSelected
                         ? 'bg-accent-primary/10'
-                        : 'hover:bg-white/[0.04]'
+                        : 'hover:bg-fill-hover'
                     }`}
                   >
                     {collapsed ? (
@@ -382,7 +382,7 @@ export function GlobalSearchModal() {
                             }}
                             onMouseEnter={() => setSelected({ fileIdx, matchIdx })}
                             className={`w-full flex items-baseline gap-2 px-3 py-0.5 text-left transition-colors ${
-                              isSelected ? 'bg-accent-primary/12' : 'hover:bg-white/[0.04]'
+                              isSelected ? 'bg-accent-primary/12' : 'hover:bg-fill-hover'
                             }`}
                           >
                             <span className="text-text-tertiary text-[10.5px] font-mono flex-shrink-0 w-8 text-right tabular-nums">

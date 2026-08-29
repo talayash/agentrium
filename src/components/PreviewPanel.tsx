@@ -90,7 +90,7 @@ export function PreviewPanel() {
 
   return (
     <div
-      className="h-full flex bg-bg-secondary border-l border-white/[0.06] overflow-hidden relative"
+      className="h-full flex bg-bg-secondary border-l border-seam overflow-hidden relative"
       style={{ width: panelWidthPx }}
       data-testid="preview-panel"
     >

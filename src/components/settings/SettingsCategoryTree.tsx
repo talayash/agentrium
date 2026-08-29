@@ -29,7 +29,7 @@ export function SettingsCategoryTree({ active, onSelect, highlightedPages }: Pro
                   className={`relative w-full text-left px-6 py-1 transition-colors ${
                     isActive
                       ? 'bg-accent-primary/15 text-text-primary'
-                      : 'text-text-secondary hover:bg-white/[0.04] hover:text-text-primary'
+                      : 'text-text-secondary hover:bg-fill-hover hover:text-text-primary'
                   } ${isHighlighted ? 'ring-1 ring-inset ring-yellow-400/40' : ''}`}
                 >
                   {isActive && (

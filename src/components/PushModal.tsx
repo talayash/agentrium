@@ -159,7 +159,7 @@ export function PushModal() {
           </span>
           <button
             onClick={() => { if (!busy) closePushModal(); }}
-            className="p-1.5 rounded hover:bg-white/[0.06] text-text-tertiary transition-colors disabled:opacity-40"
+            className="p-1.5 rounded hover:bg-fill-hover text-text-tertiary transition-colors disabled:opacity-40"
             disabled={busy}
             title="Close (Esc)"
             aria-label="Close"
@@ -182,7 +182,7 @@ export function PushModal() {
                   <button
                     onClick={() => setRemoteMenuOpen((v) => !v)}
                     disabled={busy}
-                    className="flex items-center gap-1 h-6 px-2 rounded-[4px] hover:bg-white/[0.08] text-accent-primary font-mono transition-colors disabled:opacity-50"
+                    className="flex items-center gap-1 h-6 px-2 rounded-[4px] hover:bg-fill-active text-accent-primary font-mono transition-colors disabled:opacity-50"
                   >
                     {remote}
                     <ChevronDown size={11} className="text-text-tertiary" />
@@ -196,7 +196,7 @@ export function PushModal() {
                           className={`w-full text-left px-3 py-1.5 text-[12px] font-mono transition-colors ${
                             r === remote
                               ? 'bg-accent-primary/15 text-accent-primary'
-                              : 'text-text-primary hover:bg-white/[0.05]'
+                              : 'text-text-primary hover:bg-fill-hover'
                           }`}
                         >
                           {r}
@@ -283,7 +283,7 @@ export function PushModal() {
                     {preview.commits.map((c) => (
                       <li
                         key={c.sha}
-                        className="flex items-center gap-3 px-3 py-1.5 border-b border-[var(--ij-divider-soft)] last:border-b-0 hover:bg-white/[0.03] transition-colors"
+                        className="flex items-center gap-3 px-3 py-1.5 border-b border-[var(--ij-divider-soft)] last:border-b-0 hover:bg-fill-hover transition-colors"
                       >
                         <span className="font-mono text-[11px] text-text-tertiary w-[60px] flex-shrink-0">
                           {c.short_sha}
@@ -377,7 +377,7 @@ export function PushModal() {
               <button
                 onClick={() => setPushMenuOpen((v) => !v)}
                 disabled={!canPush}
-                className="h-8 px-1.5 rounded-r-md bg-accent-primary hover:bg-accent-secondary text-white transition-colors disabled:opacity-40 disabled:hover:bg-accent-primary border-l border-white/20"
+                className="h-8 px-1.5 rounded-r-md bg-accent-primary hover:bg-accent-secondary text-white transition-colors disabled:opacity-40 disabled:hover:bg-accent-primary border-l border-seam-strong"
                 aria-label="Push options"
                 title="Push options"
               >
@@ -387,7 +387,7 @@ export function PushModal() {
                 <div className="absolute right-0 bottom-full mb-1 z-10 w-[220px] bg-elevation-3 border border-[var(--ij-divider-soft)] rounded-lg overflow-hidden py-1">
                   <button
                     onClick={() => { setPushMenuOpen(false); setForceConfirmOpen(true); }}
-                    className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] text-text-primary hover:bg-white/[0.05] transition-colors"
+                    className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] text-text-primary hover:bg-fill-hover transition-colors"
                   >
                     <Zap size={12} className="text-amber-400" />
                     Force Push (with lease)

@@ -450,7 +450,7 @@ export function CommandPalette() {
                       className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-colors ${
                         selectedIndex === idx
                           ? 'bg-accent-primary/12 text-text-primary'
-                          : 'hover:bg-white/[0.04] text-text-secondary'
+                          : 'hover:bg-fill-hover text-text-secondary'
                       }`}
                     >
                       {Icon && (

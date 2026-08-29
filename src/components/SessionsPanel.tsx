@@ -221,7 +221,7 @@ export function SessionsPanel() {
             <button
               onClick={fetchSessions}
               disabled={loading}
-              className="w-5 h-5 flex items-center justify-center rounded-[4px] hover:bg-white/[0.06] text-text-tertiary hover:text-text-secondary transition-colors disabled:opacity-40"
+              className="w-5 h-5 flex items-center justify-center rounded-[4px] hover:bg-fill-hover text-text-tertiary hover:text-text-secondary transition-colors disabled:opacity-40"
               title="Refresh"
             >
               <RefreshCw size={11} className={loading ? 'animate-spin' : ''} strokeWidth={1.75} />
@@ -364,7 +364,7 @@ function SessionContextMenu({
     <div
       role="menu"
       data-context-menu="sessions"
-      className="fixed z-[80] min-w-[220px] bg-bg-elevated ring-1 ring-white/[0.08] rounded-md py-1 select-none"
+      className="fixed z-[80] min-w-[220px] bg-bg-elevated ring-1 ring-seam-strong rounded-md py-1 select-none"
       style={{ left: x, top: y }}
     >
       <MenuItem
@@ -379,7 +379,7 @@ function SessionContextMenu({
         disabled={!hasActiveTerminal || isActive}
         onClick={() => { onClose(); onResumeInCurrent(session); }}
       />
-      <div className="my-1 border-t border-white/[0.06]" />
+      <div className="my-1 border-t border-seam" />
       <MenuItem
         icon={<FolderOpen size={13} strokeWidth={1.75} />}
         label={REVEAL_LABEL}
@@ -407,7 +407,7 @@ function MenuItem({ icon, label, onClick, disabled }: MenuItemProps) {
       className={`w-full flex items-center gap-2.5 px-3 py-1.5 text-left text-[12px] transition-colors ${
         disabled
           ? 'text-text-tertiary/50 cursor-not-allowed'
-          : 'text-text-primary hover:bg-white/[0.06]'
+          : 'text-text-primary hover:bg-fill-hover'
       }`}
     >
       <span className={disabled ? 'opacity-50' : 'text-text-tertiary'}>{icon}</span>

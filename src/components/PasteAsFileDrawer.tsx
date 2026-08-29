@@ -219,7 +219,7 @@ export function PasteAsFileDrawer() {
             {...drawerMotion(540)}
             className="fixed top-0 right-0 bottom-0 w-[520px] material-overlay rounded-l-xl z-[201] flex flex-col"
           >
-            <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-seam">
               <h2 className="text-text-primary text-sm font-medium">Paste as File</h2>
               <button
                 onClick={closeDrawer}
@@ -238,7 +238,7 @@ export function PasteAsFileDrawer() {
                 <select
                   value={targetId ?? ''}
                   onChange={(e) => setTargetId(e.target.value || null)}
-                  className="mt-1 w-full bg-bg-primary text-text-primary text-[13px] px-2 py-1.5 rounded ring-1 ring-white/10"
+                  className="mt-1 w-full bg-bg-primary text-text-primary text-[13px] px-2 py-1.5 rounded ring-1 ring-seam-strong"
                 >
                   {visibleTerminals.length === 0 && <option value="">No terminals open</option>}
                   {visibleTerminals.map((t) => (
@@ -258,7 +258,7 @@ export function PasteAsFileDrawer() {
                     type="text"
                     value={baseName}
                     onChange={(e) => setBaseName(e.target.value)}
-                    className="mt-1 w-full bg-bg-primary text-text-primary text-[13px] px-2 py-1.5 rounded ring-1 ring-white/10 font-mono"
+                    className="mt-1 w-full bg-bg-primary text-text-primary text-[13px] px-2 py-1.5 rounded ring-1 ring-seam-strong font-mono"
                   />
                 </div>
                 <div className="w-24">
@@ -271,7 +271,7 @@ export function PasteAsFileDrawer() {
                       setExtension(e.target.value);
                       userTouchedExtRef.current = true;
                     }}
-                    className="mt-1 w-full bg-bg-primary text-text-primary text-[13px] px-2 py-1.5 rounded ring-1 ring-white/10"
+                    className="mt-1 w-full bg-bg-primary text-text-primary text-[13px] px-2 py-1.5 rounded ring-1 ring-seam-strong"
                   >
                     {EXTENSIONS.map((e) => (
                       <option key={e.value} value={e.value}>{e.label}</option>
@@ -284,7 +284,7 @@ export function PasteAsFileDrawer() {
                 <label className="text-text-tertiary text-[11px] uppercase tracking-wide">
                   Content
                 </label>
-                <div className="h-[280px] rounded ring-1 ring-white/10 overflow-hidden">
+                <div className="h-[280px] rounded ring-1 ring-seam-strong overflow-hidden">
                   <Editor
                     height="100%"
                     language={monacoLanguage}
@@ -320,7 +320,7 @@ export function PasteAsFileDrawer() {
                     type="text"
                     value={editingTemplate ? tplDraft : promptTemplate}
                     onChange={(e) => { setEditingTemplate(true); setTplDraft(e.target.value); }}
-                    className="flex-1 bg-bg-primary text-text-primary text-[13px] px-2 py-1.5 rounded ring-1 ring-white/10 font-mono"
+                    className="flex-1 bg-bg-primary text-text-primary text-[13px] px-2 py-1.5 rounded ring-1 ring-seam-strong font-mono"
                   />
                   {editingTemplate && (
                     <button
@@ -351,7 +351,7 @@ export function PasteAsFileDrawer() {
                     {recent.slice(0, 10).map((entry) => (
                       <li
                         key={entry.file_name}
-                        className="flex items-center justify-between gap-2 px-2 py-1.5 rounded hover:bg-white/5 group"
+                        className="flex items-center justify-between gap-2 px-2 py-1.5 rounded hover:bg-fill-hover group"
                       >
                         <button
                           onClick={() => handleReopen(entry)}
@@ -385,10 +385,10 @@ export function PasteAsFileDrawer() {
               )}
             </div>
 
-            <div className="flex items-center justify-between gap-2 px-4 py-3 border-t border-white/5">
+            <div className="flex items-center justify-between gap-2 px-4 py-3 border-t border-seam">
               <button
                 onClick={closeDrawer}
-                className="text-[12px] px-3 py-1.5 rounded text-text-secondary hover:bg-white/5"
+                className="text-[12px] px-3 py-1.5 rounded text-text-secondary hover:bg-fill-hover"
               >
                 Discard
               </button>
@@ -396,7 +396,7 @@ export function PasteAsFileDrawer() {
                 <button
                   onClick={handleSaveOnly}
                   disabled={busy || !content || !targetId}
-                  className="text-[12px] px-3 py-1.5 rounded bg-white/5 text-text-secondary hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
+                  className="text-[12px] px-3 py-1.5 rounded bg-fill-hover text-text-secondary hover:bg-fill-active disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
                 >
                   <Save size={13} /> Save only
                 </button>

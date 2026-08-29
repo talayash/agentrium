@@ -135,8 +135,8 @@ export function TitleBar() {
   const toolBtn = (active: boolean) =>
     `no-drag w-7 h-7 flex items-center justify-center rounded-[6px] transition-[background-color,color,transform] duration-100 active:scale-95 ${
       active
-        ? 'bg-white/[0.08] text-text-primary'
-        : 'text-text-secondary hover:bg-white/[0.06] hover:text-text-primary'
+        ? 'bg-fill-active text-text-primary'
+        : 'text-text-secondary hover:bg-fill-hover hover:text-text-primary'
     }`;
 
   return (
@@ -169,7 +169,7 @@ export function TitleBar() {
         <Tooltip label="Toggle Sidebar" shortcut="Ctrl+B">
           <button
             onClick={toggleSidebar}
-            className="no-drag w-7 h-7 flex items-center justify-center rounded-[6px] transition-colors text-text-secondary hover:bg-white/[0.06] hover:text-text-primary"
+            className="no-drag w-7 h-7 flex items-center justify-center rounded-[6px] transition-colors text-text-secondary hover:bg-fill-hover hover:text-text-primary"
           >
             <img src={appIcon} alt="Agentrium" className="w-[20px] h-[20px]" />
           </button>
@@ -179,7 +179,7 @@ export function TitleBar() {
         <Tooltip label={active?.config.working_directory || 'No active terminal'}>
         <button
           onClick={openCommandPalette}
-          className="no-drag group flex items-center gap-1.5 h-7 ml-1 pl-2 pr-2 rounded-[6px] hover:bg-white/[0.06] transition-colors max-w-[360px]"
+          className="no-drag group flex items-center gap-1.5 h-7 ml-1 pl-2 pr-2 rounded-[6px] hover:bg-fill-hover transition-colors max-w-[360px]"
         >
           <span className={`w-1.5 h-1.5 rounded-full ${statusDot} flex-shrink-0`} />
           {breadcrumb.sub && (
@@ -210,7 +210,7 @@ export function TitleBar() {
               <button
                 onClick={() => (branchMenuOpen ? setBranchMenuOpen(false) : openBranchMenu())}
                 className={`flex items-center gap-1.5 h-7 px-2 rounded-[6px] transition-colors ${
-                  branchMenuOpen ? 'bg-white/[0.08]' : 'hover:bg-white/[0.06]'
+                  branchMenuOpen ? 'bg-fill-active' : 'hover:bg-fill-hover'
                 }`}
               >
                 <GitBranch size={12} strokeWidth={1.75} className="text-text-secondary" />
@@ -339,14 +339,14 @@ export function TitleBar() {
           <div className="flex items-stretch no-drag">
             <button
               onClick={() => appWindow.minimize()}
-              className="w-[46px] h-[var(--h-header)] flex items-center justify-center hover:bg-white/[0.06] text-text-secondary transition-colors"
+              className="w-[46px] h-[var(--h-header)] flex items-center justify-center hover:bg-fill-hover text-text-secondary transition-colors"
               aria-label="Minimize"
             >
               <Minus size={12} strokeWidth={1.75} />
             </button>
             <button
               onClick={() => appWindow.toggleMaximize()}
-              className="w-[46px] h-[var(--h-header)] flex items-center justify-center hover:bg-white/[0.06] text-text-secondary transition-colors"
+              className="w-[46px] h-[var(--h-header)] flex items-center justify-center hover:bg-fill-hover text-text-secondary transition-colors"
               aria-label="Maximize"
             >
               <Square size={11} strokeWidth={1.75} />

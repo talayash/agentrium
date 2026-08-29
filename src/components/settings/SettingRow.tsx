@@ -47,7 +47,7 @@ export function Segmented<T extends string>({ value, options, onChange }: SegPro
           className={`px-2.5 h-7 text-[12px] rounded-md transition-colors ${
             value === o.value
               ? 'bg-accent-primary text-white'
-              : 'bg-bg-elevated ring-1 ring-border-light text-text-secondary hover:bg-white/[0.04]'
+              : 'bg-bg-elevated ring-1 ring-border-light text-text-secondary hover:bg-fill-hover'
           }`}
         >
           {o.label}

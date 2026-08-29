@@ -639,7 +639,7 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
         <div
           role="menu"
           data-context-menu="terminal"
-          className="fixed z-[80] min-w-[160px] bg-bg-elevated ring-1 ring-white/[0.08] rounded-md py-1 select-none"
+          className="fixed z-[80] min-w-[160px] bg-bg-elevated ring-1 ring-seam-strong rounded-md py-1 select-none"
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onMouseDown={(e) => e.stopPropagation()}
         >
@@ -650,7 +650,7 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
             onClick={handleMenuCopy}
             className={`w-full flex items-center gap-2.5 px-3 py-1.5 text-left text-[12px] transition-colors ${
               contextMenu.hasSelection
-                ? 'text-text-primary hover:bg-white/[0.06]'
+                ? 'text-text-primary hover:bg-fill-hover'
                 : 'text-text-tertiary/50 cursor-not-allowed'
             }`}
           >
@@ -663,7 +663,7 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
             type="button"
             role="menuitem"
             onClick={handleMenuPaste}
-            className="w-full flex items-center gap-2.5 px-3 py-1.5 text-left text-[12px] text-text-primary hover:bg-white/[0.06] transition-colors"
+            className="w-full flex items-center gap-2.5 px-3 py-1.5 text-left text-[12px] text-text-primary hover:bg-fill-hover transition-colors"
           >
             <span className="text-text-tertiary">
               <ClipboardPaste size={13} strokeWidth={1.75} />

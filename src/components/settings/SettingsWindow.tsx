@@ -54,7 +54,7 @@ export function SettingsWindow() {
         </div>
         <button
           onClick={closeSettings}
-          className="p-1.5 rounded hover:bg-white/[0.06] text-text-tertiary transition-colors"
+          className="p-1.5 rounded hover:bg-fill-hover text-text-tertiary transition-colors"
           title="Close (Esc)"
           aria-label="Close settings"
         >

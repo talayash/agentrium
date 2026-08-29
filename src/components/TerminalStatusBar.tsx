@@ -117,7 +117,7 @@ export function TerminalStatusBar({ terminalId }: TerminalStatusBarProps) {
             model === 'opus' ? 'bg-purple-500/20 text-purple-400' :
             model === 'sonnet' ? 'bg-blue-500/20 text-blue-400' :
             model === 'haiku' ? 'bg-green-500/20 text-green-400' :
-            'bg-white/[0.06] text-text-tertiary'
+            'bg-fill-hover text-text-tertiary'
           }`}>
             {model}
           </span>
@@ -143,7 +143,7 @@ export function TerminalStatusBar({ terminalId }: TerminalStatusBarProps) {
           <Tooltip label="Interrupt" shortcut="Ctrl+C" side="top">
             <button
               onClick={handleInterrupt}
-              className="p-1.5 rounded-md hover:bg-white/[0.08] text-text-tertiary hover:text-yellow-400 transition-colors"
+              className="p-1.5 rounded-md hover:bg-fill-active text-text-tertiary hover:text-yellow-400 transition-colors"
             >
               <Square size={16} strokeWidth={2} />
             </button>
@@ -174,7 +174,7 @@ export function TerminalStatusBar({ terminalId }: TerminalStatusBarProps) {
                 targetTerminalId: terminalId,
               });
             }}
-            className="p-1.5 rounded-md hover:bg-white/[0.08] text-text-tertiary hover:text-accent-primary transition-colors"
+            className="p-1.5 rounded-md hover:bg-fill-active text-text-tertiary hover:text-accent-primary transition-colors"
           >
             <ClipboardPaste size={16} strokeWidth={2} />
           </button>
@@ -183,7 +183,7 @@ export function TerminalStatusBar({ terminalId }: TerminalStatusBarProps) {
         <Tooltip label="Copy last output" side="top">
           <button
             onClick={handleCopyOutput}
-            className="p-1.5 rounded-md hover:bg-white/[0.08] text-text-tertiary hover:text-text-secondary transition-colors"
+            className="p-1.5 rounded-md hover:bg-fill-active text-text-tertiary hover:text-text-secondary transition-colors"
           >
             {copied ? <Check size={16} strokeWidth={2} className="text-success" /> : <ClipboardCopy size={16} strokeWidth={2} />}
           </button>
@@ -192,7 +192,7 @@ export function TerminalStatusBar({ terminalId }: TerminalStatusBarProps) {
         <Tooltip label="Restart terminal" side="top">
           <button
             onClick={handleRestart}
-            className="p-1.5 rounded-md hover:bg-white/[0.08] text-text-tertiary hover:text-accent-primary transition-colors"
+            className="p-1.5 rounded-md hover:bg-fill-active text-text-tertiary hover:text-accent-primary transition-colors"
           >
             <RotateCw size={16} strokeWidth={2} />
           </button>

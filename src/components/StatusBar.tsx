@@ -116,7 +116,7 @@ export function StatusBar() {
         <Tooltip label="Toggle Sidebar" shortcut="Ctrl+B" side="top">
         <button
           onClick={toggleSidebar}
-          className="flex items-center gap-1.5 h-[18px] px-1.5 rounded-[3px] text-text-secondary hover:bg-white/[0.06] hover:text-text-primary transition-colors"
+          className="flex items-center gap-1.5 h-[18px] px-1.5 rounded-[3px] text-text-secondary hover:bg-fill-hover hover:text-text-primary transition-colors"
         >
           <Terminal size={11} strokeWidth={1.75} />
           <span>
@@ -170,7 +170,7 @@ export function StatusBar() {
               }
               side="top"
             >
-              <div className="flex items-center gap-1.5 h-[18px] px-1.5 rounded-[3px] text-text-secondary hover:bg-white/[0.06] hover:text-text-primary transition-colors cursor-default">
+              <div className="flex items-center gap-1.5 h-[18px] px-1.5 rounded-[3px] text-text-secondary hover:bg-fill-hover hover:text-text-primary transition-colors cursor-default">
                 {activeGitInfo.is_worktree
                   ? <GitFork size={10} strokeWidth={1.75} className="text-accent-secondary" />
                   : <GitBranch size={10} strokeWidth={1.75} className="text-accent-secondary" />}
@@ -211,7 +211,7 @@ export function StatusBar() {
           className={`flex items-center gap-1 h-[18px] px-1.5 rounded-[3px] transition-colors ${
             gridMode
               ? 'text-accent-primary hover:bg-accent-primary/12'
-              : 'text-text-tertiary hover:bg-white/[0.06] hover:text-text-secondary'
+              : 'text-text-tertiary hover:bg-fill-hover hover:text-text-secondary'
           }`}
         >
           {gridMode ? <LayoutGrid size={10} strokeWidth={1.75} /> : <Columns size={10} strokeWidth={1.75} />}
@@ -248,7 +248,7 @@ export function StatusBar() {
               setNotifyOnFinish(!notifyOnFinish);
               if (unreadCount > 0) clearUnread();
             }}
-            className={`relative flex items-center h-[18px] w-[22px] justify-center rounded-[3px] transition-colors hover:bg-white/[0.06] ${
+            className={`relative flex items-center h-[18px] w-[22px] justify-center rounded-[3px] transition-colors hover:bg-fill-hover ${
               notifyOnFinish ? 'text-text-secondary hover:text-text-primary' : 'text-text-tertiary hover:text-text-secondary'
             }`}
           >
@@ -267,7 +267,7 @@ export function StatusBar() {
           <Tooltip label="Open Settings" side="top">
             <button
               onClick={openSettings}
-              className="flex items-center gap-1 h-[18px] px-1.5 rounded-[3px] text-text-tertiary hover:bg-white/[0.06] hover:text-text-secondary transition-colors"
+              className="flex items-center gap-1 h-[18px] px-1.5 rounded-[3px] text-text-tertiary hover:bg-fill-hover hover:text-text-secondary transition-colors"
             >
               <ArrowDownCircle size={10} strokeWidth={1.75} />
               <span>Claude {claudeVersion}</span>

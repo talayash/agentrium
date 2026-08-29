@@ -360,7 +360,7 @@ export function TerminalTabs() {
             <Tooltip label="Toggle orientation">
             <button
               onClick={() => setSplitOrientation(splitOrientation === 'horizontal' ? 'vertical' : 'horizontal')}
-              className="flex items-center gap-1 h-6 px-2 rounded-[4px] text-[11px] text-text-secondary hover:bg-white/[0.06] hover:text-text-primary transition-colors"
+              className="flex items-center gap-1 h-6 px-2 rounded-[4px] text-[11px] text-text-secondary hover:bg-fill-hover hover:text-text-primary transition-colors"
             >
               <RotateCw size={12} strokeWidth={1.75} />
               {splitOrientation === 'horizontal' ? 'Vertical' : 'Horizontal'}
@@ -368,7 +368,7 @@ export function TerminalTabs() {
             </Tooltip>
             <button
               onClick={clearSplit}
-              className="flex items-center gap-1 h-6 px-2 rounded-[4px] text-[11px] text-text-secondary hover:bg-white/[0.06] hover:text-text-primary transition-colors"
+              className="flex items-center gap-1 h-6 px-2 rounded-[4px] text-[11px] text-text-secondary hover:bg-fill-hover hover:text-text-primary transition-colors"
             >
               <X size={12} strokeWidth={1.75} />
               Exit Split
@@ -465,7 +465,7 @@ export function TerminalTabs() {
                       ? 'bg-accent-primary/12 text-accent-primary'
                       : isActiveTab
                         ? 'bg-elevation-0 text-text-primary'
-                        : 'hover:bg-white/[0.045] text-text-secondary'
+                        : 'hover:bg-fill-hover text-text-secondary'
                   } ${selected && !isActiveTab ? 'ring-1 ring-inset ring-accent-primary/40' : ''} ${dragged ? 'opacity-20' : ''} ${isWorking && !isActiveTab && showTabActivity ? 'ct-working-tab' : ''} ${
                     justFinishedAt.has(terminal.id) && !isActiveTab ? 'ct-tab-finish-inactive' : ''
                   }`}
@@ -502,7 +502,7 @@ export function TerminalTabs() {
                       model === 'opus' ? 'bg-purple-500/20 text-purple-400' :
                       model === 'sonnet' ? 'bg-blue-500/20 text-blue-400' :
                       model === 'haiku' ? 'bg-green-500/20 text-green-400' :
-                      'bg-white/[0.06] text-text-tertiary'
+                      'bg-fill-hover text-text-tertiary'
                     }`}>
                       {model}
                     </span>
@@ -551,7 +551,7 @@ export function TerminalTabs() {
                             e.stopPropagation();
                             handleSplitWith(terminal.id);
                           }}
-                          className="p-0.5 rounded hover:bg-white/[0.08] text-text-tertiary hover:text-text-secondary transition-colors"
+                          className="p-0.5 rounded hover:bg-fill-active text-text-tertiary hover:text-text-secondary transition-colors"
                         >
                           <SplitSquareHorizontal size={12} />
                         </button>
@@ -563,7 +563,7 @@ export function TerminalTabs() {
                           e.stopPropagation();
                           handleDuplicate(terminal.id);
                         }}
-                        className="p-0.5 rounded hover:bg-white/[0.08] text-text-tertiary hover:text-text-secondary transition-colors"
+                        className="p-0.5 rounded hover:bg-fill-active text-text-tertiary hover:text-text-secondary transition-colors"
                       >
                         <Copy size={12} />
                       </button>
@@ -574,7 +574,7 @@ export function TerminalTabs() {
                           e.stopPropagation();
                           handleAddToGrid(terminal.id);
                         }}
-                        className={`p-0.5 rounded hover:bg-white/[0.08] transition-colors ${
+                        className={`p-0.5 rounded hover:bg-fill-active transition-colors ${
                           gridTerminalIds.includes(terminal.id) ? 'text-accent-primary' : 'text-text-tertiary hover:text-text-secondary'
                         }`}
                       >
@@ -590,7 +590,7 @@ export function TerminalTabs() {
                             reportInvokeFailure('close_terminal', err);
                           });
                         }}
-                        className="p-0.5 rounded hover:bg-white/[0.08] text-text-tertiary hover:text-text-secondary"
+                        className="p-0.5 rounded hover:bg-fill-active text-text-tertiary hover:text-text-secondary"
                       >
                         <X size={12} />
                       </button>
@@ -616,7 +616,7 @@ export function TerminalTabs() {
                 e.stopPropagation();
                 setHiddenMenuOpen((v) => !v);
               }}
-              className="no-drag h-[var(--h-tab)] px-2 flex items-center gap-1 text-text-secondary hover:bg-white/[0.06] hover:text-text-primary transition-colors border-l border-[var(--ij-divider-soft)] flex-shrink-0"
+              className="no-drag h-[var(--h-tab)] px-2 flex items-center gap-1 text-text-secondary hover:bg-fill-hover hover:text-text-primary transition-colors border-l border-[var(--ij-divider-soft)] flex-shrink-0"
               title="Show hidden tabs"
               aria-label={`Show ${hiddenTabIds.length} hidden tab${hiddenTabIds.length === 1 ? '' : 's'}`}
               aria-expanded={hiddenMenuOpen}
@@ -654,7 +654,7 @@ export function TerminalTabs() {
                       className={`group relative flex items-center gap-1.5 px-3 h-[var(--h-tab)] text-[12px] transition-colors flex-shrink-0 ${
                         isActive
                           ? 'bg-elevation-0 text-text-primary'
-                          : 'hover:bg-white/[0.045] text-text-secondary'
+                          : 'hover:bg-fill-hover text-text-secondary'
                       }`}
                     >
                       <FileIcon size={11} className="text-text-tertiary flex-shrink-0" strokeWidth={1.75} />
@@ -676,7 +676,7 @@ export function TerminalTabs() {
                             closeFileTab(tab.path);
                           }
                         }}
-                        className="p-0.5 rounded hover:bg-white/[0.08] text-text-tertiary hover:text-text-primary transition-colors flex items-center justify-center"
+                        className="p-0.5 rounded hover:bg-fill-active text-text-tertiary hover:text-text-primary transition-colors flex items-center justify-center"
                         aria-label={dirty ? 'Unsaved changes' : 'Close'}
                       >
                         {dirty ? (
@@ -704,7 +704,7 @@ export function TerminalTabs() {
           <Tooltip label="New Terminal" shortcut="Ctrl+Shift+N">
             <button
               onClick={handleNewTab}
-              className="w-7 h-7 ml-0.5 flex items-center justify-center rounded-[4px] hover:bg-white/[0.06] text-text-tertiary hover:text-text-primary transition-colors flex-shrink-0"
+              className="w-7 h-7 ml-0.5 flex items-center justify-center rounded-[4px] hover:bg-fill-hover text-text-tertiary hover:text-text-primary transition-colors flex-shrink-0"
             >
               <Plus size={14} strokeWidth={1.75} />
             </button>
@@ -734,7 +734,7 @@ export function TerminalTabs() {
               className={`flex items-center gap-1.5 h-7 px-2 rounded-[4px] text-[11.5px] font-medium transition-colors ${
                 gridTerminalIds.length > 0
                   ? 'bg-accent-primary/18 text-accent-primary ring-1 ring-inset ring-accent-primary/30 hover:bg-accent-primary/25'
-                  : 'hover:bg-white/[0.06] text-text-secondary hover:text-text-primary'
+                  : 'hover:bg-fill-hover text-text-secondary hover:text-text-primary'
               }`}
             >
               <Grid3X3 size={13} strokeWidth={1.75} />
@@ -798,7 +798,7 @@ export function TerminalTabs() {
                 <img
                   src={appIconUrl}
                   alt=""
-                  className="w-16 h-16 rounded-[14px] mb-6 select-none shadow-[0_10px_36px_rgba(0,0,0,0.5),0_2px_8px_rgba(0,0,0,0.35)] ring-1 ring-white/[0.06]"
+                  className="w-16 h-16 rounded-[14px] mb-6 select-none shadow-[0_10px_36px_rgba(0,0,0,0.5),0_2px_8px_rgba(0,0,0,0.35)] ring-1 ring-seam"
                   draggable={false}
                   style={{ imageRendering: 'pixelated' }}
                 />
@@ -963,7 +963,7 @@ export function TerminalTabs() {
         return (
           <div
             data-hidden-tabs-menu
-            className="fixed z-[80] bg-bg-elevated ring-1 ring-white/[0.08] rounded-md shadow-elevation-4 py-1 min-w-[240px] max-h-[320px] overflow-y-auto"
+            className="fixed z-[80] bg-bg-elevated ring-1 ring-seam-strong rounded-md shadow-elevation-4 py-1 min-w-[240px] max-h-[320px] overflow-y-auto"
             style={{ left: clampedLeft, top: clampedTop }}
             onClick={(e) => e.stopPropagation()}
             role="menu"
@@ -991,7 +991,7 @@ export function TerminalTabs() {
                     setHiddenMenuOpen(false);
                     openTabContextMenu(e, id);
                   }}
-                  className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] text-text-primary hover:bg-white/[0.06] text-left"
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] text-text-primary hover:bg-fill-hover text-left"
                 >
                   {isPinned && <Pin size={10} className="text-accent-primary flex-shrink-0" />}
                   <span className="truncate">{t.nickname || t.label}</span>
@@ -1018,7 +1018,7 @@ export function TerminalTabs() {
           <div
             role="menu"
             data-context-menu="terminal-tabs"
-            className="fixed z-[80] min-w-[220px] bg-bg-elevated ring-1 ring-white/[0.08] rounded-md py-1 select-none"
+            className="fixed z-[80] min-w-[220px] bg-bg-elevated ring-1 ring-seam-strong rounded-md py-1 select-none"
             style={{ left: contextMenu.x, top: contextMenu.y }}
           >
             <TabMenuItem
@@ -1026,7 +1026,7 @@ export function TerminalTabs() {
               label={isPinned ? 'Unpin' : 'Pin'}
               onClick={() => { setContextMenu(null); toggleTabPin(ctxId); }}
             />
-            <div className="my-1 border-t border-white/[0.06]" />
+            <div className="my-1 border-t border-seam" />
             <TabMenuItem
               icon={<X size={13} strokeWidth={1.75} />}
               label="Close"
@@ -1076,7 +1076,7 @@ function TabMenuItem({ icon, label, onClick, disabled }: TabMenuItemProps) {
       className={`w-full flex items-center gap-2.5 px-3 py-1.5 text-left text-[12px] transition-colors ${
         disabled
           ? 'text-text-tertiary/50 cursor-not-allowed'
-          : 'text-text-primary hover:bg-white/[0.06]'
+          : 'text-text-primary hover:bg-fill-hover'
       }`}
     >
       <span className={disabled ? 'opacity-50' : 'text-text-tertiary'}>{icon}</span>

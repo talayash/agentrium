@@ -399,6 +399,7 @@ describe('appStore - persist partialize', () => {
     'toolsCollapsed',
     'sessionsCollapsed',
     'explorerCollapsed',
+    'sidebarNav',
     'sessionsHeightRatio',
     'repositoriesHeightRatio',
     'orchestrationOpen',

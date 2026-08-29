@@ -21,7 +21,7 @@ const VARIANTS: Record<ButtonVariant, string> = {
     'bg-accent-primary hover:bg-accent-secondary text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_1px_2px_rgba(0,0,0,0.22)]',
   secondary:
     'bg-elevation-2 ring-1 ring-border-light text-text-secondary hover:text-text-primary hover:bg-elevation-3',
-  ghost: 'text-text-secondary hover:text-text-primary hover:bg-white/[0.06]',
+  ghost: 'text-text-secondary hover:text-text-primary hover:bg-fill-hover',
   danger: 'text-error hover:bg-error/10',
   success: 'bg-success hover:bg-success/90 text-white',
 };

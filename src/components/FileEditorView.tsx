@@ -101,7 +101,7 @@ export function FileEditorView({ path }: FileEditorViewProps) {
               className={`flex items-center gap-1 h-5 px-1.5 rounded-[4px] text-[10.5px] transition-colors ${
                 tab.mode === 'diff'
                   ? 'bg-accent-primary/20 text-accent-primary'
-                  : 'text-text-tertiary hover:text-text-primary hover:bg-white/[0.06]'
+                  : 'text-text-tertiary hover:text-text-primary hover:bg-fill-hover'
               }`}
               title={tab.mode === 'diff' ? 'Switch to plain editor' : 'Show diff against HEAD'}
             >
@@ -112,7 +112,7 @@ export function FileEditorView({ path }: FileEditorViewProps) {
           <button
             onClick={() => reloadFileTab(path)}
             disabled={tab.loading}
-            className="flex items-center gap-1 h-5 px-1.5 rounded-[4px] text-[10.5px] text-text-tertiary hover:text-text-primary hover:bg-white/[0.06] transition-colors disabled:opacity-40"
+            className="flex items-center gap-1 h-5 px-1.5 rounded-[4px] text-[10.5px] text-text-tertiary hover:text-text-primary hover:bg-fill-hover transition-colors disabled:opacity-40"
             title="Reload from disk"
           >
             <RefreshCw size={10} className={tab.loading ? 'animate-spin' : ''} strokeWidth={1.75} />

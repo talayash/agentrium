@@ -59,6 +59,7 @@ export function applyThemeMode(mode: ThemeMode): void {
     // Light-mode materials: white frosted glass over the pastel canvas.
     root.style.setProperty('--material-chrome-bg', 'rgba(255, 255, 255, 0.72)');
     root.style.setProperty('--material-overlay-bg', 'rgba(255, 255, 255, 0.80)');
+    root.style.setProperty('--material-sheet-bg', 'rgba(255, 255, 255, 0.97)');
     root.style.setProperty('--material-popover-bg', 'rgba(255, 255, 255, 0.86)');
     root.style.setProperty('--material-thin-bg', 'rgba(255, 255, 255, 0.66)');
     // Soft, cool float shadows over a light canvas.
@@ -94,6 +95,7 @@ export function applyThemeMode(mode: ThemeMode): void {
     root.style.removeProperty('--edge-light');
     root.style.removeProperty('--material-chrome-bg');
     root.style.removeProperty('--material-overlay-bg');
+    root.style.removeProperty('--material-sheet-bg');
     root.style.removeProperty('--material-popover-bg');
     root.style.removeProperty('--material-thin-bg');
     root.style.removeProperty('--shadow-float-sm');

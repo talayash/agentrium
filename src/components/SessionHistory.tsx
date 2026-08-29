@@ -111,7 +111,7 @@ export function SessionHistory() {
         exit={{ opacity: 0 }}
         transition={{ duration: 0.15 }}
         onDoubleClick={(e) => e.stopPropagation()}
-        className="bg-bg-elevated ring-1 ring-white/[0.08] rounded-lg w-full max-w-4xl overflow-hidden"
+        className="bg-bg-elevated ring-1 ring-seam-strong rounded-lg w-full max-w-4xl overflow-hidden"
       >
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-border">
@@ -121,7 +121,7 @@ export function SessionHistory() {
           </div>
           <button
             onClick={closeSessionHistory}
-            className="p-1 rounded hover:bg-white/[0.06] text-text-tertiary transition-colors"
+            className="p-1 rounded hover:bg-fill-hover text-text-tertiary transition-colors"
           >
             <X size={16} />
           </button>

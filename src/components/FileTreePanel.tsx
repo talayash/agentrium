@@ -565,7 +565,7 @@ export function FileTreePanel() {
             <button
               onClick={refreshRoot}
               disabled={rootLoading}
-              className="w-5 h-5 flex items-center justify-center rounded-[4px] hover:bg-white/[0.06] text-text-tertiary hover:text-text-secondary transition-colors disabled:opacity-40"
+              className="w-5 h-5 flex items-center justify-center rounded-[4px] hover:bg-fill-hover text-text-tertiary hover:text-text-secondary transition-colors disabled:opacity-40"
               title="Refresh"
             >
               <RefreshCw size={11} className={rootLoading ? 'animate-spin' : ''} strokeWidth={1.75} />
@@ -624,12 +624,12 @@ export function FileTreePanel() {
         <div
           role="menu"
           data-context-menu="tree"
-          className="fixed z-[80] min-w-[220px] bg-bg-elevated ring-1 ring-white/[0.08] rounded-md py-1 select-none"
+          className="fixed z-[80] min-w-[220px] bg-bg-elevated ring-1 ring-seam-strong rounded-md py-1 select-none"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
           {menuItems.map((item, i) => {
             if (item.kind === 'divider') {
-              return <div key={`d${i}`} className="my-1 border-t border-white/[0.06]" />;
+              return <div key={`d${i}`} className="my-1 border-t border-seam" />;
             }
             return (
               <button
@@ -646,7 +646,7 @@ export function FileTreePanel() {
                     ? 'text-text-tertiary/50 cursor-not-allowed'
                     : item.danger
                     ? 'text-red-400 hover:bg-red-500/10'
-                    : 'text-text-primary hover:bg-white/[0.06]'
+                    : 'text-text-primary hover:bg-fill-hover'
                 }`}
               >
                 <span className={item.disabled ? 'opacity-50' : 'text-text-tertiary'}>
@@ -671,7 +671,7 @@ export function FileTreePanel() {
           onClick={() => setPendingDelete(null)}
         >
           <div
-            className="bg-bg-elevated ring-1 ring-white/[0.08] rounded-md p-4 w-[360px]"
+            className="bg-bg-elevated ring-1 ring-seam-strong rounded-md p-4 w-[360px]"
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="text-text-primary text-[13px] font-semibold mb-1">
@@ -690,7 +690,7 @@ export function FileTreePanel() {
               <button
                 type="button"
                 onClick={() => setPendingDelete(null)}
-                className="px-3 h-8 text-text-secondary hover:text-text-primary hover:bg-white/[0.04] rounded-md text-[12px] transition-colors"
+                className="px-3 h-8 text-text-secondary hover:text-text-primary hover:bg-fill-hover rounded-md text-[12px] transition-colors"
               >
                 Cancel
               </button>

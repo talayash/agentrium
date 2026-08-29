@@ -58,7 +58,7 @@ export function SessionMetricsPanel({ terminalId }: { terminalId: string }) {
         </span>
       </div>
       {budget > 0 && (
-        <div className="h-1 rounded-full bg-white/[0.08] mb-2 overflow-hidden">
+        <div className="h-1 rounded-full bg-fill-active mb-2 overflow-hidden">
           <div
             className={`h-full ${over ? 'bg-red-400' : 'bg-emerald-400'}`}
             style={{ width: `${pct}%` }}

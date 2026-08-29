@@ -327,7 +327,7 @@ export function PromptEditorDrawer() {
             className="fixed top-0 right-0 bottom-0 w-[680px] max-w-[95vw] material-overlay rounded-l-xl z-[201] flex flex-col"
           >
             {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-seam">
               <h2 className="text-text-primary text-sm font-medium">Prompt Editor</h2>
               <div className="flex items-center gap-1">
                 <button
@@ -335,7 +335,7 @@ export function PromptEditorDrawer() {
                   className={`p-1.5 rounded transition-colors ${
                     side === 'guide'
                       ? 'bg-accent-primary/20 text-accent-primary'
-                      : 'text-text-tertiary hover:text-text-primary hover:bg-white/5'
+                      : 'text-text-tertiary hover:text-text-primary hover:bg-fill-hover'
                   }`}
                   title="Prompt guide / commands"
                   aria-label="Toggle guide"
@@ -347,7 +347,7 @@ export function PromptEditorDrawer() {
                   className={`p-1.5 rounded transition-colors ${
                     side === 'snippets'
                       ? 'bg-accent-primary/20 text-accent-primary'
-                      : 'text-text-tertiary hover:text-text-primary hover:bg-white/5'
+                      : 'text-text-tertiary hover:text-text-primary hover:bg-fill-hover'
                   }`}
                   title="Saved snippets"
                   aria-label="Toggle snippets"
@@ -356,7 +356,7 @@ export function PromptEditorDrawer() {
                 </button>
                 <button
                   onClick={closeEditor}
-                  className="p-1.5 rounded text-text-tertiary hover:text-text-primary hover:bg-white/5"
+                  className="p-1.5 rounded text-text-tertiary hover:text-text-primary hover:bg-fill-hover"
                   aria-label="Close"
                 >
                   <X size={16} />
@@ -375,7 +375,7 @@ export function PromptEditorDrawer() {
                   <select
                     value={targetId ?? ''}
                     onChange={(e) => handleChangeTarget(e.target.value || null)}
-                    className="mt-1 w-full bg-bg-primary text-text-primary text-[13px] px-2 py-1.5 rounded ring-1 ring-white/10"
+                    className="mt-1 w-full bg-bg-primary text-text-primary text-[13px] px-2 py-1.5 rounded ring-1 ring-seam-strong"
                   >
                     {visibleTerminals.length === 0 && <option value="">No terminals open</option>}
                     {visibleTerminals.map((t) => (
@@ -390,7 +390,7 @@ export function PromptEditorDrawer() {
                   <label className="text-text-tertiary text-[11px] uppercase tracking-wide">
                     Prompt
                   </label>
-                  <div className="flex-1 min-h-0 rounded ring-1 ring-white/10 overflow-hidden">
+                  <div className="flex-1 min-h-0 rounded ring-1 ring-seam-strong overflow-hidden">
                     <Editor
                       height="100%"
                       language="markdown"
@@ -443,10 +443,10 @@ export function PromptEditorDrawer() {
 
               {/* Side panel */}
               {side !== 'none' && (
-                <div className="w-[260px] flex-shrink-0 border-l border-white/5 flex flex-col">
+                <div className="w-[260px] flex-shrink-0 border-l border-seam flex flex-col">
                   {side === 'guide' ? (
                     <>
-                      <div className="p-2 border-b border-white/5">
+                      <div className="p-2 border-b border-seam">
                         <div className="relative">
                           <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-tertiary" />
                           <input
@@ -454,7 +454,7 @@ export function PromptEditorDrawer() {
                             placeholder="Search commands..."
                             value={guideSearch}
                             onChange={(e) => setGuideSearch(e.target.value)}
-                            className="w-full bg-bg-primary ring-1 ring-white/10 rounded py-1.5 pl-7 pr-2 text-[12px] text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-accent-primary"
+                            className="w-full bg-bg-primary ring-1 ring-seam-strong rounded py-1.5 pl-7 pr-2 text-[12px] text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-accent-primary"
                           />
                         </div>
                       </div>
@@ -468,7 +468,7 @@ export function PromptEditorDrawer() {
                               <button
                                 key={h.title}
                                 onClick={() => insertAtCursor(h.command)}
-                                className="w-full text-left px-2 py-1.5 rounded hover:bg-white/[0.05] group"
+                                className="w-full text-left px-2 py-1.5 rounded hover:bg-fill-hover group"
                                 title={h.description}
                               >
                                 <span className="block text-text-primary text-[12px] truncate">{h.title}</span>
@@ -484,7 +484,7 @@ export function PromptEditorDrawer() {
                     </>
                   ) : (
                     <>
-                      <div className="px-3 py-2 border-b border-white/5 flex items-center gap-1.5">
+                      <div className="px-3 py-2 border-b border-seam flex items-center gap-1.5">
                         <FileText size={13} className="text-text-tertiary" />
                         <span className="text-text-secondary text-[12px] font-medium">Saved prompts</span>
                       </div>
@@ -492,7 +492,7 @@ export function PromptEditorDrawer() {
                         {snippets.map((s) => (
                           <div
                             key={s.id}
-                            className="group flex items-start justify-between gap-1 px-2 py-1.5 rounded hover:bg-white/[0.05]"
+                            className="group flex items-start justify-between gap-1 px-2 py-1.5 rounded hover:bg-fill-hover"
                           >
                             <button
                               onClick={() => insertAtCursor(s.content)}
@@ -527,7 +527,7 @@ export function PromptEditorDrawer() {
 
             {/* Inline "save as snippet" row */}
             {savingSnippet && (
-              <div className="px-4 py-2 border-t border-white/5 flex items-center gap-2">
+              <div className="px-4 py-2 border-t border-seam flex items-center gap-2">
                 <input
                   autoFocus
                   type="text"
@@ -535,7 +535,7 @@ export function PromptEditorDrawer() {
                   value={snippetTitle}
                   onChange={(e) => setSnippetTitle(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') handleSaveSnippet(); }}
-                  className="flex-1 bg-bg-primary text-text-primary text-[13px] px-2 py-1.5 rounded ring-1 ring-white/10 focus:outline-none focus:ring-accent-primary"
+                  className="flex-1 bg-bg-primary text-text-primary text-[13px] px-2 py-1.5 rounded ring-1 ring-seam-strong focus:outline-none focus:ring-accent-primary"
                 />
                 <button
                   onClick={handleSaveSnippet}
@@ -546,7 +546,7 @@ export function PromptEditorDrawer() {
                 </button>
                 <button
                   onClick={() => { setSavingSnippet(false); setSnippetTitle(''); }}
-                  className="text-[12px] px-2 py-1.5 rounded text-text-secondary hover:bg-white/5"
+                  className="text-[12px] px-2 py-1.5 rounded text-text-secondary hover:bg-fill-hover"
                 >
                   Cancel
                 </button>
@@ -554,11 +554,11 @@ export function PromptEditorDrawer() {
             )}
 
             {/* Footer */}
-            <div className="flex items-center justify-between gap-2 px-4 py-3 border-t border-white/5">
+            <div className="flex items-center justify-between gap-2 px-4 py-3 border-t border-seam">
               <button
                 onClick={() => setSavingSnippet((v) => !v)}
                 disabled={!content.trim()}
-                className="text-[12px] px-3 py-1.5 rounded text-text-secondary hover:bg-white/5 disabled:opacity-40 flex items-center gap-1.5"
+                className="text-[12px] px-3 py-1.5 rounded text-text-secondary hover:bg-fill-hover disabled:opacity-40 flex items-center gap-1.5"
                 title="Save the current prompt as a reusable snippet"
               >
                 <Save size={13} /> Save as snippet
@@ -567,7 +567,7 @@ export function PromptEditorDrawer() {
                 <button
                   onClick={() => inject(false)}
                   disabled={!canSubmit}
-                  className="text-[12px] px-3 py-1.5 rounded bg-white/5 text-text-secondary hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
+                  className="text-[12px] px-3 py-1.5 rounded bg-fill-hover text-text-secondary hover:bg-fill-active disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
                   title="Put the prompt in the terminal input (you press Enter)"
                 >
                   <CornerDownLeft size={13} /> Insert

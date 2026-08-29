@@ -18,6 +18,8 @@ export const DEFAULT_TERMINAL_FONT_SIZE = 14;
 // IntelliJ overhaul (v1.22.0) - appearance + behavior settings.
 export type UiDensity = 'compact' | 'comfortable' | 'spacious';
 export type TabHeight = 'small' | 'medium' | 'large';
+/** Which navigator the unified sidebar shows (Apple/Xcode-style single column). */
+export type SidebarNav = 'sessions' | 'files' | 'history';
 export type ThemeMode = 'dark' | 'light' | 'auto';
 export type AutoStageMode = 'none' | 'tracked' | 'all';
 export type MergeStrategy = 'merge' | 'rebase' | 'ff-only';
@@ -186,6 +188,9 @@ interface AppState {
   // Persistent collapse state for the two stacked sidebar sections.
   sessionsCollapsed: boolean;
   explorerCollapsed: boolean;
+  // Active navigator in the unified sidebar (sessions = open terminals as
+  // cards, files = explorer tree, history = resumable sessions on disk).
+  sidebarNav: SidebarNav;
   // Portion of the (Sessions + Explorer) column reserved for Sessions when
   // both sections are expanded. 0.15..0.85; the rest goes to Explorer.
   sessionsHeightRatio: number;
@@ -371,6 +376,7 @@ interface AppState {
   setExplorerHeightRatio: (ratio: number) => void;
   setRepositoriesHeightRatio: (ratio: number) => void;
   toggleToolsCollapsed: () => void;
+  setSidebarNav: (nav: SidebarNav) => void;
   toggleSessionsCollapsed: () => void;
   toggleExplorerCollapsed: () => void;
   setSessionsHeightRatio: (ratio: number) => void;
@@ -606,6 +612,7 @@ export const useAppStore = create<AppState>()(
       // tool) keeps its current screen real estate by default. Users opt-in.
       sessionsCollapsed: true,
       explorerCollapsed: false,
+      sidebarNav: 'sessions',
       sessionsHeightRatio: 0.35,
 
       // File Changes split (default: repositories takes 35% of available column)
@@ -680,8 +687,11 @@ export const useAppStore = create<AppState>()(
       toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
       toggleSidebarCollapse: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
       setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
-      toggleHints: () => set((state) => ({ hintsOpen: !state.hintsOpen })),
-      toggleChanges: () => set((state) => ({ changesOpen: !state.changesOpen })),
+      // The three right-side panels now share one Inspector frame, so opening
+      // one closes the others (mutually exclusive → the Inspector shows exactly
+      // one tab). ToolStripe/shortcuts/palette call these unchanged.
+      toggleHints: () => set((state) => ({ hintsOpen: !state.hintsOpen, changesOpen: false, orchestrationOpen: false })),
+      toggleChanges: () => set((state) => ({ changesOpen: !state.changesOpen, hintsOpen: false, orchestrationOpen: false })),
       triggerChangesRefresh: () => set((state) => ({ changesRefreshTrigger: state.changesRefreshTrigger + 1 })),
       openSettings: () => set({ settingsOpen: true }),
       closeSettings: () => set({ settingsOpen: false }),
@@ -792,6 +802,7 @@ export const useAppStore = create<AppState>()(
         repositoriesHeightRatio: Math.max(0.15, Math.min(0.85, ratio)),
       }),
       toggleToolsCollapsed: () => set((state) => ({ toolsCollapsed: !state.toolsCollapsed })),
+      setSidebarNav: (nav) => set({ sidebarNav: nav }),
       toggleSessionsCollapsed: () => set((state) => ({ sessionsCollapsed: !state.sessionsCollapsed })),
       toggleExplorerCollapsed: () => set((state) => ({ explorerCollapsed: !state.explorerCollapsed })),
       setSessionsHeightRatio: (ratio) =>
@@ -1097,7 +1108,7 @@ export const useAppStore = create<AppState>()(
       clearSplit: () => set({ splitMode: false, splitTerminalIds: null, splitRatio: 0.5 }),
 
       // Agent Teams actions (F4)
-      toggleOrchestration: () => set((state) => ({ orchestrationOpen: !state.orchestrationOpen })),
+      toggleOrchestration: () => set((state) => ({ orchestrationOpen: !state.orchestrationOpen, changesOpen: false, hintsOpen: false })),
 
       // Snippets actions (F5)
       openSnippetsModal: () => set({ snippetsModalOpen: true }),
@@ -1247,6 +1258,7 @@ export const useAppStore = create<AppState>()(
         toolsCollapsed: state.toolsCollapsed,
         sessionsCollapsed: state.sessionsCollapsed,
         explorerCollapsed: state.explorerCollapsed,
+        sidebarNav: state.sidebarNav,
         sessionsHeightRatio: state.sessionsHeightRatio,
         repositoriesHeightRatio: state.repositoriesHeightRatio,
         orchestrationOpen: state.orchestrationOpen,

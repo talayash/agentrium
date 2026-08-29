@@ -7,8 +7,7 @@ import { Button } from './components/ui/Button';
 import { ToolStripe } from './components/ToolStripe';
 import { Sidebar } from './components/Sidebar';
 import { TerminalTabs } from './components/TerminalTabs';
-import { HintsPanel } from './components/HintsPanel';
-import { FileChangesPanel } from './components/FileChangesPanel';
+import { Inspector } from './components/Inspector';
 import { SettingsWindow } from './components/settings/SettingsWindow';
 import { ProfileModal } from './components/ProfileModal';
 import { NewTerminalModal } from './components/NewTerminalModal';
@@ -24,7 +23,6 @@ import { SetupWizard } from './components/SetupWizard';
 import { AutoUpdater } from './components/AutoUpdater';
 import { WhatsNewModal } from './components/WhatsNewModal';
 import { ClaudeConfigModal } from './components/ClaudeConfigModal';
-import { OrchestrationPanel } from './components/OrchestrationPanel';
 import { PreviewPanel } from './components/PreviewPanel';
 import { PreviewInlineHint } from './components/PreviewInlineHint';
 import { GlobalSearchModal } from './components/GlobalSearchModal';
@@ -862,35 +860,14 @@ function App() {
               <TerminalTabs />
             </main>
 
+            {/* One contextual inspector replaces the four separate right panels. */}
             <AnimatePresence mode="wait">
-              {changesOpen && (
+              {(changesOpen || orchestrationOpen || hintsOpen) && (
                 <div
                   className="h-full overflow-hidden rounded-2xl shadow-elevation-2 transition-all duration-150 ease-out"
-                  style={{ width: 420 }}
+                  style={{ width: 400 }}
                 >
-                  <FileChangesPanel />
-                </div>
-              )}
-            </AnimatePresence>
-
-            <AnimatePresence mode="wait">
-              {orchestrationOpen && (
-                <div
-                  className="h-full overflow-hidden rounded-2xl shadow-elevation-2 transition-all duration-150 ease-out"
-                  style={{ width: 320 }}
-                >
-                  <OrchestrationPanel />
-                </div>
-              )}
-            </AnimatePresence>
-
-            <AnimatePresence mode="wait">
-              {hintsOpen && (
-                <div
-                  className="h-full overflow-hidden rounded-2xl shadow-elevation-2 transition-all duration-150 ease-out"
-                  style={{ width: 320 }}
-                >
-                  <HintsPanel />
+                  <Inspector />
                 </div>
               )}
             </AnimatePresence>
@@ -928,7 +905,7 @@ function App() {
       {/* Detached-window "ask each time" close dialog */}
       {isDetached && closePrompt && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50">
-          <div className="bg-bg-elevated ring-1 ring-white/[0.08] rounded-md p-4 w-[380px]">
+          <div className="bg-bg-elevated ring-1 ring-seam-strong rounded-md p-4 w-[380px]">
             <h3 className="text-text-primary text-[13px] font-semibold mb-1">Close this window?</h3>
             <p className="text-text-tertiary text-[12px] mb-4">
               {detachedTabCount} terminal{detachedTabCount === 1 ? '' : 's'}{' '}
@@ -939,7 +916,7 @@ function App() {
             <div className="flex justify-end gap-2">
               <button
                 onClick={() => setClosePrompt(false)}
-                className="px-3 h-8 text-text-secondary hover:text-text-primary hover:bg-white/[0.04] rounded-md text-[12px] transition-colors"
+                className="px-3 h-8 text-text-secondary hover:text-text-primary hover:bg-fill-hover rounded-md text-[12px] transition-colors"
               >
                 Cancel
               </button>

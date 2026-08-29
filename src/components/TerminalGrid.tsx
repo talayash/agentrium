@@ -196,7 +196,7 @@ const TerminalCell = memo(function TerminalCell({ terminalId, index, isFocused, 
               e.stopPropagation();
               onMaximize();
             }}
-            className="p-0.5 rounded hover:bg-white/[0.06] text-text-tertiary hover:text-text-secondary transition-colors"
+            className="p-0.5 rounded hover:bg-fill-hover text-text-tertiary hover:text-text-secondary transition-colors"
             title="Maximize"
           >
             <Maximize2 size={10} />
@@ -286,7 +286,7 @@ function AddTerminalCell() {
               }}
             />
             <div
-              className="absolute z-50 bg-bg-elevated ring-1 ring-white/[0.08] rounded-lg p-2 min-w-[200px]"
+              className="absolute z-50 bg-bg-elevated ring-1 ring-seam-strong rounded-lg p-2 min-w-[200px]"
               onClick={(e) => e.stopPropagation()}
             >
               <p className="text-text-tertiary text-[11px] px-2 py-1 mb-1">Select Terminal</p>
@@ -299,7 +299,7 @@ function AddTerminalCell() {
                         addToGrid(t.config.id);
                         setShowPicker(false);
                       }}
-                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-white/[0.06] text-left"
+                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-fill-hover text-left"
                     >
                       <span className="opacity-70 flex-shrink-0 flex items-center">
                         <BrandIcon kind={t.config.agent} size={12} />
@@ -430,7 +430,7 @@ export function TerminalGrid() {
                   className={`p-1 rounded transition-colors ${
                     gridLayout === option.layout
                       ? 'bg-accent-primary text-white'
-                      : 'text-text-tertiary hover:text-text-secondary hover:bg-white/[0.04]'
+                      : 'text-text-tertiary hover:text-text-secondary hover:bg-fill-hover'
                   }`}
                   title={option.label}
                 >
@@ -443,7 +443,7 @@ export function TerminalGrid() {
           {/* New Terminal Button */}
           <button
             onClick={openNewTerminalModal}
-            className="flex items-center gap-1 px-2 py-1 text-[11px] text-text-secondary hover:text-text-primary hover:bg-white/[0.04] rounded transition-colors"
+            className="flex items-center gap-1 px-2 py-1 text-[11px] text-text-secondary hover:text-text-primary hover:bg-fill-hover rounded transition-colors"
             title="Create a new terminal in the grid"
           >
             <Plus size={12} />
@@ -454,7 +454,7 @@ export function TerminalGrid() {
           <button
             onClick={handleAddAll}
             disabled={!canAddAll}
-            className="flex items-center gap-1 px-2 py-1 text-[11px] text-text-secondary hover:text-text-primary hover:bg-white/[0.04] rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-text-secondary"
+            className="flex items-center gap-1 px-2 py-1 text-[11px] text-text-secondary hover:text-text-primary hover:bg-fill-hover rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-text-secondary"
             title={
               allTerminalIds.length === 0
                 ? 'No active terminals'
@@ -470,7 +470,7 @@ export function TerminalGrid() {
           {/* Exit Grid Mode */}
           <button
             onClick={() => setGridMode(false)}
-            className="flex items-center gap-1 px-2 py-1 text-[11px] text-text-secondary hover:text-text-primary hover:bg-white/[0.04] rounded transition-colors"
+            className="flex items-center gap-1 px-2 py-1 text-[11px] text-text-secondary hover:text-text-primary hover:bg-fill-hover rounded transition-colors"
           >
             <Minimize2 size={12} />
             Exit Grid
@@ -514,7 +514,7 @@ export function TerminalGrid() {
       {gridTerminalIds.length === 0 && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
           <div className="text-center space-y-4">
-            <div className="w-16 h-16 mx-auto rounded-xl bg-white/[0.03] ring-1 ring-white/[0.06] flex items-center justify-center">
+            <div className="w-16 h-16 mx-auto rounded-xl bg-fill-hover ring-1 ring-seam flex items-center justify-center">
               <Grid3X3 size={28} className="text-text-tertiary" />
             </div>
             <div className="space-y-1">

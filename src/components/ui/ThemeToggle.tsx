@@ -34,7 +34,7 @@ export function ThemeToggle() {
         onClick={() => setThemeMode(isDark ? 'light' : 'dark')}
         className={`no-drag relative w-[48px] h-[26px] rounded-full p-[3px] flex items-center ring-1 ring-inset transition-colors duration-300 active:scale-[0.96] ${
           isDark
-            ? 'bg-gradient-to-r from-indigo-600/60 to-violet-500/55 ring-white/10'
+            ? 'bg-gradient-to-r from-indigo-600/60 to-violet-500/55 ring-seam-strong'
             : 'bg-gradient-to-r from-amber-200 to-sky-300 ring-black/[0.06]'
         }`}
       >

@@ -167,7 +167,7 @@ export function WorkspaceModal() {
                   className={`p-2 rounded-md cursor-pointer transition-colors ${
                     selectedWorkspace?.name === ws.name
                       ? 'bg-accent-primary/10 ring-1 ring-accent-primary/30'
-                      : 'hover:bg-white/[0.04]'
+                      : 'hover:bg-fill-hover'
                   }`}
                 >
                   <p className="text-text-primary text-[12px] font-medium truncate">{ws.name}</p>

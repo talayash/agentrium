@@ -51,7 +51,7 @@ export function ToolsMenu() {
         <button
           onClick={() => setOpen(!open)}
           className={`flex items-center gap-1 h-7 px-2 rounded-[6px] transition-colors ${
-            open ? 'bg-white/[0.08]' : 'hover:bg-white/[0.06]'
+            open ? 'bg-fill-active' : 'hover:bg-fill-hover'
           }`}
           aria-label="Tools"
         >
@@ -61,12 +61,12 @@ export function ToolsMenu() {
       </Tooltip>
 
       {open && (
-        <div className="absolute right-0 top-full mt-1 z-50 w-[220px] bg-elevation-3 ring-1 ring-white/[0.08] rounded-lg overflow-hidden py-1">
+        <div className="absolute right-0 top-full mt-1 z-50 w-[220px] bg-elevation-3 ring-1 ring-seam-strong rounded-lg overflow-hidden py-1">
           {items.map(({ id, label, icon: Icon, action }) => (
             <button
               key={id}
               onClick={() => { setOpen(false); action(); }}
-              className="w-full flex items-center gap-2.5 px-3 py-1.5 text-[12.5px] text-text-primary hover:bg-white/[0.05] transition-colors"
+              className="w-full flex items-center gap-2.5 px-3 py-1.5 text-[12.5px] text-text-primary hover:bg-fill-hover transition-colors"
             >
               <Icon size={13} strokeWidth={1.75} className="text-text-secondary flex-shrink-0" />
               {label}

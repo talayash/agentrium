@@ -133,7 +133,7 @@ export function BottomTerminalPane() {
                   className={`group/tab flex items-center gap-1.5 h-7 px-2.5 cursor-pointer border-r border-[var(--ij-divider-soft)] text-[11.5px] flex-shrink-0 transition-colors ${
                     isActive
                       ? 'bg-bg-primary text-text-primary'
-                      : 'text-text-secondary hover:bg-white/[0.04] hover:text-text-primary'
+                      : 'text-text-secondary hover:bg-fill-hover hover:text-text-primary'
                   }`}
                   title={inst.config.working_directory}
                 >
@@ -148,7 +148,7 @@ export function BottomTerminalPane() {
                       e.stopPropagation();
                       void closeShellTerminal(id);
                     }}
-                    className="ml-0.5 p-0.5 rounded hover:bg-white/[0.1] text-text-tertiary hover:text-text-primary opacity-0 group-hover/tab:opacity-100 transition-opacity"
+                    className="ml-0.5 p-0.5 rounded hover:bg-fill-active text-text-tertiary hover:text-text-primary opacity-0 group-hover/tab:opacity-100 transition-opacity"
                     title="Close terminal"
                   >
                     <X size={11} strokeWidth={1.75} />
@@ -158,7 +158,7 @@ export function BottomTerminalPane() {
             })}
             <button
               onClick={handleAddShell}
-              className="h-7 px-2 flex items-center justify-center text-text-tertiary hover:text-text-primary hover:bg-white/[0.04] transition-colors flex-shrink-0"
+              className="h-7 px-2 flex items-center justify-center text-text-tertiary hover:text-text-primary hover:bg-fill-hover transition-colors flex-shrink-0"
               title="New shell terminal at the active terminal's working directory"
             >
               <Plus size={12} strokeWidth={2} />
@@ -166,7 +166,7 @@ export function BottomTerminalPane() {
           </div>
           <button
             onClick={() => setCollapsed((v) => !v)}
-            className="h-7 px-2 flex items-center justify-center text-text-tertiary hover:text-text-primary hover:bg-white/[0.04] transition-colors flex-shrink-0 border-l border-[var(--ij-divider-soft)]"
+            className="h-7 px-2 flex items-center justify-center text-text-tertiary hover:text-text-primary hover:bg-fill-hover transition-colors flex-shrink-0 border-l border-[var(--ij-divider-soft)]"
             title={collapsed ? 'Expand bottom terminals' : 'Collapse bottom terminals'}
           >
             <ChevronDown

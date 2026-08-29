@@ -32,7 +32,7 @@ export function PreviewInlineHint() {
           initial={{ y: 24, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: 24, opacity: 0 }}
-          className="fixed bottom-8 right-6 z-50 bg-elevation-3 ring-1 ring-white/[0.08] rounded-md shadow-lg px-3 py-2 flex items-center gap-2"
+          className="fixed bottom-8 right-6 z-50 bg-elevation-3 ring-1 ring-seam-strong rounded-md shadow-lg px-3 py-2 flex items-center gap-2"
         >
           <span className="text-text-secondary text-[12px]">
             Detected <code className="text-text-primary">{url}</code>

@@ -67,7 +67,7 @@ export const ListRow = forwardRef<HTMLElement, ListRowProps>(function ListRow(
       <span
         aria-hidden
         className={`absolute inset-y-[1px] left-1 right-1 rounded-md transition-colors duration-100 ${
-          selected ? 'bg-accent-primary/15' : 'bg-transparent group-hover:bg-white/[0.05]'
+          selected ? 'bg-accent-primary/15' : 'bg-transparent group-hover:bg-fill-hover'
         }`}
       />
       {leading && <span className="relative flex-shrink-0 flex items-center">{leading}</span>}

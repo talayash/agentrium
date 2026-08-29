@@ -149,7 +149,8 @@
      behind the window confirmed); overlay/popover materials blur app content
      behind them, which always exists. */
   --material-chrome-bg: rgba(18, 22, 42, 0.5);       /* midnight frosted glass - shows the night gradient through */
-  --material-overlay-bg: rgba(37, 37, 41, 0.78);     /* modals, command palette */
+  --material-overlay-bg: rgba(37, 37, 41, 0.78);     /* command palette (Spotlight - stays translucent) */
+  --material-sheet-bg: rgba(28, 30, 48, 0.95);       /* task modals - near-opaque, readable over the scrim */
   --material-popover-bg: rgba(46, 46, 51, 0.84);     /* menus, dropdowns, tooltips */
   --material-thin-bg: rgba(52, 52, 58, 0.62);        /* chips, inline hints */
   --material-blur: 40px;
@@ -300,6 +301,19 @@
   backdrop-filter: blur(24px) saturate(160%);
   -webkit-backdrop-filter: blur(24px) saturate(160%);
   box-shadow: inset 0 1px 0 var(--edge-light), 0 0 0 1px var(--seam), var(--shadow-float-md);
+}
+/* Task modal surface - near-opaque frosted sheet. Unlike material-overlay
+   (Spotlight/palette), a focused-task dialog must be fully legible, so the
+   content behind never bleeds through. */
+.material-sheet {
+  background: var(--material-sheet-bg);
+  backdrop-filter: blur(40px) saturate(180%);
+  -webkit-backdrop-filter: blur(40px) saturate(180%);
+  box-shadow: inset 0 1px 0 var(--edge-light), 0 0 0 1px var(--seam), var(--shadow-float-lg);
+}
+@media (prefers-reduced-transparency: reduce) {
+  .material-sheet { backdrop-filter: none; -webkit-backdrop-filter: none; }
+  :root { --material-sheet-bg: var(--elevation-4); }
 }
 .material-thin {
   background: var(--material-thin-bg);

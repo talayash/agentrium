@@ -84,7 +84,7 @@ export function SessionWidget() {
           aria-haspopup="menu"
           aria-expanded={open}
           className={`flex items-center gap-1.5 h-7 px-2 rounded-[6px] transition-colors ${
-            open ? 'bg-white/[0.08]' : 'hover:bg-white/[0.06]'
+            open ? 'bg-fill-active' : 'hover:bg-fill-hover'
           }`}
         >
           <span className="relative inline-flex items-center">
@@ -114,7 +114,7 @@ export function SessionWidget() {
         </button>
 
         {open && (
-          <div className="absolute left-0 top-full mt-1 z-50 w-[300px] bg-elevation-3 ring-1 ring-white/[0.08] rounded-lg overflow-hidden">
+          <div className="absolute left-0 top-full mt-1 z-50 w-[300px] bg-elevation-3 ring-1 ring-seam-strong rounded-lg overflow-hidden">
             <div className="px-3 py-2 border-b border-[var(--ij-divider-soft)] text-text-tertiary text-[10px] uppercase tracking-wider font-semibold">
               Sessions
             </div>
@@ -167,7 +167,7 @@ export function SessionWidget() {
               </button>
               <button
                 onClick={() => { setOpen(false); openCommandPalette(); }}
-                className="w-full text-left px-3 py-2 text-[11.5px] text-text-secondary hover:bg-white/[0.05] transition-colors border-t border-[var(--ij-divider-soft)]"
+                className="w-full text-left px-3 py-2 text-[11.5px] text-text-secondary hover:bg-fill-hover transition-colors border-t border-[var(--ij-divider-soft)]"
               >
                 Open Command Palette for full search&hellip;
               </button>

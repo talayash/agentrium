@@ -484,7 +484,7 @@ export function NewTerminalModal() {
                         openProfileModal(profile.id);
                       }}
                       title="Edit profile"
-                      className="absolute top-1.5 right-1.5 p-1 rounded text-text-tertiary hover:text-text-primary hover:bg-white/[0.06] opacity-0 group-hover:opacity-100 transition-opacity"
+                      className="absolute top-1.5 right-1.5 p-1 rounded text-text-tertiary hover:text-text-primary hover:bg-fill-hover opacity-0 group-hover:opacity-100 transition-opacity"
                     >
                       <Pencil size={11} />
                     </button>
@@ -509,7 +509,7 @@ export function NewTerminalModal() {
               />
               <button
                 onClick={handleBrowseDirectory}
-                className="px-3 h-9 bg-bg-primary ring-1 ring-border-light rounded-md hover:bg-white/[0.04] transition-colors"
+                className="px-3 h-9 bg-bg-primary ring-1 ring-border-light rounded-md hover:bg-fill-hover transition-colors"
               >
                 <FolderOpen size={16} className="text-text-secondary" />
               </button>

@@ -33,7 +33,7 @@ function StripeButton({ item, side }: { item: StripeItem; side: Side }) {
         {/* hover / active fill */}
         <span
           className={`absolute inset-x-1 inset-y-0.5 rounded-md transition-colors duration-100 ${
-            item.active ? 'bg-accent-primary/14' : 'group-hover:bg-white/[0.06]'
+            item.active ? 'bg-accent-primary/14' : 'group-hover:bg-fill-hover'
           }`}
         />
         <Icon size={17} strokeWidth={1.75} className="relative" />

@@ -142,7 +142,7 @@ export function ProfileModal() {
           <h2 className="text-text-primary text-[14px] font-semibold">Configuration Profiles</h2>
           <button
             onClick={closeProfileModal}
-            className="p-1 rounded hover:bg-white/[0.06] text-text-tertiary transition-colors"
+            className="p-1 rounded hover:bg-fill-hover text-text-tertiary transition-colors"
           >
             <X size={16} />
           </button>
@@ -252,7 +252,7 @@ export function ProfileModal() {
                     />
                     <button
                       onClick={handleBrowseDirectory}
-                      className="px-3 h-9 bg-bg-primary ring-1 ring-border-light rounded-md hover:bg-white/[0.04] transition-colors"
+                      className="px-3 h-9 bg-bg-primary ring-1 ring-border-light rounded-md hover:bg-fill-hover transition-colors"
                       title="Browse for directory"
                     >
                       <FolderOpen size={16} className="text-text-secondary" />
@@ -331,7 +331,7 @@ export function ProfileModal() {
                       onClick={() => {
                         setSelectedProfile({ ...selectedProfile, env_vars: { ...selectedProfile.env_vars, '': '' } });
                       }}
-                      className="flex items-center gap-1.5 text-text-secondary hover:text-text-primary text-[12px] py-1 hover:bg-white/[0.04] rounded-md px-2 transition-colors"
+                      className="flex items-center gap-1.5 text-text-secondary hover:text-text-primary text-[12px] py-1 hover:bg-fill-hover rounded-md px-2 transition-colors"
                     >
                       <Plus size={13} />
                       Add Variable

@@ -90,7 +90,7 @@ export function ScriptChildPane({ parentId: _parentId, childId, scriptName, stat
           </div>
           <button
             onClick={onClose}
-            className="p-0.5 rounded hover:bg-white/[0.08] text-text-tertiary hover:text-text-primary transition-colors"
+            className="p-0.5 rounded hover:bg-fill-active text-text-tertiary hover:text-text-primary transition-colors"
             title="Stop and close script"
           >
             <X size={13} strokeWidth={1.75} />

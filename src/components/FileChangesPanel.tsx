@@ -521,7 +521,7 @@ export function FileChangesPanel() {
             <button
               onClick={handleQuickPull}
               disabled={pullingTop || !activeTerminalId || !result?.is_git_repo}
-              className="w-6 h-6 flex items-center justify-center rounded hover:bg-white/[0.06] text-success transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
+              className="w-6 h-6 flex items-center justify-center rounded hover:bg-fill-hover text-success transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
               aria-label="Pull"
             >
               {pullingTop ? (
@@ -535,7 +535,7 @@ export function FileChangesPanel() {
             <button
               onClick={() => { if (activePath) useAppStore.getState().openPushModal(activePath); }}
               disabled={!activePath || !result?.is_git_repo}
-              className="w-6 h-6 flex items-center justify-center rounded hover:bg-white/[0.06] text-error transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
+              className="w-6 h-6 flex items-center justify-center rounded hover:bg-fill-hover text-error transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
               aria-label="Push"
             >
               <Upload size={13} strokeWidth={2} />
@@ -545,7 +545,7 @@ export function FileChangesPanel() {
             <button
               onClick={() => fetchChanges()}
               disabled={loading || !activeTerminalId}
-              className="w-6 h-6 flex items-center justify-center rounded hover:bg-white/[0.06] text-accent-primary transition-colors disabled:opacity-40"
+              className="w-6 h-6 flex items-center justify-center rounded hover:bg-fill-hover text-accent-primary transition-colors disabled:opacity-40"
               aria-label="Refresh"
             >
               <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
@@ -628,7 +628,7 @@ export function FileChangesPanel() {
               <Tooltip label="Rescan">
                 <button
                   onClick={() => activeCwd && fetchRepos(activeCwd)}
-                  className={`w-5 h-5 flex items-center justify-center rounded-[3px] hover:bg-white/[0.06] text-text-tertiary hover:text-text-secondary transition-colors ${
+                  className={`w-5 h-5 flex items-center justify-center rounded-[3px] hover:bg-fill-hover text-text-tertiary hover:text-text-secondary transition-colors ${
                     reposLoading ? 'animate-spin' : ''
                   }`}
                 >
@@ -779,7 +779,7 @@ export function FileChangesPanel() {
                 return (
                   <div
                     key={s.reference}
-                    className="group flex items-start gap-1.5 px-2 py-1 rounded-[3px] hover:bg-white/[0.04]"
+                    className="group flex items-start gap-1.5 px-2 py-1 rounded-[3px] hover:bg-fill-hover"
                   >
                     <Archive size={11} className="mt-[2px] flex-shrink-0 text-text-secondary" strokeWidth={1.75} />
                     <div className="flex-1 min-w-0">
@@ -802,7 +802,7 @@ export function FileChangesPanel() {
                         <button
                           disabled={busy}
                           onClick={() => runStashOp('git_stash_apply', s.reference, 'Apply')}
-                          className="p-1 rounded hover:bg-white/[0.08] text-text-tertiary hover:text-text-primary transition-colors disabled:opacity-40"
+                          className="p-1 rounded hover:bg-fill-active text-text-tertiary hover:text-text-primary transition-colors disabled:opacity-40"
                         >
                           {isApplying ? <Loader2 size={11} className="animate-spin" /> : <Download size={11} />}
                         </button>
@@ -811,7 +811,7 @@ export function FileChangesPanel() {
                         <button
                           disabled={busy}
                           onClick={() => runStashOp('git_stash_pop', s.reference, 'Pop')}
-                          className="p-1 rounded hover:bg-white/[0.08] text-text-tertiary hover:text-accent-primary transition-colors disabled:opacity-40"
+                          className="p-1 rounded hover:bg-fill-active text-text-tertiary hover:text-accent-primary transition-colors disabled:opacity-40"
                         >
                           {isPopping ? <Loader2 size={11} className="animate-spin" /> : <Package size={11} />}
                         </button>
@@ -824,7 +824,7 @@ export function FileChangesPanel() {
                               runStashOp('git_stash_drop', s.reference, 'Drop');
                             }
                           }}
-                          className="p-1 rounded hover:bg-white/[0.08] text-text-tertiary hover:text-error transition-colors disabled:opacity-40"
+                          className="p-1 rounded hover:bg-fill-active text-text-tertiary hover:text-error transition-colors disabled:opacity-40"
                         >
                           {isDropping ? <Loader2 size={11} className="animate-spin" /> : <Trash2 size={11} />}
                         </button>
@@ -877,7 +877,7 @@ export function FileChangesPanel() {
             <button
               onClick={() => handleCommit(true, 'none')}
               disabled={committing || pushing || stashing || !commitMessage.trim() || (checkedCount === 0 && !amend)}
-              className="flex items-center gap-1 h-7 px-2.5 rounded-[4px] text-[11.5px] text-text-primary ring-1 ring-inset ring-border hover:bg-white/[0.06] transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
+              className="flex items-center gap-1 h-7 px-2.5 rounded-[4px] text-[11.5px] text-text-primary ring-1 ring-inset ring-border hover:bg-fill-hover transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
               title="Commit checked files and push"
             >
               {pushing ? <Loader2 size={12} className="animate-spin" /> : null}
@@ -888,18 +888,18 @@ export function FileChangesPanel() {
               <Tooltip label="More actions" disabled={commitMenuOpen}>
                 <button
                   onClick={() => setCommitMenuOpen((v) => !v)}
-                  className="w-6 h-6 flex items-center justify-center rounded hover:bg-white/[0.06] text-text-secondary transition-colors"
+                  className="w-6 h-6 flex items-center justify-center rounded hover:bg-fill-hover text-text-secondary transition-colors"
                   aria-label="More commit actions"
                 >
                   <MoreVertical size={13} />
                 </button>
               </Tooltip>
               {commitMenuOpen && (
-                <div className="absolute right-0 bottom-full mb-1 z-50 w-[170px] bg-elevation-3 ring-1 ring-white/[0.08] rounded-lg overflow-hidden py-1">
+                <div className="absolute right-0 bottom-full mb-1 z-50 w-[170px] bg-elevation-3 ring-1 ring-seam-strong rounded-lg overflow-hidden py-1">
                   <button
                     onClick={() => { setCommitMenuOpen(false); handleStash(); }}
                     disabled={stashing || committing || pushing || result.changes.length === 0}
-                    className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] text-text-primary hover:bg-white/[0.04] disabled:opacity-40"
+                    className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] text-text-primary hover:bg-fill-hover disabled:opacity-40"
                   >
                     {stashing ? <Loader2 size={12} className="animate-spin" /> : <Archive size={12} />}
                     Stash Changes
@@ -941,7 +941,7 @@ function WorktreeRow({ wt, isActive }: { wt: WorktreeInfo; isActive: boolean }) 
   const displayName = wt.path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || wt.path;
   return (
     <div
-      className={`flex items-start gap-1.5 px-2 py-1 rounded-[3px] hover:bg-white/[0.04] ${
+      className={`flex items-start gap-1.5 px-2 py-1 rounded-[3px] hover:bg-fill-hover ${
         isActive ? 'bg-accent-primary/10' : ''
       }`}
       title={wt.path}
@@ -1183,7 +1183,7 @@ function RepoRow({ repo }: { repo: ScannedGitRepo }) {
           type="button"
           onClick={() => (menuOpen ? setMenuOpen(false) : openMenu())}
           className={`flex-1 min-w-0 flex items-start gap-1.5 px-2 py-1 rounded-[3px] text-left transition-colors ${
-            menuOpen ? 'bg-white/[0.06]' : 'hover:bg-white/[0.04]'
+            menuOpen ? 'bg-fill-hover' : 'hover:bg-fill-hover'
           }`}
           title={`${repo.path}\nClick to switch branch or create a new one`}
         >
@@ -1240,7 +1240,7 @@ function RepoRow({ repo }: { repo: ScannedGitRepo }) {
             className={`flex-shrink-0 w-6 h-6 mt-0.5 flex items-center justify-center rounded-[3px] transition-colors ${
               isPinned
                 ? 'text-accent-primary bg-accent-primary/15 hover:bg-accent-primary/25'
-                : 'text-text-tertiary opacity-0 group-hover:opacity-100 hover:bg-white/[0.08] hover:text-text-secondary'
+                : 'text-text-tertiary opacity-0 group-hover:opacity-100 hover:bg-fill-active hover:text-text-secondary'
             }`}
           >
             {isPinned ? <Pin size={11} strokeWidth={2} /> : <Pin size={11} strokeWidth={1.75} />}
@@ -1249,7 +1249,7 @@ function RepoRow({ repo }: { repo: ScannedGitRepo }) {
       </div>
 
       {menuOpen && (
-        <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-elevation-3 ring-1 ring-white/[0.08] rounded-lg overflow-hidden">
+        <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-elevation-3 ring-1 ring-seam-strong rounded-lg overflow-hidden">
           <div className="p-2 border-b border-[var(--ij-divider-soft)]">
             <div className="relative">
               <SearchIcon size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-text-tertiary" strokeWidth={1.75} />
@@ -1334,7 +1334,7 @@ function RepoRow({ repo }: { repo: ScannedGitRepo }) {
                     className={`h-6 px-1.5 rounded-[3px] font-mono transition-colors ${
                       pullStrategy === s
                         ? 'bg-accent-primary/20 text-accent-primary ring-1 ring-inset ring-accent-primary/40'
-                        : 'text-text-secondary hover:bg-white/[0.06]'
+                        : 'text-text-secondary hover:bg-fill-hover'
                     }`}
                   >
                     {s === 'ff-only' ? 'ff-only' : s}
@@ -1410,7 +1410,7 @@ function RepoRow({ repo }: { repo: ScannedGitRepo }) {
                   className={`w-full flex items-center justify-between px-3 py-1.5 text-[12px] font-mono text-left transition-colors ${
                     isCurrent
                       ? 'text-accent-primary bg-accent-primary/10 cursor-default'
-                      : 'text-text-primary hover:bg-white/[0.05]'
+                      : 'text-text-primary hover:bg-fill-hover'
                   }`}
                 >
                   <span className="truncate">{b}</span>

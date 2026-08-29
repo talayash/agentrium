@@ -47,7 +47,7 @@ function actionClasses(a: import('../store/toastStore').ToastAction): string {
       return 'bg-warning/15 text-warning ring-1 ring-warning/40 hover:bg-warning/25';
     case 'neutral':
     default:
-      return 'bg-white/[0.06] text-text-primary ring-1 ring-white/10 hover:bg-white/[0.12]';
+      return 'bg-fill-hover text-text-primary ring-1 ring-seam-strong hover:bg-fill-active';
   }
 }
 
@@ -136,7 +136,7 @@ function ToastItem({ id, type, title, message, duration, actions }: {
 
       {/* Progress bar */}
       {duration > 0 && (
-        <div className="relative h-[2px] w-full bg-white/[0.06]">
+        <div className="relative h-[2px] w-full bg-fill-hover">
           <div
             ref={progressRef}
             className={`h-full ${colors.bar} opacity-70`}
