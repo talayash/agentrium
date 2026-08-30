@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import appIcon from '../assets/app-icon.png';
 import {
-  Settings,
   Minus,
   Square,
   X,
@@ -19,9 +18,7 @@ import { useAppStore } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
 import { toast } from '../store/toastStore';
 import { UpdatePill } from './UpdatePill';
-import { ToolsMenu } from './titlebar/ToolsMenu';
 import { SessionWidget } from './titlebar/SessionWidget';
-import { NotificationBell } from './titlebar/NotificationBell';
 import { Tooltip } from './ui/Tooltip';
 import { ThemeToggle } from './ui/ThemeToggle';
 import { ListRow } from './ui/ListRow';
@@ -30,11 +27,7 @@ import { pickBreadcrumb } from '../lib/breadcrumb';
 const isMac = navigator.platform.toUpperCase().includes('MAC');
 
 export function TitleBar() {
-  const {
-    openSettings,
-    openCommandPalette,
-    triggerChangesRefresh,
-  } = useAppStore();
+  const { triggerChangesRefresh } = useAppStore();
   const { terminals, activeTerminalId, gitInfoCache } = useTerminalStore();
   const fetchGitInfo = useTerminalStore.getState().fetchGitInfo;
   // Inspector state - one titlebar toggle; the tab switcher lives inside
@@ -301,25 +294,10 @@ export function TitleBar() {
         <SessionWidget />
       </div>
 
-      {/* Command spine: a prominent ⌘K field at the center of the toolbar -
-          the primary way to search or run any action (Apple/Linear). */}
-      <div className="flex-1 flex items-center justify-center min-w-0 px-3">
-        <button
-          onClick={openCommandPalette}
-          className="no-drag group flex items-center gap-2.5 h-8 w-full max-w-[440px] px-3 rounded-[10px] bg-fill-hover hover:bg-fill-active ring-1 ring-inset ring-seam text-text-tertiary hover:text-text-secondary transition-colors"
-        >
-          <SearchIcon size={14} strokeWidth={2} className="flex-shrink-0" />
-          <span className="text-[12.5px] truncate">Search or run a command…</span>
-        </button>
-      </div>
-
-      {/* Right cluster - search, run, tool windows, settings, window controls */}
+      {/* Right cluster - run, tool windows, settings, window controls */}
       <div className="flex items-stretch">
         <div className="flex items-center gap-0.5 pr-2 no-drag">
           <UpdatePill />
-          <ToolsMenu />
-
-          <div className="w-px h-4 bg-seam-strong mx-1" />
 
           {/* ONE inspector toggle - the Changes/Agents/Commands switcher
               lives inside the Inspector itself, so four separate titlebar
@@ -332,17 +310,7 @@ export function TitleBar() {
 
           <div className="w-px h-4 bg-seam-strong mx-1" />
 
-          {/* Notifications - relocated from the status bar (which is now a
-              bare version strip). */}
-          <NotificationBell />
-
           <ThemeToggle />
-
-          <Tooltip label="Settings" shortcut="Ctrl+,">
-            <button onClick={openSettings} className={toolBtn(false)}>
-              <Settings size={15} strokeWidth={2} />
-            </button>
-          </Tooltip>
         </div>
 
         {!isMac && (

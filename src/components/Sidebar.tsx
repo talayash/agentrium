@@ -1,4 +1,4 @@
-import { Terminal, FolderTree, History, Plus, ChevronsRight, ChevronsLeft } from 'lucide-react';
+import { Terminal, FolderTree, History, Plus, ChevronsRight, ChevronsLeft, Settings } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useAppStore } from '../store/appStore';
 import type { SidebarNav } from '../store/appStore';
@@ -33,6 +33,7 @@ export function Sidebar() {
   const nav = useAppStore((s) => s.sidebarNav);
   const setNav = useAppStore((s) => s.setSidebarNav);
   const openNewTerminalModal = useAppStore((s) => s.openNewTerminalModal);
+  const openSettings = useAppStore((s) => s.openSettings);
   const sessionCount = useTerminalStore((s) => s.terminals.size);
 
   if (sidebarCollapsed) {
@@ -49,7 +50,16 @@ export function Sidebar() {
             </button>
           </Tooltip>
         ))}
-        <div className="mt-auto">
+        <div className="mt-auto flex flex-col items-center gap-1">
+          <Tooltip label="Settings" side="right">
+            <button
+              onClick={openSettings}
+              aria-label="Settings"
+              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-fill-hover text-text-tertiary hover:text-text-secondary transition-colors"
+            >
+              <Settings size={15} strokeWidth={1.75} />
+            </button>
+          </Tooltip>
           <Tooltip label="Expand Sidebar" side="right">
             <button
               onClick={toggleSidebarCollapse}
@@ -127,14 +137,22 @@ export function Sidebar() {
         {nav === 'history' && <SessionsPanel />}
       </div>
 
-      {/* Prominent primary action */}
-      <div className="p-2">
+      {/* Prominent primary action + settings */}
+      <div className="p-2 flex flex-col gap-1.5">
         <button
           onClick={() => openNewTerminalModal()}
           className="w-full h-10 rounded-xl bg-accent-primary text-white text-[13px] font-semibold flex items-center justify-center gap-2 shadow-[0_4px_12px_var(--accent-glow-md)] hover:bg-accent-secondary active:scale-[0.98] transition-[background-color,transform] duration-100"
         >
           <Plus size={15} strokeWidth={2.5} />
           New Session
+        </button>
+        <button
+          onClick={openSettings}
+          aria-keyshortcuts="Control+,"
+          className="w-full h-9 rounded-xl text-text-secondary hover:text-text-primary hover:bg-fill-hover text-[12.5px] font-medium flex items-center justify-center gap-2 active:scale-[0.98] transition-[background-color,color,transform] duration-100"
+        >
+          <Settings size={14} strokeWidth={1.9} />
+          Settings
         </button>
       </div>
     </div>

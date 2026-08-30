@@ -53,3 +53,5 @@ coverage/
 # pnpm-lock.yaml
 # Cargo.lock
 .redesign-baseline/
+src-tauri/local-nobuild-updater.json
+src-tauri/local-preview-install.json
