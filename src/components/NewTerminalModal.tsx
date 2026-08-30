@@ -440,9 +440,9 @@ export function NewTerminalModal() {
                 <label className="text-text-tertiary text-[11px] font-semibold uppercase tracking-wider">Profile</label>
                 <button
                   onClick={() => openProfileModal()}
-                  className="flex items-center gap-1 text-[11px] text-accent-primary hover:text-accent-secondary transition-colors"
+                  className="flex items-center gap-1.5 h-7 px-2.5 rounded-lg bg-accent-primary text-white text-[11.5px] font-semibold hover:bg-accent-secondary active:scale-[0.97] transition-[background-color,transform] duration-100"
                 >
-                  <Plus size={12} />
+                  <Plus size={12} strokeWidth={2.5} />
                   New Profile
                 </button>
               </div>

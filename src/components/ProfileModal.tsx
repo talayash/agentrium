@@ -44,6 +44,10 @@ export function ProfileModal() {
   const [profiles, setProfiles] = useState<ConfigProfile[]>([]);
   const [selectedProfile, setSelectedProfile] = useState<ConfigProfile | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+  // Focused edit: opened for ONE specific profile (the pencil in the New
+  // Session list) - no list pane, just that profile's editor; saving or
+  // deleting closes the dialog. Opened without an id → full manage view.
+  const focused = Boolean(editingProfileId);
 
   useEffect(() => {
     loadProfiles();
@@ -90,6 +94,7 @@ export function ProfileModal() {
       await loadProfiles();
       setIsCreating(false);
       toast.success('Profile Saved', `"${selectedProfile.name}" has been saved.`);
+      if (focused) closeProfileModal();
     } catch (err) {
       setSaveError(String(err));
       toast.error('Save Failed', String(err));
@@ -123,6 +128,7 @@ export function ProfileModal() {
         setSelectedProfile(null);
       }
       toast.success('Profile Deleted', `"${profileName}" has been removed.`);
+      if (focused) closeProfileModal();
     } catch (err) {
       setSaveError(String(err));
       toast.error('Delete Failed', String(err));
@@ -135,11 +141,13 @@ export function ProfileModal() {
       onClose={closeProfileModal}
       closeOn="doubleClick"
       scrimClassName="bg-black/50 z-[60]"
-      panelClassName="w-full max-w-3xl"
+      panelClassName={`w-full ${focused ? 'max-w-xl' : 'max-w-3xl'}`}
     >
         {/* Header */}
-        <div className="flex items-center justify-between px-4 h-11 bg-elevation-2 border-b border-seam">
-          <h2 className="text-text-primary text-[14px] font-semibold">Configuration Profiles</h2>
+        <div className="flex items-center justify-between px-4 h-11 border-b border-seam">
+          <h2 className="text-text-primary text-[14px] font-semibold">
+            {focused ? `Edit Profile${selectedProfile ? ` · ${selectedProfile.name}` : ''}` : 'Configuration Profiles'}
+          </h2>
           <button
             onClick={closeProfileModal}
             className="p-1 rounded hover:bg-fill-hover text-text-tertiary transition-colors"
@@ -150,8 +158,9 @@ export function ProfileModal() {
 
         {/* Content */}
         <div className="flex h-[500px]">
-          {/* Profile List */}
-          <div className="w-64 border-r border-seam bg-black/20 p-3 flex flex-col">
+          {/* Profile List - hidden in focused single-profile edit */}
+          {!focused && (
+          <div className="w-64 border-r border-seam p-3 flex flex-col">
             <Button
               variant="primary"
               size="sm"
@@ -190,6 +199,7 @@ export function ProfileModal() {
               )}
             </div>
           </div>
+          )}
 
           {/* Profile Editor */}
           <div className="flex-1 p-4 overflow-y-auto">
