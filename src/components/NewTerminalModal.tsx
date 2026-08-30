@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FolderOpen, Terminal, Zap, GitBranch, GitFork, Plus, Loader2, ChevronDown, Pencil, SlidersHorizontal } from 'lucide-react';
+import { FolderOpen, Terminal, Zap, GitBranch, GitFork, Plus, Loader2, ChevronDown, ChevronsUpDown, Check, Pencil, SlidersHorizontal } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
@@ -71,6 +71,27 @@ export function NewTerminalModal() {
   const preselectedAgent = useAppStore.getState().newTerminalPreselectedAgent;
   const [selectedAgent, setSelectedAgent] = useState<AgentKind>(preselectedAgent ?? 'claude');
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const profileMenuRef = useRef<HTMLDivElement | null>(null);
+
+  // Close the profile popup on outside click / Escape.
+  useEffect(() => {
+    if (!profileMenuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(e.target as Node)) {
+        setProfileMenuOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setProfileMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [profileMenuOpen]);
 
   // Worktree state
   const [worktreeDetect, setWorktreeDetect] = useState<WorktreeDetectResult | null>(null);
@@ -409,68 +430,115 @@ export function NewTerminalModal() {
             </div>
           )}
 
-          {/* Profile - compact chips instead of a wall of cards. The selected
-              chip's description/folder renders once, below the row. */}
+          {/* Profile - one clean popup selector (macOS popup-button pattern):
+              the closed row shows the current choice + its context; the menu
+              lists every profile with name, description and folder. */}
           {!plainShell && (
             <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className="text-text-tertiary text-[11px] font-semibold uppercase tracking-wider">Profile</label>
-                <button
-                  onClick={() => openProfileModal()}
-                  className="flex items-center gap-1 text-[11px] text-accent-primary hover:text-accent-secondary transition-colors"
-                >
-                  <Plus size={12} />
-                  New Profile
-                </button>
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                <button
-                  onClick={() => setSelectedProfileId(null)}
-                  className={`h-7 px-3 rounded-full text-[12px] font-medium transition-colors ${
-                    selectedProfileId === null
-                      ? 'bg-accent-primary text-white'
-                      : 'bg-fill-hover text-text-secondary ring-1 ring-seam hover:bg-fill-active hover:text-text-primary'
-                  }`}
-                >
-                  No Profile
-                </button>
-                {profiles.map((profile) => (
-                  <div key={profile.id} className="relative group">
-                    <button
-                      onClick={() => setSelectedProfileId(profile.id)}
-                      className={`h-7 pl-3 pr-3 group-hover:pr-7 rounded-full text-[12px] font-medium max-w-[200px] truncate transition-all ${
-                        selectedProfileId === profile.id
-                          ? 'bg-accent-primary text-white'
-                          : 'bg-fill-hover text-text-secondary ring-1 ring-seam hover:bg-fill-active hover:text-text-primary'
-                      }`}
-                    >
-                      {profile.name}
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openProfileModal(profile.id);
-                      }}
-                      title="Edit profile"
-                      aria-label={`Edit profile ${profile.name}`}
-                      className={`absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity ${
-                        selectedProfileId === profile.id
-                          ? 'text-white/80 hover:text-white'
-                          : 'text-text-tertiary hover:text-text-primary'
-                      }`}
-                    >
-                      <Pencil size={11} />
-                    </button>
-                  </div>
-                ))}
-              </div>
+              <label className="block text-text-tertiary text-[11px] font-semibold uppercase tracking-wider mb-2">Profile</label>
               {(() => {
-                const sel = profiles.find((p) => p.id === selectedProfileId);
-                if (!sel) return null;
-                const info = [sel.description, sel.working_directory].filter(Boolean).join(' · ');
-                return info ? (
-                  <p className="mt-1.5 text-[11px] text-text-tertiary truncate">{info}</p>
-                ) : null;
+                const sel = profiles.find((p) => p.id === selectedProfileId) ?? null;
+                const selInfo = sel
+                  ? [sel.description, sel.working_directory].filter(Boolean).join(' · ')
+                  : 'Custom settings';
+                return (
+                  <div className="relative" ref={profileMenuRef}>
+                    <button
+                      type="button"
+                      onClick={() => setProfileMenuOpen((v) => !v)}
+                      aria-haspopup="listbox"
+                      aria-expanded={profileMenuOpen}
+                      className={`w-full min-h-[44px] px-3 py-1.5 rounded-lg bg-elevation-0 ring-1 flex items-center gap-2.5 text-left transition-colors ${
+                        profileMenuOpen ? 'ring-accent-primary/45' : 'ring-seam hover:bg-fill-hover'
+                      }`}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="text-text-primary text-[13px] font-medium truncate leading-tight">
+                          {sel ? sel.name : 'No Profile'}
+                        </p>
+                        {selInfo && (
+                          <p className="text-text-tertiary text-[11px] truncate">{selInfo}</p>
+                        )}
+                      </div>
+                      <ChevronsUpDown size={14} className="text-text-tertiary flex-shrink-0" strokeWidth={1.75} />
+                    </button>
+
+                    {profileMenuOpen && (
+                      <div
+                        role="listbox"
+                        className="absolute left-0 right-0 top-full mt-1 z-50 material-popover ct-pop-in rounded-lg overflow-hidden"
+                        style={{ transformOrigin: 'top center' }}
+                      >
+                        <div className="max-h-[240px] overflow-y-auto py-1">
+                          <button
+                            type="button"
+                            role="option"
+                            aria-selected={selectedProfileId === null}
+                            onClick={() => { setSelectedProfileId(null); setProfileMenuOpen(false); }}
+                            className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-fill-hover transition-colors"
+                          >
+                            <div className="flex-1 min-w-0">
+                              <p className="text-text-primary text-[12.5px] font-medium">No Profile</p>
+                              <p className="text-text-tertiary text-[11px]">Custom settings</p>
+                            </div>
+                            {selectedProfileId === null && (
+                              <Check size={13} className="text-accent-primary flex-shrink-0" strokeWidth={2.25} />
+                            )}
+                          </button>
+                          {profiles.length > 0 && <div className="my-1 border-t border-seam" />}
+                          {profiles.map((profile) => {
+                            const isSel = selectedProfileId === profile.id;
+                            const info = [profile.description, profile.working_directory].filter(Boolean).join(' · ');
+                            return (
+                              <div key={profile.id} className="group relative">
+                                <button
+                                  type="button"
+                                  role="option"
+                                  aria-selected={isSel}
+                                  onClick={() => { setSelectedProfileId(profile.id); setProfileMenuOpen(false); }}
+                                  className="w-full flex items-center gap-2.5 px-3 py-2 pr-16 text-left hover:bg-fill-hover transition-colors"
+                                >
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-text-primary text-[12.5px] font-medium truncate">{profile.name}</p>
+                                    {info && <p className="text-text-tertiary text-[11px] truncate">{info}</p>}
+                                  </div>
+                                </button>
+                                <span className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setProfileMenuOpen(false);
+                                      openProfileModal(profile.id);
+                                    }}
+                                    title="Edit profile"
+                                    aria-label={`Edit profile ${profile.name}`}
+                                    className="w-6 h-6 rounded-md flex items-center justify-center text-text-tertiary opacity-0 group-hover:opacity-100 hover:bg-fill-active hover:text-text-primary transition-[opacity,background-color]"
+                                  >
+                                    <Pencil size={12} />
+                                  </button>
+                                  {isSel && (
+                                    <Check size={13} className="text-accent-primary flex-shrink-0" strokeWidth={2.25} />
+                                  )}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div className="border-t border-seam">
+                          <button
+                            type="button"
+                            onClick={() => { setProfileMenuOpen(false); openProfileModal(); }}
+                            className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-accent-primary hover:bg-accent-primary/10 transition-colors"
+                          >
+                            <Plus size={13} strokeWidth={2} />
+                            New Profile
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
               })()}
             </div>
           )}
