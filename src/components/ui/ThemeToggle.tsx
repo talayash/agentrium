@@ -1,8 +1,7 @@
 import { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Sun, Moon } from 'lucide-react';
-// Sun renders inside the knob (light); Moon both inside the knob (dark) and as
-// the faint light-mode destination hint.
+// Sun renders inside the knob (light); Moon inside the knob (dark).
 import { useAppStore } from '../../store/appStore';
 import { Tooltip } from './Tooltip';
 import { SPRING_DRAWER } from '../../lib/motionTokens';
@@ -38,9 +37,6 @@ export function ThemeToggle() {
             : 'bg-gradient-to-r from-amber-200 to-sky-300 ring-black/[0.06]'
         }`}
       >
-        {/* Faint "destination" moon on the track's right end in light mode -
-            a hint that clicking moves toward dark. */}
-        <Moon size={10} strokeWidth={2.25} className={`absolute right-[7px] text-slate-600/40 transition-opacity duration-200 ${isDark ? 'opacity-0' : 'opacity-100'}`} />
         <motion.span
           animate={{ x: isDark ? 22 : 0 }}
           transition={SPRING_DRAWER}
