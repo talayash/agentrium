@@ -224,9 +224,6 @@ export function ProfileModal() {
                       });
                     }}
                   />
-                  <p className="text-text-tertiary text-[11px] mt-1">
-                    Runs as <code className="text-text-secondary">{specFor(selectedProfile.agent).binary} ...</code>
-                  </p>
                 </div>
 
                 <div>
