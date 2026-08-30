@@ -552,7 +552,7 @@ export const useAppStore = create<AppState>()(
       terminalScrollbarMode: 'auto-hide' as TerminalScrollbarMode,
 
       // Appearance & Behavior defaults (NEW v1.22.0)
-      themeMode: 'light' as ThemeMode, // Apple bright-vibrant identity is the default
+      themeMode: 'dark' as ThemeMode, // Midnight dark is the signature default
       uiDensity: 'comfortable' as UiDensity,
       tabHeight: 'medium' as TabHeight,
       colorfulFolderIcons: false,
@@ -1171,7 +1171,7 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: 'claude-terminal-app',
-      version: 6,
+      version: 7,
       migrate: (persistedState, version) => {
         const s = (persistedState as Partial<AppState>) ?? {};
         if (version < 1) {
@@ -1230,6 +1230,12 @@ export const useAppStore = create<AppState>()(
           if (a === '#3574F0' || a === '#0A84FF') {
             s.accentColorHex = DEFAULT_ACCENT_COLOR;
           }
+        }
+        if (version < 7) {
+          // Midnight dark becomes the signature default (v6 had flipped
+          // everyone to light; this flips them onto the new default - light
+          // stays one ThemeToggle click away).
+          s.themeMode = 'dark';
         }
         return s as AppState;
       },
