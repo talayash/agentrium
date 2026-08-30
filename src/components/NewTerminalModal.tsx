@@ -446,7 +446,7 @@ export function NewTerminalModal() {
                   New Profile
                 </button>
               </div>
-              <div className="rounded-xl ring-1 ring-seam bg-elevation-3 divide-y divide-[var(--seam)] max-h-[218px] overflow-y-auto">
+              <div className="rounded-xl ring-1 ring-seam bg-elevation-2 divide-y divide-[var(--seam)] max-h-[218px] overflow-y-auto">
                 <button
                   type="button"
                   aria-pressed={selectedProfileId === null}
@@ -552,12 +552,12 @@ export function NewTerminalModal() {
                 type="text"
                 value={workingDirectory}
                 onChange={(e) => setWorkingDirectory(e.target.value)}
-                className="flex-1 bg-elevation-3 ring-1 ring-seam rounded-lg h-9 px-3 text-text-primary text-[13px] focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 transition-colors"
+                className="flex-1 bg-elevation-2 ring-1 ring-seam rounded-lg h-9 px-3 text-text-primary text-[13px] focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 transition-colors"
                 placeholder={isMac ? "/path/to/project" : "C:\\path\\to\\project"}
               />
               <button
                 onClick={handleBrowseDirectory}
-                className="px-3 h-9 bg-elevation-3 ring-1 ring-seam rounded-lg hover:bg-fill-hover transition-colors"
+                className="px-3 h-9 bg-elevation-2 ring-1 ring-seam rounded-lg hover:bg-fill-hover transition-colors"
               >
                 <FolderOpen size={16} className="text-text-secondary" />
               </button>
@@ -648,7 +648,7 @@ export function NewTerminalModal() {
                           value={newBranchName}
                           onChange={(e) => setNewBranchName(e.target.value)}
                           placeholder="feature/my-branch"
-                          className="w-full bg-elevation-3 ring-1 ring-seam rounded-md h-8 px-2.5 text-text-primary text-[12px] font-mono focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 transition-colors"
+                          className="w-full bg-elevation-2 ring-1 ring-seam rounded-md h-8 px-2.5 text-text-primary text-[12px] font-mono focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 transition-colors"
                         />
                       </div>
                       <div>
@@ -718,7 +718,7 @@ export function NewTerminalModal() {
               value={nickname}
               onChange={(e) => setNickname(e.target.value)}
               placeholder="e.g., My Project, Backend API"
-              className="w-full bg-elevation-3 ring-1 ring-seam rounded-lg h-9 px-3 text-text-primary text-[13px] focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 transition-colors"
+              className="w-full bg-elevation-2 ring-1 ring-seam rounded-lg h-9 px-3 text-text-primary text-[13px] focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 transition-colors"
             />
           </div>
 
@@ -781,7 +781,7 @@ export function NewTerminalModal() {
                       <textarea
                         value={claudeArgs.join('\n')}
                         onChange={(e) => setClaudeArgs(e.target.value.split('\n').filter(Boolean))}
-                        className="w-full bg-elevation-3 ring-1 ring-seam rounded-lg py-2 px-3 text-text-primary text-[13px] focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 font-mono h-20 resize-none transition-colors"
+                        className="w-full bg-elevation-2 ring-1 ring-seam rounded-lg py-2 px-3 text-text-primary text-[13px] focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 font-mono h-20 resize-none transition-colors"
                         placeholder={specFor(selectedAgent).defaultArgsHint}
                       />
                       <p className="text-text-tertiary text-[11px] mt-1 truncate">
