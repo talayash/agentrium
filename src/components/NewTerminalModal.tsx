@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FolderOpen, Terminal, Zap, GitBranch, GitFork, Plus, Loader2, ChevronDown, Check, Pencil, Pin, PinOff, Trash2, SlidersHorizontal } from 'lucide-react';
+import { FolderOpen, Terminal, GitBranch, GitFork, Plus, Loader2, ChevronDown, Check, Pencil, Pin, PinOff, Trash2, SlidersHorizontal } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore, NEW_PROFILE_ID } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
@@ -858,7 +858,6 @@ export function NewTerminalModal() {
             onClick={handleCreateTerminal}
             disabled={!workingDirectory}
             loading={isCreating}
-            icon={<Zap size={14} />}
           >
             {isCreating ? 'Creating...' : (plainShell ? 'Start Shell' : 'Start Session')}
           </Button>
