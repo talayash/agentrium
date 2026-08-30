@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Reorder } from 'framer-motion';
-import { X, Copy, Grid3X3, AppWindow, Pin, PinOff, SplitSquareHorizontal } from 'lucide-react';
+import { X, Copy, Grid3X3, AppWindow, Pin, PinOff, SplitSquareHorizontal, GitBranch, GitFork } from 'lucide-react';
 import { useTerminalStore } from '../store/terminalStore';
 import { toast } from '../store/toastStore';
 import { reportInvokeFailure } from '../lib/errorReporter';
@@ -62,6 +62,7 @@ export function SessionCards() {
   const activeTerminalId = useTerminalStore((s) => s.activeTerminalId);
   const metrics = useTerminalStore((s) => s.terminalMetrics);
   const unreadTerminalIds = useTerminalStore((s) => s.unreadTerminalIds);
+  const gitInfoCache = useTerminalStore((s) => s.gitInfoCache);
   const setActiveTerminal = useTerminalStore((s) => s.setActiveTerminal);
   const closeTerminal = useTerminalStore((s) => s.closeTerminal);
   const createTerminal = useTerminalStore((s) => s.createTerminal);
@@ -201,6 +202,7 @@ export function SessionCards() {
         const cost = formatCost(metrics.get(id)?.costUsd ?? 0);
         const dir = basename(t.config.working_directory);
         const name = t.config.nickname || t.config.label;
+        const gitInfo = gitInfoCache.get(id);
         return (
           <Reorder.Item
             key={id}
@@ -292,6 +294,17 @@ export function SessionCards() {
             </div>
             <div className="mt-1 flex items-center gap-2 text-[11px] text-text-tertiary">
               {dir && <span className="truncate">{dir}</span>}
+              {gitInfo?.is_git_repo && gitInfo.current_branch && (
+                <span
+                  className="flex items-center gap-0.5 max-w-[100px] flex-shrink-0"
+                  title={gitInfo.is_worktree ? `Worktree · ${gitInfo.current_branch}` : gitInfo.current_branch}
+                >
+                  {gitInfo.is_worktree
+                    ? <GitFork size={10} strokeWidth={1.75} className="flex-shrink-0" />
+                    : <GitBranch size={10} strokeWidth={1.75} className="flex-shrink-0" />}
+                  <span className="truncate">{gitInfo.current_branch}</span>
+                </span>
+              )}
               {cost && <span className="ml-auto text-emerald-500 font-medium tabular-nums">{cost}</span>}
             </div>
           </Reorder.Item>
