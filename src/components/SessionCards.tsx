@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Reorder } from 'framer-motion';
-import { X, Copy, Grid3X3, AppWindow, Pin, PinOff, SplitSquareHorizontal, GitBranch, GitFork } from 'lucide-react';
+import { X, Copy, Grid3X3, AppWindow, Pin, PinOff, SplitSquareHorizontal, GitBranch, GitFork, Pencil } from 'lucide-react';
 import { useTerminalStore } from '../store/terminalStore';
 import { toast } from '../store/toastStore';
 import { reportInvokeFailure } from '../lib/errorReporter';
@@ -353,6 +353,12 @@ export function SessionCards() {
           className="fixed z-[80] min-w-[220px] material-popover rounded-lg py-1 select-none ct-pop-in"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
+          <CardMenuItem
+            icon={<Pencil size={13} strokeWidth={1.75} />}
+            label="Rename..."
+            onClick={() => { setContextMenu(null); setRenamingId(ctxId); }}
+          />
+          <div className="my-1 border-t border-seam" />
           <CardMenuItem
             icon={ctxPinned ? <PinOff size={13} strokeWidth={1.75} /> : <Pin size={13} strokeWidth={1.75} />}
             label={ctxPinned ? 'Unpin' : 'Pin'}
