@@ -21,8 +21,10 @@ export default {
         // Defaults are Apple system blue, set in index.css :root.
         'accent-primary': 'var(--accent-primary)',
         'accent-secondary': 'var(--accent-secondary)',
-        // Borders / seams - translucent separation, not opaque lines
-        'border': 'var(--ij-divider)',
+        // Borders / seams - translucent separation, not opaque lines. The
+        // legacy `border` alias now points at the seam hairline: the old
+        // opaque --ij-divider line is retired everywhere at once.
+        'border': 'var(--seam)',
         'border-light': 'var(--seam)',
         'border-focus': 'var(--border-focus)',
         'seam': 'var(--seam)',

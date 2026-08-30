@@ -112,11 +112,11 @@ export function BottomTerminalPane() {
       </div>
 
       <div
-        className="shrink-0 flex flex-col border-t border-[var(--ij-divider)] bg-bg-primary"
+        className="shrink-0 flex flex-col border-t border-seam-strong bg-bg-primary"
         style={{ height: collapsed ? 28 : height }}
       >
         {/* Tab strip */}
-        <div className="h-7 flex items-center border-b border-[var(--ij-divider-soft)] bg-elevation-0 flex-shrink-0">
+        <div className="h-7 flex items-center border-b border-seam bg-elevation-0 flex-shrink-0">
           <div className="flex-1 min-w-0 flex items-center overflow-x-auto">
             {bottomTerminalIds.map((id) => {
               const inst = terminals.get(id);
@@ -130,7 +130,7 @@ export function BottomTerminalPane() {
                     setActiveBottomTerminal(id);
                     if (collapsed) setCollapsed(false);
                   }}
-                  className={`group/tab flex items-center gap-1.5 h-7 px-2.5 cursor-pointer border-r border-[var(--ij-divider-soft)] text-[11.5px] flex-shrink-0 transition-colors ${
+                  className={`group/tab flex items-center gap-1.5 h-7 px-2.5 cursor-pointer border-r border-seam text-[11.5px] flex-shrink-0 transition-colors ${
                     isActive
                       ? 'bg-bg-primary text-text-primary'
                       : 'text-text-secondary hover:bg-fill-hover hover:text-text-primary'
@@ -166,7 +166,7 @@ export function BottomTerminalPane() {
           </div>
           <button
             onClick={() => setCollapsed((v) => !v)}
-            className="h-7 px-2 flex items-center justify-center text-text-tertiary hover:text-text-primary hover:bg-fill-hover transition-colors flex-shrink-0 border-l border-[var(--ij-divider-soft)]"
+            className="h-7 px-2 flex items-center justify-center text-text-tertiary hover:text-text-primary hover:bg-fill-hover transition-colors flex-shrink-0 border-l border-seam"
             title={collapsed ? 'Expand bottom terminals' : 'Collapse bottom terminals'}
           >
             <ChevronDown

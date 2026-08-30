@@ -109,52 +109,39 @@ export function StatusBar() {
           <ProgressStripe />
         </div>
       )}
-      <div className="h-[var(--h-status)] flex items-center justify-between pl-2 pr-1 material-chrome border-t border-[var(--ij-divider)] text-[11px] select-none">
-      {/* Left side */}
-      <div className="flex items-center gap-0.5">
-        {/* Terminal count */}
+      <div className="h-[var(--h-status)] flex items-center justify-between pl-2 pr-1.5 material-chrome border-t border-seam-strong text-[11px] select-none">
+      {/* Left side - grouped by meaning, separated by space (no dot clutter):
+          workspace summary → active session → its branch. */}
+      <div className="flex items-center gap-2 min-w-0">
+        {/* Session count / sidebar toggle */}
         <Tooltip label="Toggle Sidebar" shortcut="Ctrl+B" side="top">
         <button
           onClick={toggleSidebar}
-          className="flex items-center gap-1.5 h-[18px] px-1.5 rounded-[3px] text-text-secondary hover:bg-fill-hover hover:text-text-primary transition-colors"
+          className="flex items-center gap-1.5 h-[19px] px-2 rounded-md text-text-secondary hover:bg-fill-hover hover:text-text-primary transition-colors flex-shrink-0"
         >
           <Terminal size={11} strokeWidth={1.75} />
-          <span>
-            {terminalCount} terminal{terminalCount !== 1 ? 's' : ''}
-            {runningCount > 0 && (
-              <span className="text-text-tertiary/70"> · </span>
-            )}
-            {runningCount > 0 && (
-              <span className="text-success">{runningCount} running</span>
-            )}
+          <span className="tabular-nums">
+            {terminalCount} session{terminalCount !== 1 ? 's' : ''}
           </span>
+          {runningCount > 0 && (
+            <span className="flex items-center gap-1 text-success tabular-nums">
+              <span className="w-1.5 h-1.5 rounded-full bg-success" />
+              {runningCount}
+            </span>
+          )}
         </button>
         </Tooltip>
 
-        <span className="text-text-tertiary/50 px-1">·</span>
-
-        {/* Active terminal status */}
+        {/* Active session: status + name */}
         {activeTerminal && (
-          <div className="flex items-center gap-1.5 h-[18px] px-1.5">
+          <div className="flex items-center gap-1.5 h-[19px] px-2 min-w-0">
             <Tooltip label={activeStatus} side="top">
-              <div className={`w-1.5 h-1.5 rounded-full ${STATUS_DOT_COLORS[activeStatus]}`} />
+              <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${STATUS_DOT_COLORS[activeStatus]}`} />
             </Tooltip>
             <span className={`${STATUS_COLORS[activeStatus]} font-medium truncate max-w-[180px]`}>
               {activeTerminal.config.nickname || activeTerminal.config.label}
             </span>
           </div>
-        )}
-
-        {activeTerminal && <span className="text-text-tertiary/50 px-1">·</span>}
-
-        {/* Last-event ticker - sketch's "last event: 12s ago" widget. */}
-        {lastEventLabel && (
-          <>
-            <span className="text-text-tertiary text-[11px] px-1.5">
-              last event: <span className="text-text-secondary">{lastEventLabel}</span>
-            </span>
-            <span className="text-text-tertiary/50 px-1">·</span>
-          </>
         )}
 
         {/* Git branch chip (active terminal's repo). Sketch showed a
@@ -170,7 +157,7 @@ export function StatusBar() {
               }
               side="top"
             >
-              <div className="flex items-center gap-1.5 h-[18px] px-1.5 rounded-[3px] text-text-secondary hover:bg-fill-hover hover:text-text-primary transition-colors cursor-default">
+              <div className="flex items-center gap-1.5 h-[19px] px-2 rounded-md text-text-secondary hover:bg-fill-hover hover:text-text-primary transition-colors cursor-default">
                 {activeGitInfo.is_worktree
                   ? <GitFork size={10} strokeWidth={1.75} className="text-accent-secondary" />
                   : <GitBranch size={10} strokeWidth={1.75} className="text-accent-secondary" />}
@@ -200,32 +187,23 @@ export function StatusBar() {
                 )}
               </div>
             </Tooltip>
-            <span className="text-text-tertiary/50 px-1">·</span>
           </>
         )}
-
-        {/* Grid/Split indicator */}
-        <Tooltip label={gridMode ? 'Exit grid mode' : 'Enter grid mode'} side="top">
-        <button
-          onClick={toggleGridMode}
-          className={`flex items-center gap-1 h-[18px] px-1.5 rounded-[3px] transition-colors ${
-            gridMode
-              ? 'text-accent-primary hover:bg-accent-primary/12'
-              : 'text-text-tertiary hover:bg-fill-hover hover:text-text-secondary'
-          }`}
-        >
-          {gridMode ? <LayoutGrid size={10} strokeWidth={1.75} /> : <Columns size={10} strokeWidth={1.75} />}
-          <span>{gridMode ? 'Grid' : 'Tabs'}</span>
-        </button>
-        </Tooltip>
       </div>
 
-      {/* Right side */}
-      <div className="flex items-center gap-0.5">
+      {/* Right side: ambient signals (last event, model) then controls. */}
+      <div className="flex items-center gap-1">
+        {/* Last-event ticker */}
+        {lastEventLabel && (
+          <span className="text-text-tertiary px-1.5 hidden md:inline">
+            last event <span className="text-text-secondary">{lastEventLabel}</span>
+          </span>
+        )}
+
         {/* Model indicator */}
         {modelInfo && (
           <div
-            className={`flex items-center gap-1 h-[18px] px-1.5 rounded-[3px] ${modelInfo.bg}`}
+            className={`flex items-center gap-1 h-[19px] px-2 rounded-md ${modelInfo.bg}`}
           >
             <Cpu size={10} className={modelInfo.text} strokeWidth={1.75} />
             <span className={`${modelInfo.text} font-medium`}>
@@ -233,6 +211,20 @@ export function StatusBar() {
             </span>
           </div>
         )}
+
+        {/* View toggle - icon-only, the label lived in the tooltip all along */}
+        <Tooltip label={gridMode ? 'Exit grid view' : 'Grid view'} side="top">
+        <button
+          onClick={toggleGridMode}
+          className={`flex items-center justify-center h-[19px] w-[24px] rounded-md transition-colors ${
+            gridMode
+              ? 'text-accent-primary hover:bg-accent-primary/12'
+              : 'text-text-tertiary hover:bg-fill-hover hover:text-text-secondary'
+          }`}
+        >
+          {gridMode ? <LayoutGrid size={11} strokeWidth={1.75} /> : <Columns size={11} strokeWidth={1.75} />}
+        </button>
+        </Tooltip>
 
         {/* Notifications toggle */}
         <Tooltip
@@ -248,7 +240,7 @@ export function StatusBar() {
               setNotifyOnFinish(!notifyOnFinish);
               if (unreadCount > 0) clearUnread();
             }}
-            className={`relative flex items-center h-[18px] w-[22px] justify-center rounded-[3px] transition-colors hover:bg-fill-hover ${
+            className={`relative flex items-center h-[19px] w-[24px] justify-center rounded-md transition-colors hover:bg-fill-hover ${
               notifyOnFinish ? 'text-text-secondary hover:text-text-primary' : 'text-text-tertiary hover:text-text-secondary'
             }`}
           >
@@ -262,15 +254,16 @@ export function StatusBar() {
           </button>
         </Tooltip>
 
-        {/* Claude version */}
+        {/* Claude version - trimmed of the "(Claude Code)" parenthetical the
+            CLI appends; the tooltip keeps the full string. */}
         {claudeVersion && (
-          <Tooltip label="Open Settings" side="top">
+          <Tooltip label={`Claude ${claudeVersion} · Open Settings`} side="top">
             <button
               onClick={openSettings}
-              className="flex items-center gap-1 h-[18px] px-1.5 rounded-[3px] text-text-tertiary hover:bg-fill-hover hover:text-text-secondary transition-colors"
+              className="flex items-center gap-1 h-[19px] px-2 rounded-md text-text-tertiary hover:bg-fill-hover hover:text-text-secondary transition-colors"
             >
               <ArrowDownCircle size={10} strokeWidth={1.75} />
-              <span>Claude {claudeVersion}</span>
+              <span>Claude {claudeVersion.replace(/\s*\(.*\)\s*$/, '')}</span>
             </button>
           </Tooltip>
         )}

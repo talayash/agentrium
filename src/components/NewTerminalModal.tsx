@@ -407,7 +407,7 @@ export function NewTerminalModal() {
           </div>
 
           {/* Plain Shell Toggle */}
-          <div className="flex items-center justify-between border-t border-[var(--ij-divider-soft)] pt-4">
+          <div className="flex items-center justify-between border-t border-seam pt-4">
             <div>
               <label className="text-text-secondary text-[12px]">Plain shell (no Claude)</label>
               <p className="text-text-tertiary text-[11px]">
@@ -421,7 +421,7 @@ export function NewTerminalModal() {
 
           {/* Agent Selection */}
           {!plainShell && (
-            <div className="border-t border-[var(--ij-divider-soft)] pt-4">
+            <div className="border-t border-seam pt-4">
               <label className="block text-text-secondary text-[12px] mb-1.5">Agent</label>
               <AgentPicker value={selectedAgent} onChange={setSelectedAgent} />
             </div>
@@ -429,7 +429,7 @@ export function NewTerminalModal() {
 
           {/* Profile Selection */}
           {!plainShell && (
-            <div className="border-t border-[var(--ij-divider-soft)] pt-4">
+            <div className="border-t border-seam pt-4">
               <div className="flex items-center justify-between mb-1.5">
                 <label className="text-text-secondary text-[12px]">Profile</label>
                 <button
@@ -487,7 +487,7 @@ export function NewTerminalModal() {
           )}
 
           {/* Working Directory */}
-          <div className="border-t border-[var(--ij-divider-soft)] pt-4">
+          <div className="border-t border-seam pt-4">
             <label className="block text-text-secondary text-[12px] mb-1.5">
               Working Directory
             </label>
@@ -652,7 +652,7 @@ export function NewTerminalModal() {
 
           {/* Claude Arguments */}
           {!plainShell && (
-          <div className="border-t border-[var(--ij-divider-soft)] pt-4">
+          <div className="border-t border-seam pt-4">
             <label className="block text-text-secondary text-[12px] mb-1.5">
               {specFor(selectedAgent).displayName} Arguments (one per line)
             </label>
@@ -680,7 +680,7 @@ export function NewTerminalModal() {
 
           {/* Model Selector - Claude-only flags; hidden for other agents */}
           {!plainShell && selectedAgent === 'claude' && (
-          <div className="border-t border-[var(--ij-divider-soft)] pt-4">
+          <div className="border-t border-seam pt-4">
             <label className="block text-text-secondary text-[12px] mb-1.5">Model</label>
             <div className="flex gap-1.5">
               {(['default', 'opus', 'sonnet', 'haiku'] as const).map((model) => (
@@ -733,7 +733,7 @@ export function NewTerminalModal() {
         </div>
 
         {/* Footer */}
-        <div className="flex justify-end gap-2 p-3 border-t border-[var(--ij-divider-soft)] bg-elevation-2">
+        <div className="flex justify-end gap-2 p-3 border-t border-seam bg-elevation-2">
           <Button variant="ghost" onClick={closeNewTerminalModal}>
             Cancel
           </Button>

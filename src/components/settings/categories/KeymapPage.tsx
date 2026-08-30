@@ -23,7 +23,7 @@ export default function KeymapPage() {
       {groups.map((g) => (
         <section key={g} className="mb-5">
           <h3 className="text-text-secondary text-[11px] font-semibold uppercase tracking-[0.06em] mb-2">{g}</h3>
-          <div className="bg-elevation-1 rounded-md ring-1 ring-[var(--ij-divider-soft)] divide-y divide-[var(--ij-divider-soft)]">
+          <div className="bg-elevation-1 rounded-md ring-1 ring-seam divide-y divide-[var(--seam)]">
             {byGroup[g].map((e) => (
               <div key={e.id} className="flex items-center justify-between px-3 py-1.5">
                 <span className="text-text-primary text-[12.5px]">{e.label}</span>

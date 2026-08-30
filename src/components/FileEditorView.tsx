@@ -90,7 +90,7 @@ export function FileEditorView({ path }: FileEditorViewProps) {
   return (
     <div className="h-full flex flex-col bg-bg-primary">
       {/* Breadcrumb / status bar for the file */}
-      <div className="flex items-center justify-between px-3 h-7 bg-elevation-0 border-b border-[var(--ij-divider-soft)] flex-shrink-0">
+      <div className="flex items-center justify-between px-3 h-7 bg-elevation-0 border-b border-seam flex-shrink-0">
         <p className="text-text-tertiary text-[11px] font-mono truncate" title={path}>
           {path}
         </p>
@@ -98,7 +98,7 @@ export function FileEditorView({ path }: FileEditorViewProps) {
           {tab.repoRoot && (
             <button
               onClick={() => setFileTabMode(path, tab.mode === 'diff' ? 'edit' : 'diff')}
-              className={`flex items-center gap-1 h-5 px-1.5 rounded-[4px] text-[10.5px] transition-colors ${
+              className={`flex items-center gap-1 h-5 px-1.5 rounded-md text-[10.5px] transition-colors ${
                 tab.mode === 'diff'
                   ? 'bg-accent-primary/20 text-accent-primary'
                   : 'text-text-tertiary hover:text-text-primary hover:bg-fill-hover'
@@ -112,7 +112,7 @@ export function FileEditorView({ path }: FileEditorViewProps) {
           <button
             onClick={() => reloadFileTab(path)}
             disabled={tab.loading}
-            className="flex items-center gap-1 h-5 px-1.5 rounded-[4px] text-[10.5px] text-text-tertiary hover:text-text-primary hover:bg-fill-hover transition-colors disabled:opacity-40"
+            className="flex items-center gap-1 h-5 px-1.5 rounded-md text-[10.5px] text-text-tertiary hover:text-text-primary hover:bg-fill-hover transition-colors disabled:opacity-40"
             title="Reload from disk"
           >
             <RefreshCw size={10} className={tab.loading ? 'animate-spin' : ''} strokeWidth={1.75} />
@@ -126,7 +126,7 @@ export function FileEditorView({ path }: FileEditorViewProps) {
               });
             }}
             disabled={!dirty || tab.saving || tab.loading}
-            className="flex items-center gap-1 h-5 px-1.5 rounded-[4px] text-[10.5px] font-medium bg-accent-primary hover:bg-accent-secondary text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            className="flex items-center gap-1 h-5 px-1.5 rounded-md text-[10.5px] font-medium bg-accent-primary hover:bg-accent-secondary text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             title="Save (Ctrl+S)"
           >
             {tab.saving ? <Loader2 size={10} className="animate-spin" /> : <Save size={10} />}

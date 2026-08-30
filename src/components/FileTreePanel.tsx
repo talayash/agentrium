@@ -565,7 +565,7 @@ export function FileTreePanel() {
             <button
               onClick={refreshRoot}
               disabled={rootLoading}
-              className="w-5 h-5 flex items-center justify-center rounded-[4px] hover:bg-fill-hover text-text-tertiary hover:text-text-secondary transition-colors disabled:opacity-40"
+              className="w-5 h-5 flex items-center justify-center rounded-md hover:bg-fill-hover text-text-tertiary hover:text-text-secondary transition-colors disabled:opacity-40"
               title="Refresh"
             >
               <RefreshCw size={11} className={rootLoading ? 'animate-spin' : ''} strokeWidth={1.75} />
@@ -887,7 +887,7 @@ function RenameInput({ initial, onCommit, onCancel }: RenameInputProps) {
         settledRef.current = true;
         onCommit(e.currentTarget.value);
       }}
-      className="flex-1 min-w-0 bg-bg-primary ring-1 ring-accent-primary rounded-[3px] h-[18px] px-1 text-[12px] text-text-primary font-mono focus:outline-none"
+      className="flex-1 min-w-0 bg-bg-primary ring-1 ring-accent-primary rounded-md h-[18px] px-1 text-[12px] text-text-primary font-mono focus:outline-none"
     />
   );
 }

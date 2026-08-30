@@ -23,7 +23,7 @@ function Row({
     <div
       title={tooltip}
       className={`flex items-center justify-between text-[11px] py-0.5 ${tooltip ? 'cursor-help' : ''} ${
-        strong ? 'mt-1 pt-1 border-t border-[var(--ij-divider)]' : ''
+        strong ? 'mt-1 pt-1 border-t border-seam-strong' : ''
       }`}
     >
       <span className={`${strong ? 'text-text-secondary font-medium' : 'text-text-tertiary'} ${muted ? 'pl-2.5' : ''}`}>
@@ -45,7 +45,7 @@ export function SessionMetricsPanel({ terminalId }: { terminalId: string }) {
   const over = budget > 0 && metrics.costUsd >= budget;
 
   return (
-    <div className="px-3 py-2 border-t border-[var(--ij-divider)] bg-elevation-1">
+    <div className="px-3 py-2 border-t border-seam-strong bg-elevation-1">
       <div className="flex items-center justify-between mb-1.5">
         <span
           className="text-[11px] text-text-tertiary uppercase tracking-wide cursor-help"

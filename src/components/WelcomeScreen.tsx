@@ -52,7 +52,7 @@ function Hint({ label, keys }: { label: string; keys: string[] }) {
         {keys.map((k, i) => (
           <span key={i} className="flex items-center gap-0.5">
             {i > 0 && <span className="text-text-tertiary/60">+</span>}
-            <kbd className="px-1 py-0.5 rounded-[4px] bg-elevation-3 ring-1 ring-seam shadow-[0_1px_0_var(--ij-divider)] text-text-secondary font-sans text-[10px]">{k}</kbd>
+            <kbd className="px-1 py-0.5 rounded-md bg-elevation-3 ring-1 ring-seam shadow-[0_1px_0_var(--seam)] text-text-secondary font-sans text-[10px]">{k}</kbd>
           </span>
         ))}
       </span>
@@ -97,8 +97,8 @@ export function WelcomeScreen({ onNewTerminal, onToggleGrid, hasTerminals }: {
         <motion.p variants={rise} className="text-[15px] leading-relaxed text-text-secondary mb-10 text-center max-w-[460px]">
           Run Claude Code, Codex, Cursor, and Antigravity agents side by side in one native window.
           Start a new terminal, or press{' '}
-          <kbd className="px-1.5 py-0.5 rounded-[5px] bg-elevation-3 ring-1 ring-seam shadow-[0_1px_0_var(--ij-divider)] text-text-secondary text-[11px] font-sans mx-0.5">{mod}</kbd>
-          <kbd className="px-1.5 py-0.5 rounded-[5px] bg-elevation-3 ring-1 ring-seam shadow-[0_1px_0_var(--ij-divider)] text-text-secondary text-[11px] font-sans mx-0.5">P</kbd>
+          <kbd className="px-1.5 py-0.5 rounded-[5px] bg-elevation-3 ring-1 ring-seam shadow-[0_1px_0_var(--seam)] text-text-secondary text-[11px] font-sans mx-0.5">{mod}</kbd>
+          <kbd className="px-1.5 py-0.5 rounded-[5px] bg-elevation-3 ring-1 ring-seam shadow-[0_1px_0_var(--seam)] text-text-secondary text-[11px] font-sans mx-0.5">P</kbd>
           {' '}for Search Everywhere.
         </motion.p>
 

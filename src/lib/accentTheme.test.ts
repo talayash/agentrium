@@ -11,12 +11,11 @@ beforeEach(() => {
 });
 
 describe('accentTheme', () => {
-  it('applyAccentColor sets the IJ stripe + accent CSS vars', () => {
+  it('applyAccentColor sets the selection stripe + accent CSS vars', () => {
     applyAccentColor('#FF00AA');
     const style = document.documentElement.style;
     expect(style.getPropertyValue('--accent-primary')).toBe('#FF00AA');
     expect(style.getPropertyValue('--ij-stripe')).toBe('#FF00AA');
-    expect(style.getPropertyValue('--ij-tab-underline')).toBe('#FF00AA');
   });
 
   it('applyAccentColor handles 3-digit hex', () => {

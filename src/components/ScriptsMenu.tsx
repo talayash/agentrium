@@ -91,7 +91,7 @@ export function ScriptsMenu({ terminalId, cwd }: ScriptsMenuProps) {
       {activeScriptName ? (
         <button
           onClick={handleStop}
-          className="flex items-center gap-1 h-6 px-2 rounded-[4px] text-[11px] bg-red-500/15 text-red-400 hover:bg-red-500/25 transition-colors"
+          className="flex items-center gap-1 h-6 px-2 rounded-md text-[11px] bg-red-500/15 text-red-400 hover:bg-red-500/25 transition-colors"
           title={`Stop npm run ${activeScriptName}`}
         >
           <Square size={11} strokeWidth={1.75} />
@@ -101,7 +101,7 @@ export function ScriptsMenu({ terminalId, cwd }: ScriptsMenuProps) {
         <button
           onClick={() => setOpen((v) => !v)}
           disabled={loading || running}
-          className="flex items-center gap-1 h-6 px-2 rounded-[4px] text-[11px] text-text-secondary hover:bg-fill-hover hover:text-text-primary transition-colors disabled:opacity-50"
+          className="flex items-center gap-1 h-6 px-2 rounded-md text-[11px] text-text-secondary hover:bg-fill-hover hover:text-text-primary transition-colors disabled:opacity-50"
           title="Run a package.json script"
         >
           {loading || running ? <Loader2 size={11} className="animate-spin" /> : <Package size={11} strokeWidth={1.75} />}
@@ -112,7 +112,7 @@ export function ScriptsMenu({ terminalId, cwd }: ScriptsMenuProps) {
 
       {open && scripts.length > 0 && (
         <div className="absolute right-0 top-full mt-1 z-30 material-sheet rounded-lg py-1 min-w-[240px] max-w-[360px] max-h-[50vh] overflow-y-auto">
-          <div className="px-3 py-1.5 text-[10.5px] uppercase tracking-wide text-text-tertiary border-b border-[var(--ij-divider-soft)] mb-1">
+          <div className="px-3 py-1.5 text-[10.5px] uppercase tracking-wide text-text-tertiary border-b border-seam mb-1">
             package.json scripts
           </div>
           {scripts.map((script) => (

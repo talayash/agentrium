@@ -221,7 +221,7 @@ export function SessionsPanel() {
             <button
               onClick={fetchSessions}
               disabled={loading}
-              className="w-5 h-5 flex items-center justify-center rounded-[4px] hover:bg-fill-hover text-text-tertiary hover:text-text-secondary transition-colors disabled:opacity-40"
+              className="w-5 h-5 flex items-center justify-center rounded-md hover:bg-fill-hover text-text-tertiary hover:text-text-secondary transition-colors disabled:opacity-40"
               title="Refresh"
             >
               <RefreshCw size={11} className={loading ? 'animate-spin' : ''} strokeWidth={1.75} />

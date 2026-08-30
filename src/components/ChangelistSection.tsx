@@ -419,7 +419,7 @@ export function ChangelistSection({
             {groupFiles.length} file{groupFiles.length !== 1 ? 's' : ''}
           </span>
           {kind !== 'unversioned' && branch && (
-            <span className="shrink-0 px-1.5 py-px rounded-[3px] bg-fill-hover text-text-secondary text-[10.5px] truncate max-w-[140px]" title={branch}>
+            <span className="shrink-0 px-1.5 py-px rounded-md bg-fill-hover text-text-secondary text-[10.5px] truncate max-w-[140px]" title={branch}>
               {branch}
             </span>
           )}

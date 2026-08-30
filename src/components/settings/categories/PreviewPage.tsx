@@ -66,7 +66,7 @@ export default function PreviewPage() {
           {allowList.map((pattern) => (
             <div
               key={pattern}
-              className="flex items-center justify-between gap-2 bg-elevation-0 ring-1 ring-[var(--ij-divider-soft)] rounded-md px-2 h-8"
+              className="flex items-center justify-between gap-2 bg-elevation-0 ring-1 ring-seam rounded-md px-2 h-8"
             >
               <code className="text-text-primary text-[12px] font-mono truncate">{pattern}</code>
               <button
@@ -80,7 +80,7 @@ export default function PreviewPage() {
             </div>
           ))}
         </div>
-        <div className="flex items-center gap-1.5 py-2 border-t border-[var(--ij-divider-soft)]">
+        <div className="flex items-center gap-1.5 py-2 border-t border-seam">
           <input
             type="text"
             value={draft}

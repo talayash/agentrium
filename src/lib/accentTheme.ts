@@ -24,7 +24,6 @@ export function applyAccentColor(hex: string): void {
   const sR = lift(r), sG = lift(g), sB = lift(b);
   root.style.setProperty('--accent-secondary', `#${toHex(sR)}${toHex(sG)}${toHex(sB)}`);
   root.style.setProperty('--ij-stripe', hex);
-  root.style.setProperty('--ij-tab-underline', hex);
   root.style.setProperty('--border-focus', `rgba(${r}, ${g}, ${b}, 0.55)`);
   // Shadow-glow tokens consumed by Tailwind's shadow-glow-sm / shadow-glow-md.
   // Distinct from --accent-glow (0.18) - different consumers, different alphas.
@@ -48,7 +47,6 @@ export function applyThemeMode(mode: ThemeMode): void {
     root.style.setProperty('--elevation-2', '#FFFFFF');
     root.style.setProperty('--elevation-3', '#E9E9EB');
     root.style.setProperty('--elevation-4', '#FFFFFF');
-    root.style.setProperty('--ij-divider', 'rgba(0, 0, 0, 0.10)');
     root.style.setProperty('--seam', 'rgba(0, 0, 0, 0.08)');
     root.style.setProperty('--seam-strong', 'rgba(0, 0, 0, 0.14)');
     // Dark-on-light interactive fills (the dark defaults vanish on white glass).
@@ -86,7 +84,6 @@ export function applyThemeMode(mode: ThemeMode): void {
     root.style.removeProperty('--elevation-2');
     root.style.removeProperty('--elevation-3');
     root.style.removeProperty('--elevation-4');
-    root.style.removeProperty('--ij-divider');
     root.style.removeProperty('--seam');
     root.style.removeProperty('--seam-strong');
     root.style.removeProperty('--fill-hover');

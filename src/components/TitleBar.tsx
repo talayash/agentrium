@@ -140,7 +140,7 @@ export function TitleBar() {
   // Neutral monochrome styling for the right-side tool cluster.
   // Instant press dip - feedback on pointer-down, not release.
   const toolBtn = (active: boolean) =>
-    `no-drag w-7 h-7 flex items-center justify-center rounded-[6px] transition-[background-color,color,transform] duration-100 active:scale-95 ${
+    `no-drag w-7 h-7 flex items-center justify-center rounded-md transition-[background-color,color,transform] duration-100 active:scale-95 ${
       active
         ? 'bg-fill-active text-text-primary'
         : 'text-text-secondary hover:bg-fill-hover hover:text-text-primary'
@@ -149,7 +149,7 @@ export function TitleBar() {
   return (
     <div
       onMouseDown={(e) => { if (e.buttons === 1 && (e.target as HTMLElement).closest('.no-drag') === null) appWindow.startDragging(); }}
-      className="h-[var(--h-header)] material-chrome flex items-center justify-between pl-2 pr-0 border-b border-[var(--ij-divider)] drag-region select-none"
+      className="h-[var(--h-header)] material-chrome flex items-center justify-between pl-2 pr-0 border-b border-seam-strong drag-region select-none"
     >
       {/* Left cluster - traffic lights (mac), sidebar toggle */}
       <div className="flex items-center gap-1 min-w-0">
@@ -176,7 +176,7 @@ export function TitleBar() {
         <Tooltip label="Toggle Sidebar" shortcut="Ctrl+B">
           <button
             onClick={toggleSidebar}
-            className="no-drag w-7 h-7 flex items-center justify-center rounded-[6px] transition-colors text-text-secondary hover:bg-fill-hover hover:text-text-primary"
+            className="no-drag w-7 h-7 flex items-center justify-center rounded-md transition-colors text-text-secondary hover:bg-fill-hover hover:text-text-primary"
           >
             <img src={appIcon} alt="Agentrium" className="w-[20px] h-[20px]" />
           </button>
@@ -186,7 +186,7 @@ export function TitleBar() {
         <Tooltip label={active?.config.working_directory || 'No active terminal'}>
         <button
           onClick={openCommandPalette}
-          className="no-drag group flex items-center gap-1.5 h-7 ml-1 pl-2 pr-2 rounded-[6px] hover:bg-fill-hover transition-colors max-w-[360px]"
+          className="no-drag group flex items-center gap-1.5 h-7 ml-1 pl-2 pr-2 rounded-md hover:bg-fill-hover transition-colors max-w-[360px]"
         >
           <span className={`w-1.5 h-1.5 rounded-full ${statusDot} flex-shrink-0`} />
           {breadcrumb.sub && (
@@ -211,12 +211,12 @@ export function TitleBar() {
         {/* Branch switcher */}
         {gitInfo?.is_git_repo && gitInfo.current_branch && (
           <>
-            <span className="w-px h-4 bg-[var(--ij-divider-soft)] mx-0.5" />
+            <span className="w-px h-4 bg-seam mx-0.5" />
             <div className="relative no-drag" ref={branchMenuRef}>
               <Tooltip label="Switch branch" disabled={branchMenuOpen}>
               <button
                 onClick={() => (branchMenuOpen ? setBranchMenuOpen(false) : openBranchMenu())}
-                className={`flex items-center gap-1.5 h-7 px-2 rounded-[6px] transition-colors ${
+                className={`flex items-center gap-1.5 h-7 px-2 rounded-md transition-colors ${
                   branchMenuOpen ? 'bg-fill-active' : 'hover:bg-fill-hover'
                 }`}
               >
@@ -233,7 +233,7 @@ export function TitleBar() {
                   className="absolute left-0 top-full mt-1 z-50 w-[260px] material-popover ct-pop-in rounded-lg overflow-hidden"
                   style={{ transformOrigin: 'top left' }}
                 >
-                  <div className="p-2 border-b border-[var(--ij-divider-soft)]">
+                  <div className="p-2 border-b border-seam">
                     <div className="relative">
                       <SearchIcon size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-text-tertiary" strokeWidth={1.75} />
                       <input
@@ -242,7 +242,7 @@ export function TitleBar() {
                         value={branchFilter}
                         onChange={(e) => setBranchFilter(e.target.value)}
                         placeholder="Filter branches…"
-                        className="w-full bg-elevation-0 ring-1 ring-inset ring-[var(--ij-divider)] rounded-[4px] h-7 pl-7 pr-2 text-[12px] text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45"
+                        className="w-full bg-elevation-0 ring-1 ring-inset ring-seam rounded-md h-7 pl-7 pr-2 text-[12px] text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45"
                       />
                     </div>
                   </div>
@@ -283,7 +283,7 @@ export function TitleBar() {
                       );
                     })}
                   </div>
-                  <div className="border-t border-[var(--ij-divider-soft)]">
+                  <div className="border-t border-seam">
                     <button
                       onClick={() => {
                         const path = active?.config.working_directory;
@@ -335,7 +335,7 @@ export function TitleBar() {
           <UpdatePill />
           <ToolsMenu />
 
-          <div className="w-px h-4 bg-[var(--seam-strong)] mx-1" />
+          <div className="w-px h-4 bg-seam-strong mx-1" />
 
           {/* Inspector triggers (moved out of the old left rail) */}
           <Tooltip label="Git" shortcut="F2">
@@ -359,7 +359,7 @@ export function TitleBar() {
             </button>
           </Tooltip>
 
-          <div className="w-px h-4 bg-[var(--seam-strong)] mx-1" />
+          <div className="w-px h-4 bg-seam-strong mx-1" />
 
           <ThemeToggle />
 

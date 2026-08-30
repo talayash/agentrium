@@ -153,7 +153,7 @@ export function PushModal() {
       panelClassName="w-[92vw] max-w-[840px] h-[72vh] max-h-[620px] grid grid-rows-[44px_40px_1fr_auto_56px]"
     >
         {/* Header */}
-        <div className="flex items-center justify-between px-3 bg-elevation-1 border-b border-[var(--ij-divider-soft)]">
+        <div className="flex items-center justify-between px-3 bg-elevation-1 border-b border-seam">
           <span className="text-text-primary text-[13px] font-semibold truncate">
             Push Commits to {repoName || 'repository'}
           </span>
@@ -169,7 +169,7 @@ export function PushModal() {
         </div>
 
         {/* Branch route strip */}
-        <div className="flex items-center gap-2 px-3 bg-accent-primary/15 border-b border-[var(--ij-divider-soft)] text-[12.5px]">
+        <div className="flex items-center gap-2 px-3 bg-accent-primary/15 border-b border-seam text-[12.5px]">
           {preview ? (
             <>
               <span className="font-mono text-text-primary truncate max-w-[180px]" title={preview.local_branch}>
@@ -182,7 +182,7 @@ export function PushModal() {
                   <button
                     onClick={() => setRemoteMenuOpen((v) => !v)}
                     disabled={busy}
-                    className="flex items-center gap-1 h-6 px-2 rounded-[4px] hover:bg-fill-active text-accent-primary font-mono transition-colors disabled:opacity-50"
+                    className="flex items-center gap-1 h-6 px-2 rounded-md hover:bg-fill-active text-accent-primary font-mono transition-colors disabled:opacity-50"
                   >
                     {remote}
                     <ChevronDown size={11} className="text-text-tertiary" />
@@ -217,7 +217,7 @@ export function PushModal() {
                 onChange={(e) => setRemoteBranch(e.target.value)}
                 disabled={busy}
                 spellCheck={false}
-                className="font-mono text-text-primary bg-elevation-0 border border-[var(--ij-divider-soft)] rounded-[4px] h-6 px-2 text-[12px] focus:outline-none focus:border-accent-primary disabled:opacity-50 min-w-[180px] flex-1 max-w-[320px]"
+                className="font-mono text-text-primary bg-elevation-0 border border-seam rounded-md h-6 px-2 text-[12px] focus:outline-none focus:border-accent-primary disabled:opacity-50 min-w-[180px] flex-1 max-w-[320px]"
                 placeholder="branch name"
                 aria-label="Remote branch"
               />
@@ -275,15 +275,15 @@ export function PushModal() {
                   <span className="text-text-tertiary text-[12px]">Your branch is up to date with the remote.</span>
                 </div>
               ) : (
-                <div className="border border-[var(--ij-divider-soft)] rounded-md overflow-hidden">
-                  <div className="px-3 py-1.5 bg-elevation-1 text-[10.5px] uppercase tracking-wider font-semibold text-text-tertiary border-b border-[var(--ij-divider-soft)]">
+                <div className="border border-seam rounded-md overflow-hidden">
+                  <div className="px-3 py-1.5 bg-elevation-1 text-[10.5px] uppercase tracking-wider font-semibold text-text-tertiary border-b border-seam">
                     {preview.ahead} commit{preview.ahead === 1 ? '' : 's'} to push
                   </div>
                   <ul>
                     {preview.commits.map((c) => (
                       <li
                         key={c.sha}
-                        className="flex items-center gap-3 px-3 py-1.5 border-b border-[var(--ij-divider-soft)] last:border-b-0 hover:bg-fill-hover transition-colors"
+                        className="flex items-center gap-3 px-3 py-1.5 border-b border-seam last:border-b-0 hover:bg-fill-hover transition-colors"
                       >
                         <span className="font-mono text-[11px] text-text-tertiary w-[60px] flex-shrink-0">
                           {c.short_sha}
@@ -351,7 +351,7 @@ export function PushModal() {
         )}
 
         {/* Footer */}
-        <div className="flex items-center justify-between px-3 bg-elevation-1 border-t border-[var(--ij-divider-soft)]">
+        <div className="flex items-center justify-between px-3 bg-elevation-1 border-t border-seam">
           <label className="flex items-center gap-2 text-[12px] text-text-secondary cursor-pointer select-none">
             <input
               type="checkbox"

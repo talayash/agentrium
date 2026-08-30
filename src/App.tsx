@@ -793,7 +793,7 @@ function App() {
   return (
     <div
       className="app-root h-screen w-screen flex flex-col overflow-hidden rounded-[10px]"
-      style={{ boxShadow: '0 0 0 1px var(--ij-divider)' }}
+      style={{ boxShadow: '0 0 0 1px var(--seam-strong)' }}
     >
       {/* Launch splash - logo reveal video + loading bar, main window only. */}
       <AnimatePresence>
@@ -819,7 +819,7 @@ function App() {
                 animate={{ height: 'auto', opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}
                 transition={{ duration: 0.2 }}
-                className="bg-elevation-1 border-b border-[var(--ij-divider)] overflow-hidden"
+                className="bg-elevation-1 border-b border-seam-strong overflow-hidden"
               >
                 <div className="flex items-center gap-3 px-3 py-1.5">
                   <div className="w-5 h-5 rounded-full bg-accent-primary/15 flex items-center justify-center text-accent-primary flex-shrink-0">
