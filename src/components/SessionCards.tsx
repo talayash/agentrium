@@ -171,18 +171,12 @@ export function SessionCards() {
   };
 
   if (list.length === 0) {
+    // No action button here - the sidebar's prominent New Session button sits
+    // right below this empty state.
     return (
       <EmptyState
         title="No sessions yet"
         description="Start an agent session in any folder to see it here."
-        action={
-          <button
-            onClick={() => useAppStore.getState().openNewTerminalModal()}
-            className="h-8 px-3 rounded-lg bg-accent-primary text-white text-[12px] font-medium active:scale-[0.97] transition-transform"
-          >
-            New Session
-          </button>
-        }
         compact
       />
     );
