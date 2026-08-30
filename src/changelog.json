@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.33.0",
+    "date": "2026-08-30",
+    "features": [
+      { "title": "Apple-inspired UI redesign", "description": "Ground-up visual reinvention: new welcome screen leading with the agent choice, Midnight dark as the signature default (terminal now follows the app appearance), simplified titlebar with a single Inspector toggle, sidebar rebuilt as a three-tab navigator (Sessions cards / Files / History), profiles as a one-click grouped list with pin and delete, and dialogs that match the window's dark tone." },
+      { "title": "Resume prior conversations for Codex and Cursor", "description": "The History tab now indexes ~/.codex/sessions/YYYY/MM/DD and ~/.cursor/chats/meta.json alongside Claude's ~/.claude/projects/. Click a session to open in a new tab or right-click to resume in the current terminal - the correct --resume / --continue form is injected per agent." },
+      { "title": "Folder pin no longer inherits agent from an unrelated tab", "description": "When you pinned a Claude project in the Explorer while an Antigravity terminal was focused, the History tab used to show the wrong empty state. The fix decouples the pinned folder from the focused tab's agent." },
+      { "title": "New Session keeps your working directory when switching agent", "description": "Picking a different agent card in the New Session modal no longer resets the working directory field." },
+      { "title": "Persist migrations preserve explicit theme picks", "description": "Users who had explicitly picked a light theme or a non-default terminal palette no longer have their choice silently overwritten by the redesign default. Migration steps now guard against clobbering user picks." }
+    ]
+  },
+  {
     "version": "1.32.2",
     "date": "2026-08-28",
     "features": [
