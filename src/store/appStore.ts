@@ -1233,27 +1233,24 @@ export const useAppStore = create<AppState>()(
             s.accentColorHex = DEFAULT_ACCENT_COLOR;
           }
         }
-        if (version < 6) {
-          // Bright-vibrant Apple rebrand: light is now the signature theme.
-          // Flip everyone to light (dark stays available in Settings) and move
-          // prior default accents onto the vibrant #007AFF system blue.
-          s.themeMode = 'light';
-          const a = s.accentColorHex?.toUpperCase();
-          if (a === '#3574F0' || a === '#0A84FF') {
-            s.accentColorHex = DEFAULT_ACCENT_COLOR;
-          }
-        }
-        if (version < 7) {
-          // Midnight dark becomes the signature default (v6 had flipped
-          // everyone to light; this flips them onto the new default - light
-          // stays one ThemeToggle click away).
-          s.themeMode = 'dark';
-        }
+        // Versions 6-7 previously flipped themeMode unconditionally (light,
+        // then back to dark) during a mid-branch design shift, and v6 also
+        // rewrote the accent to the current DEFAULT_ACCENT_COLOR if it was
+        // '#0A84FF' - a value that was never a shipped default, which meant
+        // users who had manually picked it lost their choice. Because the
+        // shipped themeMode default is 'dark' both before and after this
+        // branch, no persisted state actually needs rewriting. Guarding on
+        // "was this the previous default?" (as v5 does for accent) here would
+        // still be net-destructive, so v6/v7 are intentionally omitted from
+        // the chain. Existing v6/v7 preview payloads still advance to v8 via
+        // the persist middleware's automatic version bump.
         if (version < 8) {
-          // The terminal now follows the app's light/dark appearance by
-          // default instead of being pinned to one palette. Explicit
-          // dark/light stay available in Settings → Terminal.
-          s.terminalTheme = 'auto';
+          // Terminal theme default changed from 'dark' to 'auto' (follow the
+          // app appearance). Migrate the prior default only, mirroring v5's
+          // accent pattern; explicit 'light' or a named theme stays put.
+          if (s.terminalTheme === 'dark') {
+            s.terminalTheme = 'auto';
+          }
         }
         return s as AppState;
       },
