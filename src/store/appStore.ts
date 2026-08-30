@@ -290,8 +290,11 @@ interface AppState {
   closeSettings: () => void;
   openProfileModal: (profileId?: string) => void;
   closeProfileModal: () => void;
-  openNewTerminalModal: () => void;
+  openNewTerminalModal: (agent?: AgentKind) => void;
   closeNewTerminalModal: () => void;
+  /** Agent to preselect when the New Session modal opens (welcome-screen
+   *  agent cards). Cleared on close. */
+  newTerminalPreselectedAgent: AgentKind | null;
   openWorkspaceModal: () => void;
   closeWorkspaceModal: () => void;
   openWorktreeModal: (repoPath: string) => void;
@@ -512,6 +515,7 @@ export const useAppStore = create<AppState>()(
       profileModalOpen: false,
       editingProfileId: null,
       newTerminalModalOpen: false,
+      newTerminalPreselectedAgent: null,
       workspaceModalOpen: false,
       worktreeModalOpen: false,
       worktreeModalRepoPath: null,
@@ -697,8 +701,8 @@ export const useAppStore = create<AppState>()(
       closeSettings: () => set({ settingsOpen: false }),
       openProfileModal: (profileId) => set({ profileModalOpen: true, editingProfileId: profileId || null }),
       closeProfileModal: () => set({ profileModalOpen: false, editingProfileId: null }),
-      openNewTerminalModal: () => set({ newTerminalModalOpen: true }),
-      closeNewTerminalModal: () => set({ newTerminalModalOpen: false }),
+      openNewTerminalModal: (agent) => set({ newTerminalModalOpen: true, newTerminalPreselectedAgent: agent ?? null }),
+      closeNewTerminalModal: () => set({ newTerminalModalOpen: false, newTerminalPreselectedAgent: null }),
       openWorkspaceModal: () => set({ workspaceModalOpen: true }),
       closeWorkspaceModal: () => set({ workspaceModalOpen: false }),
       openWorktreeModal: (repoPath) => set({ worktreeModalOpen: true, worktreeModalRepoPath: repoPath }),

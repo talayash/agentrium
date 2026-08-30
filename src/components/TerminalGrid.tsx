@@ -442,7 +442,7 @@ export function TerminalGrid() {
 
           {/* New Terminal Button */}
           <button
-            onClick={openNewTerminalModal}
+            onClick={() => openNewTerminalModal()}
             className="flex items-center gap-1 px-2 py-1 text-[11px] text-text-secondary hover:text-text-primary hover:bg-fill-hover rounded transition-colors"
             title="Create a new terminal in the grid"
           >

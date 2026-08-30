@@ -42,7 +42,7 @@ function formatCost(usd: number): string {
  */
 export function TerminalTabs() {
   const { terminals, activeTerminalId, scriptChildren, closeScript } = useTerminalStore();
-  const { gridMode, toggleGridMode, gridTerminalIds, splitMode, splitTerminalIds, splitOrientation, splitRatio, setSplitOrientation, setSplitRatio, clearSplit, openFiles, activeFilePath, setActiveFilePath, closeFileTab, showFileTree, showTabActivity, openNewTerminalModal } = useAppStore();
+  const { gridMode, toggleGridMode, gridTerminalIds, splitMode, splitTerminalIds, splitOrientation, splitRatio, setSplitOrientation, setSplitRatio, clearSplit, openFiles, activeFilePath, setActiveFilePath, closeFileTab, showFileTree, showTabActivity } = useAppStore();
   const now = useNowTick();
   const terminalStates = useTerminalStore((s) => s.terminalStates);
   const terminalMetrics = useTerminalStore((s) => s.terminalMetrics);
@@ -347,13 +347,7 @@ export function TerminalTabs() {
             <FileEditorView path={activeFilePath} />
           </div>
         )}
-        {!activeTerminalId && !activeFilePath && (
-          <WelcomeScreen
-            onNewTerminal={openNewTerminalModal}
-            onToggleGrid={toggleGridMode}
-            hasTerminals={terminalList.length > 0}
-          />
-        )}
+        {!activeTerminalId && !activeFilePath && <WelcomeScreen />}
       </div>
 
       <BottomTerminalPane />

@@ -66,7 +66,10 @@ export function NewTerminalModal() {
   const [selectedModel, setSelectedModel] = useState<'default' | 'opus' | 'sonnet' | 'haiku'>('default');
   const [selectedEffort, setSelectedEffort] = useState<'default' | 'low' | 'medium' | 'high'>('default');
   const [plainShell, setPlainShell] = useState(false);
-  const [selectedAgent, setSelectedAgent] = useState<AgentKind>('claude');
+  // Welcome-screen agent cards open this modal with an agent preselected;
+  // read once on mount (the modal is unmounted while closed).
+  const preselectedAgent = useAppStore.getState().newTerminalPreselectedAgent;
+  const [selectedAgent, setSelectedAgent] = useState<AgentKind>(preselectedAgent ?? 'claude');
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   // Worktree state
@@ -253,8 +256,11 @@ export function NewTerminalModal() {
       const defaultProfile = loadedProfiles.find(p => p.is_default);
       if (defaultProfile) {
         // Align selectedAgent with the default profile's agent so the deselect
-        // effect doesn't immediately null this selection.
-        setSelectedAgent(defaultProfile.agent);
+        // effect doesn't immediately null this selection - unless the caller
+        // preselected an agent (welcome-screen card): that explicit choice wins.
+        if (!preselectedAgent) {
+          setSelectedAgent(defaultProfile.agent);
+        }
         setSelectedProfileId(defaultProfile.id);
       }
     } catch (error) {
