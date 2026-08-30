@@ -58,7 +58,8 @@
         "installMode": "currentUser",
         "languages": ["English"],
         "displayLanguageSelector": false,
-        "compression": "lzma"
+        "compression": "lzma",
+        "installerHooks": "./installer-hooks.nsh"
       },
       "wix": {
         "language": "en-US",
