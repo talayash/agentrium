@@ -50,23 +50,28 @@ Only Claude Code is required to get started. The other three are opt-in and auto
 ## Screenshots
 
 <p align="center">
-  <img src="docs/main-view.png" alt="Main view with an active agent session" width="800">
-  <br><em>Main view - an active agent session with branch indicator, brand icon on the tab, and status bar</em>
+  <img src="docs/main-view.png" alt="Welcome screen with the four agent picker buttons" width="800">
+  <br><em>Welcome screen - pick Claude Code, Codex, Cursor, or Antigravity to start your first session</em>
 </p>
 
 <p align="center">
-  <img src="docs/new-terminal.png" alt="New Terminal dialog" width="800">
-  <br><em>New Terminal dialog - pick the agent, then optionally a profile, working directory, and per-agent arguments</em>
+  <img src="docs/new-terminal.png" alt="New Session dialog" width="800">
+  <br><em>New Session dialog - pick the agent, choose a profile, set working directory, model, and nickname</em>
 </p>
 
 <p align="center">
-  <img src="docs/grid-view.png" alt="Grid view with mixed agents" width="800">
-  <br><em>Grid view - up to 8 sessions at once with selectable layouts; the header icon on each cell shows which agent is running</em>
+  <img src="docs/grid-view.png" alt="Grid view running four agents in parallel" width="800">
+  <br><em>Grid view - Claude Code, Codex, Cursor, and Antigravity running side by side; brand icon on each cell shows which agent is active</em>
 </p>
 
 <p align="center">
-  <img src="docs/settings.png" alt="Settings > Updates" width="800">
-  <br><em>Settings - app version, per-agent CLI detection with docs links, and Claude Code auto-update</em>
+  <img src="docs/profiles.png" alt="New Profile dialog" width="800">
+  <br><em>New Profile dialog - name, working directory, and per-agent CLI arguments; profiles work across all four agents</em>
+</p>
+
+<p align="center">
+  <img src="docs/settings.png" alt="Settings > Appearance" width="800">
+  <br><em>Settings - theme, density, accent color, UI font scale, reduce-motion, and tab-bar behavior</em>
 </p>
 
 ## Features
