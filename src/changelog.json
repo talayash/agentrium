@@ -1,5 +1,13 @@
 [
   {
+    "version": "1.33.1",
+    "date": "2026-08-30",
+    "features": [
+      { "title": "See the current git branch on every session card", "description": "Each Sessions-sidebar card now shows the working directory's current branch next to the folder name, with a fork glyph for worktrees. Reuses the git info already fetched at session creation, so no extra IPC or refresh." },
+      { "title": "Rename a session inline", "description": "Double-click a card's name (or right-click and pick Rename...) to edit it in place. Enter commits, Escape reverts, clearing the field falls back to the profile-derived label. Drag-reorder is paused on the card being edited so the input stays put." }
+    ]
+  },
+  {
     "version": "1.33.0",
     "date": "2026-08-30",
     "features": [
