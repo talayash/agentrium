@@ -168,8 +168,7 @@
   --shadow-float-md: 0 2px 8px rgba(0, 0, 0, 0.32), 0 12px 32px rgba(0, 0, 0, 0.28);
   --shadow-float-lg: 0 6px 20px rgba(0, 0, 0, 0.38), 0 28px 72px rgba(0, 0, 0, 0.42);
 
-  /* Seams - translucent separation instead of opaque divider lines. The old
-     --ij-* names stay as aliases (54 files consume them). */
+  /* Seams - translucent separation instead of opaque divider lines. */
   --seam: rgba(255, 255, 255, 0.055);
   --seam-strong: rgba(255, 255, 255, 0.09);
 
@@ -180,10 +179,7 @@
   --fill-hover: rgba(255, 255, 255, 0.06);
   --fill-active: rgba(255, 255, 255, 0.10);
   --fill-sel: rgba(255, 255, 255, 0.08);
-  --ij-stripe: #0A84FF;               /* Selection / focus stripe (accent-driven) */
-  --ij-tab-underline: #0A84FF;        /* Active tab underline (accent-driven) */
-  --ij-divider: rgba(0, 0, 0, 0.42);  /* Between tool windows / editor */
-  --ij-divider-soft: var(--seam);     /* Inside a panel */
+  --ij-stripe: #0A84FF;               /* Selection stripe (accent-driven; one consumer) */
 
   /* Accent - Apple system blue (dark). applyAccentColor() overrides from the
      user's choice; these keep first paint correct. */
@@ -480,6 +476,16 @@
 }
 @keyframes ct-orb-a { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(46px, -34px); } }
 @keyframes ct-orb-b { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(-40px, 30px); } }
+
+/* Splash terminal caret - hard on/off blink like a real console cursor (no
+   fade). Neutralized by the global reduce-motion cascade. */
+@keyframes ct-caret-blink {
+  0%, 49%  { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+.ct-caret {
+  animation: ct-caret-blink 1.06s steps(1) infinite;
+}
 
 /* Popover/tooltip pop-in: materialize from the trigger's direction. Pair with
    an inline transform-origin so it grows out of what opened it. */
