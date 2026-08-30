@@ -2,9 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import {
   ChevronRight,
-  ChevronDown,
   RefreshCw,
   FolderOpen,
+  FolderTree,
   FileText,
   Scissors,
   Copy,
@@ -20,8 +20,7 @@ import { useTerminalStore } from '../store/terminalStore';
 import { getFileIconUrl, getFolderIconUrl } from '../utils/fileIcons';
 import { toast } from '../store/toastStore';
 import { copyText } from '../lib/clipboard';
-import { PanelHeader } from './ui/PanelHeader';
-import { ListRow } from './ui/ListRow';
+import { Tooltip } from './ui/Tooltip';
 
 const isMac = navigator.platform.toUpperCase().includes('MAC');
 const REVEAL_LABEL = isMac ? 'Reveal in Finder' : 'Show in File Explorer';
@@ -114,8 +113,6 @@ export function FileTreePanel() {
   const activeFilePath = useAppStore((s) => s.activeFilePath);
   const changesRefreshTrigger = useAppStore((s) => s.changesRefreshTrigger);
   const triggerChangesRefresh = useAppStore((s) => s.triggerChangesRefresh);
-  const collapsed = useAppStore((s) => s.explorerCollapsed);
-  const toggleCollapsed = useAppStore((s) => s.toggleExplorerCollapsed);
 
   const activeCwd = useMemo(() => {
     if (!activeTerminalId) return null;
@@ -554,53 +551,58 @@ export function FileTreePanel() {
 
   return (
     <div className="flex flex-col h-full min-h-0 overflow-hidden">
-      <PanelHeader
-        title="Explorer"
-        collapsible
-        collapsed={collapsed}
-        onToggleCollapsed={toggleCollapsed}
-        progress={{ active: !collapsed && rootLoading }}
-        actions={
-          !collapsed ? (
+      {/* Folder-identity header: the tree is ABOUT this folder, so the folder
+          IS the header (the navigator switcher above already says "Files").
+          Right-click reaches the root's context menu. */}
+      {rootPath && (
+        <div
+          className="mx-2 mb-1 px-2 py-2 flex items-center gap-2.5 rounded-xl bg-fill-hover ring-1 ring-seam flex-shrink-0 cursor-default"
+          onContextMenu={(e) => openContextMenu(e, rootPath, true)}
+        >
+          <span className="w-8 h-8 rounded-[10px] bg-accent-primary/12 text-accent-primary flex items-center justify-center flex-shrink-0">
+            <FolderOpen size={15} strokeWidth={1.9} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-text-primary text-[13px] font-semibold truncate leading-tight">
+              {basename(rootPath)}
+            </p>
+            <p className="text-text-tertiary text-[10.5px] truncate" title={rootPath} dir="ltr">
+              {rootPath}
+            </p>
+          </div>
+          <Tooltip label="Refresh">
             <button
               onClick={refreshRoot}
               disabled={rootLoading}
-              className="w-5 h-5 flex items-center justify-center rounded-[4px] hover:bg-white/[0.06] text-text-tertiary hover:text-text-secondary transition-colors disabled:opacity-40"
-              title="Refresh"
+              aria-label="Refresh"
+              className="w-6 h-6 flex items-center justify-center rounded-md hover:bg-fill-active text-text-tertiary hover:text-text-secondary transition-colors disabled:opacity-40 flex-shrink-0"
             >
-              <RefreshCw size={11} className={rootLoading ? 'animate-spin' : ''} strokeWidth={1.75} />
+              <RefreshCw size={12} className={rootLoading ? 'animate-spin' : ''} strokeWidth={1.75} />
             </button>
-          ) : undefined
-        }
-      />
-
-      {/* Root path label */}
-      {!collapsed && rootPath && (
-        <div
-          className="px-3 pb-1 flex-shrink-0 cursor-default"
-          onContextMenu={(e) => openContextMenu(e, rootPath, true)}
-        >
-          <p className="text-text-tertiary text-[10.5px] font-mono truncate" title={rootPath}>
-            {basename(rootPath)}
-          </p>
+          </Tooltip>
         </div>
       )}
 
       {/* Tree content */}
-      {!collapsed && <div className="flex-1 overflow-y-auto overflow-x-hidden py-1">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden py-1">
         {!rootPath && (
-          <div className="px-3 py-2 text-text-tertiary text-[11px]">
-            No active terminal
+          <div className="flex flex-col items-center justify-center gap-2 px-4 pt-10 text-center">
+            <span className="w-10 h-10 rounded-xl bg-fill-hover ring-1 ring-seam flex items-center justify-center text-text-tertiary">
+              <FolderTree size={17} strokeWidth={1.75} />
+            </span>
+            <p className="text-text-tertiary text-[12px]">
+              Start a session to browse its folder here.
+            </p>
           </div>
         )}
         {rootPath && rootError && (
-          <div className="px-3 py-2 text-red-400 text-[11px]">{rootError}</div>
+          <div className="mx-2 px-3 py-2 rounded-lg bg-error/5 ring-1 ring-error/20 text-error text-[11.5px]">{rootError}</div>
         )}
         {rootPath && !rootError && rootChildren === null && rootLoading && (
-          <div className="px-3 py-2 text-text-tertiary text-[11px]">Loading…</div>
+          <div className="px-4 py-2 text-text-tertiary text-[11.5px]">Loading…</div>
         )}
         {rootChildren && rootChildren.length === 0 && (
-          <div className="px-3 py-2 text-text-tertiary text-[11px]">(empty folder)</div>
+          <div className="px-4 py-2 text-text-tertiary text-[11.5px]">This folder is empty.</div>
         )}
         {rootChildren && rootChildren.map((node) => (
           <TreeRow
@@ -617,19 +619,19 @@ export function FileTreePanel() {
             activeFilePath={activeFilePath}
           />
         ))}
-      </div>}
+      </div>
 
       {/* Right-click context menu */}
       {contextMenu && menuItems.length > 0 && (
         <div
           role="menu"
           data-context-menu="tree"
-          className="fixed z-[80] min-w-[220px] bg-bg-elevated ring-1 ring-white/[0.08] rounded-md py-1 select-none"
+          className="fixed z-[80] min-w-[220px] material-popover rounded-md py-1 select-none"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
           {menuItems.map((item, i) => {
             if (item.kind === 'divider') {
-              return <div key={`d${i}`} className="my-1 border-t border-white/[0.06]" />;
+              return <div key={`d${i}`} className="my-1 border-t border-seam" />;
             }
             return (
               <button
@@ -646,18 +648,13 @@ export function FileTreePanel() {
                     ? 'text-text-tertiary/50 cursor-not-allowed'
                     : item.danger
                     ? 'text-red-400 hover:bg-red-500/10'
-                    : 'text-text-primary hover:bg-white/[0.06]'
+                    : 'text-text-primary hover:bg-fill-hover'
                 }`}
               >
                 <span className={item.disabled ? 'opacity-50' : 'text-text-tertiary'}>
                   {item.icon}
                 </span>
                 <span className="flex-1">{item.label}</span>
-                {item.shortcut && (
-                  <span className="text-[10.5px] text-text-tertiary tabular-nums">
-                    {item.shortcut}
-                  </span>
-                )}
               </button>
             );
           })}
@@ -671,14 +668,14 @@ export function FileTreePanel() {
           onClick={() => setPendingDelete(null)}
         >
           <div
-            className="bg-bg-elevated ring-1 ring-white/[0.08] rounded-md p-4 w-[360px]"
+            className="material-popover rounded-md p-4 w-[360px]"
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="text-text-primary text-[13px] font-semibold mb-1">
               Move to {isMac ? 'Trash' : 'Recycle Bin'}?
             </h3>
             <p className="text-text-secondary text-[12px] mb-1">
-              <span className="font-mono text-text-primary">{basename(pendingDelete.path)}</span>
+              <span className="font-medium text-text-primary">{basename(pendingDelete.path)}</span>
               {pendingDelete.isDir && (
                 <span className="text-text-tertiary"> and all its contents</span>
               )}
@@ -690,7 +687,7 @@ export function FileTreePanel() {
               <button
                 type="button"
                 onClick={() => setPendingDelete(null)}
-                className="px-3 h-8 text-text-secondary hover:text-text-primary hover:bg-white/[0.04] rounded-md text-[12px] transition-colors"
+                className="px-3 h-8 text-text-secondary hover:text-text-primary hover:bg-fill-hover rounded-md text-[12px] transition-colors"
               >
                 Cancel
               </button>
@@ -735,10 +732,16 @@ function TreeRow({
   activeFilePath,
 }: TreeRowProps) {
   const { entry } = node;
-  const indent = 8 + depth * 12;
+  const indent = 4 + depth * 14;
   const isRenaming = renamingPath === entry.path;
   const isCut = cutPaths !== null && cutPaths.includes(entry.path);
   const cutClass = isCut ? 'opacity-50' : '';
+
+  // Rounded pill rows (matches the sidebar's SessionCards language). File
+  // rows render a chevron-width spacer so their icons align with folder
+  // icons at the same depth.
+  const rowBase =
+    'flex items-center gap-1.5 h-[26px] mx-1.5 pr-2 rounded-lg cursor-pointer select-none transition-colors duration-75';
 
   const renameInput = isRenaming && (
     <RenameInput
@@ -751,43 +754,39 @@ function TreeRow({
   if (entry.is_dir) {
     return (
       <>
-        <ListRow
-          as="div"
-          variant="compact"
+        <div
+          role="treeitem"
+          aria-expanded={node.expanded}
           onClick={() => { if (!isRenaming) onToggle(node); }}
           onContextMenu={(e) => onContextMenu(e, entry.path, true)}
           style={{ paddingLeft: indent }}
-          className={cutClass}
-          leading={
-            <>
-              {node.expanded ? (
-                <ChevronDown size={11} className="text-text-tertiary shrink-0" strokeWidth={2} />
-              ) : (
-                <ChevronRight size={11} className="text-text-tertiary shrink-0" strokeWidth={2} />
-              )}
-              <img
-                src={getFolderIconUrl(entry.name, node.expanded)}
-                alt=""
-                aria-hidden="true"
-                draggable={false}
-                className="w-[14px] h-[14px] shrink-0 select-none"
-              />
-            </>
-          }
+          className={`${rowBase} hover:bg-fill-hover ${cutClass}`}
         >
+          <ChevronRight
+            size={12}
+            strokeWidth={2}
+            className={`text-text-tertiary shrink-0 transition-transform duration-150 ${node.expanded ? 'rotate-90' : ''}`}
+          />
+          <img
+            src={getFolderIconUrl(entry.name, node.expanded)}
+            alt=""
+            aria-hidden="true"
+            draggable={false}
+            className="w-[15px] h-[15px] shrink-0 select-none"
+          />
           {isRenaming ? renameInput : (
-            <span className="text-[12px] text-text-primary truncate" title={entry.name}>
+            <span className="text-[12.5px] text-text-primary truncate" title={entry.name}>
               {entry.name}
             </span>
           )}
-        </ListRow>
+        </div>
         {node.expanded && node.loading && (
-          <div className="text-text-tertiary text-[11px]" style={{ paddingLeft: indent + 24 }}>
+          <div className="text-text-tertiary text-[11px] h-[24px] flex items-center" style={{ paddingLeft: indent + 30 }}>
             Loading…
           </div>
         )}
         {node.expanded && node.error && (
-          <div className="text-red-400 text-[11px]" style={{ paddingLeft: indent + 24 }}>
+          <div className="text-error text-[11px] h-[24px] flex items-center" style={{ paddingLeft: indent + 30 }}>
             {node.error}
           </div>
         )}
@@ -813,31 +812,31 @@ function TreeRow({
   // File row
   const isActive = activeFilePath === entry.path;
   return (
-    <ListRow
-      as="div"
-      variant="compact"
-      selected={isActive}
+    <div
+      role="treeitem"
+      aria-selected={isActive}
       onClick={() => { if (!isRenaming) onOpenFile(entry.path); }}
       onContextMenu={(e) => onContextMenu(e, entry.path, false)}
       title={entry.path}
-      style={{ paddingLeft: indent + 12 }}
-      className={cutClass}
-      leading={
-        <img
-          src={getFileIconUrl(entry.name)}
-          alt=""
-          aria-hidden="true"
-          draggable={false}
-          className="w-[14px] h-[14px] shrink-0 select-none"
-        />
-      }
+      style={{ paddingLeft: indent }}
+      className={`${rowBase} ${
+        isActive ? 'bg-accent-primary/10 ring-1 ring-accent-primary/25' : 'hover:bg-fill-hover'
+      } ${cutClass}`}
     >
+      <span className="w-[12px] shrink-0" aria-hidden />
+      <img
+        src={getFileIconUrl(entry.name)}
+        alt=""
+        aria-hidden="true"
+        draggable={false}
+        className="w-[15px] h-[15px] shrink-0 select-none"
+      />
       {isRenaming ? renameInput : (
-        <span className={`text-[12px] truncate ${isActive ? 'text-text-primary' : 'text-text-secondary'}`}>
+        <span className={`text-[12.5px] truncate ${isActive ? 'text-text-primary' : 'text-text-secondary'}`}>
           {entry.name}
         </span>
       )}
-    </ListRow>
+    </div>
   );
 }
 
@@ -887,7 +886,7 @@ function RenameInput({ initial, onCommit, onCancel }: RenameInputProps) {
         settledRef.current = true;
         onCommit(e.currentTarget.value);
       }}
-      className="flex-1 min-w-0 bg-bg-primary ring-1 ring-accent-primary rounded-[3px] h-[18px] px-1 text-[12px] text-text-primary font-mono focus:outline-none"
+      className="flex-1 min-w-0 bg-elevation-0 ring-1 ring-accent-primary rounded-md h-[20px] px-1.5 text-[12px] text-text-primary focus:outline-none"
     />
   );
 }

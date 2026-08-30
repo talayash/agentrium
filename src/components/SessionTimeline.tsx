@@ -119,7 +119,7 @@ export function SessionTimeline() {
         exit={{ opacity: 0, scale: 0.98 }}
         transition={{ duration: 0.15 }}
         onDoubleClick={(e) => e.stopPropagation()}
-        className="bg-bg-elevated ring-1 ring-white/[0.08] rounded-lg w-full max-w-2xl overflow-hidden max-h-[80vh] flex flex-col"
+        className="material-sheet rounded-lg w-full max-w-2xl overflow-hidden max-h-[80vh] flex flex-col"
       >
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-border">
@@ -130,7 +130,7 @@ export function SessionTimeline() {
           </div>
           <button
             onClick={closeSessionTimeline}
-            className="p-1 rounded hover:bg-white/[0.06] text-text-tertiary transition-colors"
+            className="p-1 rounded hover:bg-fill-hover text-text-tertiary transition-colors"
           >
             <X size={16} />
           </button>
@@ -145,7 +145,7 @@ export function SessionTimeline() {
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
               placeholder="Filter sessions..."
-              className="w-full bg-bg-primary ring-1 ring-border-light rounded-md py-1.5 pl-8 pr-3 text-[12px] text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-accent-primary transition-colors"
+              className="w-full bg-bg-primary ring-1 ring-border-light rounded-md py-1.5 pl-8 pr-3 text-[12px] text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 transition-colors"
             />
           </div>
         </div>

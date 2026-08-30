@@ -262,7 +262,7 @@ export function WorktreeModal() {
                         value={newBranchName}
                         onChange={(e) => setNewBranchName(e.target.value)}
                         placeholder="feature/my-branch"
-                        className="w-full bg-bg-primary ring-1 ring-border-light rounded-md h-9 px-3 text-text-primary text-[13px] font-mono focus:outline-none focus:ring-accent-primary transition-colors"
+                        className="w-full bg-bg-primary ring-1 ring-border-light rounded-md h-9 px-3 text-text-primary text-[13px] font-mono focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 transition-colors"
                       />
                     </div>
                     <div>
@@ -271,7 +271,7 @@ export function WorktreeModal() {
                         <select
                           value={baseBranch}
                           onChange={(e) => setBaseBranch(e.target.value)}
-                          className="w-full bg-bg-primary ring-1 ring-border-light rounded-md h-9 px-3 pr-8 text-text-primary text-[13px] font-mono focus:outline-none focus:ring-accent-primary transition-colors appearance-none"
+                          className="w-full bg-bg-primary ring-1 ring-border-light rounded-md h-9 px-3 pr-8 text-text-primary text-[13px] font-mono focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 transition-colors appearance-none"
                         >
                           {branches.map(b => (
                             <option key={b} value={b}>{b}</option>
@@ -286,7 +286,8 @@ export function WorktreeModal() {
                         type="text"
                         value={newWorktreePath}
                         onChange={(e) => setNewWorktreePath(e.target.value)}
-                        className="w-full bg-bg-primary ring-1 ring-border-light rounded-md h-9 px-3 text-text-primary text-[13px] font-mono focus:outline-none focus:ring-accent-primary transition-colors"
+                        dir="ltr"
+                        className="w-full bg-bg-primary ring-1 ring-border-light rounded-md h-9 px-3 text-text-primary text-[13px] focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 transition-colors"
                       />
                       <p className="text-text-tertiary text-[11px] mt-1">Auto-generated from branch name</p>
                     </div>
@@ -296,16 +297,7 @@ export function WorktreeModal() {
                       </div>
                     )}
                   </div>
-                  <div className="flex gap-2 pt-4 border-t border-border">
-                    <Button
-                      variant="primary"
-                      onClick={handleCreateWorktree}
-                      disabled={!newBranchName.trim()}
-                      loading={creating}
-                      icon={<Plus size={14} />}
-                    >
-                      {creating ? 'Creating...' : 'Create Worktree'}
-                    </Button>
+                  <div className="flex justify-end gap-2 pt-4 border-t border-border">
                     <Button
                       variant="ghost"
                       onClick={() => {
@@ -314,6 +306,15 @@ export function WorktreeModal() {
                       }}
                     >
                       Cancel
+                    </Button>
+                    <Button
+                      variant="primary"
+                      onClick={handleCreateWorktree}
+                      disabled={!newBranchName.trim()}
+                      loading={creating}
+                      icon={<Plus size={14} />}
+                    >
+                      {creating ? 'Creating...' : 'Create Worktree'}
                     </Button>
                   </div>
                 </motion.div>
@@ -345,7 +346,7 @@ export function WorktreeModal() {
                     </div>
                     <div>
                       <label className="block text-text-tertiary text-[11px] mb-0.5">Path</label>
-                      <p className="text-text-primary text-[13px] font-mono break-all">{selectedWorktree.path}</p>
+                      <p className="text-text-primary text-[13px] break-all" dir="ltr">{selectedWorktree.path}</p>
                     </div>
                     <div>
                       <label className="block text-text-tertiary text-[11px] mb-0.5">HEAD</label>
@@ -377,15 +378,7 @@ export function WorktreeModal() {
                     )}
                   </div>
 
-                  <div className="flex gap-2 pt-4 border-t border-border">
-                    <Button
-                      variant="primary"
-                      onClick={handleOpenTerminal}
-                      loading={openingTerminal}
-                      icon={<Terminal size={14} />}
-                    >
-                      {openingTerminal ? 'Opening...' : 'Open Terminal'}
-                    </Button>
+                  <div className="flex justify-end gap-2 pt-4 border-t border-border">
                     {!selectedWorktree.is_main && (
                       <Button
                         variant="danger"
@@ -396,6 +389,14 @@ export function WorktreeModal() {
                         {removing ? 'Removing...' : 'Remove'}
                       </Button>
                     )}
+                    <Button
+                      variant="primary"
+                      onClick={handleOpenTerminal}
+                      loading={openingTerminal}
+                      icon={<Terminal size={14} />}
+                    >
+                      {openingTerminal ? 'Opening...' : 'Open Terminal'}
+                    </Button>
                   </div>
                 </motion.div>
               ) : (

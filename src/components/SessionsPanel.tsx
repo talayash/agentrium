@@ -65,10 +65,18 @@ export function SessionsPanel() {
   const activeTerminal = activeTerminalId ? terminals.get(activeTerminalId) : null;
   const activeCwd = activeTerminal?.config.working_directory ?? null;
   const activeSessionId = activeTerminal?.config.claude_session_id ?? null;
-  const activeAgent: AgentKind = activeTerminal?.config.agent ?? 'claude';
 
   // The Explorer's pinned repo wins, mirroring FileTreePanel.
   const cwd = pinnedRepoPath ?? activeCwd;
+
+  // When the pin overrode the active terminal's cwd (or there's no active
+  // terminal), that terminal's agent is unrelated to the folder the user is
+  // asking about - fall back to Claude so a pinned repo doesn't inherit an
+  // Antigravity/Codex/Cursor filter from a tab that lives elsewhere.
+  const agentMatchesCwd = activeCwd !== null && activeCwd === cwd;
+  const activeAgent: AgentKind = agentMatchesCwd
+    ? (activeTerminal?.config.agent ?? 'claude')
+    : 'claude';
 
   const [sessions, setSessions] = useState<AgentSessionInfo[]>([]);
   const [loading, setLoading] = useState(false);
@@ -221,7 +229,7 @@ export function SessionsPanel() {
             <button
               onClick={fetchSessions}
               disabled={loading}
-              className="w-5 h-5 flex items-center justify-center rounded-[4px] hover:bg-white/[0.06] text-text-tertiary hover:text-text-secondary transition-colors disabled:opacity-40"
+              className="w-5 h-5 flex items-center justify-center rounded-md hover:bg-fill-hover text-text-tertiary hover:text-text-secondary transition-colors disabled:opacity-40"
               title="Refresh"
             >
               <RefreshCw size={11} className={loading ? 'animate-spin' : ''} strokeWidth={1.75} />
@@ -235,7 +243,7 @@ export function SessionsPanel() {
         <>
           {cwd ? (
             <div className="px-3 pb-1 flex-shrink-0">
-              <p className="text-text-tertiary text-[10.5px] font-mono truncate" title={cwd}>
+              <p className="text-text-tertiary text-[10.5px] truncate" title={cwd} dir="ltr">
                 {headerCwdLabel}
               </p>
             </div>
@@ -364,7 +372,7 @@ function SessionContextMenu({
     <div
       role="menu"
       data-context-menu="sessions"
-      className="fixed z-[80] min-w-[220px] bg-bg-elevated ring-1 ring-white/[0.08] rounded-md py-1 select-none"
+      className="fixed z-[80] min-w-[220px] material-popover rounded-md py-1 select-none"
       style={{ left: x, top: y }}
     >
       <MenuItem
@@ -379,7 +387,7 @@ function SessionContextMenu({
         disabled={!hasActiveTerminal || isActive}
         onClick={() => { onClose(); onResumeInCurrent(session); }}
       />
-      <div className="my-1 border-t border-white/[0.06]" />
+      <div className="my-1 border-t border-seam" />
       <MenuItem
         icon={<FolderOpen size={13} strokeWidth={1.75} />}
         label={REVEAL_LABEL}
@@ -407,7 +415,7 @@ function MenuItem({ icon, label, onClick, disabled }: MenuItemProps) {
       className={`w-full flex items-center gap-2.5 px-3 py-1.5 text-left text-[12px] transition-colors ${
         disabled
           ? 'text-text-tertiary/50 cursor-not-allowed'
-          : 'text-text-primary hover:bg-white/[0.06]'
+          : 'text-text-primary hover:bg-fill-hover'
       }`}
     >
       <span className={disabled ? 'opacity-50' : 'text-text-tertiary'}>{icon}</span>

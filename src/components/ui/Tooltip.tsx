@@ -101,11 +101,22 @@ export function Tooltip({ label, shortcut, side = 'bottom', disabled, children }
           <div
             ref={tipRef}
             role="tooltip"
-            className="fixed z-[90] pointer-events-none whitespace-nowrap rounded-md bg-elevation-3 ring-1 ring-[var(--ij-divider-soft)] px-2 py-1 text-[11.5px] text-text-primary shadow-lg"
-            style={pos ? { left: pos.left, top: pos.top } : { left: 0, top: 0, visibility: 'hidden' }}
+            className="fixed z-[90] pointer-events-none whitespace-nowrap rounded-md material-popover ct-pop-in px-2 py-1 text-[11.5px] text-text-primary"
+            style={{
+              // Grow out of the anchor: origin faces back toward the trigger.
+              transformOrigin:
+                side === 'bottom' ? 'center top'
+                : side === 'top' ? 'center bottom'
+                : side === 'left' ? 'right center'
+                : 'left center',
+              ...(pos ? { left: pos.left, top: pos.top } : { left: 0, top: 0, visibility: 'hidden' as const }),
+            }}
           >
+            {/* Shortcut chips are intentionally NOT rendered - the app shows
+                no keyboard-shortcut hints in the UI (user decision). The
+                prop is still accepted so call sites stay untouched, and it
+                still feeds the aria-label for screen readers. */}
             {label}
-            {shortcut && <span className="ml-2 text-text-tertiary">{shortcut}</span>}
           </div>,
           document.body,
         )}

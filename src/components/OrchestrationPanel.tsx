@@ -126,7 +126,7 @@ export function OrchestrationPanel() {
           </div>
           <button
             onClick={fetchTeams}
-            className="p-1 rounded hover:bg-white/[0.04] text-text-secondary transition-colors"
+            className="p-1 rounded hover:bg-fill-hover text-text-secondary transition-colors"
             title="Refresh"
           >
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
@@ -158,7 +158,7 @@ export function OrchestrationPanel() {
               <div key={team.dirName} className="mb-1">
                 <button
                   onClick={() => handleExpand(team.dirName)}
-                  className="w-full flex items-center gap-2 p-2 rounded-md hover:bg-white/[0.04] transition-colors"
+                  className="w-full flex items-center gap-2 p-2 rounded-md hover:bg-fill-hover transition-colors"
                 >
                   {isExpanded ? (
                     <ChevronDown size={14} className="text-text-tertiary shrink-0" />
@@ -231,7 +231,7 @@ export function OrchestrationPanel() {
                           <span className="text-text-tertiary text-[10px] font-medium uppercase tracking-wider">Tasks</span>
                         </div>
                         {tasks.get(team.dirName)!.map((task) => (
-                          <div key={task.id} className="flex items-start gap-2 p-1.5 rounded-md hover:bg-white/[0.02]">
+                          <div key={task.id} className="flex items-start gap-2 p-1.5 rounded-md hover:bg-fill-hover">
                             <div className="mt-1 flex-shrink-0">
                               <div
                                 className={`w-2 h-2 rounded-full ${
@@ -276,11 +276,8 @@ export function OrchestrationPanel() {
 
       {/* Footer */}
       <div className="p-2 border-t border-border">
-        <div className="flex items-center justify-between px-1">
+        <div className="flex items-center px-1">
           <span className="text-text-tertiary text-[10px]">Auto-refreshing every 3s</span>
-          <span className="text-text-tertiary text-[10px]">
-            <kbd className="bg-bg-elevated px-1 rounded text-[10px]">F4</kbd> to toggle
-          </span>
         </div>
       </div>
     </div>
@@ -301,7 +298,7 @@ function MemberRow({
   const matchedTerminalId = member.cwd ? findMatchingTerminal(member.cwd) : null;
 
   return (
-    <div className="flex items-center gap-2 p-1.5 rounded-md hover:bg-white/[0.04] group">
+    <div className="flex items-center gap-2 p-1.5 rounded-md hover:bg-fill-hover group">
       {isLeader ? (
         <Crown size={12} className="text-yellow-400 shrink-0" />
       ) : (
@@ -328,7 +325,7 @@ function MemberRow({
             e.stopPropagation();
             setActiveTerminal(matchedTerminalId);
           }}
-          className="p-1 rounded hover:bg-white/[0.06] opacity-0 group-hover:opacity-100 transition-opacity text-text-tertiary hover:text-accent-primary"
+          className="p-1 rounded hover:bg-fill-hover opacity-0 group-hover:opacity-100 transition-opacity text-text-tertiary hover:text-accent-primary"
           title="Jump to terminal"
         >
           <ExternalLink size={12} />

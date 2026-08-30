@@ -196,7 +196,7 @@ export function MemoryEditor() {
         exit={{ opacity: 0, scale: 0.98 }}
         transition={{ duration: 0.15 }}
         onDoubleClick={(e) => e.stopPropagation()}
-        className="bg-bg-elevated ring-1 ring-white/[0.08] rounded-lg w-full max-w-3xl overflow-hidden flex flex-col"
+        className="material-sheet rounded-lg w-full max-w-3xl overflow-hidden flex flex-col"
         style={{ height: '600px' }}
       >
         {/* Header */}
@@ -208,7 +208,7 @@ export function MemoryEditor() {
           </div>
           <button
             onClick={closeMemoryEditor}
-            className="p-1 rounded hover:bg-white/[0.06] text-text-tertiary transition-colors"
+            className="p-1 rounded hover:bg-fill-hover text-text-tertiary transition-colors"
           >
             <X size={16} />
           </button>
@@ -248,7 +248,7 @@ export function MemoryEditor() {
                       className={`w-full text-left p-2 rounded-md text-[12px] mb-0.5 transition-colors ${
                         selectedClaudeMd?.path === file.path
                           ? 'bg-accent-primary/10 text-accent-primary'
-                          : 'text-text-primary hover:bg-white/[0.04]'
+                          : 'text-text-primary hover:bg-fill-hover'
                       }`}
                     >
                       <div className="flex items-center gap-1">
@@ -320,7 +320,7 @@ export function MemoryEditor() {
                           className={`w-full text-left p-2 rounded-md text-[12px] mb-0.5 transition-colors ${
                             selectedMemory?.path === file.path
                               ? 'bg-accent-primary/10 text-accent-primary'
-                              : 'text-text-primary hover:bg-white/[0.04]'
+                              : 'text-text-primary hover:bg-fill-hover'
                           }`}
                         >
                           <div className="flex items-center gap-1">
@@ -387,7 +387,7 @@ export function MemoryEditor() {
                       className={`w-full text-left p-2 rounded-md text-[12px] mb-0.5 transition-colors ${
                         selectedRule?.path === file.path
                           ? 'bg-accent-primary/10 text-accent-primary'
-                          : 'text-text-primary hover:bg-white/[0.04]'
+                          : 'text-text-primary hover:bg-fill-hover'
                       }`}
                     >
                       <div className="flex items-center gap-1">

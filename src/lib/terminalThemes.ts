@@ -1,22 +1,24 @@
 import type { ITheme } from '@xterm/xterm';
 
-export type TerminalThemeName = 'dark' | 'light';
+/** 'auto' follows the app's light/dark appearance; explicit values pin the
+ *  terminal palette regardless of the shell theme. */
+export type TerminalThemeName = 'auto' | 'dark' | 'light';
 
 // Dark palette is the existing hardcoded set from TerminalView. Light keeps the
 // same accent hues so dark/light feel like one app in two modes, not two
 // unrelated terminals - bg flips to near-white, fg flips to near-black, and the
 // ANSI accents stay recognisable while being slightly desaturated where needed
 // for legibility on a light background.
-export const TERMINAL_THEMES: Record<TerminalThemeName, ITheme> = {
+export const TERMINAL_THEMES: Record<'dark' | 'light', ITheme> = {
   dark: {
-    // Match the app shell's elevation-0 (#1E1F22) so the terminal canvas reads
-    // as the editor surface, not a separate near-black panel. selectionBackground
-    // is overridden per the live accent in resolveTerminalTheme().
-    background: '#1E1F22',
-    foreground: '#E5E5E5',
-    cursor: '#E5E5E5',
-    cursorAccent: '#1E1F22',
-    selectionBackground: 'rgba(53, 116, 240, 0.28)',
+    // Match the app shell's content surface elevation-0 (#0F1320 midnight) so
+    // the terminal canvas reads as the editor surface, not a separate panel.
+    // selectionBackground is overridden per the live accent in resolveTerminalTheme().
+    background: '#0F1320',
+    foreground: '#E7E9F0',
+    cursor: '#E7E9F0',
+    cursorAccent: '#0F1320',
+    selectionBackground: 'rgba(10, 132, 255, 0.28)',
     black: '#171717',
     red: '#EF4444',
     green: '#4ADE80',
@@ -35,12 +37,12 @@ export const TERMINAL_THEMES: Record<TerminalThemeName, ITheme> = {
     brightWhite: '#FFFFFF',
   },
   light: {
-    // Match the light shell's elevation-0 (#F7F8FA) for the same reason.
-    background: '#F7F8FA',
-    foreground: '#171717',
-    cursor: '#171717',
-    cursorAccent: '#F7F8FA',
-    selectionBackground: 'rgba(53, 116, 240, 0.20)',
+    // Match the light shell's content surface elevation-0 (#FCFCFE).
+    background: '#FCFCFE',
+    foreground: '#1D1D1F',
+    cursor: '#1D1D1F',
+    cursorAccent: '#FCFCFE',
+    selectionBackground: 'rgba(0, 122, 255, 0.18)',
     black: '#171717',
     red: '#DC2626',
     green: '#16A34A',
@@ -60,7 +62,7 @@ export const TERMINAL_THEMES: Record<TerminalThemeName, ITheme> = {
   },
 };
 
-export const DEFAULT_TERMINAL_THEME: TerminalThemeName = 'dark';
+export const DEFAULT_TERMINAL_THEME: TerminalThemeName = 'auto';
 
 // Parse a #rgb / #rrggbb accent into channels so the terminal selection can be
 // tinted with the user's live accent color. Returns null on malformed input.
@@ -74,10 +76,24 @@ function accentRgb(hex: string | undefined): { r: number; g: number; b: number }
   return { r: (num >> 16) & 0xff, g: (num >> 8) & 0xff, b: num & 0xff };
 }
 
-export function resolveTerminalTheme(name: string | undefined, accentHex?: string): ITheme {
-  const base = name === 'light' || name === 'dark'
-    ? TERMINAL_THEMES[name]
-    : TERMINAL_THEMES[DEFAULT_TERMINAL_THEME];
+/** The app shell's current effective appearance. applyThemeMode() writes
+ *  data-theme on <html> before first paint, so this is always populated. */
+function effectiveAppTheme(): 'dark' | 'light' {
+  return document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+}
+
+export function resolveTerminalTheme(
+  name: string | undefined,
+  accentHex?: string,
+  /** Pre-resolved app appearance for 'auto'. Callers reacting to themeMode
+   *  changes should pass this explicitly - child effects can run before the
+   *  parent effect that rewrites data-theme, so the DOM read may be stale
+   *  during a theme flip. */
+  appTheme?: 'dark' | 'light',
+): ITheme {
+  const resolved: 'dark' | 'light' =
+    name === 'light' || name === 'dark' ? name : (appTheme ?? effectiveAppTheme());
+  const base = TERMINAL_THEMES[resolved];
 
   // Tint the selection with the user's live accent so the terminal belongs to
   // the same themed system as the chrome. Cursor stays at the foreground color

@@ -77,7 +77,7 @@ export function HintsPanel() {
             placeholder="Search commands..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full bg-bg-primary ring-1 ring-border-light rounded-md py-1.5 pl-8 pr-3 text-[12px] text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-accent-primary transition-colors"
+            className="w-full bg-bg-primary ring-1 ring-border-light rounded-md py-1.5 pl-8 pr-3 text-[12px] text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 transition-colors"
           />
         </div>
       </div>
@@ -90,7 +90,7 @@ export function HintsPanel() {
               onClick={() => setExpandedCategory(
                 expandedCategory === category.name ? null : category.name
               )}
-              className="w-full flex items-center gap-2 p-2 rounded-md hover:bg-white/[0.04] transition-colors"
+              className="w-full flex items-center gap-2 p-2 rounded-md hover:bg-fill-hover transition-colors"
             >
               <span className="text-text-secondary">{iconMap[category.icon] || <Terminal size={14} />}</span>
               <span className="flex-1 text-left text-text-primary text-[12px] font-medium">
@@ -108,7 +108,7 @@ export function HintsPanel() {
                 {category.hints.map((hint) => (
                   <div
                     key={hint.title}
-                    className="ml-3 p-2 rounded-md hover:bg-white/[0.04] group cursor-pointer"
+                    className="ml-3 p-2 rounded-md hover:bg-fill-hover group cursor-pointer"
                     onClick={() => copyToClipboard(hint.command)}
                   >
                     <div className="flex items-start justify-between gap-2">
@@ -119,7 +119,7 @@ export function HintsPanel() {
                         </code>
                         <p className="text-text-tertiary text-[11px] mt-1">{hint.description}</p>
                       </div>
-                      <button className="p-1 rounded hover:bg-white/[0.06] opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button className="p-1 rounded hover:bg-fill-hover opacity-0 group-hover:opacity-100 transition-opacity">
                         {copiedCommand === hint.command ? (
                           <Check size={12} className="text-success" />
                         ) : (
@@ -135,15 +135,6 @@ export function HintsPanel() {
         ))}
       </div>
 
-      {/* Tip */}
-      <div className="p-2 border-t border-border">
-        <div className="bg-bg-primary ring-1 ring-border rounded-md p-2.5">
-          <p className="text-text-tertiary text-[11px] font-medium mb-0.5">Tip</p>
-          <p className="text-text-secondary text-[12px]">
-            Press <kbd className="bg-bg-elevated px-1 rounded text-[11px]">Ctrl+Shift+N</kbd> to open a new terminal
-          </p>
-        </div>
-      </div>
     </div>
   );
 }

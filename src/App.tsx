@@ -4,11 +4,10 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { reportError, reportInvokeFailure } from './lib/errorReporter';
 import { TitleBar } from './components/TitleBar';
 import { Button } from './components/ui/Button';
-import { ToolStripe } from './components/ToolStripe';
 import { Sidebar } from './components/Sidebar';
 import { TerminalTabs } from './components/TerminalTabs';
-import { HintsPanel } from './components/HintsPanel';
-import { FileChangesPanel } from './components/FileChangesPanel';
+import { Inspector } from './components/Inspector';
+import { Splash } from './components/Splash';
 import { SettingsWindow } from './components/settings/SettingsWindow';
 import { ProfileModal } from './components/ProfileModal';
 import { NewTerminalModal } from './components/NewTerminalModal';
@@ -24,7 +23,6 @@ import { SetupWizard } from './components/SetupWizard';
 import { AutoUpdater } from './components/AutoUpdater';
 import { WhatsNewModal } from './components/WhatsNewModal';
 import { ClaudeConfigModal } from './components/ClaudeConfigModal';
-import { OrchestrationPanel } from './components/OrchestrationPanel';
 import { PreviewPanel } from './components/PreviewPanel';
 import { PreviewInlineHint } from './components/PreviewInlineHint';
 import { GlobalSearchModal } from './components/GlobalSearchModal';
@@ -60,6 +58,7 @@ import {
   applyReduceMotion,
   applyUiFontScale,
   applyTabHeight,
+  applyVibrancy,
 } from './lib/accentTheme';
 import { listen } from '@tauri-apps/api/event';
 import type { TerminalMetricsPayload } from './lib/sessionMetrics';
@@ -139,6 +138,8 @@ function App() {
 
   // Detached windows skip the setup gate and render the app directly.
   const [showSetup, setShowSetup] = useState<boolean | null>(isDetached ? false : null);
+  // Launch splash - main window only, once per launch.
+  const [showSplash, setShowSplash] = useState(!isDetached);
   const { notify } = useNotification();
 
   // Detached-window close ("ask each time") state.
@@ -167,6 +168,17 @@ function App() {
     applyUiFontScale(uiFontScale);
     setColorfulFolderIcons(colorfulFolderIcons);
   }, [themeMode, uiDensity, tabHeight, accentColorHex, uiReduceMotion, uiFontScale, colorfulFolderIcons]);
+
+  // OS behind-window vibrancy (mica/acrylic) is deliberately OFF: on
+  // undecorated Windows windows the DWM backdrop re-extends a caption strip
+  // above the client area (verified live). The Apple material identity comes
+  // from in-app translucent layers (overlays/popovers/drawers) that blur real
+  // app content instead. clearEffects() also resets any effect a previous dev
+  // session left applied.
+  useEffect(() => {
+    applyVibrancy(false);
+    getCurrentWindow().clearEffects().catch(() => {}); // best-effort cleanup, safe to ignore
+  }, []);
 
   // Follow the OS "reduce motion" setting (WCAG 2.2 SC 2.3.3) on startup and
   // whenever it changes - but only until the user makes an explicit choice in
@@ -768,20 +780,26 @@ function App() {
     setPendingRestoreConfigs(null);
   };
 
-  // Show loading while checking
+  // Show loading while checking. Dark to match the splash so there's no white
+  // flash before the splash video mounts.
   if (showSetup === null) {
     return (
-      <div className="h-screen w-screen bg-bg-primary flex items-center justify-center">
-        <div className="text-text-secondary text-sm">Loading...</div>
+      <div className="h-screen w-screen bg-[#0a0a12] flex items-center justify-center">
+        <div className="text-white/35 text-sm">Loading…</div>
       </div>
     );
   }
 
   return (
     <div
-      className="h-screen w-screen bg-bg-primary flex flex-col overflow-hidden rounded-[4px]"
-      style={{ boxShadow: '0 0 0 1px var(--ij-divider)' }}
+      className="app-root h-screen w-screen flex flex-col overflow-hidden rounded-[10px]"
+      style={{ boxShadow: '0 0 0 1px var(--seam-strong)' }}
     >
+      {/* Launch splash - logo reveal video + loading bar, main window only. */}
+      <AnimatePresence>
+        {showSplash && <Splash onDone={() => setShowSplash(false)} />}
+      </AnimatePresence>
+
       <AnimatePresence>
         {showSetup && (
           <SetupWizard onComplete={() => setShowSetup(false)} />
@@ -801,7 +819,7 @@ function App() {
                 animate={{ height: 'auto', opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}
                 transition={{ duration: 0.2 }}
-                className="bg-elevation-1 border-b border-[var(--ij-divider)] overflow-hidden"
+                className="bg-elevation-1 border-b border-seam-strong overflow-hidden"
               >
                 <div className="flex items-center gap-3 px-3 py-1.5">
                   <div className="w-5 h-5 rounded-full bg-accent-primary/15 flex items-center justify-center text-accent-primary flex-shrink-0">
@@ -829,13 +847,14 @@ function App() {
 
           <TitleBar />
 
-          <div className="flex-1 flex overflow-hidden">
-            <ToolStripe side="left" />
-
+          {/* Floating-panel band: rail hugs the edge, then sidebar + content +
+              side panels float as rounded cards over the deep canvas (macOS
+              Sonoma). gap-2 p-2 opens the canvas seams between them. */}
+          <div className="flex-1 flex overflow-hidden gap-2 p-2">
             <AnimatePresence mode="wait">
               {sidebarOpen && (
                 <div
-                  className="h-full overflow-hidden transition-all duration-200 ease-out"
+                  className="h-full overflow-hidden rounded-2xl shadow-elevation-2 transition-all duration-200 ease-out"
                   style={{ width: sidebarCollapsed ? 'var(--w-rail)' : 'var(--w-panel)' }}
                 >
                   <Sidebar />
@@ -843,46 +862,23 @@ function App() {
               )}
             </AnimatePresence>
 
-            <main className="flex-1 flex flex-col overflow-hidden">
+            <main className="flex-1 flex flex-col overflow-hidden rounded-2xl bg-elevation-0 shadow-elevation-2 min-w-0">
               <TerminalTabs />
             </main>
 
+            {/* One contextual inspector replaces the four separate right panels. */}
             <AnimatePresence mode="wait">
-              {changesOpen && (
+              {(changesOpen || orchestrationOpen || hintsOpen) && (
                 <div
-                  className="h-full overflow-hidden transition-all duration-150 ease-out"
-                  style={{ width: 420 }}
+                  className="h-full overflow-hidden rounded-2xl shadow-elevation-2 transition-all duration-150 ease-out"
+                  style={{ width: 400 }}
                 >
-                  <FileChangesPanel />
-                </div>
-              )}
-            </AnimatePresence>
-
-            <AnimatePresence mode="wait">
-              {orchestrationOpen && (
-                <div
-                  className="h-full overflow-hidden transition-all duration-150 ease-out"
-                  style={{ width: 320 }}
-                >
-                  <OrchestrationPanel />
-                </div>
-              )}
-            </AnimatePresence>
-
-            <AnimatePresence mode="wait">
-              {hintsOpen && (
-                <div
-                  className="h-full overflow-hidden transition-all duration-150 ease-out"
-                  style={{ width: 320 }}
-                >
-                  <HintsPanel />
+                  <Inspector />
                 </div>
               )}
             </AnimatePresence>
 
             <PreviewPanel />
-
-            <ToolStripe side="right" />
           </div>
 
           {showStatusBar && <StatusBar />}
@@ -913,7 +909,7 @@ function App() {
       {/* Detached-window "ask each time" close dialog */}
       {isDetached && closePrompt && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50">
-          <div className="bg-bg-elevated ring-1 ring-white/[0.08] rounded-md p-4 w-[380px]">
+          <div className="bg-bg-elevated ring-1 ring-seam-strong rounded-md p-4 w-[380px]">
             <h3 className="text-text-primary text-[13px] font-semibold mb-1">Close this window?</h3>
             <p className="text-text-tertiary text-[12px] mb-4">
               {detachedTabCount} terminal{detachedTabCount === 1 ? '' : 's'}{' '}
@@ -924,7 +920,7 @@ function App() {
             <div className="flex justify-end gap-2">
               <button
                 onClick={() => setClosePrompt(false)}
-                className="px-3 h-8 text-text-secondary hover:text-text-primary hover:bg-white/[0.04] rounded-md text-[12px] transition-colors"
+                className="px-3 h-8 text-text-secondary hover:text-text-primary hover:bg-fill-hover rounded-md text-[12px] transition-colors"
               >
                 Cancel
               </button>

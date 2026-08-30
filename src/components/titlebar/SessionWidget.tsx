@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { ChevronDown, GitBranch, GitFork, Plus, Play } from 'lucide-react';
+import { GitBranch, GitFork, Plus, Play } from 'lucide-react';
 import { useTerminalStore } from '../../store/terminalStore';
 import { useAppStore } from '../../store/appStore';
 import { StateDot } from '../StateDot';
@@ -77,22 +77,24 @@ export function SessionWidget() {
 
   return (
     <>
-      <span className="w-px h-4 bg-[var(--ij-divider-soft)] mx-0.5" />
       <div className="relative no-drag" ref={ref}>
+        {/* Compact state chip: the active session's NAME already lives in the
+            session header and the sidebar cards - repeating it here was
+            clutter. The chip keeps the two glanceable signals only: the
+            active session's state color and the "waiting elsewhere" badge. */}
         <button
           onClick={() => setOpen(!open)}
           aria-haspopup="menu"
           aria-expanded={open}
-          className={`flex items-center gap-1.5 h-7 px-2 rounded-[6px] transition-colors ${
-            open ? 'bg-white/[0.08]' : 'hover:bg-white/[0.06]'
+          aria-label={`Sessions - ${activeName} ${activeState}${waitingElsewhere > 0 ? `, ${waitingElsewhere} waiting` : ''}`}
+          title="Sessions"
+          className={`w-7 h-7 flex items-center justify-center rounded-md transition-colors ${
+            open ? 'bg-fill-active' : 'hover:bg-fill-hover'
           }`}
         >
           <span className="relative inline-flex items-center">
-            {/* Sketch showed a play icon for the run/session widget. Colored
-                by session state so the icon carries the same signal as the
-                previous StateDot (green/amber/red/gray). */}
             <Play
-              size={10}
+              size={11}
               strokeWidth={2}
               className={
                 activeState === 'busy' ? 'text-success fill-success' :
@@ -107,15 +109,11 @@ export function SessionWidget() {
               </span>
             )}
           </span>
-          <span className="text-text-primary text-[12px] font-medium truncate max-w-[160px]">
-            {activeName}
-          </span>
-          <ChevronDown size={11} strokeWidth={2} className="text-text-tertiary" />
         </button>
 
         {open && (
-          <div className="absolute left-0 top-full mt-1 z-50 w-[300px] bg-elevation-3 ring-1 ring-white/[0.08] rounded-lg overflow-hidden">
-            <div className="px-3 py-2 border-b border-[var(--ij-divider-soft)] text-text-tertiary text-[10px] uppercase tracking-wider font-semibold">
+          <div className="absolute left-0 top-full mt-1 z-50 w-[300px] material-popover rounded-lg overflow-hidden">
+            <div className="px-3 py-2 border-b border-seam text-text-tertiary text-[10px] uppercase tracking-wider font-semibold">
               Sessions
             </div>
             <div className="max-h-[360px] overflow-y-auto py-1">
@@ -157,7 +155,7 @@ export function SessionWidget() {
                 );
               })}
             </div>
-            <div className="border-t border-[var(--ij-divider-soft)]">
+            <div className="border-t border-seam">
               <button
                 onClick={() => { setOpen(false); openNewTerminalModal(); }}
                 className="w-full flex items-center gap-1.5 px-3 py-2 text-[11.5px] text-accent-primary hover:bg-accent-primary/10 transition-colors"
@@ -167,7 +165,7 @@ export function SessionWidget() {
               </button>
               <button
                 onClick={() => { setOpen(false); openCommandPalette(); }}
-                className="w-full text-left px-3 py-2 text-[11.5px] text-text-secondary hover:bg-white/[0.05] transition-colors border-t border-[var(--ij-divider-soft)]"
+                className="w-full text-left px-3 py-2 text-[11.5px] text-text-secondary hover:bg-fill-hover transition-colors border-t border-seam"
               >
                 Open Command Palette for full search&hellip;
               </button>

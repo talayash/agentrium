@@ -87,6 +87,12 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
   const scrollback = useAppStore((s) => s.terminalScrollback);
   const themeName = useAppStore((s) => s.terminalTheme);
   const accentColorHex = useAppStore((s) => s.accentColorHex);
+  // App appearance, resolved here (not from the DOM) so the terminal-theme
+  // effect re-runs the moment the user flips light/dark and 'auto' follows.
+  const themeMode = useAppStore((s) => s.themeMode);
+  const effectiveAppTheme: 'dark' | 'light' = themeMode === 'auto'
+    ? (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
+    : themeMode;
   const bidi = useAppStore((s) => s.terminalBidi);
   const scrollbarMode = useAppStore((s) => s.terminalScrollbarMode);
 
@@ -489,7 +495,7 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
     terminal.options.lineHeight = lineHeight;
     terminal.options.cursorStyle = cursorStyle;
     terminal.options.cursorBlink = cursorBlink;
-    terminal.options.theme = resolveTerminalTheme(themeName, accentColorHex);
+    terminal.options.theme = resolveTerminalTheme(themeName, accentColorHex, effectiveAppTheme);
     // Refit + push new dimensions to the PTY whenever cell metrics may have
     // changed. fit() is a no-op if cols/rows didn't actually shift.
     const prevCols = terminal.cols;
@@ -505,7 +511,7 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
     resizeTerminal(terminalId, terminal.cols, terminal.rows).catch((err) => {
       console.error(`Failed to resize terminal ${terminalId}:`, err); reportInvokeFailure('resize_terminal', err);
     });
-  }, [fontFamily, fontSize, lineHeight, cursorStyle, cursorBlink, themeName, accentColorHex, terminalId, resizeTerminal]);
+  }, [fontFamily, fontSize, lineHeight, cursorStyle, cursorBlink, themeName, accentColorHex, effectiveAppTheme, terminalId, resizeTerminal]);
 
   // Scrollbar visibility. The native xterm scrollbar (`.xterm-viewport`) is
   // transparent by default (see index.css); a class drives whether it shows.
@@ -639,7 +645,7 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
         <div
           role="menu"
           data-context-menu="terminal"
-          className="fixed z-[80] min-w-[160px] bg-bg-elevated ring-1 ring-white/[0.08] rounded-md py-1 select-none"
+          className="fixed z-[80] min-w-[160px] material-popover rounded-md py-1 select-none"
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onMouseDown={(e) => e.stopPropagation()}
         >
@@ -650,7 +656,7 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
             onClick={handleMenuCopy}
             className={`w-full flex items-center gap-2.5 px-3 py-1.5 text-left text-[12px] transition-colors ${
               contextMenu.hasSelection
-                ? 'text-text-primary hover:bg-white/[0.06]'
+                ? 'text-text-primary hover:bg-fill-hover'
                 : 'text-text-tertiary/50 cursor-not-allowed'
             }`}
           >
@@ -663,7 +669,7 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
             type="button"
             role="menuitem"
             onClick={handleMenuPaste}
-            className="w-full flex items-center gap-2.5 px-3 py-1.5 text-left text-[12px] text-text-primary hover:bg-white/[0.06] transition-colors"
+            className="w-full flex items-center gap-2.5 px-3 py-1.5 text-left text-[12px] text-text-primary hover:bg-fill-hover transition-colors"
           >
             <span className="text-text-tertiary">
               <ClipboardPaste size={13} strokeWidth={1.75} />

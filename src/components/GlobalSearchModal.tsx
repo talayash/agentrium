@@ -227,11 +227,15 @@ export function GlobalSearchModal() {
       }}
     >
       <motion.div
-        initial={{ opacity: 0, scale: 0.97, y: -8 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.97, y: -8 }}
-        transition={{ duration: 0.15, ease: 'easeOut' }}
-        className="w-full max-w-[820px] mx-4 bg-elevation-3 ring-1 ring-white/[0.08] rounded-xl overflow-hidden flex flex-col"
+        initial={{ opacity: 0, scale: 0.97, y: -10 }}
+        animate={{
+          opacity: 1,
+          scale: 1,
+          y: 0,
+          transition: { type: 'spring', bounce: 0, duration: 0.3, opacity: { duration: 0.15, ease: 'easeOut' } },
+        }}
+        exit={{ opacity: 0, scale: 0.97, y: -8, transition: { duration: 0.12, ease: 'easeOut' } }}
+        className="w-full max-w-[820px] mx-4 material-overlay rounded-xl overflow-hidden flex flex-col"
         style={{ maxHeight: '80vh' }}
         onKeyDown={handleKeyDown}
       >
@@ -243,7 +247,7 @@ export function GlobalSearchModal() {
           </div>
           <button
             onClick={closeGlobalSearch}
-            className="p-1 rounded hover:bg-white/[0.06] text-text-tertiary hover:text-text-primary transition-colors"
+            className="p-1 rounded hover:bg-fill-hover text-text-tertiary hover:text-text-primary transition-colors"
             title="Close (Esc)"
           >
             <X size={14} />
@@ -264,7 +268,7 @@ export function GlobalSearchModal() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search across the workspace…"
-              className="w-full bg-elevation-1 ring-1 ring-inset ring-border rounded-md h-9 pl-9 pr-24 text-[13px] text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-accent-primary/60"
+              className="w-full bg-elevation-1 ring-1 ring-inset ring-border rounded-md h-9 pl-9 pr-24 text-[13px] text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45"
             />
             <div className="absolute right-2 flex items-center gap-1">
               <button
@@ -272,7 +276,7 @@ export function GlobalSearchModal() {
                 className={`h-7 w-7 flex items-center justify-center rounded transition-colors ${
                   caseSensitive
                     ? 'bg-accent-primary/20 text-accent-primary ring-1 ring-inset ring-accent-primary/40'
-                    : 'text-text-tertiary hover:bg-white/[0.06] hover:text-text-secondary'
+                    : 'text-text-tertiary hover:bg-fill-hover hover:text-text-secondary'
                 }`}
                 title="Match case (Aa)"
                 tabIndex={-1}
@@ -287,7 +291,7 @@ export function GlobalSearchModal() {
             <div className="text-text-tertiary truncate" title={searchRoot ?? ''}>
               {searchRoot ? (
                 <>
-                  in <span className="font-mono text-text-secondary">{searchRoot}</span>
+                  in <span className="text-text-secondary" dir="ltr">{searchRoot}</span>
                 </>
               ) : (
                 'No active workspace - open a terminal first'
@@ -341,7 +345,7 @@ export function GlobalSearchModal() {
                     className={`w-full flex items-center gap-1.5 px-3 py-1 text-left transition-colors ${
                       fileSelected
                         ? 'bg-accent-primary/10'
-                        : 'hover:bg-white/[0.04]'
+                        : 'hover:bg-fill-hover'
                     }`}
                   >
                     {collapsed ? (
@@ -350,7 +354,7 @@ export function GlobalSearchModal() {
                       <ChevronDown size={11} className="text-text-tertiary flex-shrink-0" strokeWidth={1.75} />
                     )}
                     <FileCode2 size={11} className="text-text-tertiary flex-shrink-0" strokeWidth={1.75} />
-                    <span className="text-[12px] text-text-primary font-mono truncate" title={file.relative_path}>
+                    <span className="text-[12px] text-text-primary truncate" title={file.relative_path} dir="ltr">
                       {file.relative_path}
                     </span>
                     {file.name_match && (
@@ -378,7 +382,7 @@ export function GlobalSearchModal() {
                             }}
                             onMouseEnter={() => setSelected({ fileIdx, matchIdx })}
                             className={`w-full flex items-baseline gap-2 px-3 py-0.5 text-left transition-colors ${
-                              isSelected ? 'bg-accent-primary/12' : 'hover:bg-white/[0.04]'
+                              isSelected ? 'bg-accent-primary/12' : 'hover:bg-fill-hover'
                             }`}
                           >
                             <span className="text-text-tertiary text-[10.5px] font-mono flex-shrink-0 w-8 text-right tabular-nums">
@@ -401,21 +405,6 @@ export function GlobalSearchModal() {
             })}
         </div>
 
-        {/* Footer */}
-        <div className="px-4 py-2 border-t border-border flex items-center gap-4 text-[10px] text-text-tertiary">
-          <span>
-            <kbd className="px-1 py-0.5 bg-elevation-2 rounded border border-border font-mono">↑↓</kbd> navigate
-          </span>
-          <span>
-            <kbd className="px-1 py-0.5 bg-elevation-2 rounded border border-border font-mono">↵</kbd> open file
-          </span>
-          <span>
-            <kbd className="px-1 py-0.5 bg-elevation-2 rounded border border-border font-mono">esc</kbd> close
-          </span>
-          <span className="ml-auto">
-            <kbd className="px-1 py-0.5 bg-elevation-2 rounded border border-border font-mono">Aa</kbd> match case
-          </span>
-        </div>
       </motion.div>
     </motion.div>
   );

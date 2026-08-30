@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { X, Plus, Trash2, Save, FolderOpen, User } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
-import { useAppStore } from '../store/appStore';
+import { useAppStore, NEW_PROFILE_ID } from '../store/appStore';
 import { toast } from '../store/toastStore';
 import { reportInvokeFailure } from '../lib/errorReporter';
 import { v4 as uuidv4 } from 'uuid';
@@ -44,17 +44,30 @@ export function ProfileModal() {
   const [profiles, setProfiles] = useState<ConfigProfile[]>([]);
   const [selectedProfile, setSelectedProfile] = useState<ConfigProfile | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+  // Focused mode: opened for ONE profile (the pencil in the New Session
+  // list) or for creating a new one (NEW_PROFILE_ID sentinel) - no list
+  // pane, just the editor; saving or deleting closes the dialog. Opened
+  // without an id → full manage view.
+  const focused = Boolean(editingProfileId);
+  const focusedCreate = editingProfileId === NEW_PROFILE_ID;
 
   useEffect(() => {
     loadProfiles();
   }, []);
 
   useEffect(() => {
-    if (editingProfileId && profiles.length > 0) {
+    if (editingProfileId && editingProfileId !== NEW_PROFILE_ID && profiles.length > 0) {
       const profile = profiles.find(p => p.id === editingProfileId);
       if (profile) setSelectedProfile(profile);
     }
   }, [editingProfileId, profiles]);
+
+  // Focused CREATE: start a blank profile immediately - the dialog opens
+  // straight into the new-profile editor.
+  useEffect(() => {
+    if (focusedCreate) handleCreateProfile();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusedCreate]);
 
   const loadProfiles = async () => {
     try {
@@ -90,6 +103,7 @@ export function ProfileModal() {
       await loadProfiles();
       setIsCreating(false);
       toast.success('Profile Saved', `"${selectedProfile.name}" has been saved.`);
+      if (focused) closeProfileModal();
     } catch (err) {
       setSaveError(String(err));
       toast.error('Save Failed', String(err));
@@ -123,6 +137,7 @@ export function ProfileModal() {
         setSelectedProfile(null);
       }
       toast.success('Profile Deleted', `"${profileName}" has been removed.`);
+      if (focused) closeProfileModal();
     } catch (err) {
       setSaveError(String(err));
       toast.error('Delete Failed', String(err));
@@ -135,14 +150,20 @@ export function ProfileModal() {
       onClose={closeProfileModal}
       closeOn="doubleClick"
       scrimClassName="bg-black/50 z-[60]"
-      panelClassName="w-full max-w-3xl"
+      panelClassName={`w-full ${focused ? 'max-w-xl' : 'max-w-3xl'}`}
     >
         {/* Header */}
-        <div className="flex items-center justify-between px-4 h-11 bg-elevation-2 border-b border-[var(--ij-divider-soft)]">
-          <h2 className="text-text-primary text-[14px] font-semibold">Configuration Profiles</h2>
+        <div className="flex items-center justify-between px-4 h-11 border-b border-seam">
+          <h2 className="text-text-primary text-[14px] font-semibold">
+            {focusedCreate
+              ? 'New Profile'
+              : focused
+                ? `Edit Profile${selectedProfile ? ` · ${selectedProfile.name}` : ''}`
+                : 'Configuration Profiles'}
+          </h2>
           <button
             onClick={closeProfileModal}
-            className="p-1 rounded hover:bg-white/[0.06] text-text-tertiary transition-colors"
+            className="p-1 rounded hover:bg-fill-hover text-text-tertiary transition-colors"
           >
             <X size={16} />
           </button>
@@ -150,8 +171,9 @@ export function ProfileModal() {
 
         {/* Content */}
         <div className="flex h-[500px]">
-          {/* Profile List */}
-          <div className="w-64 border-r border-[var(--ij-divider-soft)] bg-black/20 p-3 flex flex-col">
+          {/* Profile List - hidden in focused single-profile edit */}
+          {!focused && (
+          <div className="w-64 border-r border-seam p-3 flex flex-col">
             <Button
               variant="primary"
               size="sm"
@@ -190,6 +212,7 @@ export function ProfileModal() {
               )}
             </div>
           </div>
+          )}
 
           {/* Profile Editor */}
           <div className="flex-1 p-4 overflow-y-auto">
@@ -214,9 +237,6 @@ export function ProfileModal() {
                       });
                     }}
                   />
-                  <p className="text-text-tertiary text-[11px] mt-1">
-                    Runs as <code className="text-text-secondary">{specFor(selectedProfile.agent).binary} ...</code>
-                  </p>
                 </div>
 
                 <div>
@@ -225,7 +245,7 @@ export function ProfileModal() {
                     type="text"
                     value={selectedProfile.name}
                     onChange={(e) => setSelectedProfile({ ...selectedProfile, name: e.target.value })}
-                    className="w-full bg-bg-primary ring-1 ring-border-light rounded-md h-9 px-3 text-text-primary text-[13px] focus:outline-none focus:ring-accent-primary transition-colors"
+                    className="w-full bg-bg-primary ring-1 ring-border-light rounded-md h-9 px-3 text-text-primary text-[13px] focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 transition-colors"
                   />
                 </div>
 
@@ -235,24 +255,24 @@ export function ProfileModal() {
                     type="text"
                     value={selectedProfile.description || ''}
                     onChange={(e) => setSelectedProfile({ ...selectedProfile, description: e.target.value })}
-                    className="w-full bg-bg-primary ring-1 ring-border-light rounded-md h-9 px-3 text-text-primary text-[13px] focus:outline-none focus:ring-accent-primary transition-colors"
+                    className="w-full bg-bg-primary ring-1 ring-border-light rounded-md h-9 px-3 text-text-primary text-[13px] focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 transition-colors"
                     placeholder="Optional description"
                   />
                 </div>
 
-                <div className="border-t border-[var(--ij-divider-soft)] pt-4">
+                <div className="border-t border-seam pt-4">
                   <label className="block text-text-secondary text-[12px] mb-1.5">Working Directory</label>
                   <div className="flex gap-2">
                     <input
                       type="text"
                       value={selectedProfile.working_directory}
                       onChange={(e) => setSelectedProfile({ ...selectedProfile, working_directory: e.target.value })}
-                      className="flex-1 bg-bg-primary ring-1 ring-border-light rounded-md h-9 px-3 text-text-primary text-[13px] focus:outline-none focus:ring-accent-primary transition-colors"
+                      className="flex-1 bg-bg-primary ring-1 ring-border-light rounded-md h-9 px-3 text-text-primary text-[13px] focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 transition-colors"
                       placeholder="C:\path\to\project"
                     />
                     <button
                       onClick={handleBrowseDirectory}
-                      className="px-3 h-9 bg-bg-primary ring-1 ring-border-light rounded-md hover:bg-white/[0.04] transition-colors"
+                      className="px-3 h-9 bg-bg-primary ring-1 ring-border-light rounded-md hover:bg-fill-hover transition-colors"
                       title="Browse for directory"
                     >
                       <FolderOpen size={16} className="text-text-secondary" />
@@ -260,7 +280,7 @@ export function ProfileModal() {
                   </div>
                 </div>
 
-                <div className="border-t border-[var(--ij-divider-soft)] pt-4">
+                <div className="border-t border-seam pt-4">
                   <label className="block text-text-secondary text-[12px] mb-1.5">
                     {specFor(selectedProfile.agent).displayName} Arguments (one per line)
                   </label>
@@ -281,7 +301,7 @@ export function ProfileModal() {
                         claude_args: nextArgs,
                       });
                     }}
-                    className="w-full bg-bg-primary ring-1 ring-border-light rounded-md py-2 px-3 text-text-primary text-[13px] focus:outline-none focus:ring-accent-primary font-mono h-24 resize-none transition-colors"
+                    className="w-full bg-bg-primary ring-1 ring-border-light rounded-md py-2 px-3 text-text-primary text-[13px] focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 font-mono h-24 resize-none transition-colors"
                     placeholder="--model opus&#10;--verbose"
                   />
                   <p className="text-text-tertiary text-[11px] mt-1">
@@ -289,7 +309,7 @@ export function ProfileModal() {
                   </p>
                 </div>
 
-                <div className="border-t border-[var(--ij-divider-soft)] pt-4">
+                <div className="border-t border-seam pt-4">
                   <label className="block text-text-secondary text-[12px] mb-1.5">Environment Variables</label>
                   <div className="space-y-1.5">
                     {Object.entries(selectedProfile.env_vars).map(([key, value], index) => (
@@ -302,7 +322,7 @@ export function ProfileModal() {
                             entries[index] = [e.target.value, value];
                             setSelectedProfile({ ...selectedProfile, env_vars: Object.fromEntries(entries) });
                           }}
-                          className="flex-1 bg-bg-primary ring-1 ring-border-light rounded-md h-8 px-2 text-text-primary text-[12px] font-mono focus:outline-none focus:ring-accent-primary transition-colors"
+                          className="flex-1 bg-bg-primary ring-1 ring-border-light rounded-md h-8 px-2 text-text-primary text-[12px] font-mono focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 transition-colors"
                           placeholder="KEY"
                         />
                         <span className="text-text-tertiary text-[12px]">=</span>
@@ -312,7 +332,7 @@ export function ProfileModal() {
                           onChange={(e) => {
                             setSelectedProfile({ ...selectedProfile, env_vars: { ...selectedProfile.env_vars, [key]: e.target.value } });
                           }}
-                          className="flex-1 bg-bg-primary ring-1 ring-border-light rounded-md h-8 px-2 text-text-primary text-[12px] font-mono focus:outline-none focus:ring-accent-primary transition-colors"
+                          className="flex-1 bg-bg-primary ring-1 ring-border-light rounded-md h-8 px-2 text-text-primary text-[12px] font-mono focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 transition-colors"
                           placeholder="value"
                         />
                         <button
@@ -331,7 +351,7 @@ export function ProfileModal() {
                       onClick={() => {
                         setSelectedProfile({ ...selectedProfile, env_vars: { ...selectedProfile.env_vars, '': '' } });
                       }}
-                      className="flex items-center gap-1.5 text-text-secondary hover:text-text-primary text-[12px] py-1 hover:bg-white/[0.04] rounded-md px-2 transition-colors"
+                      className="flex items-center gap-1.5 text-text-secondary hover:text-text-primary text-[12px] py-1 hover:bg-fill-hover rounded-md px-2 transition-colors"
                     >
                       <Plus size={13} />
                       Add Variable
@@ -339,18 +359,18 @@ export function ProfileModal() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 border-t border-[var(--ij-divider-soft)] pt-4">
+                <div className="flex items-center gap-2 border-t border-seam pt-4">
                   <input
                     type="checkbox"
                     id="is_default"
                     checked={selectedProfile.is_default}
                     onChange={(e) => setSelectedProfile({ ...selectedProfile, is_default: e.target.checked })}
-                    className="rounded border-border-light bg-bg-primary text-accent-primary focus:ring-accent-primary"
+                    className="rounded border-border-light bg-bg-primary text-accent-primary focus:ring-[3px] focus:ring-accent-primary/45"
                   />
                   <label htmlFor="is_default" className="text-text-primary text-[13px]">Set as default profile</label>
                 </div>
 
-                <div className="border-t border-[var(--ij-divider-soft)] pt-4 space-y-2">
+                <div className="border-t border-seam pt-4 space-y-2">
                   <div className="flex items-center gap-2">
                     <input
                       type="checkbox"
@@ -367,7 +387,7 @@ export function ProfileModal() {
                           : null;
                         setSelectedProfile({ ...selectedProfile, preview: nextPreview });
                       }}
-                      className="rounded border-border-light bg-bg-primary text-accent-primary focus:ring-accent-primary"
+                      className="rounded border-border-light bg-bg-primary text-accent-primary focus:ring-[3px] focus:ring-accent-primary/45"
                     />
                     <label htmlFor="preview_enabled" className="text-text-primary text-[13px]">
                       Has GUI preview
@@ -392,7 +412,7 @@ export function ProfileModal() {
                             },
                           });
                         }}
-                        className="w-full bg-bg-primary ring-1 ring-border-light rounded-md h-9 px-3 text-text-primary text-[13px] focus:outline-none focus:ring-accent-primary transition-colors"
+                        className="w-full bg-bg-primary ring-1 ring-border-light rounded-md h-9 px-3 text-text-primary text-[13px] focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 transition-colors"
                         placeholder="http://localhost:3000"
                       />
                     </div>
@@ -405,15 +425,9 @@ export function ProfileModal() {
                   </div>
                 )}
 
-                <div className="flex gap-2 pt-4 border-t border-[var(--ij-divider-soft)]">
-                  <Button
-                    variant="primary"
-                    onClick={handleSaveProfile}
-                    icon={<Save size={14} />}
-                  >
-                    Save Profile
-                  </Button>
-
+                {/* LTR action-row convention: primary lives at the far right,
+                    destructive/secondary to its left. */}
+                <div className="flex justify-end gap-2 pt-4 border-t border-seam">
                   {!isCreating && (
                     <Button
                       variant="danger"
@@ -423,6 +437,13 @@ export function ProfileModal() {
                       Delete
                     </Button>
                   )}
+                  <Button
+                    variant="primary"
+                    onClick={handleSaveProfile}
+                    icon={<Save size={14} />}
+                  >
+                    Save Profile
+                  </Button>
                 </div>
               </div>
             ) : (

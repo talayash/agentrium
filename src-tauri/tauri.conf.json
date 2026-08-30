@@ -53,8 +53,8 @@
       "signCommand": "powershell -NoProfile -ExecutionPolicy Bypass -File ../scripts/sign-windows.ps1 -FilePath \"%1\"",
       "nsis": {
         "installerIcon": "icons/icon.ico",
-        "headerImage": "icons/icon.png",
-        "sidebarImage": "icons/icon.png",
+        "headerImage": "icons/nsis-header.bmp",
+        "sidebarImage": "icons/nsis-sidebar.bmp",
         "installMode": "currentUser",
         "languages": ["English"],
         "displayLanguageSelector": false,

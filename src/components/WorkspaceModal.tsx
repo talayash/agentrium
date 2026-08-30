@@ -143,7 +143,7 @@ export function WorkspaceModal() {
                 onChange={(e) => setNewName(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') handleSaveWorkspace(); }}
                 placeholder="Workspace name..."
-                className="flex-1 bg-bg-primary ring-1 ring-border-light rounded-md h-8 px-2 text-text-primary text-[12px] focus:outline-none focus:ring-accent-primary transition-colors"
+                className="flex-1 bg-bg-primary ring-1 ring-border-light rounded-md h-8 px-2 text-text-primary text-[12px] focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 transition-colors"
               />
               <Button
                 variant="primary"
@@ -167,7 +167,7 @@ export function WorkspaceModal() {
                   className={`p-2 rounded-md cursor-pointer transition-colors ${
                     selectedWorkspace?.name === ws.name
                       ? 'bg-accent-primary/10 ring-1 ring-accent-primary/30'
-                      : 'hover:bg-white/[0.04]'
+                      : 'hover:bg-fill-hover'
                   }`}
                 >
                   <p className="text-text-primary text-[12px] font-medium truncate">{ws.name}</p>
@@ -206,7 +206,14 @@ export function WorkspaceModal() {
                   </div>
                 </div>
 
-                <div className="flex gap-2 pt-4 border-t border-border">
+                <div className="flex justify-end gap-2 pt-4 border-t border-border">
+                  <Button
+                    variant="danger"
+                    onClick={handleDeleteWorkspace}
+                    icon={<Trash2 size={14} />}
+                  >
+                    Delete
+                  </Button>
                   <Button
                     variant="primary"
                     onClick={handleLoadWorkspace}
@@ -215,13 +222,6 @@ export function WorkspaceModal() {
                     icon={<Play size={14} />}
                   >
                     {loading ? 'Loading...' : 'Load Workspace'}
-                  </Button>
-                  <Button
-                    variant="danger"
-                    onClick={handleDeleteWorkspace}
-                    icon={<Trash2 size={14} />}
-                  >
-                    Delete
                   </Button>
                 </div>
               </>

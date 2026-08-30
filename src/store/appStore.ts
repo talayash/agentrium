@@ -18,10 +18,16 @@ export const DEFAULT_TERMINAL_FONT_SIZE = 14;
 // IntelliJ overhaul (v1.22.0) - appearance + behavior settings.
 export type UiDensity = 'compact' | 'comfortable' | 'spacious';
 export type TabHeight = 'small' | 'medium' | 'large';
+/** Which navigator the unified sidebar shows (Apple/Xcode-style single column). */
+export type SidebarNav = 'sessions' | 'files' | 'history';
 export type ThemeMode = 'dark' | 'light' | 'auto';
 export type AutoStageMode = 'none' | 'tracked' | 'all';
 export type MergeStrategy = 'merge' | 'rebase' | 'ff-only';
-export const DEFAULT_ACCENT_COLOR = '#3574F0';
+export const DEFAULT_ACCENT_COLOR = '#007AFF'; // Apple system blue (vibrant, light-mode)
+
+/** Sentinel for openProfileModal: open the focused editor in CREATE mode
+ *  (blank profile, no manage list). Never collides with real uuid ids. */
+export const NEW_PROFILE_ID = '__new__';
 export const DEFAULT_UI_FONT_SCALE = 1.0;
 export const DEFAULT_EDITOR_FONT_FAMILY = '"JetBrains Mono", "Cascadia Code", Consolas, monospace';
 
@@ -186,6 +192,9 @@ interface AppState {
   // Persistent collapse state for the two stacked sidebar sections.
   sessionsCollapsed: boolean;
   explorerCollapsed: boolean;
+  // Active navigator in the unified sidebar (sessions = open terminals as
+  // cards, files = explorer tree, history = resumable sessions on disk).
+  sidebarNav: SidebarNav;
   // Portion of the (Sessions + Explorer) column reserved for Sessions when
   // both sections are expanded. 0.15..0.85; the rest goes to Explorer.
   sessionsHeightRatio: number;
@@ -210,6 +219,12 @@ interface AppState {
   pinTab: (id: string) => void;
   unpinTab: (id: string) => void;
   toggleTabPin: (id: string) => void;
+
+  // Pinned profiles - float chosen profiles to the top of the New Session
+  // list. Persisted by profile id (profiles live in SQLite; the pin is
+  // UI-ordering metadata, same idea as pinnedTabIds).
+  pinnedProfileIds: string[];
+  toggleProfilePin: (id: string) => void;
 
   // Command Palette (F1)
   commandPaletteOpen: boolean;
@@ -285,8 +300,11 @@ interface AppState {
   closeSettings: () => void;
   openProfileModal: (profileId?: string) => void;
   closeProfileModal: () => void;
-  openNewTerminalModal: () => void;
+  openNewTerminalModal: (agent?: AgentKind) => void;
   closeNewTerminalModal: () => void;
+  /** Agent to preselect when the New Session modal opens (welcome-screen
+   *  agent cards). Cleared on close. */
+  newTerminalPreselectedAgent: AgentKind | null;
   openWorkspaceModal: () => void;
   closeWorkspaceModal: () => void;
   openWorktreeModal: (repoPath: string) => void;
@@ -371,6 +389,7 @@ interface AppState {
   setExplorerHeightRatio: (ratio: number) => void;
   setRepositoriesHeightRatio: (ratio: number) => void;
   toggleToolsCollapsed: () => void;
+  setSidebarNav: (nav: SidebarNav) => void;
   toggleSessionsCollapsed: () => void;
   toggleExplorerCollapsed: () => void;
   setSessionsHeightRatio: (ratio: number) => void;
@@ -506,6 +525,7 @@ export const useAppStore = create<AppState>()(
       profileModalOpen: false,
       editingProfileId: null,
       newTerminalModalOpen: false,
+      newTerminalPreselectedAgent: null,
       workspaceModalOpen: false,
       worktreeModalOpen: false,
       worktreeModalRepoPath: null,
@@ -537,12 +557,12 @@ export const useAppStore = create<AppState>()(
       terminalCursorStyle: 'bar' as TerminalCursorStyle,
       terminalCursorBlink: true,
       terminalScrollback: 50000,
-      terminalTheme: 'dark' as TerminalThemeName,
+      terminalTheme: 'auto' as TerminalThemeName, // follow the app's light/dark appearance
       terminalBidi: false,
       terminalScrollbarMode: 'auto-hide' as TerminalScrollbarMode,
 
       // Appearance & Behavior defaults (NEW v1.22.0)
-      themeMode: 'dark' as ThemeMode,
+      themeMode: 'dark' as ThemeMode, // Midnight dark is the signature default
       uiDensity: 'comfortable' as UiDensity,
       tabHeight: 'medium' as TabHeight,
       colorfulFolderIcons: false,
@@ -606,6 +626,7 @@ export const useAppStore = create<AppState>()(
       // tool) keeps its current screen real estate by default. Users opt-in.
       sessionsCollapsed: true,
       explorerCollapsed: false,
+      sidebarNav: 'sessions',
       sessionsHeightRatio: 0.35,
 
       // File Changes split (default: repositories takes 35% of available column)
@@ -623,6 +644,7 @@ export const useAppStore = create<AppState>()(
       // Pinned tabs - id list only; terminals themselves remain ephemeral in
       // terminalStore. See src/lib/pinnedTabs.ts for the pure helpers.
       pinnedTabIds: [],
+      pinnedProfileIds: [],
 
       // Command Palette (F1)
       commandPaletteOpen: false,
@@ -680,15 +702,18 @@ export const useAppStore = create<AppState>()(
       toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
       toggleSidebarCollapse: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
       setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
-      toggleHints: () => set((state) => ({ hintsOpen: !state.hintsOpen })),
-      toggleChanges: () => set((state) => ({ changesOpen: !state.changesOpen })),
+      // The three right-side panels now share one Inspector frame, so opening
+      // one closes the others (mutually exclusive → the Inspector shows exactly
+      // one tab). ToolStripe/shortcuts/palette call these unchanged.
+      toggleHints: () => set((state) => ({ hintsOpen: !state.hintsOpen, changesOpen: false, orchestrationOpen: false })),
+      toggleChanges: () => set((state) => ({ changesOpen: !state.changesOpen, hintsOpen: false, orchestrationOpen: false })),
       triggerChangesRefresh: () => set((state) => ({ changesRefreshTrigger: state.changesRefreshTrigger + 1 })),
       openSettings: () => set({ settingsOpen: true }),
       closeSettings: () => set({ settingsOpen: false }),
       openProfileModal: (profileId) => set({ profileModalOpen: true, editingProfileId: profileId || null }),
       closeProfileModal: () => set({ profileModalOpen: false, editingProfileId: null }),
-      openNewTerminalModal: () => set({ newTerminalModalOpen: true }),
-      closeNewTerminalModal: () => set({ newTerminalModalOpen: false }),
+      openNewTerminalModal: (agent) => set({ newTerminalModalOpen: true, newTerminalPreselectedAgent: agent ?? null }),
+      closeNewTerminalModal: () => set({ newTerminalModalOpen: false, newTerminalPreselectedAgent: null }),
       openWorkspaceModal: () => set({ workspaceModalOpen: true }),
       closeWorkspaceModal: () => set({ workspaceModalOpen: false }),
       openWorktreeModal: (repoPath) => set({ worktreeModalOpen: true, worktreeModalRepoPath: repoPath }),
@@ -792,6 +817,7 @@ export const useAppStore = create<AppState>()(
         repositoriesHeightRatio: Math.max(0.15, Math.min(0.85, ratio)),
       }),
       toggleToolsCollapsed: () => set((state) => ({ toolsCollapsed: !state.toolsCollapsed })),
+      setSidebarNav: (nav) => set({ sidebarNav: nav }),
       toggleSessionsCollapsed: () => set((state) => ({ sessionsCollapsed: !state.sessionsCollapsed })),
       toggleExplorerCollapsed: () => set((state) => ({ explorerCollapsed: !state.explorerCollapsed })),
       setSessionsHeightRatio: (ratio) =>
@@ -1055,6 +1081,7 @@ export const useAppStore = create<AppState>()(
       pinTab: (id) => set((s) => ({ pinnedTabIds: addPin(s.pinnedTabIds, id) })),
       unpinTab: (id) => set((s) => ({ pinnedTabIds: removePin(s.pinnedTabIds, id) })),
       toggleTabPin: (id) => set((s) => ({ pinnedTabIds: togglePin(s.pinnedTabIds, id) })),
+      toggleProfilePin: (id) => set((s) => ({ pinnedProfileIds: togglePin(s.pinnedProfileIds, id) })),
 
       // Command Palette actions (F1)
       recordPaletteUse: (key) =>
@@ -1097,7 +1124,7 @@ export const useAppStore = create<AppState>()(
       clearSplit: () => set({ splitMode: false, splitTerminalIds: null, splitRatio: 0.5 }),
 
       // Agent Teams actions (F4)
-      toggleOrchestration: () => set((state) => ({ orchestrationOpen: !state.orchestrationOpen })),
+      toggleOrchestration: () => set((state) => ({ orchestrationOpen: !state.orchestrationOpen, changesOpen: false, hintsOpen: false })),
 
       // Snippets actions (F5)
       openSnippetsModal: () => set({ snippetsModalOpen: true }),
@@ -1156,7 +1183,7 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: 'claude-terminal-app',
-      version: 4,
+      version: 8,
       migrate: (persistedState, version) => {
         const s = (persistedState as Partial<AppState>) ?? {};
         if (version < 1) {
@@ -1198,6 +1225,33 @@ export const useAppStore = create<AppState>()(
             antigravity: legacy.antigravity ?? legacy.gemini ?? [],
           };
         }
+        if (version < 5) {
+          // Apple design language: the default accent moved from IntelliJ
+          // blue (#3574F0) to Apple system blue. Users who never changed the
+          // accent follow the new default; explicit choices are kept.
+          if (s.accentColorHex?.toUpperCase() === '#3574F0') {
+            s.accentColorHex = DEFAULT_ACCENT_COLOR;
+          }
+        }
+        // Versions 6-7 previously flipped themeMode unconditionally (light,
+        // then back to dark) during a mid-branch design shift, and v6 also
+        // rewrote the accent to the current DEFAULT_ACCENT_COLOR if it was
+        // '#0A84FF' - a value that was never a shipped default, which meant
+        // users who had manually picked it lost their choice. Because the
+        // shipped themeMode default is 'dark' both before and after this
+        // branch, no persisted state actually needs rewriting. Guarding on
+        // "was this the previous default?" (as v5 does for accent) here would
+        // still be net-destructive, so v6/v7 are intentionally omitted from
+        // the chain. Existing v6/v7 preview payloads still advance to v8 via
+        // the persist middleware's automatic version bump.
+        if (version < 8) {
+          // Terminal theme default changed from 'dark' to 'auto' (follow the
+          // app appearance). Migrate the prior default only, mirroring v5's
+          // accent pattern; explicit 'light' or a named theme stays put.
+          if (s.terminalTheme === 'dark') {
+            s.terminalTheme = 'auto';
+          }
+        }
         return s as AppState;
       },
       partialize: (state) => ({
@@ -1229,6 +1283,7 @@ export const useAppStore = create<AppState>()(
         toolsCollapsed: state.toolsCollapsed,
         sessionsCollapsed: state.sessionsCollapsed,
         explorerCollapsed: state.explorerCollapsed,
+        sidebarNav: state.sidebarNav,
         sessionsHeightRatio: state.sessionsHeightRatio,
         repositoriesHeightRatio: state.repositoriesHeightRatio,
         orchestrationOpen: state.orchestrationOpen,
@@ -1294,6 +1349,7 @@ export const useAppStore = create<AppState>()(
         // A stable-key persistence pass (using working_directory +
         // claude_session_id) is queued as a follow-up.
         pinnedTabIds: state.pinnedTabIds,
+        pinnedProfileIds: state.pinnedProfileIds,
       }),
     }
   )

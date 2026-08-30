@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { Toggle as UIToggle } from '../ui/Toggle';
 
 interface RowProps {
   label: string;
@@ -21,15 +22,8 @@ export function SettingRow({ label, description, children, align = 'center' }: R
 
 interface ToggleProps { value: boolean; onChange: (v: boolean) => void; label?: string }
 export function Toggle({ value, onChange, label }: ToggleProps) {
-  return (
-    <button
-      onClick={() => onChange(!value)}
-      aria-label={label}
-      className={`relative w-10 h-5 rounded-full transition-colors ${value ? 'bg-accent-primary' : 'bg-border-light'}`}
-    >
-      <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${value ? 'translate-x-5' : 'translate-x-0'}`} />
-    </button>
-  );
+  // Delegates to the shared iOS-style switch so every settings toggle matches.
+  return <UIToggle checked={value} onChange={onChange} ariaLabel={label} size="sm" />;
 }
 
 interface SegProps<T extends string> {
@@ -44,10 +38,10 @@ export function Segmented<T extends string>({ value, options, onChange }: SegPro
         <button
           key={o.value}
           onClick={() => onChange(o.value)}
-          className={`px-2.5 h-7 text-[12px] rounded-md transition-colors ${
+          className={`px-3 h-7 text-[12px] font-medium rounded-lg transition-[background-color,color,box-shadow,transform] duration-100 active:scale-[0.97] ${
             value === o.value
-              ? 'bg-accent-primary text-white'
-              : 'bg-bg-elevated ring-1 ring-border-light text-text-secondary hover:bg-white/[0.04]'
+              ? 'bg-accent-primary text-white shadow-[0_2px_8px_var(--accent-glow-md)]'
+              : 'bg-fill-hover ring-1 ring-seam text-text-secondary hover:text-text-primary hover:bg-fill-active'
           }`}
         >
           {o.label}
@@ -72,7 +66,7 @@ export function PageSection({ title, description, children }: SectionProps) {
     <section className="mb-6">
       <h3 className="text-text-primary text-[13px] font-semibold mb-1">{title}</h3>
       {description && <p className="text-text-tertiary text-[11.5px] mb-2">{description}</p>}
-      <div className="bg-elevation-1 rounded-md ring-1 ring-[var(--ij-divider-soft)] px-3 py-1">
+      <div className="bg-elevation-2 rounded-xl ring-1 ring-seam px-3.5 py-1 divide-y divide-[var(--seam)]">
         {children}
       </div>
     </section>

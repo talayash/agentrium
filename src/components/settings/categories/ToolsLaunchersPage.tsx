@@ -41,7 +41,7 @@ export default function ToolsLaunchersPage() {
             <button
               key={id}
               onClick={action}
-              className="flex items-start gap-3 px-3 py-2.5 rounded-md ring-1 ring-[var(--ij-divider-soft)] bg-elevation-0 hover:bg-white/[0.04] text-left transition-colors"
+              className="flex items-start gap-3 px-3 py-2.5 rounded-md ring-1 ring-seam bg-elevation-0 hover:bg-fill-hover text-left transition-colors"
             >
               <Icon size={16} strokeWidth={1.75} className="text-accent-primary mt-0.5 flex-shrink-0" />
               <div className="flex-1 min-w-0">

@@ -104,20 +104,22 @@ export function TerminalStatusBar({ terminalId }: TerminalStatusBarProps) {
   const isRunning = status === 'Running';
 
   return (
-    <div className="flex items-center justify-between h-9 px-3.5 bg-bg-secondary border-t border-border text-[12px] select-none flex-shrink-0">
-      {/* Left: Duration + Model + Effort */}
-      <div className="flex items-center gap-3.5 min-w-0">
-        <span className="flex items-center gap-1.5 text-text-tertiary flex-shrink-0">
-          <Clock size={13} />
-          {elapsed}
-        </span>
+    <div className="flex items-center justify-between h-8 px-3 border-t border-seam text-[11.5px] select-none flex-shrink-0">
+      {/* Left: session vitals - duration · model · effort · folder */}
+      <div className="flex items-center gap-3 min-w-0">
+        <Tooltip label="Session duration" side="top">
+          <span className="flex items-center gap-1.5 text-text-tertiary tabular-nums flex-shrink-0">
+            <Clock size={12} strokeWidth={1.75} />
+            {elapsed}
+          </span>
+        </Tooltip>
 
         {model && (
-          <span className={`px-1.5 py-0.5 rounded font-medium flex-shrink-0 text-[11px] ${
+          <span className={`px-1.5 h-[17px] flex items-center rounded-md font-medium flex-shrink-0 text-[10.5px] ${
             model === 'opus' ? 'bg-purple-500/20 text-purple-400' :
             model === 'sonnet' ? 'bg-blue-500/20 text-blue-400' :
             model === 'haiku' ? 'bg-green-500/20 text-green-400' :
-            'bg-white/[0.06] text-text-tertiary'
+            'bg-fill-hover text-text-tertiary'
           }`}>
             {model}
           </span>
@@ -131,21 +133,22 @@ export function TerminalStatusBar({ terminalId }: TerminalStatusBarProps) {
 
         <Tooltip label={working_directory} side="top">
           <span className="flex items-center gap-1.5 text-text-tertiary truncate">
-            <FolderOpen size={13} className="flex-shrink-0" />
-            <span className="truncate">{truncatePath(working_directory)}</span>
+            <FolderOpen size={12} className="flex-shrink-0" strokeWidth={1.75} />
+            <span className="truncate text-[11px]" dir="ltr">{truncatePath(working_directory)}</span>
           </span>
         </Tooltip>
       </div>
 
-      {/* Right: Quick Actions */}
-      <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
+      {/* Right: quick actions - one visual family, accent reserved for the
+          primary Compose action. */}
+      <div className="flex items-center gap-1 flex-shrink-0 ml-2">
         {isRunning && (
           <Tooltip label="Interrupt" shortcut="Ctrl+C" side="top">
             <button
               onClick={handleInterrupt}
-              className="p-1.5 rounded-md hover:bg-white/[0.08] text-text-tertiary hover:text-yellow-400 transition-colors"
+              className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-fill-active text-text-tertiary hover:text-warning transition-colors"
             >
-              <Square size={16} strokeWidth={2} />
+              <Square size={14} strokeWidth={2} />
             </button>
           </Tooltip>
         )}
@@ -158,9 +161,9 @@ export function TerminalStatusBar({ terminalId }: TerminalStatusBarProps) {
               const text = instance?.xterm ? captureClaudeInput(instance.xterm) : '';
               useAppStore.getState().openPromptEditor(terminalId, text);
             }}
-            className="p-1.5 rounded-md bg-accent-primary/15 text-accent-primary hover:bg-accent-primary/25 transition-colors"
+            className="w-7 h-7 flex items-center justify-center rounded-md bg-accent-primary/15 text-accent-primary hover:bg-accent-primary/25 transition-colors"
           >
-            <Pencil size={16} strokeWidth={2.25} />
+            <Pencil size={14} strokeWidth={2.25} />
           </button>
         </Tooltip>
 
@@ -174,27 +177,27 @@ export function TerminalStatusBar({ terminalId }: TerminalStatusBarProps) {
                 targetTerminalId: terminalId,
               });
             }}
-            className="p-1.5 rounded-md hover:bg-white/[0.08] text-text-tertiary hover:text-accent-primary transition-colors"
+            className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-fill-active text-text-tertiary hover:text-text-primary transition-colors"
           >
-            <ClipboardPaste size={16} strokeWidth={2} />
+            <ClipboardPaste size={14} strokeWidth={2} />
           </button>
         </Tooltip>
 
         <Tooltip label="Copy last output" side="top">
           <button
             onClick={handleCopyOutput}
-            className="p-1.5 rounded-md hover:bg-white/[0.08] text-text-tertiary hover:text-text-secondary transition-colors"
+            className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-fill-active text-text-tertiary hover:text-text-primary transition-colors"
           >
-            {copied ? <Check size={16} strokeWidth={2} className="text-success" /> : <ClipboardCopy size={16} strokeWidth={2} />}
+            {copied ? <Check size={14} strokeWidth={2} className="text-success" /> : <ClipboardCopy size={14} strokeWidth={2} />}
           </button>
         </Tooltip>
 
         <Tooltip label="Restart terminal" side="top">
           <button
             onClick={handleRestart}
-            className="p-1.5 rounded-md hover:bg-white/[0.08] text-text-tertiary hover:text-accent-primary transition-colors"
+            className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-fill-active text-text-tertiary hover:text-text-primary transition-colors"
           >
-            <RotateCw size={16} strokeWidth={2} />
+            <RotateCw size={14} strokeWidth={2} />
           </button>
         </Tooltip>
       </div>

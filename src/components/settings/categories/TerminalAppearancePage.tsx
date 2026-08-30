@@ -96,11 +96,12 @@ export default function TerminalAppearancePage() {
             }))}
           />
         </SettingRow>
-        <SettingRow label="Theme">
+        <SettingRow label="Theme" description="Auto follows the app's light/dark appearance.">
           <Segmented
             value={terminalTheme}
             onChange={setTerminalTheme}
             options={[
+              { value: 'auto', label: 'Auto' },
               { value: 'dark', label: 'Dark' },
               { value: 'light', label: 'Light' },
             ]}

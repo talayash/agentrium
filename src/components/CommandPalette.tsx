@@ -363,14 +363,19 @@ export function CommandPalette() {
       onDoubleClick={closeCommandPalette}
     >
       <motion.div
-        initial={{ opacity: 0, scale: 0.96, y: -8 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.96, y: -8 }}
-        transition={{ duration: 0.15, ease: 'easeOut' }}
+        initial={{ opacity: 0, scale: 0.97, y: -10 }}
+        animate={{
+          opacity: 1,
+          scale: 1,
+          y: 0,
+          transition: { type: 'spring', bounce: 0, duration: 0.3, opacity: { duration: 0.15, ease: 'easeOut' } },
+        }}
+        exit={{ opacity: 0, scale: 0.97, y: -8, transition: { duration: 0.12, ease: 'easeOut' } }}
         className="mx-auto mt-[15vh] w-full max-w-[550px]"
         onDoubleClick={(e) => e.stopPropagation()}
       >
-        <div className="bg-elevation-4 ring-1 ring-white/[0.08] rounded-xl overflow-hidden">
+        {/* Spotlight-style glass panel */}
+        <div className="material-overlay rounded-xl overflow-hidden">
           {/* Search Input */}
           <div className="p-3 border-b border-border">
             <div className="relative flex items-center">
@@ -445,7 +450,7 @@ export function CommandPalette() {
                       className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-colors ${
                         selectedIndex === idx
                           ? 'bg-accent-primary/12 text-text-primary'
-                          : 'hover:bg-white/[0.04] text-text-secondary'
+                          : 'hover:bg-fill-hover text-text-secondary'
                       }`}
                     >
                       {Icon && (
@@ -476,11 +481,6 @@ export function CommandPalette() {
                           />
                         </p>
                       </div>
-                      {item.shortcut && (
-                        <kbd className="shrink-0 text-[10px] text-text-tertiary bg-elevation-2 px-1.5 py-0.5 rounded border border-border font-mono">
-                          {item.shortcut}
-                        </kbd>
-                      )}
                     </div>
                   );
                 })}
@@ -494,13 +494,6 @@ export function CommandPalette() {
             )}
           </div>
 
-          {/* Footer hint */}
-          <div className="px-3 py-2 border-t border-border flex items-center gap-4 text-[10px] text-text-tertiary">
-            <span><kbd className="px-1 py-0.5 bg-elevation-2 rounded border border-border font-mono">↑↓</kbd> navigate</span>
-            <span><kbd className="px-1 py-0.5 bg-elevation-2 rounded border border-border font-mono">↵</kbd> select</span>
-            <span><kbd className="px-1 py-0.5 bg-elevation-2 rounded border border-border font-mono">Ctrl+Tab</kbd> cycle sources</span>
-            <span><kbd className="px-1 py-0.5 bg-elevation-2 rounded border border-border font-mono">esc</kbd> close</span>
-          </div>
         </div>
       </motion.div>
     </div>

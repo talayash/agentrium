@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import appIcon from '../assets/app-icon.png';
 import {
-  Settings,
   Minus,
   Square,
   X,
@@ -11,44 +10,48 @@ import {
   Loader2,
   Search as SearchIcon,
   Upload,
+  PanelRight,
 } from 'lucide-react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { getVersion } from '@tauri-apps/api/app';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
 import { toast } from '../store/toastStore';
 import { UpdatePill } from './UpdatePill';
-import { ToolsMenu } from './titlebar/ToolsMenu';
 import { SessionWidget } from './titlebar/SessionWidget';
 import { Tooltip } from './ui/Tooltip';
+import { ThemeToggle } from './ui/ThemeToggle';
 import { ListRow } from './ui/ListRow';
 import { pickBreadcrumb } from '../lib/breadcrumb';
 
 const isMac = navigator.platform.toUpperCase().includes('MAC');
 
 export function TitleBar() {
-  const {
-    toggleSidebar,
-    openSettings,
-    openCommandPalette,
-    triggerChangesRefresh,
-    compactTitleBar,
-  } = useAppStore();
+  const { triggerChangesRefresh } = useAppStore();
   const { terminals, activeTerminalId, gitInfoCache } = useTerminalStore();
   const fetchGitInfo = useTerminalStore.getState().fetchGitInfo;
+  // Inspector state - one titlebar toggle; the tab switcher lives inside
+  // the Inspector itself.
+  const changesOpen = useAppStore((s) => s.changesOpen);
+  const orchestrationOpen = useAppStore((s) => s.orchestrationOpen);
+  const hintsOpen = useAppStore((s) => s.hintsOpen);
+  const toggleChanges = useAppStore((s) => s.toggleChanges);
+  const toggleOrchestration = useAppStore((s) => s.toggleOrchestration);
+  const toggleHints = useAppStore((s) => s.toggleHints);
+  const inspectorOpen = changesOpen || orchestrationOpen || hintsOpen;
+  const toggleInspector = () => {
+    if (changesOpen) toggleChanges();
+    else if (orchestrationOpen) toggleOrchestration();
+    else if (hintsOpen) toggleHints();
+    else toggleChanges();
+  };
   const appWindow = getCurrentWindow();
-  const [appVersion, setAppVersion] = useState('');
   const [branchMenuOpen, setBranchMenuOpen] = useState(false);
   const [branches, setBranches] = useState<string[]>([]);
   const [branchesLoading, setBranchesLoading] = useState(false);
   const [checkoutTarget, setCheckoutTarget] = useState<string | null>(null);
   const [branchFilter, setBranchFilter] = useState('');
   const branchMenuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    getVersion().then(setAppVersion);
-  }, []);
 
   const active = activeTerminalId ? terminals.get(activeTerminalId) : null;
   const gitInfo = activeTerminalId ? gitInfoCache.get(activeTerminalId) : null;
@@ -130,17 +133,18 @@ export function TitleBar() {
     : 'bg-text-tertiary';
 
   // Neutral monochrome styling for the right-side tool cluster.
+  // Instant press dip - feedback on pointer-down, not release.
   const toolBtn = (active: boolean) =>
-    `no-drag w-7 h-7 flex items-center justify-center rounded-[6px] transition-colors ${
+    `no-drag w-7 h-7 flex items-center justify-center rounded-md transition-[background-color,color,transform] duration-100 active:scale-95 ${
       active
-        ? 'bg-white/[0.08] text-text-primary'
-        : 'text-text-secondary hover:bg-white/[0.06] hover:text-text-primary'
+        ? 'bg-fill-active text-text-primary'
+        : 'text-text-secondary hover:bg-fill-hover hover:text-text-primary'
     }`;
 
   return (
     <div
       onMouseDown={(e) => { if (e.buttons === 1 && (e.target as HTMLElement).closest('.no-drag') === null) appWindow.startDragging(); }}
-      className="h-[var(--h-header)] bg-elevation-1 flex items-center justify-between pl-2 pr-0 border-b border-[var(--ij-divider)] drag-region select-none"
+      className="h-[var(--h-header)] material-chrome flex items-center justify-between pl-2 pr-0 border-b border-seam-strong drag-region select-none"
     >
       {/* Left cluster - traffic lights (mac), sidebar toggle */}
       <div className="flex items-center gap-1 min-w-0">
@@ -164,21 +168,16 @@ export function TitleBar() {
           </div>
         )}
 
-        <Tooltip label="Toggle Sidebar" shortcut="Ctrl+B">
-          <button
-            onClick={toggleSidebar}
-            className="no-drag w-7 h-7 flex items-center justify-center rounded-[6px] transition-colors text-text-secondary hover:bg-white/[0.06] hover:text-text-primary"
-          >
-            <img src={appIcon} alt="Agentrium" className="w-[20px] h-[20px]" />
-          </button>
-        </Tooltip>
+        {/* Brand mark only - collapsing the sidebar lives IN the sidebar
+            (its ChevronsLeft button); Ctrl+B still toggles it entirely. */}
+        <span className="w-9 h-9 flex items-center justify-center flex-shrink-0">
+          <img src={appIcon} alt="Agentrium" className="w-[30px] h-[30px]" draggable={false} />
+        </span>
 
-        {/* Project breadcrumb - IntelliJ main-toolbar project widget */}
-        <Tooltip label={active?.config.working_directory || 'No active terminal'}>
-        <button
-          onClick={openCommandPalette}
-          className="no-drag group flex items-center gap-1.5 h-7 ml-1 pl-2 pr-2 rounded-[6px] hover:bg-white/[0.06] transition-colors max-w-[360px]"
-        >
+        {/* Project breadcrumb - static status display, not a control (user
+            decision: no click target, no chevron). */}
+        <Tooltip label={active?.config.working_directory || 'No active session'}>
+        <div className="flex items-center gap-1.5 h-7 ml-1 pl-2 pr-2 max-w-[360px] cursor-default select-none">
           <span className={`w-1.5 h-1.5 rounded-full ${statusDot} flex-shrink-0`} />
           {breadcrumb.sub && (
             <>
@@ -191,24 +190,19 @@ export function TitleBar() {
           <span className="text-text-primary text-[12px] font-medium truncate">
             {breadcrumb.project}
           </span>
-          <ChevronDown
-            size={11}
-            strokeWidth={2}
-            className="text-text-tertiary group-hover:text-text-secondary flex-shrink-0"
-          />
-        </button>
+        </div>
         </Tooltip>
 
         {/* Branch switcher */}
         {gitInfo?.is_git_repo && gitInfo.current_branch && (
           <>
-            <span className="w-px h-4 bg-[var(--ij-divider-soft)] mx-0.5" />
+            <span className="w-px h-4 bg-seam mx-0.5" />
             <div className="relative no-drag" ref={branchMenuRef}>
               <Tooltip label="Switch branch" disabled={branchMenuOpen}>
               <button
                 onClick={() => (branchMenuOpen ? setBranchMenuOpen(false) : openBranchMenu())}
-                className={`flex items-center gap-1.5 h-7 px-2 rounded-[6px] transition-colors ${
-                  branchMenuOpen ? 'bg-white/[0.08]' : 'hover:bg-white/[0.06]'
+                className={`flex items-center gap-1.5 h-7 px-2 rounded-md transition-colors ${
+                  branchMenuOpen ? 'bg-fill-active' : 'hover:bg-fill-hover'
                 }`}
               >
                 <GitBranch size={12} strokeWidth={1.75} className="text-text-secondary" />
@@ -220,8 +214,11 @@ export function TitleBar() {
               </Tooltip>
 
               {branchMenuOpen && (
-                <div className="absolute left-0 top-full mt-1 z-50 w-[260px] bg-elevation-3 ring-1 ring-white/[0.08] rounded-lg overflow-hidden">
-                  <div className="p-2 border-b border-[var(--ij-divider-soft)]">
+                <div
+                  className="absolute left-0 top-full mt-1 z-50 w-[260px] material-popover ct-pop-in rounded-lg overflow-hidden"
+                  style={{ transformOrigin: 'top left' }}
+                >
+                  <div className="p-2 border-b border-seam">
                     <div className="relative">
                       <SearchIcon size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-text-tertiary" strokeWidth={1.75} />
                       <input
@@ -230,7 +227,7 @@ export function TitleBar() {
                         value={branchFilter}
                         onChange={(e) => setBranchFilter(e.target.value)}
                         placeholder="Filter branches…"
-                        className="w-full bg-elevation-0 ring-1 ring-inset ring-[var(--ij-divider)] rounded-[4px] h-7 pl-7 pr-2 text-[12px] text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-accent-primary/60"
+                        className="w-full bg-elevation-0 ring-1 ring-inset ring-seam rounded-md h-7 pl-7 pr-2 text-[12px] text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45"
                       />
                     </div>
                   </div>
@@ -271,7 +268,7 @@ export function TitleBar() {
                       );
                     })}
                   </div>
-                  <div className="border-t border-[var(--ij-divider-soft)]">
+                  <div className="border-t border-seam">
                     <button
                       onClick={() => {
                         const path = active?.config.working_directory;
@@ -297,49 +294,37 @@ export function TitleBar() {
         <SessionWidget />
       </div>
 
-      {/* Center spacer + brand (small, right-aligned on the drag zone) */}
-      <div className="flex-1 flex items-center justify-center min-w-0 px-3">
-        {!compactTitleBar && (
-          <span className="text-text-tertiary text-[11px] tracking-[0.02em] truncate">
-            Agentrium
-            {appVersion && <span className="text-text-tertiary/60 ml-1.5 font-mono">{appVersion}</span>}
-          </span>
-        )}
-      </div>
-
-      {/* Right cluster - search, run, tool windows, settings, window controls */}
+      {/* Right cluster - run, tool windows, settings, window controls */}
       <div className="flex items-stretch">
         <div className="flex items-center gap-0.5 pr-2 no-drag">
           <UpdatePill />
-          <ToolsMenu />
 
-          <div className="w-px h-4 bg-[var(--ij-divider-soft)] mx-1" />
-
-          <Tooltip label="Search Everywhere" shortcut="Ctrl+P">
-            <button onClick={openCommandPalette} className={toolBtn(false)}>
-              <SearchIcon size={15} strokeWidth={2} />
+          {/* ONE inspector toggle - the Changes/Agents/Commands switcher
+              lives inside the Inspector itself, so four separate titlebar
+              toggles were clutter. Reopens on the Changes tab. */}
+          <Tooltip label={inspectorOpen ? 'Close Inspector' : 'Open Inspector'}>
+            <button onClick={toggleInspector} className={toolBtn(inspectorOpen)}>
+              <PanelRight size={15} strokeWidth={1.9} />
             </button>
           </Tooltip>
 
-          <Tooltip label="Settings" shortcut="Ctrl+,">
-            <button onClick={openSettings} className={toolBtn(false)}>
-              <Settings size={15} strokeWidth={2} />
-            </button>
-          </Tooltip>
+          <div className="w-px h-4 bg-seam-strong mx-1" />
+
+          <ThemeToggle />
         </div>
 
         {!isMac && (
           <div className="flex items-stretch no-drag">
             <button
               onClick={() => appWindow.minimize()}
-              className="w-[46px] h-[var(--h-header)] flex items-center justify-center hover:bg-white/[0.06] text-text-secondary transition-colors"
+              className="w-[46px] h-[var(--h-header)] flex items-center justify-center hover:bg-fill-hover text-text-secondary transition-colors"
               aria-label="Minimize"
             >
               <Minus size={12} strokeWidth={1.75} />
             </button>
             <button
               onClick={() => appWindow.toggleMaximize()}
-              className="w-[46px] h-[var(--h-header)] flex items-center justify-center hover:bg-white/[0.06] text-text-secondary transition-colors"
+              className="w-[46px] h-[var(--h-header)] flex items-center justify-center hover:bg-fill-hover text-text-secondary transition-colors"
               aria-label="Maximize"
             >
               <Square size={11} strokeWidth={1.75} />

@@ -2,13 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { pickBreadcrumb } from './breadcrumb';
 
 describe('pickBreadcrumb', () => {
-  it('returns the "No terminal" placeholder when path is undefined', () => {
-    expect(pickBreadcrumb(undefined)).toEqual({ project: 'No terminal', sub: null });
+  it('returns the "No sessions" placeholder when path is undefined', () => {
+    expect(pickBreadcrumb(undefined)).toEqual({ project: 'No sessions', sub: null });
   });
 
-  it('returns the "No terminal" placeholder for an empty string (falsy)', () => {
+  it('returns the "No sessions" placeholder for an empty string (falsy)', () => {
     // Empty string is falsy and takes the same early-return branch as undefined.
-    expect(pickBreadcrumb('')).toEqual({ project: 'No terminal', sub: null });
+    expect(pickBreadcrumb('')).toEqual({ project: 'No sessions', sub: null });
   });
 
   it('parses a Windows path into project + parent segments', () => {

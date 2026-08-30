@@ -11,12 +11,11 @@ beforeEach(() => {
 });
 
 describe('accentTheme', () => {
-  it('applyAccentColor sets the IJ stripe + accent CSS vars', () => {
+  it('applyAccentColor sets the selection stripe + accent CSS vars', () => {
     applyAccentColor('#FF00AA');
     const style = document.documentElement.style;
     expect(style.getPropertyValue('--accent-primary')).toBe('#FF00AA');
     expect(style.getPropertyValue('--ij-stripe')).toBe('#FF00AA');
-    expect(style.getPropertyValue('--ij-tab-underline')).toBe('#FF00AA');
   });
 
   it('applyAccentColor handles 3-digit hex', () => {
@@ -42,7 +41,7 @@ describe('accentTheme', () => {
   it('applyThemeMode toggles the data-theme attribute and elevation tokens', () => {
     applyThemeMode('light');
     expect(document.documentElement.getAttribute('data-theme')).toBe('light');
-    expect(document.documentElement.style.getPropertyValue('--elevation-0')).toBe('#F7F8FA');
+    expect(document.documentElement.style.getPropertyValue('--elevation-0')).toBe('#FCFCFE');
     applyThemeMode('dark');
     expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
     expect(document.documentElement.style.getPropertyValue('--elevation-0')).toBe('');
@@ -70,9 +69,9 @@ describe('accentTheme', () => {
   it('applyThemeMode("light") sets semantic color overrides (success/warning/error)', () => {
     applyThemeMode('light');
     const style = document.documentElement.style;
-    expect(style.getPropertyValue('--success')).toBe('#208A3C');
-    expect(style.getPropertyValue('--warning')).toBe('#FFAF0F');
-    expect(style.getPropertyValue('--error')).toBe('#DB3B4B');
+    expect(style.getPropertyValue('--success')).toBe('#1F8A3D');
+    expect(style.getPropertyValue('--warning')).toBe('#9A5B00');
+    expect(style.getPropertyValue('--error')).toBe('#D70015');
   });
 
   it('applyThemeMode("dark") removes semantic color overrides so :root defaults win', () => {
@@ -90,8 +89,8 @@ describe('accentTheme', () => {
     applyThemeMode('dark');
     applyThemeMode('light');
     const style = document.documentElement.style;
-    expect(style.getPropertyValue('--success')).toBe('#208A3C');
-    expect(style.getPropertyValue('--warning')).toBe('#FFAF0F');
-    expect(style.getPropertyValue('--error')).toBe('#DB3B4B');
+    expect(style.getPropertyValue('--success')).toBe('#1F8A3D');
+    expect(style.getPropertyValue('--warning')).toBe('#9A5B00');
+    expect(style.getPropertyValue('--error')).toBe('#D70015');
   });
 });

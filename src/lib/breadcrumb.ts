@@ -11,7 +11,7 @@
 export function pickBreadcrumb(
   path: string | undefined
 ): { project: string; sub: string | null } {
-  if (!path) return { project: 'No terminal', sub: null };
+  if (!path) return { project: 'No sessions', sub: null };
   // Normalise slashes and trim trailing separators
   const clean = path.replace(/\\/g, '/').replace(/\/+$/, '');
   const parts = clean.split('/').filter(Boolean);

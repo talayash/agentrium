@@ -7,7 +7,7 @@ interface Props {
 
 export function SettingsSearch({ value, onChange }: Props) {
   return (
-    <div className="flex items-center bg-elevation-0 ring-1 ring-[var(--ij-divider-soft)] rounded-md px-2 h-7 w-[360px]">
+    <div className="flex items-center bg-elevation-0 ring-1 ring-seam rounded-md px-2 h-7 w-[360px]">
       <Search size={12} className="text-text-tertiary mr-2" strokeWidth={1.75} />
       <input
         type="text"

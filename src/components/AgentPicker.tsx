@@ -29,17 +29,14 @@ export function AgentPicker({ value, onChange, className = '' }: AgentPickerProp
           <button
             key={spec.kind}
             onClick={() => onChange(spec.kind)}
-            className={`flex flex-col items-center gap-1.5 p-3 rounded-md transition-colors ${
+            className={`flex flex-col items-center gap-1.5 p-3 rounded-xl transition-[background-color,box-shadow,transform] duration-100 active:scale-[0.97] ${
               selected
-                ? 'bg-accent-primary/10 ring-1 ring-accent-primary/40'
-                : 'bg-bg-primary ring-1 ring-border hover:ring-border-light'
+                ? 'bg-accent-primary/12 ring-1 ring-accent-primary/45 shadow-[0_2px_10px_var(--accent-glow-md)]'
+                : 'bg-fill-hover ring-1 ring-seam hover:bg-fill-active hover:ring-seam-strong'
             }`}
           >
             <BrandIcon kind={spec.kind} />
-            <div className="text-center leading-tight">
-              <p className="text-text-primary text-[12px] font-medium">{spec.displayName}</p>
-              <p className="text-text-tertiary text-[10px] font-mono">{spec.binary}</p>
-            </div>
+            <p className="text-text-primary text-[12px] font-medium text-center leading-tight">{spec.displayName}</p>
           </button>
         );
       })}

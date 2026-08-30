@@ -34,7 +34,7 @@ export function ClaudeConfigModal() {
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-medium transition-colors ${
                     activeTab === key
                       ? 'bg-accent-primary/10 text-accent-primary ring-1 ring-accent-primary/30'
-                      : 'text-text-secondary hover:text-text-primary hover:bg-white/[0.04]'
+                      : 'text-text-secondary hover:text-text-primary hover:bg-fill-hover'
                   }`}
                 >
                   <Icon size={13} />
@@ -45,7 +45,7 @@ export function ClaudeConfigModal() {
           </div>
           <button
             onClick={closeClaudeConfig}
-            className="p-1 rounded hover:bg-white/[0.06] text-text-tertiary transition-colors"
+            className="p-1 rounded hover:bg-fill-hover text-text-tertiary transition-colors"
           >
             <X size={16} />
           </button>
@@ -199,7 +199,7 @@ function SettingsTab() {
           }}
           onKeyDown={handleKeyDown}
           spellCheck={false}
-          className="w-full h-full bg-bg-primary ring-1 ring-border-light rounded-md p-3 text-text-primary text-[13px] font-mono resize-none focus:outline-none focus:ring-accent-primary transition-colors leading-relaxed"
+          className="w-full h-full bg-bg-primary ring-1 ring-border-light rounded-md p-3 text-text-primary text-[13px] font-mono resize-none focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 transition-colors leading-relaxed"
           placeholder='{ }'
         />
       </div>
@@ -343,7 +343,7 @@ function FileListTab({ type }: { type: 'agents' | 'commands' }) {
                 className={`group flex items-center justify-between p-2 rounded-md cursor-pointer transition-colors ${
                   selectedFile === name
                     ? 'bg-accent-primary/10 ring-1 ring-accent-primary/30'
-                    : 'hover:bg-white/[0.04]'
+                    : 'hover:bg-fill-hover'
                 }`}
               >
                 <p className="text-text-primary text-[12px] font-medium truncate flex-1">{name}</p>
@@ -374,7 +374,7 @@ function FileListTab({ type }: { type: 'agents' | 'commands' }) {
                     type="text"
                     value={newFileName}
                     onChange={(e) => setNewFileName(e.target.value)}
-                    className="bg-bg-primary ring-1 ring-border-light rounded-md h-7 px-2 text-text-primary text-[12px] font-mono focus:outline-none focus:ring-accent-primary transition-colors w-48"
+                    className="bg-bg-primary ring-1 ring-border-light rounded-md h-7 px-2 text-text-primary text-[12px] font-mono focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 transition-colors w-48"
                     placeholder="filename.md"
                     autoFocus
                   />
@@ -421,7 +421,7 @@ function FileListTab({ type }: { type: 'agents' | 'commands' }) {
                 }}
                 onKeyDown={handleKeyDown}
                 spellCheck={false}
-                className="w-full h-full bg-bg-primary ring-1 ring-border-light rounded-md p-3 text-text-primary text-[13px] font-mono resize-none focus:outline-none focus:ring-accent-primary transition-colors leading-relaxed"
+                className="w-full h-full bg-bg-primary ring-1 ring-border-light rounded-md p-3 text-text-primary text-[13px] font-mono resize-none focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 transition-colors leading-relaxed"
                 placeholder={`Enter ${type === 'agents' ? 'agent' : 'command'} content...`}
               />
             </div>

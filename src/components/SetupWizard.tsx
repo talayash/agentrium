@@ -3,6 +3,7 @@ import { AnimatePresence } from 'framer-motion';
 import { CheckCircle, XCircle, Download, ExternalLink, Loader2, Terminal, Box, RefreshCw } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { reportInvokeFailure } from '../lib/errorReporter';
+import appIcon from '../assets/app-icon.png';
 import { Modal } from './ui/Modal';
 import { Button } from './ui/Button';
 import { LatestRequest } from '../lib/latestRequest';
@@ -120,11 +121,9 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
     >
       <>
         {/* Header */}
-        <div className="p-6 border-b border-border text-center">
-          <div className="w-12 h-12 mx-auto mb-4 rounded-lg bg-bg-surface flex items-center justify-center">
-            <Terminal size={24} className="text-text-secondary" />
-          </div>
-          <h1 className="text-[length:var(--text-h1)] font-semibold text-text-primary mb-1">Welcome to Agentrium</h1>
+        <div className="p-6 border-b border-[var(--seam)] text-center">
+          <img src={appIcon} alt="" className="w-16 h-16 mx-auto mb-4 select-none drop-shadow-[0_8px_28px_var(--accent-glow-md)]" draggable={false} />
+          <h1 className="text-[24px] font-bold text-text-primary mb-1 tracking-display">Welcome to Agentrium</h1>
           <p className="text-text-secondary text-[13px]">Let's make sure everything is set up correctly</p>
         </div>
 
@@ -142,15 +141,15 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                 return (
                   <div
                     key={step.title}
-                    className={`p-4 rounded-md ring-1 transition-all ${
+                    className={`p-4 rounded-xl ring-1 transition-all ${
                       step.installed
-                        ? 'bg-success/5 ring-success/20'
-                        : 'bg-bg-primary ring-border'
+                        ? 'bg-success/5 ring-success/25'
+                        : 'bg-elevation-2 ring-seam'
                     }`}
                   >
                     <div className="flex items-center gap-4">
-                      <div className={`w-10 h-10 rounded-md flex items-center justify-center ${
-                        step.installed ? 'bg-success/10' : 'bg-bg-secondary'
+                      <div className={`w-10 h-10 rounded-[10px] flex items-center justify-center ${
+                        step.installed ? 'bg-success/12' : 'bg-elevation-3'
                       }`}>
                         <Icon size={20} className={step.installed ? 'text-success' : 'text-text-tertiary'} />
                       </div>

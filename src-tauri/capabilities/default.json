@@ -18,6 +18,7 @@
     "core:window:allow-set-always-on-top",
     "core:window:allow-set-ignore-cursor-events",
     "core:window:allow-set-skip-taskbar",
+    "core:window:allow-set-effects",
     "core:webview:allow-create-webview-window",
     "core:path:default",
     "shell:default",

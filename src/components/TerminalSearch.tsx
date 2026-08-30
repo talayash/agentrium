@@ -92,7 +92,7 @@ export function TerminalSearch({ searchAddon, visible, onClose }: TerminalSearch
   if (!visible) return null;
 
   return (
-    <div className="absolute top-2 right-4 z-30 flex items-center gap-1 bg-bg-elevated ring-1 ring-white/[0.08] rounded-md px-2 py-1">
+    <div className="absolute top-2 right-4 z-30 flex items-center gap-1 material-popover rounded-md px-2 py-1">
       {/* Search input */}
       <input
         ref={inputRef}
@@ -101,7 +101,7 @@ export function TerminalSearch({ searchAddon, visible, onClose }: TerminalSearch
         onChange={(e) => handleQueryChange(e.target.value)}
         onKeyDown={handleKeyDown}
         placeholder="Search..."
-        className="w-48 bg-bg-primary ring-1 ring-border-light rounded px-2 py-1 text-[12px] text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-accent-primary transition-colors font-mono"
+        className="w-48 bg-bg-primary ring-1 ring-border-light rounded px-2 py-1 text-[12px] text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 transition-colors font-mono"
       />
 
       {/* Case sensitive toggle */}
@@ -111,7 +111,7 @@ export function TerminalSearch({ searchAddon, visible, onClose }: TerminalSearch
           className={`p-1 rounded transition-colors ${
             caseSensitive
               ? 'bg-accent-primary/15 text-accent-primary'
-              : 'text-text-tertiary hover:text-text-secondary hover:bg-white/[0.04]'
+              : 'text-text-tertiary hover:text-text-secondary hover:bg-fill-hover'
           }`}
         >
           <CaseSensitive size={14} />
@@ -123,7 +123,7 @@ export function TerminalSearch({ searchAddon, visible, onClose }: TerminalSearch
         <button
           onClick={handlePrev}
           disabled={!query}
-          className="p-1 rounded text-text-tertiary hover:text-text-secondary hover:bg-white/[0.04] disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+          className="p-1 rounded text-text-tertiary hover:text-text-secondary hover:bg-fill-hover disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
         >
           <ChevronUp size={14} />
         </button>
@@ -134,7 +134,7 @@ export function TerminalSearch({ searchAddon, visible, onClose }: TerminalSearch
         <button
           onClick={handleNext}
           disabled={!query}
-          className="p-1 rounded text-text-tertiary hover:text-text-secondary hover:bg-white/[0.04] disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+          className="p-1 rounded text-text-tertiary hover:text-text-secondary hover:bg-fill-hover disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
         >
           <ChevronDown size={14} />
         </button>
@@ -144,7 +144,7 @@ export function TerminalSearch({ searchAddon, visible, onClose }: TerminalSearch
       <Tooltip label="Close" shortcut="Esc">
         <button
           onClick={onClose}
-          className="p-1 rounded text-text-tertiary hover:text-text-secondary hover:bg-white/[0.04] transition-colors"
+          className="p-1 rounded text-text-tertiary hover:text-text-secondary hover:bg-fill-hover transition-colors"
         >
           <X size={14} />
         </button>

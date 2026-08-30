@@ -306,7 +306,7 @@ export function ChangelistSection({
           }}
           title={reserved ? RESERVED_HINT : undefined}
           className={`group flex items-center gap-1.5 pl-7 pr-2 py-[3px] cursor-pointer transition-colors ${
-            isSelected ? 'bg-accent-primary' : 'hover:bg-white/[0.04]'
+            isSelected ? 'bg-accent-primary' : 'hover:bg-fill-hover'
           }`}
         >
           <TriCheckbox
@@ -341,7 +341,7 @@ export function ChangelistSection({
                 e.stopPropagation();
                 void openDiffTab(joinRepoPath(repoPath, file.path), repoPath, file.path);
               }}
-              className={`shrink-0 p-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-white/[0.08] ${
+              className={`shrink-0 p-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-fill-active ${
                 isSelected ? 'text-white/80 hover:text-white' : 'text-text-tertiary hover:text-text-primary'
               }`}
               title="Open diff in editor"
@@ -380,7 +380,7 @@ export function ChangelistSection({
     const someChecked = stagedCount > 0 || partialCount > 0;
     return (
       <div key={`${kind}:${headerName}:${listId ?? ''}`}>
-        <div className="group flex items-center gap-1 px-1.5 py-[3px] hover:bg-white/[0.04]">
+        <div className="group flex items-center gap-1 px-1.5 py-[3px] hover:bg-fill-hover">
           <button
             onClick={() => {
               const next = new Set(collapsed);
@@ -419,7 +419,7 @@ export function ChangelistSection({
             {groupFiles.length} file{groupFiles.length !== 1 ? 's' : ''}
           </span>
           {kind !== 'unversioned' && branch && (
-            <span className="shrink-0 px-1.5 py-px rounded-[3px] bg-white/[0.07] text-text-secondary text-[10.5px] truncate max-w-[140px]" title={branch}>
+            <span className="shrink-0 px-1.5 py-px rounded-md bg-fill-hover text-text-secondary text-[10.5px] truncate max-w-[140px]" title={branch}>
               {branch}
             </span>
           )}
@@ -454,16 +454,16 @@ export function ChangelistSection({
             <div className="relative shrink-0">
               <button
                 onClick={() => setMenuListId(isMenuOpen ? null : listId)}
-                className="p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-white/[0.06] text-text-tertiary transition-opacity"
+                className="p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-fill-hover text-text-tertiary transition-opacity"
                 aria-label="Changelist actions"
               >
                 <MoreVertical size={12} />
               </button>
               {isMenuOpen && (
-                <div className="absolute right-0 top-full mt-1 z-50 w-[140px] bg-elevation-3 ring-1 ring-white/[0.08] rounded-lg overflow-hidden py-1">
+                <div className="absolute right-0 top-full mt-1 z-50 w-[140px] material-popover rounded-lg overflow-hidden py-1">
                   <button
                     onClick={() => { setEditingId(listId); setEditingName(headerName); setMenuListId(null); }}
-                    className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] text-text-primary hover:bg-white/[0.04]"
+                    className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] text-text-primary hover:bg-fill-hover"
                   >
                     <Edit3 size={12} /> Rename
                   </button>
@@ -494,7 +494,7 @@ export function ChangelistSection({
 
       {contextFile && (
         <div
-          className="fixed z-50 bg-elevation-3 ring-1 ring-white/[0.08] rounded-lg overflow-hidden py-1 min-w-[180px]"
+          className="fixed z-50 material-popover rounded-lg overflow-hidden py-1 min-w-[180px]"
           style={{ left: contextFile.x, top: contextFile.y }}
         >
           <div className="px-3 py-1 text-text-tertiary text-[10px] uppercase tracking-wider">
@@ -502,7 +502,7 @@ export function ChangelistSection({
           </div>
           <button
             onClick={() => { moveFile(contextFile.file.path, null); setContextFile(null); }}
-            className="w-full flex items-center justify-between px-3 py-1.5 text-[12px] text-text-primary hover:bg-white/[0.04]"
+            className="w-full flex items-center justify-between px-3 py-1.5 text-[12px] text-text-primary hover:bg-fill-hover"
           >
             Changes
             {assignments.get(contextFile.file.path) == null && <Check size={11} className="text-accent-primary" />}
@@ -513,7 +513,7 @@ export function ChangelistSection({
               <button
                 key={l.id}
                 onClick={() => { moveFile(contextFile.file.path, l.id!); setContextFile(null); }}
-                className="w-full flex items-center justify-between px-3 py-1.5 text-[12px] text-text-primary hover:bg-white/[0.04]"
+                className="w-full flex items-center justify-between px-3 py-1.5 text-[12px] text-text-primary hover:bg-fill-hover"
               >
                 {l.name}
                 {isCurrent && <Check size={11} className="text-accent-primary" />}

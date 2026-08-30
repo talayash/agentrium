@@ -73,11 +73,11 @@ export function ScriptChildPane({ parentId: _parentId, childId, scriptName, stat
       </div>
 
       <div
-        className="shrink-0 flex flex-col border-t border-[var(--ij-divider)] bg-bg-primary"
+        className="shrink-0 flex flex-col border-t border-seam-strong bg-bg-primary"
         style={{ height }}
       >
         {/* Script terminal header */}
-        <div className="h-7 flex items-center justify-between px-3 bg-elevation-0 border-b border-[var(--ij-divider-soft)] flex-shrink-0">
+        <div className="h-7 flex items-center justify-between px-3 bg-elevation-0 border-b border-seam flex-shrink-0">
           <div className="flex items-center gap-2 min-w-0">
             <Package size={12} className="text-accent-primary flex-shrink-0" strokeWidth={1.75} />
             <span className="text-[11.5px] font-medium text-text-primary truncate">
@@ -90,7 +90,7 @@ export function ScriptChildPane({ parentId: _parentId, childId, scriptName, stat
           </div>
           <button
             onClick={onClose}
-            className="p-0.5 rounded hover:bg-white/[0.08] text-text-tertiary hover:text-text-primary transition-colors"
+            className="p-0.5 rounded hover:bg-fill-active text-text-tertiary hover:text-text-primary transition-colors"
             title="Stop and close script"
           >
             <X size={13} strokeWidth={1.75} />

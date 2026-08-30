@@ -85,7 +85,7 @@ function resetAppStore() {
     uiDensity: 'comfortable',
     tabHeight: 'medium',
     colorfulFolderIcons: false,
-    accentColorHex: '#3574F0',
+    accentColorHex: '#007AFF',
     uiFontScale: 1.0,
     uiReduceMotion: false,
     notificationSoundEnabled: false,
@@ -399,6 +399,7 @@ describe('appStore - persist partialize', () => {
     'toolsCollapsed',
     'sessionsCollapsed',
     'explorerCollapsed',
+    'sidebarNav',
     'sessionsHeightRatio',
     'repositoriesHeightRatio',
     'orchestrationOpen',
@@ -453,6 +454,7 @@ describe('appStore - persist partialize', () => {
     'claudeBinaryPathOverride',
     // Pinned tabs (Phase 4a)
     'pinnedTabIds',
+    'pinnedProfileIds',
   ].sort();
 
   it('persists exactly the allow-listed keys, and no transient ones', () => {
@@ -554,7 +556,7 @@ describe('appStore - appearance v1.22.0 setters', () => {
     setAccentColorHex('#ABCDEF');
     expect(useAppStore.getState().accentColorHex).toBe('#ABCDEF');
     setAccentColorHex('not a color');
-    expect(useAppStore.getState().accentColorHex).toBe('#3574F0');
+    expect(useAppStore.getState().accentColorHex).toBe('#007AFF');
   });
 
   it('setThemeMode / setUiDensity / setUiReduceMotion set as given', () => {
@@ -653,6 +655,48 @@ describe('appStore - persist migration v3 → v4 (gemini → antigravity)', () =
     // The legacy key should not survive - future writes must use the new
     // shape or the persisted payload will grow stale entries forever.
     expect((args as Record<string, unknown>).gemini).toBeUndefined();
+  });
+});
+
+describe('appStore - persist migration v4 → v8 (Apple redesign preserves explicit picks)', () => {
+  // These four cases lock in the invariant that a migration must not clobber
+  // an explicit user choice with an unconditional write - the review found
+  // v6/v7/v8 were doing exactly that before this test existed.
+
+  it('preserves an explicit themeMode="light" across the v6/v7 chain', async () => {
+    localStorage.setItem(
+      PERSIST_KEY,
+      JSON.stringify({ version: 4, state: { themeMode: 'light' } }),
+    );
+    await useAppStore.persist.rehydrate();
+    expect(useAppStore.getState().themeMode).toBe('light');
+  });
+
+  it('preserves an explicit accentColorHex="#0A84FF" (never was a default) across v6', async () => {
+    localStorage.setItem(
+      PERSIST_KEY,
+      JSON.stringify({ version: 4, state: { accentColorHex: '#0A84FF' } }),
+    );
+    await useAppStore.persist.rehydrate();
+    expect(useAppStore.getState().accentColorHex).toBe('#0A84FF');
+  });
+
+  it('migrates the v4 default terminalTheme="dark" to "auto" at v8', async () => {
+    localStorage.setItem(
+      PERSIST_KEY,
+      JSON.stringify({ version: 4, state: { terminalTheme: 'dark' } }),
+    );
+    await useAppStore.persist.rehydrate();
+    expect(useAppStore.getState().terminalTheme).toBe('auto');
+  });
+
+  it('preserves an explicit terminalTheme="light" across v8', async () => {
+    localStorage.setItem(
+      PERSIST_KEY,
+      JSON.stringify({ version: 4, state: { terminalTheme: 'light' } }),
+    );
+    await useAppStore.persist.rehydrate();
+    expect(useAppStore.getState().terminalTheme).toBe('light');
   });
 });
 

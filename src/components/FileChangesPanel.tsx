@@ -513,7 +513,7 @@ export function FileChangesPanel() {
       {/* Header - IntelliJ commit tool window style: active "Commit" tab + icon toolbar */}
       <div className="px-2 pt-2 pb-2 border-b border-border">
         <div className="flex items-center justify-between mb-1.5">
-          <span className="h-6 px-2.5 inline-flex items-center rounded-[4px] bg-elevation-3 text-text-primary text-[12px] font-medium select-none">
+          <span className="h-6 px-2.5 inline-flex items-center rounded-md bg-elevation-3 text-text-primary text-[12px] font-medium select-none">
             Commit
           </span>
           <div className="flex items-center gap-0.5">
@@ -521,7 +521,7 @@ export function FileChangesPanel() {
             <button
               onClick={handleQuickPull}
               disabled={pullingTop || !activeTerminalId || !result?.is_git_repo}
-              className="w-6 h-6 flex items-center justify-center rounded hover:bg-white/[0.06] text-success transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
+              className="w-6 h-6 flex items-center justify-center rounded hover:bg-fill-hover text-success transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
               aria-label="Pull"
             >
               {pullingTop ? (
@@ -535,7 +535,7 @@ export function FileChangesPanel() {
             <button
               onClick={() => { if (activePath) useAppStore.getState().openPushModal(activePath); }}
               disabled={!activePath || !result?.is_git_repo}
-              className="w-6 h-6 flex items-center justify-center rounded hover:bg-white/[0.06] text-error transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
+              className="w-6 h-6 flex items-center justify-center rounded hover:bg-fill-hover text-error transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
               aria-label="Push"
             >
               <Upload size={13} strokeWidth={2} />
@@ -545,7 +545,7 @@ export function FileChangesPanel() {
             <button
               onClick={() => fetchChanges()}
               disabled={loading || !activeTerminalId}
-              className="w-6 h-6 flex items-center justify-center rounded hover:bg-white/[0.06] text-accent-primary transition-colors disabled:opacity-40"
+              className="w-6 h-6 flex items-center justify-center rounded hover:bg-fill-hover text-accent-primary transition-colors disabled:opacity-40"
               aria-label="Refresh"
             >
               <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
@@ -564,7 +564,7 @@ export function FileChangesPanel() {
           </div>
         )}
         {usingSelectedRepo && selectedRepoPath && (
-          <div className="flex items-center justify-between mt-1 bg-accent-primary/10 ring-1 ring-inset ring-accent-primary/30 rounded-[4px] px-2 py-1">
+          <div className="flex items-center justify-between mt-1 bg-accent-primary/10 ring-1 ring-inset ring-accent-primary/30 rounded-md px-2 py-1">
             <div className="flex items-center gap-1.5 min-w-0">
               <Pin size={11} className="text-accent-primary flex-shrink-0" strokeWidth={2} />
               <span className="text-[11px] text-accent-primary truncate" title={selectedRepoPath}>
@@ -628,7 +628,7 @@ export function FileChangesPanel() {
               <Tooltip label="Rescan">
                 <button
                   onClick={() => activeCwd && fetchRepos(activeCwd)}
-                  className={`w-5 h-5 flex items-center justify-center rounded-[3px] hover:bg-white/[0.06] text-text-tertiary hover:text-text-secondary transition-colors ${
+                  className={`w-5 h-5 flex items-center justify-center rounded-md hover:bg-fill-hover text-text-tertiary hover:text-text-secondary transition-colors ${
                     reposLoading ? 'animate-spin' : ''
                   }`}
                 >
@@ -779,7 +779,7 @@ export function FileChangesPanel() {
                 return (
                   <div
                     key={s.reference}
-                    className="group flex items-start gap-1.5 px-2 py-1 rounded-[3px] hover:bg-white/[0.04]"
+                    className="group flex items-start gap-1.5 px-2 py-1 rounded-md hover:bg-fill-hover"
                   >
                     <Archive size={11} className="mt-[2px] flex-shrink-0 text-text-secondary" strokeWidth={1.75} />
                     <div className="flex-1 min-w-0">
@@ -802,7 +802,7 @@ export function FileChangesPanel() {
                         <button
                           disabled={busy}
                           onClick={() => runStashOp('git_stash_apply', s.reference, 'Apply')}
-                          className="p-1 rounded hover:bg-white/[0.08] text-text-tertiary hover:text-text-primary transition-colors disabled:opacity-40"
+                          className="p-1 rounded hover:bg-fill-active text-text-tertiary hover:text-text-primary transition-colors disabled:opacity-40"
                         >
                           {isApplying ? <Loader2 size={11} className="animate-spin" /> : <Download size={11} />}
                         </button>
@@ -811,7 +811,7 @@ export function FileChangesPanel() {
                         <button
                           disabled={busy}
                           onClick={() => runStashOp('git_stash_pop', s.reference, 'Pop')}
-                          className="p-1 rounded hover:bg-white/[0.08] text-text-tertiary hover:text-accent-primary transition-colors disabled:opacity-40"
+                          className="p-1 rounded hover:bg-fill-active text-text-tertiary hover:text-accent-primary transition-colors disabled:opacity-40"
                         >
                           {isPopping ? <Loader2 size={11} className="animate-spin" /> : <Package size={11} />}
                         </button>
@@ -824,7 +824,7 @@ export function FileChangesPanel() {
                               runStashOp('git_stash_drop', s.reference, 'Drop');
                             }
                           }}
-                          className="p-1 rounded hover:bg-white/[0.08] text-text-tertiary hover:text-error transition-colors disabled:opacity-40"
+                          className="p-1 rounded hover:bg-fill-active text-text-tertiary hover:text-error transition-colors disabled:opacity-40"
                         >
                           {isDropping ? <Loader2 size={11} className="animate-spin" /> : <Trash2 size={11} />}
                         </button>
@@ -861,7 +861,7 @@ export function FileChangesPanel() {
             onChange={(e) => setCommitMessage(e.target.value)}
             placeholder="Commit Message"
             rows={4}
-            className="w-full bg-bg-primary ring-1 ring-inset ring-border rounded-[4px] px-2 py-1.5 text-[12px] text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-accent-primary/60 resize-none"
+            className="w-full bg-bg-primary ring-1 ring-inset ring-border rounded-md px-2 py-1.5 text-[12px] text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 resize-none"
           />
           <div className="flex items-center mt-2 gap-1.5">
             <Button
@@ -877,7 +877,7 @@ export function FileChangesPanel() {
             <button
               onClick={() => handleCommit(true, 'none')}
               disabled={committing || pushing || stashing || !commitMessage.trim() || (checkedCount === 0 && !amend)}
-              className="flex items-center gap-1 h-7 px-2.5 rounded-[4px] text-[11.5px] text-text-primary ring-1 ring-inset ring-border hover:bg-white/[0.06] transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
+              className="flex items-center gap-1 h-7 px-2.5 rounded-md text-[11.5px] text-text-primary ring-1 ring-inset ring-border hover:bg-fill-hover transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
               title="Commit checked files and push"
             >
               {pushing ? <Loader2 size={12} className="animate-spin" /> : null}
@@ -888,18 +888,18 @@ export function FileChangesPanel() {
               <Tooltip label="More actions" disabled={commitMenuOpen}>
                 <button
                   onClick={() => setCommitMenuOpen((v) => !v)}
-                  className="w-6 h-6 flex items-center justify-center rounded hover:bg-white/[0.06] text-text-secondary transition-colors"
+                  className="w-6 h-6 flex items-center justify-center rounded hover:bg-fill-hover text-text-secondary transition-colors"
                   aria-label="More commit actions"
                 >
                   <MoreVertical size={13} />
                 </button>
               </Tooltip>
               {commitMenuOpen && (
-                <div className="absolute right-0 bottom-full mb-1 z-50 w-[170px] bg-elevation-3 ring-1 ring-white/[0.08] rounded-lg overflow-hidden py-1">
+                <div className="absolute right-0 bottom-full mb-1 z-50 w-[170px] material-popover rounded-lg overflow-hidden py-1">
                   <button
                     onClick={() => { setCommitMenuOpen(false); handleStash(); }}
                     disabled={stashing || committing || pushing || result.changes.length === 0}
-                    className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] text-text-primary hover:bg-white/[0.04] disabled:opacity-40"
+                    className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] text-text-primary hover:bg-fill-hover disabled:opacity-40"
                   >
                     {stashing ? <Loader2 size={12} className="animate-spin" /> : <Archive size={12} />}
                     Stash Changes
@@ -917,7 +917,7 @@ export function FileChangesPanel() {
           {result?.working_directory && (
             <div className="flex items-center gap-1.5 mb-1">
               <FolderOpen size={11} className="text-text-tertiary shrink-0" />
-              <p className="text-text-tertiary text-[11px] font-mono truncate" title={result.working_directory}>
+              <p className="text-text-tertiary text-[11px] truncate" title={result.working_directory} dir="ltr">
                 {result.working_directory}
               </p>
             </div>
@@ -941,7 +941,7 @@ function WorktreeRow({ wt, isActive }: { wt: WorktreeInfo; isActive: boolean }) 
   const displayName = wt.path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || wt.path;
   return (
     <div
-      className={`flex items-start gap-1.5 px-2 py-1 rounded-[3px] hover:bg-white/[0.04] ${
+      className={`flex items-start gap-1.5 px-2 py-1 rounded-md hover:bg-fill-hover ${
         isActive ? 'bg-accent-primary/10' : ''
       }`}
       title={wt.path}
@@ -1173,7 +1173,7 @@ function RepoRow({ repo }: { repo: ScannedGitRepo }) {
 
   return (
     <div
-      className={`group relative rounded-[3px] ${
+      className={`group relative rounded-md ${
         isActiveTarget ? 'bg-accent-primary/[0.08] ring-1 ring-inset ring-accent-primary/25' : ''
       }`}
       ref={menuRef}
@@ -1182,8 +1182,8 @@ function RepoRow({ repo }: { repo: ScannedGitRepo }) {
         <button
           type="button"
           onClick={() => (menuOpen ? setMenuOpen(false) : openMenu())}
-          className={`flex-1 min-w-0 flex items-start gap-1.5 px-2 py-1 rounded-[3px] text-left transition-colors ${
-            menuOpen ? 'bg-white/[0.06]' : 'hover:bg-white/[0.04]'
+          className={`flex-1 min-w-0 flex items-start gap-1.5 px-2 py-1 rounded-md text-left transition-colors ${
+            menuOpen ? 'bg-fill-hover' : 'hover:bg-fill-hover'
           }`}
           title={`${repo.path}\nClick to switch branch or create a new one`}
         >
@@ -1222,7 +1222,7 @@ function RepoRow({ repo }: { repo: ScannedGitRepo }) {
           type="button"
           onClick={openTerminalHere}
           disabled={openingTerminal}
-          className="flex-shrink-0 w-6 h-6 mt-0.5 flex items-center justify-center rounded-[3px] transition-colors text-text-tertiary hover:bg-accent-primary/15 hover:text-accent-primary disabled:opacity-40"
+          className="flex-shrink-0 w-6 h-6 mt-0.5 flex items-center justify-center rounded-md transition-colors text-text-tertiary hover:bg-accent-primary/15 hover:text-accent-primary disabled:opacity-40"
           title={`Open shell here\nLaunches a plain interactive shell (no Claude) at\n${repo.path}\nin the bottom terminal pane.`}
           aria-label={`Open shell in ${repo.path}`}
         >
@@ -1237,10 +1237,10 @@ function RepoRow({ repo }: { repo: ScannedGitRepo }) {
           <button
             type="button"
             onClick={togglePin}
-            className={`flex-shrink-0 w-6 h-6 mt-0.5 flex items-center justify-center rounded-[3px] transition-colors ${
+            className={`flex-shrink-0 w-6 h-6 mt-0.5 flex items-center justify-center rounded-md transition-colors ${
               isPinned
                 ? 'text-accent-primary bg-accent-primary/15 hover:bg-accent-primary/25'
-                : 'text-text-tertiary opacity-0 group-hover:opacity-100 hover:bg-white/[0.08] hover:text-text-secondary'
+                : 'text-text-tertiary opacity-0 group-hover:opacity-100 hover:bg-fill-active hover:text-text-secondary'
             }`}
           >
             {isPinned ? <Pin size={11} strokeWidth={2} /> : <Pin size={11} strokeWidth={1.75} />}
@@ -1249,8 +1249,8 @@ function RepoRow({ repo }: { repo: ScannedGitRepo }) {
       </div>
 
       {menuOpen && (
-        <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-elevation-3 ring-1 ring-white/[0.08] rounded-lg overflow-hidden">
-          <div className="p-2 border-b border-[var(--ij-divider-soft)]">
+        <div className="absolute left-0 right-0 top-full mt-1 z-50 material-popover rounded-lg overflow-hidden">
+          <div className="p-2 border-b border-seam">
             <div className="relative">
               <SearchIcon size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-text-tertiary" strokeWidth={1.75} />
               <input
@@ -1259,13 +1259,13 @@ function RepoRow({ repo }: { repo: ScannedGitRepo }) {
                 value={filter}
                 onChange={(e) => setFilter(e.target.value)}
                 placeholder="Filter branches…"
-                className="w-full bg-elevation-0 ring-1 ring-inset ring-[var(--ij-divider)] rounded-[4px] h-7 pl-7 pr-2 text-[12px] text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-accent-primary/60"
+                className="w-full bg-elevation-0 ring-1 ring-inset ring-seam rounded-md h-7 pl-7 pr-2 text-[12px] text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45"
               />
             </div>
           </div>
 
           {createOpen && (
-            <div className="p-2 space-y-2 border-b border-[var(--ij-divider-soft)]">
+            <div className="p-2 space-y-2 border-b border-seam">
               <input
                 autoFocus
                 type="text"
@@ -1273,14 +1273,14 @@ function RepoRow({ repo }: { repo: ScannedGitRepo }) {
                 onChange={(e) => setNewBranchName(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter' && !creating) handleCreateBranch(); }}
                 placeholder="new-branch-name"
-                className="w-full bg-elevation-0 ring-1 ring-inset ring-[var(--ij-divider)] rounded-[4px] h-7 px-2 text-[12px] font-mono text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-accent-primary/60"
+                className="w-full bg-elevation-0 ring-1 ring-inset ring-seam rounded-md h-7 px-2 text-[12px] font-mono text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45"
               />
               <div className="flex items-center gap-1.5">
                 <span className="text-[10.5px] text-text-tertiary flex-shrink-0">from</span>
                 <select
                   value={newBranchBase}
                   onChange={(e) => setNewBranchBase(e.target.value)}
-                  className="flex-1 bg-elevation-0 ring-1 ring-inset ring-[var(--ij-divider)] rounded-[4px] h-7 px-1.5 text-[12px] font-mono text-text-primary focus:outline-none focus:ring-accent-primary/60"
+                  className="flex-1 bg-elevation-0 ring-1 ring-inset ring-seam rounded-md h-7 px-1.5 text-[12px] font-mono text-text-primary focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45"
                 >
                   {branches.map((b) => (
                     <option key={b} value={b}>{b}</option>
@@ -1310,14 +1310,14 @@ function RepoRow({ repo }: { repo: ScannedGitRepo }) {
           )}
 
           {pullOpen && (
-            <div className="p-2 space-y-2 border-b border-[var(--ij-divider-soft)]">
+            <div className="p-2 space-y-2 border-b border-seam">
               <div className="flex items-center gap-1.5">
                 <span className="text-[10.5px] text-text-tertiary flex-shrink-0">from</span>
                 <select
                   autoFocus
                   value={pullRef}
                   onChange={(e) => setPullRef(e.target.value)}
-                  className="flex-1 bg-elevation-0 ring-1 ring-inset ring-[var(--ij-divider)] rounded-[4px] h-7 px-1.5 text-[12px] font-mono text-text-primary focus:outline-none focus:ring-accent-primary/60"
+                  className="flex-1 bg-elevation-0 ring-1 ring-inset ring-seam rounded-md h-7 px-1.5 text-[12px] font-mono text-text-primary focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45"
                 >
                   {remoteRefs.length === 0 && <option value="">(no remote branches)</option>}
                   {remoteRefs.map((r) => (
@@ -1331,10 +1331,10 @@ function RepoRow({ repo }: { repo: ScannedGitRepo }) {
                   <button
                     key={s}
                     onClick={() => setPullStrategy(s)}
-                    className={`h-6 px-1.5 rounded-[3px] font-mono transition-colors ${
+                    className={`h-6 px-1.5 rounded-md font-mono transition-colors ${
                       pullStrategy === s
                         ? 'bg-accent-primary/20 text-accent-primary ring-1 ring-inset ring-accent-primary/40'
-                        : 'text-text-secondary hover:bg-white/[0.06]'
+                        : 'text-text-secondary hover:bg-fill-hover'
                     }`}
                   >
                     {s === 'ff-only' ? 'ff-only' : s}
@@ -1379,7 +1379,7 @@ function RepoRow({ repo }: { repo: ScannedGitRepo }) {
               </button>
               <button
                 onClick={openPullForm}
-                className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] text-accent-primary hover:bg-accent-primary/10 transition-colors border-b border-[var(--ij-divider-soft)]"
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] text-accent-primary hover:bg-accent-primary/10 transition-colors border-b border-seam"
               >
                 <GitPullRequestArrow size={12} strokeWidth={2} />
                 <span>Pull into <span className="font-mono">{repo.branch ?? '(detached)'}</span>…</span>
@@ -1410,7 +1410,7 @@ function RepoRow({ repo }: { repo: ScannedGitRepo }) {
                   className={`w-full flex items-center justify-between px-3 py-1.5 text-[12px] font-mono text-left transition-colors ${
                     isCurrent
                       ? 'text-accent-primary bg-accent-primary/10 cursor-default'
-                      : 'text-text-primary hover:bg-white/[0.05]'
+                      : 'text-text-primary hover:bg-fill-hover'
                   }`}
                 >
                   <span className="truncate">{b}</span>

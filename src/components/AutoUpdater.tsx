@@ -120,7 +120,7 @@ export function AutoUpdater() {
         transition={{ duration: 0.15 }}
         className="fixed top-10 left-1/2 -translate-x-1/2 z-50 max-w-md w-full mx-4"
       >
-        <div className="bg-bg-elevated ring-1 ring-white/[0.08] rounded-lg overflow-hidden">
+        <div className="material-popover rounded-lg overflow-hidden">
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
             <div className="flex items-center gap-2">
@@ -136,7 +136,7 @@ export function AutoUpdater() {
             <button
               onClick={dismissBanner}
               title="Dismiss until next launch"
-              className="p-1 rounded hover:bg-white/[0.06] text-text-tertiary transition-colors"
+              className="p-1 rounded hover:bg-fill-hover text-text-tertiary transition-colors"
             >
               <X size={14} />
             </button>

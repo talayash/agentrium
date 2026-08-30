@@ -27,12 +27,12 @@ export function PreviewToolbar({ terminalId, url, allowed }: Props) {
   const openExternal = () => { if (url && allowed) void invoke('open_external_url', { url }); };
 
   return (
-    <div className="px-2 py-1.5 border-b border-white/[0.06] flex items-center gap-1.5 shrink-0">
+    <div className="px-2 py-1.5 border-b border-seam flex items-center gap-1.5 shrink-0">
       <button
         type="button"
         onClick={() => reload(terminalId)}
         disabled={!url}
-        className="p-1 rounded hover:bg-white/[0.05] text-text-secondary disabled:opacity-40"
+        className="p-1 rounded hover:bg-fill-hover text-text-secondary disabled:opacity-40"
         title="Reload"
       >
         <RotateCw size={14} />
@@ -45,14 +45,14 @@ export function PreviewToolbar({ terminalId, url, allowed }: Props) {
         spellCheck={false}
         placeholder="Waiting for dev-server URL…"
         className={`flex-1 bg-elevation-2 border rounded px-2 py-1 text-[11.5px] text-text-primary outline-none ${
-          invalid ? 'border-red-500/60' : 'border-white/[0.06] focus:border-accent-primary/60'
+          invalid ? 'border-red-500/60' : 'border-seam focus:border-accent-primary/60'
         }`}
       />
       <button
         type="button"
         onClick={openExternal}
         disabled={!url || !allowed}
-        className="p-1 rounded hover:bg-white/[0.05] text-text-secondary disabled:opacity-40"
+        className="p-1 rounded hover:bg-fill-hover text-text-secondary disabled:opacity-40"
         title="Open in browser"
       >
         <ExternalLink size={14} />
@@ -60,7 +60,7 @@ export function PreviewToolbar({ terminalId, url, allowed }: Props) {
       <button
         type="button"
         onClick={toggleGlobal}
-        className="p-1 rounded hover:bg-white/[0.05] text-text-secondary"
+        className="p-1 rounded hover:bg-fill-hover text-text-secondary"
         title="Close preview"
       >
         <X size={14} />

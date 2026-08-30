@@ -54,7 +54,7 @@ export function PanelHeader({
 
   return (
     <div className={className}>
-      <div className="h-[26px] flex items-center justify-between px-3 bg-elevation-1 border-b border-[var(--ij-divider-soft)]">
+      <div className="h-[26px] flex items-center justify-between px-3 border-b border-seam">
         {collapsible ? (
           <button
             onClick={onToggleCollapsed}
