@@ -11,12 +11,8 @@ import {
   Loader2,
   Search as SearchIcon,
   Upload,
-  FileDiff,
-  Users,
-  Lightbulb,
-  Monitor,
+  PanelRight,
 } from 'lucide-react';
-import { usePreviewStore } from '../store/previewStore';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from '../store/appStore';
@@ -41,15 +37,21 @@ export function TitleBar() {
   } = useAppStore();
   const { terminals, activeTerminalId, gitInfoCache } = useTerminalStore();
   const fetchGitInfo = useTerminalStore.getState().fetchGitInfo;
-  // Inspector triggers - relocated from the retired left ToolStripe rail.
+  // Inspector state - one titlebar toggle; the tab switcher lives inside
+  // the Inspector itself.
   const changesOpen = useAppStore((s) => s.changesOpen);
   const orchestrationOpen = useAppStore((s) => s.orchestrationOpen);
   const hintsOpen = useAppStore((s) => s.hintsOpen);
   const toggleChanges = useAppStore((s) => s.toggleChanges);
   const toggleOrchestration = useAppStore((s) => s.toggleOrchestration);
   const toggleHints = useAppStore((s) => s.toggleHints);
-  const previewOpen = usePreviewStore((s) => s.globalOpen);
-  const togglePreview = usePreviewStore((s) => s.toggleGlobal);
+  const inspectorOpen = changesOpen || orchestrationOpen || hintsOpen;
+  const toggleInspector = () => {
+    if (changesOpen) toggleChanges();
+    else if (orchestrationOpen) toggleOrchestration();
+    else if (hintsOpen) toggleHints();
+    else toggleChanges();
+  };
   const appWindow = getCurrentWindow();
   const [branchMenuOpen, setBranchMenuOpen] = useState(false);
   const [branches, setBranches] = useState<string[]>([]);
@@ -319,25 +321,12 @@ export function TitleBar() {
 
           <div className="w-px h-4 bg-seam-strong mx-1" />
 
-          {/* Inspector triggers (moved out of the old left rail) */}
-          <Tooltip label="Git" shortcut="F2">
-            <button onClick={toggleChanges} className={toolBtn(changesOpen)}>
-              <FileDiff size={15} strokeWidth={1.9} />
-            </button>
-          </Tooltip>
-          <Tooltip label="Agents" shortcut="F4">
-            <button onClick={toggleOrchestration} className={toolBtn(orchestrationOpen)}>
-              <Users size={15} strokeWidth={1.9} />
-            </button>
-          </Tooltip>
-          <Tooltip label="Commands" shortcut="F1">
-            <button onClick={toggleHints} className={toolBtn(hintsOpen)}>
-              <Lightbulb size={15} strokeWidth={1.9} />
-            </button>
-          </Tooltip>
-          <Tooltip label="Preview" shortcut="Ctrl+Alt+P">
-            <button onClick={togglePreview} className={toolBtn(previewOpen)}>
-              <Monitor size={15} strokeWidth={1.9} />
+          {/* ONE inspector toggle - the Changes/Agents/Commands switcher
+              lives inside the Inspector itself, so four separate titlebar
+              toggles were clutter. Reopens on the Changes tab. */}
+          <Tooltip label={inspectorOpen ? 'Close Inspector' : 'Open Inspector'}>
+            <button onClick={toggleInspector} className={toolBtn(inspectorOpen)}>
+              <PanelRight size={15} strokeWidth={1.9} />
             </button>
           </Tooltip>
 

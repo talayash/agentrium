@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
-import { Wrench, ChevronDown, FolderOpen, FileText, Clock, Settings, Brain, UserCog, type LucideIcon } from 'lucide-react';
+import { Wrench, ChevronDown, FolderOpen, FileText, Clock, Settings, Brain, UserCog, Monitor, type LucideIcon } from 'lucide-react';
 import { useAppStore } from '../../store/appStore';
+import { usePreviewStore } from '../../store/previewStore';
 import { Tooltip } from '../ui/Tooltip';
 
 interface ToolItem {
@@ -18,8 +19,10 @@ export function ToolsMenu() {
     openWorkspaceModal, openSnippetsModal, openSessionHistory,
     openSessionTimeline, openClaudeConfig, openMemoryEditor, openProfileModal,
   } = useAppStore();
+  const togglePreview = usePreviewStore((s) => s.toggleGlobal);
 
   const items: ToolItem[] = [
+    { id: 'preview',          label: 'Preview Panel',    icon: Monitor,    action: () => togglePreview() },
     { id: 'workspaces',       label: 'Workspaces',       icon: FolderOpen, action: () => openWorkspaceModal() },
     { id: 'snippets',         label: 'Snippets',         icon: FileText,   action: () => openSnippetsModal() },
     { id: 'session-history',  label: 'Session History',  icon: Clock,      action: () => openSessionHistory() },
