@@ -276,11 +276,8 @@ export function OrchestrationPanel() {
 
       {/* Footer */}
       <div className="p-2 border-t border-border">
-        <div className="flex items-center justify-between px-1">
+        <div className="flex items-center px-1">
           <span className="text-text-tertiary text-[10px]">Auto-refreshing every 3s</span>
-          <span className="text-text-tertiary text-[10px]">
-            <kbd className="bg-bg-elevated px-1 rounded text-[10px]">F4</kbd> to toggle
-          </span>
         </div>
       </div>
     </div>

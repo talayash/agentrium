@@ -112,8 +112,11 @@ export function Tooltip({ label, shortcut, side = 'bottom', disabled, children }
               ...(pos ? { left: pos.left, top: pos.top } : { left: 0, top: 0, visibility: 'hidden' as const }),
             }}
           >
+            {/* Shortcut chips are intentionally NOT rendered - the app shows
+                no keyboard-shortcut hints in the UI (user decision). The
+                prop is still accepted so call sites stay untouched, and it
+                still feeds the aria-label for screen readers. */}
             {label}
-            {shortcut && <span className="ml-2 text-text-tertiary">{shortcut}</span>}
           </div>,
           document.body,
         )}

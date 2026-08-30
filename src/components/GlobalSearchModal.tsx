@@ -405,21 +405,6 @@ export function GlobalSearchModal() {
             })}
         </div>
 
-        {/* Footer */}
-        <div className="px-4 py-2 border-t border-border flex items-center gap-4 text-[10px] text-text-tertiary">
-          <span>
-            <kbd className="px-1 py-0.5 bg-elevation-2 rounded border border-border font-mono">↑↓</kbd> navigate
-          </span>
-          <span>
-            <kbd className="px-1 py-0.5 bg-elevation-2 rounded border border-border font-mono">↵</kbd> open file
-          </span>
-          <span>
-            <kbd className="px-1 py-0.5 bg-elevation-2 rounded border border-border font-mono">esc</kbd> close
-          </span>
-          <span className="ml-auto">
-            <kbd className="px-1 py-0.5 bg-elevation-2 rounded border border-border font-mono">Aa</kbd> match case
-          </span>
-        </div>
       </motion.div>
     </motion.div>
   );

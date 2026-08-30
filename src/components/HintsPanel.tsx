@@ -135,15 +135,6 @@ export function HintsPanel() {
         ))}
       </div>
 
-      {/* Tip */}
-      <div className="p-2 border-t border-border">
-        <div className="bg-bg-primary ring-1 ring-border rounded-md p-2.5">
-          <p className="text-text-tertiary text-[11px] font-medium mb-0.5">Tip</p>
-          <p className="text-text-secondary text-[12px]">
-            Press <kbd className="bg-bg-elevated px-1 rounded text-[11px]">Ctrl+Shift+N</kbd> to open a new terminal
-          </p>
-        </div>
-      </div>
     </div>
   );
 }

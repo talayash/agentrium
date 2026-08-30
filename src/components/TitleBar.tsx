@@ -315,14 +315,6 @@ export function TitleBar() {
         >
           <SearchIcon size={14} strokeWidth={2} className="flex-shrink-0" />
           <span className="text-[12.5px] truncate">Search or run a command…</span>
-          <span className="ml-auto flex items-center gap-1 flex-shrink-0">
-            <kbd className="px-1.5 h-[18px] flex items-center rounded-[5px] bg-elevation-3 ring-1 ring-seam text-text-tertiary text-[10.5px] font-sans">
-              {isMac ? '⌘' : 'Ctrl'}
-            </kbd>
-            <kbd className="px-1.5 h-[18px] flex items-center rounded-[5px] bg-elevation-3 ring-1 ring-seam text-text-tertiary text-[10.5px] font-sans">
-              P
-            </kbd>
-          </span>
         </button>
       </div>
 

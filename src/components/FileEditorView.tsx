@@ -127,7 +127,7 @@ export function FileEditorView({ path }: FileEditorViewProps) {
             }}
             disabled={!dirty || tab.saving || tab.loading}
             className="flex items-center gap-1 h-5 px-1.5 rounded-md text-[10.5px] font-medium bg-accent-primary hover:bg-accent-secondary text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            title="Save (Ctrl+S)"
+            title="Save"
           >
             {tab.saving ? <Loader2 size={10} className="animate-spin" /> : <Save size={10} />}
             Save

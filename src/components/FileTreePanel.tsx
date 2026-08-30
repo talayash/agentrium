@@ -653,11 +653,6 @@ export function FileTreePanel() {
                   {item.icon}
                 </span>
                 <span className="flex-1">{item.label}</span>
-                {item.shortcut && (
-                  <span className="text-[10.5px] text-text-tertiary tabular-nums">
-                    {item.shortcut}
-                  </span>
-                )}
               </button>
             );
           })}
