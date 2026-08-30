@@ -27,6 +27,11 @@ export function TerminalAppearancePreview() {
   const cursorBlink = useAppStore((s) => s.terminalCursorBlink);
   const themeName = useAppStore((s) => s.terminalTheme);
   const bidi = useAppStore((s) => s.terminalBidi);
+  // Re-resolve 'auto' when the app appearance flips while Settings is open.
+  const themeMode = useAppStore((s) => s.themeMode);
+  const effectiveAppTheme: 'dark' | 'light' = themeMode === 'auto'
+    ? (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
+    : themeMode;
 
   // Construct once; live-apply settings via the second effect. Recreate only
   // on bidi change (Unicode11 addon attaches once at construction).
@@ -85,9 +90,9 @@ export function TerminalAppearancePreview() {
     terminal.options.lineHeight = lineHeight;
     terminal.options.cursorStyle = cursorStyle;
     terminal.options.cursorBlink = cursorBlink;
-    terminal.options.theme = resolveTerminalTheme(themeName);
+    terminal.options.theme = resolveTerminalTheme(themeName, undefined, effectiveAppTheme);
     fitRef.current?.fit();
-  }, [fontFamily, fontSize, lineHeight, cursorStyle, cursorBlink, themeName]);
+  }, [fontFamily, fontSize, lineHeight, cursorStyle, cursorBlink, themeName, effectiveAppTheme]);
 
   return (
     <div className="rounded-md ring-1 ring-border-light overflow-hidden bg-bg-elevated">

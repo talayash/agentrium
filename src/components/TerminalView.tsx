@@ -87,6 +87,12 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
   const scrollback = useAppStore((s) => s.terminalScrollback);
   const themeName = useAppStore((s) => s.terminalTheme);
   const accentColorHex = useAppStore((s) => s.accentColorHex);
+  // App appearance, resolved here (not from the DOM) so the terminal-theme
+  // effect re-runs the moment the user flips light/dark and 'auto' follows.
+  const themeMode = useAppStore((s) => s.themeMode);
+  const effectiveAppTheme: 'dark' | 'light' = themeMode === 'auto'
+    ? (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
+    : themeMode;
   const bidi = useAppStore((s) => s.terminalBidi);
   const scrollbarMode = useAppStore((s) => s.terminalScrollbarMode);
 
@@ -489,7 +495,7 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
     terminal.options.lineHeight = lineHeight;
     terminal.options.cursorStyle = cursorStyle;
     terminal.options.cursorBlink = cursorBlink;
-    terminal.options.theme = resolveTerminalTheme(themeName, accentColorHex);
+    terminal.options.theme = resolveTerminalTheme(themeName, accentColorHex, effectiveAppTheme);
     // Refit + push new dimensions to the PTY whenever cell metrics may have
     // changed. fit() is a no-op if cols/rows didn't actually shift.
     const prevCols = terminal.cols;
@@ -505,7 +511,7 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
     resizeTerminal(terminalId, terminal.cols, terminal.rows).catch((err) => {
       console.error(`Failed to resize terminal ${terminalId}:`, err); reportInvokeFailure('resize_terminal', err);
     });
-  }, [fontFamily, fontSize, lineHeight, cursorStyle, cursorBlink, themeName, accentColorHex, terminalId, resizeTerminal]);
+  }, [fontFamily, fontSize, lineHeight, cursorStyle, cursorBlink, themeName, accentColorHex, effectiveAppTheme, terminalId, resizeTerminal]);
 
   // Scrollbar visibility. The native xterm scrollbar (`.xterm-viewport`) is
   // transparent by default (see index.css); a class drives whether it shows.

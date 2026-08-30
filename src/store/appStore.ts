@@ -547,7 +547,7 @@ export const useAppStore = create<AppState>()(
       terminalCursorStyle: 'bar' as TerminalCursorStyle,
       terminalCursorBlink: true,
       terminalScrollback: 50000,
-      terminalTheme: 'dark' as TerminalThemeName,
+      terminalTheme: 'auto' as TerminalThemeName, // follow the app's light/dark appearance
       terminalBidi: false,
       terminalScrollbarMode: 'auto-hide' as TerminalScrollbarMode,
 
@@ -1171,7 +1171,7 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: 'claude-terminal-app',
-      version: 7,
+      version: 8,
       migrate: (persistedState, version) => {
         const s = (persistedState as Partial<AppState>) ?? {};
         if (version < 1) {
@@ -1236,6 +1236,12 @@ export const useAppStore = create<AppState>()(
           // everyone to light; this flips them onto the new default - light
           // stays one ThemeToggle click away).
           s.themeMode = 'dark';
+        }
+        if (version < 8) {
+          // The terminal now follows the app's light/dark appearance by
+          // default instead of being pinned to one palette. Explicit
+          // dark/light stay available in Settings → Terminal.
+          s.terminalTheme = 'auto';
         }
         return s as AppState;
       },
