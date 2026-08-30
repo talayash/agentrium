@@ -131,7 +131,7 @@ export function Sidebar() {
       <div className="p-2">
         <button
           onClick={() => openNewTerminalModal()}
-          className="w-full h-10 rounded-xl bg-accent-primary text-white text-[13px] font-semibold flex items-center justify-center gap-2 shadow-[0_4px_12px_var(--accent-glow-md),inset_0_1px_0_rgba(255,255,255,0.2)] hover:bg-accent-secondary active:scale-[0.98] transition-[background-color,transform] duration-100"
+          className="w-full h-10 rounded-xl bg-accent-primary text-white text-[13px] font-semibold flex items-center justify-center gap-2 shadow-[0_4px_12px_var(--accent-glow-md)] hover:bg-accent-secondary active:scale-[0.98] transition-[background-color,transform] duration-100"
         >
           <Plus size={15} strokeWidth={2.5} />
           New Session

@@ -216,6 +216,12 @@ interface AppState {
   unpinTab: (id: string) => void;
   toggleTabPin: (id: string) => void;
 
+  // Pinned profiles - float chosen profiles to the top of the New Session
+  // list. Persisted by profile id (profiles live in SQLite; the pin is
+  // UI-ordering metadata, same idea as pinnedTabIds).
+  pinnedProfileIds: string[];
+  toggleProfilePin: (id: string) => void;
+
   // Command Palette (F1)
   commandPaletteOpen: boolean;
   // Frecency: per-action usage so the palette can surface a "Recent" group and
@@ -634,6 +640,7 @@ export const useAppStore = create<AppState>()(
       // Pinned tabs - id list only; terminals themselves remain ephemeral in
       // terminalStore. See src/lib/pinnedTabs.ts for the pure helpers.
       pinnedTabIds: [],
+      pinnedProfileIds: [],
 
       // Command Palette (F1)
       commandPaletteOpen: false,
@@ -1070,6 +1077,7 @@ export const useAppStore = create<AppState>()(
       pinTab: (id) => set((s) => ({ pinnedTabIds: addPin(s.pinnedTabIds, id) })),
       unpinTab: (id) => set((s) => ({ pinnedTabIds: removePin(s.pinnedTabIds, id) })),
       toggleTabPin: (id) => set((s) => ({ pinnedTabIds: togglePin(s.pinnedTabIds, id) })),
+      toggleProfilePin: (id) => set((s) => ({ pinnedProfileIds: togglePin(s.pinnedProfileIds, id) })),
 
       // Command Palette actions (F1)
       recordPaletteUse: (key) =>
@@ -1340,6 +1348,7 @@ export const useAppStore = create<AppState>()(
         // A stable-key persistence pass (using working_directory +
         // claude_session_id) is queued as a follow-up.
         pinnedTabIds: state.pinnedTabIds,
+        pinnedProfileIds: state.pinnedProfileIds,
       }),
     }
   )

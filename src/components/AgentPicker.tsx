@@ -36,10 +36,7 @@ export function AgentPicker({ value, onChange, className = '' }: AgentPickerProp
             }`}
           >
             <BrandIcon kind={spec.kind} />
-            <div className="text-center leading-tight">
-              <p className="text-text-primary text-[12px] font-medium">{spec.displayName}</p>
-              <p className="text-text-tertiary text-[10px] font-mono">{spec.binary}</p>
-            </div>
+            <p className="text-text-primary text-[12px] font-medium text-center leading-tight">{spec.displayName}</p>
           </button>
         );
       })}

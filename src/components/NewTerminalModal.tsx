@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FolderOpen, Terminal, Zap, GitBranch, GitFork, Plus, Loader2, ChevronDown, Check, Pencil, SlidersHorizontal } from 'lucide-react';
+import { FolderOpen, Terminal, Zap, GitBranch, GitFork, Plus, Loader2, ChevronDown, Check, Pencil, Pin, PinOff, Trash2, SlidersHorizontal } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
@@ -8,6 +8,7 @@ import { homeDir } from '@tauri-apps/api/path';
 import { open } from '@tauri-apps/plugin-dialog';
 import type { WorktreeInfo, WorktreeDetectResult } from '../types/git';
 import { reportInvokeFailure } from '../lib/errorReporter';
+import { toast } from '../store/toastStore';
 import { filterArgsForAgent, specFor, type AgentKind } from '../lib/agents';
 import { AgentPicker } from './AgentPicker';
 import { Button } from './ui/Button';
@@ -51,6 +52,8 @@ const TAG_COLORS = [
 
 export function NewTerminalModal() {
   const { closeNewTerminalModal, defaultAgentArgs, openProfileModal, profileModalOpen, gridMode, addToGrid } = useAppStore();
+  const pinnedProfileIds = useAppStore((s) => s.pinnedProfileIds);
+  const toggleProfilePin = useAppStore((s) => s.toggleProfilePin);
   const { terminals, createTerminal, createShellTerminalTab } = useTerminalStore();
 
   const [profiles, setProfiles] = useState<ConfigProfile[]>([]);
@@ -71,6 +74,24 @@ export function NewTerminalModal() {
   const preselectedAgent = useAppStore.getState().newTerminalPreselectedAgent;
   const [selectedAgent, setSelectedAgent] = useState<AgentKind>(preselectedAgent ?? 'claude');
   const [showAdvanced, setShowAdvanced] = useState(false);
+  // Two-step inline delete: first trash click arms this id, the red confirm
+  // deletes. Leaves the row (or picking another) disarms.
+  const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
+
+  const handleDeleteProfile = async (id: string) => {
+    setConfirmingDeleteId(null);
+    try {
+      const name = profiles.find((p) => p.id === id)?.name || 'Profile';
+      await invoke('delete_profile', { id });
+      if (selectedProfileId === id) setSelectedProfileId(null);
+      if (pinnedProfileIds.includes(id)) toggleProfilePin(id);
+      await loadProfiles();
+      toast.success('Profile deleted', `"${name}" has been removed.`);
+    } catch (err) {
+      toast.error('Delete failed', String(err));
+      reportInvokeFailure('delete_profile', err);
+    }
+  };
 
   // Worktree state
   const [worktreeDetect, setWorktreeDetect] = useState<WorktreeDetectResult | null>(null);
@@ -425,7 +446,7 @@ export function NewTerminalModal() {
                   New Profile
                 </button>
               </div>
-              <div className="rounded-xl ring-1 ring-seam bg-elevation-0 divide-y divide-[var(--seam)] max-h-[218px] overflow-y-auto">
+              <div className="rounded-xl ring-1 ring-seam bg-elevation-3 divide-y divide-[var(--seam)] max-h-[218px] overflow-y-auto">
                 <button
                   type="button"
                   aria-pressed={selectedProfileId === null}
@@ -442,34 +463,74 @@ export function NewTerminalModal() {
                     <Check size={14} className="text-accent-primary flex-shrink-0" strokeWidth={2.25} />
                   )}
                 </button>
-                {profiles.map((profile) => {
+                {[...profiles.filter((p) => pinnedProfileIds.includes(p.id)),
+                  ...profiles.filter((p) => !pinnedProfileIds.includes(p.id))].map((profile) => {
                   const isSel = selectedProfileId === profile.id;
+                  const isPinned = pinnedProfileIds.includes(profile.id);
+                  const isConfirmingDelete = confirmingDeleteId === profile.id;
                   const info = [profile.description, profile.working_directory].filter(Boolean).join(' · ');
                   return (
-                    <div key={profile.id} className="group relative">
+                    <div
+                      key={profile.id}
+                      className="group relative"
+                      onMouseLeave={() => { if (isConfirmingDelete) setConfirmingDeleteId(null); }}
+                    >
                       <button
                         type="button"
                         aria-pressed={isSel}
                         onClick={() => setSelectedProfileId(profile.id)}
-                        className={`w-full flex items-center gap-2.5 px-3 h-[42px] pr-16 text-left transition-colors ${
+                        className={`w-full flex items-center gap-2 px-3 h-[42px] pr-28 text-left transition-colors ${
                           isSel ? 'bg-accent-primary/10' : 'hover:bg-fill-hover'
                         }`}
                       >
+                        {isPinned && (
+                          <Pin size={11} className="text-accent-primary flex-shrink-0" aria-label="Pinned" />
+                        )}
                         <div className="flex-1 min-w-0">
                           <p className="text-text-primary text-[12.5px] font-medium truncate leading-tight">{profile.name}</p>
                           {info && <p className="text-text-tertiary text-[11px] truncate leading-tight">{info}</p>}
                         </div>
                       </button>
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); openProfileModal(profile.id); }}
-                          title="Edit profile"
-                          aria-label={`Edit profile ${profile.name}`}
-                          className="w-6 h-6 rounded-md flex items-center justify-center text-text-tertiary opacity-0 group-hover:opacity-100 hover:bg-fill-active hover:text-text-primary transition-[opacity,background-color]"
-                        >
-                          <Pencil size={12} />
-                        </button>
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                        {isConfirmingDelete ? (
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); void handleDeleteProfile(profile.id); }}
+                            className="h-6 px-2 rounded-md bg-error text-white text-[11px] font-medium hover:brightness-110 transition-[filter]"
+                          >
+                            Delete?
+                          </button>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); toggleProfilePin(profile.id); }}
+                              title={isPinned ? 'Unpin' : 'Pin to top'}
+                              aria-label={isPinned ? `Unpin ${profile.name}` : `Pin ${profile.name} to top`}
+                              className="w-6 h-6 rounded-md flex items-center justify-center text-text-tertiary opacity-0 group-hover:opacity-100 hover:bg-fill-active hover:text-text-primary transition-[opacity,background-color]"
+                            >
+                              {isPinned ? <PinOff size={12} /> : <Pin size={12} />}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); openProfileModal(profile.id); }}
+                              title="Edit profile"
+                              aria-label={`Edit profile ${profile.name}`}
+                              className="w-6 h-6 rounded-md flex items-center justify-center text-text-tertiary opacity-0 group-hover:opacity-100 hover:bg-fill-active hover:text-text-primary transition-[opacity,background-color]"
+                            >
+                              <Pencil size={12} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); setConfirmingDeleteId(profile.id); }}
+                              title="Delete profile"
+                              aria-label={`Delete profile ${profile.name}`}
+                              className="w-6 h-6 rounded-md flex items-center justify-center text-text-tertiary opacity-0 group-hover:opacity-100 hover:bg-error/15 hover:text-error transition-[opacity,background-color,color]"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </>
+                        )}
                         {isSel && (
                           <Check size={14} className="text-accent-primary flex-shrink-0" strokeWidth={2.25} />
                         )}
@@ -491,12 +552,12 @@ export function NewTerminalModal() {
                 type="text"
                 value={workingDirectory}
                 onChange={(e) => setWorkingDirectory(e.target.value)}
-                className="flex-1 bg-elevation-0 ring-1 ring-seam rounded-lg h-9 px-3 text-text-primary text-[13px] focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 transition-colors"
+                className="flex-1 bg-elevation-3 ring-1 ring-seam rounded-lg h-9 px-3 text-text-primary text-[13px] focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 transition-colors"
                 placeholder={isMac ? "/path/to/project" : "C:\\path\\to\\project"}
               />
               <button
                 onClick={handleBrowseDirectory}
-                className="px-3 h-9 bg-elevation-0 ring-1 ring-seam rounded-lg hover:bg-fill-hover transition-colors"
+                className="px-3 h-9 bg-elevation-3 ring-1 ring-seam rounded-lg hover:bg-fill-hover transition-colors"
               >
                 <FolderOpen size={16} className="text-text-secondary" />
               </button>
@@ -587,7 +648,7 @@ export function NewTerminalModal() {
                           value={newBranchName}
                           onChange={(e) => setNewBranchName(e.target.value)}
                           placeholder="feature/my-branch"
-                          className="w-full bg-bg-secondary ring-1 ring-border-light rounded h-8 px-2.5 text-text-primary text-[12px] font-mono focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 transition-colors"
+                          className="w-full bg-elevation-3 ring-1 ring-seam rounded-md h-8 px-2.5 text-text-primary text-[12px] font-mono focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 transition-colors"
                         />
                       </div>
                       <div>
@@ -657,7 +718,7 @@ export function NewTerminalModal() {
               value={nickname}
               onChange={(e) => setNickname(e.target.value)}
               placeholder="e.g., My Project, Backend API"
-              className="w-full bg-elevation-0 ring-1 ring-seam rounded-lg h-9 px-3 text-text-primary text-[13px] focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 transition-colors"
+              className="w-full bg-elevation-3 ring-1 ring-seam rounded-lg h-9 px-3 text-text-primary text-[13px] focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 transition-colors"
             />
           </div>
 
@@ -720,7 +781,7 @@ export function NewTerminalModal() {
                       <textarea
                         value={claudeArgs.join('\n')}
                         onChange={(e) => setClaudeArgs(e.target.value.split('\n').filter(Boolean))}
-                        className="w-full bg-elevation-0 ring-1 ring-seam rounded-lg py-2 px-3 text-text-primary text-[13px] focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 font-mono h-20 resize-none transition-colors"
+                        className="w-full bg-elevation-3 ring-1 ring-seam rounded-lg py-2 px-3 text-text-primary text-[13px] focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 font-mono h-20 resize-none transition-colors"
                         placeholder={specFor(selectedAgent).defaultArgsHint}
                       />
                       <p className="text-text-tertiary text-[11px] mt-1 truncate">
@@ -788,7 +849,7 @@ export function NewTerminalModal() {
         </div>
 
         {/* Footer */}
-        <div className="flex justify-end gap-2 p-3 border-t border-seam bg-elevation-2">
+        <div className="flex justify-end gap-2 p-3 border-t border-seam">
           <Button variant="ghost" onClick={closeNewTerminalModal}>
             Cancel
           </Button>

@@ -15,10 +15,10 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 // All variants follow the user's accent token - no hardcoded brand colors.
-// Primary gets a faint top-light inset (Apple push-button "catching light").
+// Primary is a flat accent fill - no top-light inset (user preference).
 const VARIANTS: Record<ButtonVariant, string> = {
   primary:
-    'bg-accent-primary hover:bg-accent-secondary text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_1px_2px_rgba(0,0,0,0.22)]',
+    'bg-accent-primary hover:bg-accent-secondary text-white',
   secondary:
     'bg-elevation-2 ring-1 ring-border-light text-text-secondary hover:text-text-primary hover:bg-elevation-3',
   ghost: 'text-text-secondary hover:text-text-primary hover:bg-fill-hover',

@@ -454,6 +454,7 @@ describe('appStore - persist partialize', () => {
     'claudeBinaryPathOverride',
     // Pinned tabs (Phase 4a)
     'pinnedTabIds',
+    'pinnedProfileIds',
   ].sort();
 
   it('persists exactly the allow-listed keys, and no transient ones', () => {
