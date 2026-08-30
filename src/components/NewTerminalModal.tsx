@@ -10,6 +10,13 @@ import type { WorktreeInfo, WorktreeDetectResult } from '../types/git';
 import { reportInvokeFailure } from '../lib/errorReporter';
 import { toast } from '../store/toastStore';
 import { filterArgsForAgent, specFor, type AgentKind } from '../lib/agents';
+import {
+  CLAUDE_MODEL_FAMILIES,
+  familyLabel,
+  isClaudeModelAlias,
+  modelsInFamily,
+  type ClaudeModelFamily,
+} from '../lib/claudeModels';
 import { AgentPicker } from './AgentPicker';
 import { Button } from './ui/Button';
 import { Modal } from './ui/Modal';
@@ -66,7 +73,11 @@ export function NewTerminalModal() {
   const [error, setError] = useState<string | null>(null);
   const [defaultDirectory, setDefaultDirectory] = useState('');
   const [useWorktree, setUseWorktree] = useState(false);
-  const [selectedModel, setSelectedModel] = useState<'default' | 'opus' | 'sonnet' | 'haiku'>('default');
+  // Model picker is two-tier: family row selects the model group, variant row
+  // (only shown when the family has >1 variant) picks the specific alias.
+  // 'default' is a synthetic family/alias meaning "don't pass --model".
+  const [selectedModelFamily, setSelectedModelFamily] = useState<ClaudeModelFamily>('default');
+  const [selectedModel, setSelectedModel] = useState<string>('default');
   const [selectedEffort, setSelectedEffort] = useState<'default' | 'low' | 'medium' | 'high'>('default');
   const [plainShell, setPlainShell] = useState(false);
   // Welcome-screen agent cards open this modal with an agent preselected;
@@ -338,8 +349,20 @@ export function NewTerminalModal() {
           nickname || undefined,
         );
       } else {
+        // Reject shell metacharacters, with one narrow exception: bracketed
+        // model aliases like `sonnet[1m]` are legitimate Claude Code inputs
+        // and would otherwise be unreachable from this UI. `[` and `]` are
+        // only accepted when the arg is a known model alias (bare or
+        // `--model=alias`), and only for Claude - other agents don't
+        // recognize the `[1m]` form.
         const dangerousPattern = /[;&|`$(){}<>^\n\r'"\\~*?[\]!#\t]/;
-        for (const arg of claudeArgs) {
+        for (let i = 0; i < claudeArgs.length; i++) {
+          const arg = claudeArgs[i];
+          const prev = claudeArgs[i - 1];
+          const bareKnownModel = prev === '--model' && isClaudeModelAlias(arg);
+          const eqMatch = arg.match(/^--model=(.+)$/);
+          const eqKnownModel = eqMatch !== null && isClaudeModelAlias(eqMatch[1]);
+          if (bareKnownModel || eqKnownModel) continue;
           if (dangerousPattern.test(arg)) {
             setError(`Invalid character in argument: "${arg}". Remove shell metacharacters.`);
             setIsCreating(false);
@@ -725,24 +748,62 @@ export function NewTerminalModal() {
           {!plainShell && selectedAgent === 'claude' && (
           <div>
             <label className="block text-text-tertiary text-[11px] font-semibold uppercase tracking-wider mb-2">Model</label>
-            <div className="flex gap-1.5">
-              {(['default', 'opus', 'sonnet', 'haiku'] as const).map((model) => (
-                <button
-                  key={model}
-                  onClick={() => setSelectedModel(model)}
-                  className={`px-3 py-1.5 rounded-lg text-[12px] font-medium transition-colors ${
-                    selectedModel === model
-                      ? model === 'opus' ? 'bg-purple-500/20 text-purple-400 ring-1 ring-purple-500/30'
-                      : model === 'sonnet' ? 'bg-blue-500/20 text-blue-400 ring-1 ring-blue-500/30'
-                      : model === 'haiku' ? 'bg-green-500/20 text-green-400 ring-1 ring-green-500/30'
-                      : 'bg-accent-primary/10 text-accent-primary ring-1 ring-accent-primary/30'
-                      : 'bg-fill-hover ring-1 ring-seam text-text-secondary hover:bg-fill-active hover:text-text-primary'
-                  }`}
-                >
-                  {model === 'default' ? 'Default' : model.charAt(0).toUpperCase() + model.slice(1)}
-                </button>
-              ))}
+            {/* Family row - flat buttons, one per model family. A flat row
+                past ~4 entries breaks the modal's width budget, so variants
+                (opus[1m], sonnet[1m], opusplan) live in a second tier below. */}
+            <div className="flex flex-wrap gap-1.5">
+              {CLAUDE_MODEL_FAMILIES.map((family) => {
+                const isSel = selectedModelFamily === family;
+                const familyClasses = family === 'default'
+                  ? 'bg-accent-primary/10 text-accent-primary ring-1 ring-accent-primary/30'
+                  : family === 'fable' ? 'bg-amber-500/20 text-amber-400 ring-1 ring-amber-500/30'
+                  : family === 'opus' ? 'bg-purple-500/20 text-purple-400 ring-1 ring-purple-500/30'
+                  : family === 'sonnet' ? 'bg-blue-500/20 text-blue-400 ring-1 ring-blue-500/30'
+                  : 'bg-green-500/20 text-green-400 ring-1 ring-green-500/30';
+                return (
+                  <button
+                    key={family}
+                    onClick={() => {
+                      setSelectedModelFamily(family);
+                      // Picking a family always selects that family's base
+                      // alias (e.g. Opus → 'opus'). Users then click a
+                      // variant chip below to switch to opus[1m] or opusplan.
+                      const base = modelsInFamily(family)[0];
+                      if (base) setSelectedModel(base.alias);
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-[12px] font-medium transition-colors ${
+                      isSel ? familyClasses : 'bg-fill-hover ring-1 ring-seam text-text-secondary hover:bg-fill-active hover:text-text-primary'
+                    }`}
+                  >
+                    {familyLabel(family)}
+                  </button>
+                );
+              })}
             </div>
+            {/* Variant chip row - only rendered when the selected family has
+                more than one variant, so single-variant families (Fable,
+                Haiku, Default) don't leave dead space. */}
+            {modelsInFamily(selectedModelFamily).length > 1 && (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {modelsInFamily(selectedModelFamily).map((m) => {
+                  const isSel = selectedModel === m.alias;
+                  return (
+                    <button
+                      key={m.alias}
+                      onClick={() => setSelectedModel(m.alias)}
+                      className={`px-2.5 py-1 rounded-md text-[11.5px] font-medium transition-colors ${
+                        isSel
+                          ? `${m.badgeClasses} ${m.ringClasses}`
+                          : 'bg-fill-hover ring-1 ring-seam text-text-secondary hover:bg-fill-active hover:text-text-primary'
+                      }`}
+                      title={m.fullLabel}
+                    >
+                      {m.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
           )}
 

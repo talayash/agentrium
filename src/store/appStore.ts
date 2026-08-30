@@ -170,8 +170,12 @@ interface AppState {
   vcsDefaultMergeStrategy: MergeStrategy;
   vcsChangelistsConfirmDelete: boolean;
 
-  // Claude Code defaults (NEW v1.22.0)
-  claudeDefaultModel: 'opus' | 'sonnet' | 'haiku' | null;
+  // Claude Code defaults (NEW v1.22.0).
+  // Any alias from `CLAUDE_MODELS` (opus, sonnet, haiku, fable, sonnet[1m],
+  // etc.) or null for no preference. Left as `string | null` so the array
+  // in claudeModels.ts stays the single source of truth and this doesn't
+  // need editing every time a new alias lands.
+  claudeDefaultModel: string | null;
   claudeBinaryPathOverride: string;
 
   // Changes panel
@@ -371,7 +375,7 @@ interface AppState {
   setVcsChangelistsConfirmDelete: (enabled: boolean) => void;
 
   // Claude setters (NEW v1.22.0)
-  setClaudeDefaultModel: (model: 'opus' | 'sonnet' | 'haiku' | null) => void;
+  setClaudeDefaultModel: (model: string | null) => void;
   setClaudeBinaryPathOverride: (path: string) => void;
 
   setPinnedRepoPath: (path: string | null) => void;
@@ -602,7 +606,7 @@ export const useAppStore = create<AppState>()(
       vcsChangelistsConfirmDelete: true,
 
       // Claude defaults (NEW v1.22.0)
-      claudeDefaultModel: null as 'opus' | 'sonnet' | 'haiku' | null,
+      claudeDefaultModel: null as string | null,
       claudeBinaryPathOverride: '',
 
       // Changes panel

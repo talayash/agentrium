@@ -160,6 +160,14 @@ impl TerminalManager {
         '\'', '"', '\\', '~', '*', '?', '[', ']', '!', '\t', '#',
     ];
 
+    /// Known Claude Code model aliases. Only these values may contain `[`/`]`
+    /// (the 1M-context variants use that form: `opus[1m]`, `sonnet[1m]`).
+    /// Kept in sync with src/lib/claudeModels.ts - update both together.
+    const KNOWN_CLAUDE_MODEL_ALIASES: &'static [&'static str] = &[
+        "default", "fable", "opus", "opus[1m]", "opusplan",
+        "sonnet", "sonnet[1m]", "haiku",
+    ];
+
     /// Environment variable names that must not be overridden by user profiles
     const BLOCKED_ENV_VARS: &'static [&'static str] = &[
         "PATH", "PATHEXT", "COMSPEC", "SYSTEMROOT", "WINDIR",
@@ -189,8 +197,21 @@ impl TerminalManager {
         // None when cost tracking is disabled / the receiver failed to start.
         otel_endpoint: Option<String>,
     ) -> Result<TerminalConfig, String> {
-        // Validate claude_args: reject any argument containing shell metacharacters
-        for arg in &claude_args {
+        // Validate claude_args: reject any argument containing shell
+        // metacharacters. Narrow exception: bracketed known-model aliases
+        // (`sonnet[1m]`, `opus[1m]`) are legitimate Claude CLI inputs and
+        // are the only way to reach 1M-context variants. `[` / `]` are
+        // still blocked in every other position.
+        for (i, arg) in claude_args.iter().enumerate() {
+            let prev = if i > 0 { claude_args.get(i - 1).map(|s| s.as_str()) } else { None };
+            let bare_known_model = prev == Some("--model")
+                && Self::KNOWN_CLAUDE_MODEL_ALIASES.contains(&arg.as_str());
+            let eq_known_model = arg.strip_prefix("--model=")
+                .map(|v| Self::KNOWN_CLAUDE_MODEL_ALIASES.contains(&v))
+                .unwrap_or(false);
+            if bare_known_model || eq_known_model {
+                continue;
+            }
             if arg.contains(Self::SHELL_METACHARACTERS) {
                 return Err(error_reporter::user_err(format!(
                     "Invalid character in argument: \"{}\". Shell metacharacters are not allowed.",

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAppStore } from '../../../store/appStore';
 import { PageHeader, PageSection, SettingRow, Toggle } from '../SettingRow';
 import { registerSetting } from '../index';
+import { CLAUDE_MODELS } from '../../../lib/claudeModels';
 
 const cat = { group: 'claude', page: 'defaults' } as const;
 ['default-args', 'default-model', 'binary-path'].forEach((id) =>
@@ -47,14 +48,16 @@ export default function ClaudeDefaultsPage() {
             value={claudeDefaultModel ?? ''}
             onChange={(e) => {
               const v = e.target.value;
-              setClaudeDefaultModel(v === '' ? null : (v as 'opus' | 'sonnet' | 'haiku'));
+              setClaudeDefaultModel(v === '' ? null : v);
             }}
             className="bg-elevation-0 text-text-primary text-[12px] px-2 py-1 rounded ring-1 ring-border-light"
           >
             <option value="">No preference</option>
-            <option value="opus">Opus</option>
-            <option value="sonnet">Sonnet</option>
-            <option value="haiku">Haiku</option>
+            {/* Skip the synthetic 'default' alias - "No preference" already
+                covers that. */}
+            {CLAUDE_MODELS.filter(m => m.alias !== 'default').map((m) => (
+              <option key={m.alias} value={m.alias}>{m.fullLabel}</option>
+            ))}
           </select>
         </SettingRow>
       </PageSection>
