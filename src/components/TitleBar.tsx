@@ -179,12 +179,10 @@ export function TitleBar() {
           <img src={appIcon} alt="Agentrium" className="w-[30px] h-[30px]" draggable={false} />
         </span>
 
-        {/* Project breadcrumb - IntelliJ main-toolbar project widget */}
+        {/* Project breadcrumb - static status display, not a control (user
+            decision: no click target, no chevron). */}
         <Tooltip label={active?.config.working_directory || 'No active session'}>
-        <button
-          onClick={openCommandPalette}
-          className="no-drag group flex items-center gap-1.5 h-7 ml-1 pl-2 pr-2 rounded-md hover:bg-fill-hover transition-colors max-w-[360px]"
-        >
+        <div className="flex items-center gap-1.5 h-7 ml-1 pl-2 pr-2 max-w-[360px] cursor-default select-none">
           <span className={`w-1.5 h-1.5 rounded-full ${statusDot} flex-shrink-0`} />
           {breadcrumb.sub && (
             <>
@@ -197,12 +195,7 @@ export function TitleBar() {
           <span className="text-text-primary text-[12px] font-medium truncate">
             {breadcrumb.project}
           </span>
-          <ChevronDown
-            size={11}
-            strokeWidth={2}
-            className="text-text-tertiary group-hover:text-text-secondary flex-shrink-0"
-          />
-        </button>
+        </div>
         </Tooltip>
 
         {/* Branch switcher */}

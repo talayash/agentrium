@@ -48,34 +48,36 @@ export const overlayMotion = {
   transition: { duration: DUR.base, ease: EASE_OUT },
 };
 
-/** Centered dialog: materialize - scale+rise on a spring, quick fade out
- *  along the same path (spatial consistency: exit mirrors entry). */
+/** Centered dialog: materialize - scale+rise on a lightly bouncy spring so
+ *  the window visibly "lands" (user asked for livelier motion), quick fade
+ *  out along the same path (spatial consistency: exit mirrors entry). */
 export const dialogMotion = {
-  initial: { opacity: 0, scale: 0.96, y: 8 },
+  initial: { opacity: 0, scale: 0.92, y: 14 },
   animate: {
     opacity: 1,
     scale: 1,
     y: 0,
-    transition: { ...SPRING_DEFAULT, opacity: { duration: DUR.base, ease: EASE_OUT } },
+    transition: { ...SPRING_DRAWER, opacity: { duration: DUR.base, ease: EASE_OUT } },
   },
   exit: {
     opacity: 0,
-    scale: 0.97,
-    y: 6,
+    scale: 0.96,
+    y: 8,
     transition: { duration: DUR.fast, ease: EASE_OUT },
   },
 };
 
-/** Popover / menu: quick pop from its origin. Pair with a transform-origin
- *  anchored to the trigger so it grows out of what opened it. */
+/** Popover / menu: quick pop from its origin with a touch of overshoot.
+ *  Pair with a transform-origin anchored to the trigger so it grows out of
+ *  what opened it. */
 export const popMotion = {
-  initial: { opacity: 0, scale: 0.95 },
+  initial: { opacity: 0, scale: 0.9 },
   animate: {
     opacity: 1,
     scale: 1,
-    transition: { ...SPRING_SNAPPY, opacity: { duration: DUR.fast, ease: EASE_OUT } },
+    transition: { type: 'spring', bounce: 0.18, duration: 0.28, opacity: { duration: DUR.fast, ease: EASE_OUT } },
   },
-  exit: { opacity: 0, scale: 0.97, transition: { duration: DUR.fast, ease: EASE_OUT } },
+  exit: { opacity: 0, scale: 0.96, transition: { duration: DUR.fast, ease: EASE_OUT } },
 };
 
 /** Edge drawer slide-in on a sheet spring. `offset` is the off-screen X

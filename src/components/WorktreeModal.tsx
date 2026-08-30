@@ -297,16 +297,7 @@ export function WorktreeModal() {
                       </div>
                     )}
                   </div>
-                  <div className="flex gap-2 pt-4 border-t border-border">
-                    <Button
-                      variant="primary"
-                      onClick={handleCreateWorktree}
-                      disabled={!newBranchName.trim()}
-                      loading={creating}
-                      icon={<Plus size={14} />}
-                    >
-                      {creating ? 'Creating...' : 'Create Worktree'}
-                    </Button>
+                  <div className="flex justify-end gap-2 pt-4 border-t border-border">
                     <Button
                       variant="ghost"
                       onClick={() => {
@@ -315,6 +306,15 @@ export function WorktreeModal() {
                       }}
                     >
                       Cancel
+                    </Button>
+                    <Button
+                      variant="primary"
+                      onClick={handleCreateWorktree}
+                      disabled={!newBranchName.trim()}
+                      loading={creating}
+                      icon={<Plus size={14} />}
+                    >
+                      {creating ? 'Creating...' : 'Create Worktree'}
                     </Button>
                   </div>
                 </motion.div>
@@ -378,15 +378,7 @@ export function WorktreeModal() {
                     )}
                   </div>
 
-                  <div className="flex gap-2 pt-4 border-t border-border">
-                    <Button
-                      variant="primary"
-                      onClick={handleOpenTerminal}
-                      loading={openingTerminal}
-                      icon={<Terminal size={14} />}
-                    >
-                      {openingTerminal ? 'Opening...' : 'Open Terminal'}
-                    </Button>
+                  <div className="flex justify-end gap-2 pt-4 border-t border-border">
                     {!selectedWorktree.is_main && (
                       <Button
                         variant="danger"
@@ -397,6 +389,14 @@ export function WorktreeModal() {
                         {removing ? 'Removing...' : 'Remove'}
                       </Button>
                     )}
+                    <Button
+                      variant="primary"
+                      onClick={handleOpenTerminal}
+                      loading={openingTerminal}
+                      icon={<Terminal size={14} />}
+                    >
+                      {openingTerminal ? 'Opening...' : 'Open Terminal'}
+                    </Button>
                   </div>
                 </motion.div>
               ) : (

@@ -206,7 +206,14 @@ export function WorkspaceModal() {
                   </div>
                 </div>
 
-                <div className="flex gap-2 pt-4 border-t border-border">
+                <div className="flex justify-end gap-2 pt-4 border-t border-border">
+                  <Button
+                    variant="danger"
+                    onClick={handleDeleteWorkspace}
+                    icon={<Trash2 size={14} />}
+                  >
+                    Delete
+                  </Button>
                   <Button
                     variant="primary"
                     onClick={handleLoadWorkspace}
@@ -215,13 +222,6 @@ export function WorkspaceModal() {
                     icon={<Play size={14} />}
                   >
                     {loading ? 'Loading...' : 'Load Workspace'}
-                  </Button>
-                  <Button
-                    variant="danger"
-                    onClick={handleDeleteWorkspace}
-                    icon={<Trash2 size={14} />}
-                  >
-                    Delete
                   </Button>
                 </div>
               </>

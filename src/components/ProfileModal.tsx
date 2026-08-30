@@ -425,15 +425,9 @@ export function ProfileModal() {
                   </div>
                 )}
 
-                <div className="flex gap-2 pt-4 border-t border-seam">
-                  <Button
-                    variant="primary"
-                    onClick={handleSaveProfile}
-                    icon={<Save size={14} />}
-                  >
-                    Save Profile
-                  </Button>
-
+                {/* LTR action-row convention: primary lives at the far right,
+                    destructive/secondary to its left. */}
+                <div className="flex justify-end gap-2 pt-4 border-t border-seam">
                   {!isCreating && (
                     <Button
                       variant="danger"
@@ -443,6 +437,13 @@ export function ProfileModal() {
                       Delete
                     </Button>
                   )}
+                  <Button
+                    variant="primary"
+                    onClick={handleSaveProfile}
+                    icon={<Save size={14} />}
+                  >
+                    Save Profile
+                  </Button>
                 </div>
               </div>
             ) : (

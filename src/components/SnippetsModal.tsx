@@ -238,16 +238,14 @@ export function SnippetsModal() {
                     className="w-full h-full bg-bg-primary ring-1 ring-border-light rounded-md py-2 px-3 text-text-primary text-[13px] font-mono focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 resize-none transition-colors"
                   />
                 </div>
-                <div className="flex gap-2 p-3 border-t border-border">
+                <div className="flex justify-end gap-2 p-3 border-t border-border">
                   <Button
-                    variant="primary"
+                    variant="ghost"
                     size="sm"
-                    onClick={handleSave}
-                    disabled={!editTitle.trim() || !editContent.trim()}
-                    icon={<Save size={14} />}
+                    onClick={() => { setEditing(false); if (!selectedSnippet) { setEditTitle(''); setEditContent(''); } }}
                     className="h-8"
                   >
-                    Save
+                    Cancel
                   </Button>
                   {activeTerminalId && (
                     <button
@@ -260,12 +258,14 @@ export function SnippetsModal() {
                     </button>
                   )}
                   <Button
-                    variant="ghost"
+                    variant="primary"
                     size="sm"
-                    onClick={() => { setEditing(false); if (!selectedSnippet) { setEditTitle(''); setEditContent(''); } }}
+                    onClick={handleSave}
+                    disabled={!editTitle.trim() || !editContent.trim()}
+                    icon={<Save size={14} />}
                     className="h-8"
                   >
-                    Cancel
+                    Save
                   </Button>
                 </div>
               </>
@@ -280,7 +280,7 @@ export function SnippetsModal() {
                     {selectedSnippet.content}
                   </pre>
                 </div>
-                <div className="flex gap-2 p-3 border-t border-border">
+                <div className="flex justify-end gap-2 p-3 border-t border-border">
                   <Button
                     variant="secondary"
                     size="sm"
