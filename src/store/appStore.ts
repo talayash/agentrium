@@ -24,6 +24,10 @@ export type ThemeMode = 'dark' | 'light' | 'auto';
 export type AutoStageMode = 'none' | 'tracked' | 'all';
 export type MergeStrategy = 'merge' | 'rebase' | 'ff-only';
 export const DEFAULT_ACCENT_COLOR = '#007AFF'; // Apple system blue (vibrant, light-mode)
+
+/** Sentinel for openProfileModal: open the focused editor in CREATE mode
+ *  (blank profile, no manage list). Never collides with real uuid ids. */
+export const NEW_PROFILE_ID = '__new__';
 export const DEFAULT_UI_FONT_SCALE = 1.0;
 export const DEFAULT_EDITOR_FONT_FAMILY = '"JetBrains Mono", "Cascadia Code", Consolas, monospace';
 

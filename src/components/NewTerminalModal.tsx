@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FolderOpen, Terminal, Zap, GitBranch, GitFork, Plus, Loader2, ChevronDown, Check, Pencil, Pin, PinOff, Trash2, SlidersHorizontal } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
-import { useAppStore } from '../store/appStore';
+import { useAppStore, NEW_PROFILE_ID } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
 import { homeDir } from '@tauri-apps/api/path';
 import { open } from '@tauri-apps/plugin-dialog';
@@ -439,7 +439,7 @@ export function NewTerminalModal() {
               <div className="flex items-center justify-between mb-2">
                 <label className="text-text-tertiary text-[11px] font-semibold uppercase tracking-wider">Profile</label>
                 <button
-                  onClick={() => openProfileModal()}
+                  onClick={() => openProfileModal(NEW_PROFILE_ID)}
                   className="flex items-center gap-1.5 h-7 px-2.5 rounded-lg bg-accent-primary text-white text-[11.5px] font-semibold hover:bg-accent-secondary active:scale-[0.97] transition-[background-color,transform] duration-100"
                 >
                   <Plus size={12} strokeWidth={2.5} />

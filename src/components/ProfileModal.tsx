@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { X, Plus, Trash2, Save, FolderOpen, User } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
-import { useAppStore } from '../store/appStore';
+import { useAppStore, NEW_PROFILE_ID } from '../store/appStore';
 import { toast } from '../store/toastStore';
 import { reportInvokeFailure } from '../lib/errorReporter';
 import { v4 as uuidv4 } from 'uuid';
@@ -44,21 +44,30 @@ export function ProfileModal() {
   const [profiles, setProfiles] = useState<ConfigProfile[]>([]);
   const [selectedProfile, setSelectedProfile] = useState<ConfigProfile | null>(null);
   const [isCreating, setIsCreating] = useState(false);
-  // Focused edit: opened for ONE specific profile (the pencil in the New
-  // Session list) - no list pane, just that profile's editor; saving or
-  // deleting closes the dialog. Opened without an id → full manage view.
+  // Focused mode: opened for ONE profile (the pencil in the New Session
+  // list) or for creating a new one (NEW_PROFILE_ID sentinel) - no list
+  // pane, just the editor; saving or deleting closes the dialog. Opened
+  // without an id → full manage view.
   const focused = Boolean(editingProfileId);
+  const focusedCreate = editingProfileId === NEW_PROFILE_ID;
 
   useEffect(() => {
     loadProfiles();
   }, []);
 
   useEffect(() => {
-    if (editingProfileId && profiles.length > 0) {
+    if (editingProfileId && editingProfileId !== NEW_PROFILE_ID && profiles.length > 0) {
       const profile = profiles.find(p => p.id === editingProfileId);
       if (profile) setSelectedProfile(profile);
     }
   }, [editingProfileId, profiles]);
+
+  // Focused CREATE: start a blank profile immediately - the dialog opens
+  // straight into the new-profile editor.
+  useEffect(() => {
+    if (focusedCreate) handleCreateProfile();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusedCreate]);
 
   const loadProfiles = async () => {
     try {
@@ -146,7 +155,11 @@ export function ProfileModal() {
         {/* Header */}
         <div className="flex items-center justify-between px-4 h-11 border-b border-seam">
           <h2 className="text-text-primary text-[14px] font-semibold">
-            {focused ? `Edit Profile${selectedProfile ? ` · ${selectedProfile.name}` : ''}` : 'Configuration Profiles'}
+            {focusedCreate
+              ? 'New Profile'
+              : focused
+                ? `Edit Profile${selectedProfile ? ` · ${selectedProfile.name}` : ''}`
+                : 'Configuration Profiles'}
           </h2>
           <button
             onClick={closeProfileModal}

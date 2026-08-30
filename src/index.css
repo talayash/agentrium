@@ -150,7 +150,7 @@
      behind them, which always exists. */
   --material-chrome-bg: rgba(18, 22, 42, 0.5);       /* midnight frosted glass - shows the night gradient through */
   --material-overlay-bg: rgba(37, 37, 41, 0.78);     /* command palette (Spotlight - stays translucent) */
-  --material-sheet-bg: rgba(20, 24, 40, 0.97);       /* task modals - near-opaque elevation-1 (#141828): dialogs match the window's dominant tone; controls step up to elevation-2/3 */
+  --material-sheet-bg: rgba(15, 19, 32, 0.97);       /* task modals - near-opaque elevation-0 (#0F1320): dialogs share the window's dominant content tone; controls step up to elevation-2 */
   --material-popover-bg: rgba(46, 46, 51, 0.84);     /* menus, dropdowns, tooltips */
   --material-thin-bg: rgba(52, 52, 58, 0.62);        /* chips, inline hints */
   --material-blur: 40px;
@@ -309,7 +309,10 @@
 }
 @media (prefers-reduced-transparency: reduce) {
   .material-sheet { backdrop-filter: none; -webkit-backdrop-filter: none; }
-  :root { --material-sheet-bg: var(--elevation-4); }
+  /* Fall back to the DARK content tone, not elevation-4 - with Windows
+     "transparency effects" off this fallback is what users actually see,
+     and a light sheet over a dark app read as a broken theme. */
+  :root { --material-sheet-bg: var(--elevation-0); }
 }
 .material-thin {
   background: var(--material-thin-bg);
