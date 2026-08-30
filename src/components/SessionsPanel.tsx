@@ -65,10 +65,18 @@ export function SessionsPanel() {
   const activeTerminal = activeTerminalId ? terminals.get(activeTerminalId) : null;
   const activeCwd = activeTerminal?.config.working_directory ?? null;
   const activeSessionId = activeTerminal?.config.claude_session_id ?? null;
-  const activeAgent: AgentKind = activeTerminal?.config.agent ?? 'claude';
 
   // The Explorer's pinned repo wins, mirroring FileTreePanel.
   const cwd = pinnedRepoPath ?? activeCwd;
+
+  // When the pin overrode the active terminal's cwd (or there's no active
+  // terminal), that terminal's agent is unrelated to the folder the user is
+  // asking about - fall back to Claude so a pinned repo doesn't inherit an
+  // Antigravity/Codex/Cursor filter from a tab that lives elsewhere.
+  const agentMatchesCwd = activeCwd !== null && activeCwd === cwd;
+  const activeAgent: AgentKind = agentMatchesCwd
+    ? (activeTerminal?.config.agent ?? 'claude')
+    : 'claude';
 
   const [sessions, setSessions] = useState<AgentSessionInfo[]>([]);
   const [loading, setLoading] = useState(false);
