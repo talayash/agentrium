@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FolderOpen, Terminal, Zap, GitBranch, GitFork, Plus, Loader2, ChevronDown, Pencil } from 'lucide-react';
+import { FolderOpen, Terminal, Zap, GitBranch, GitFork, Plus, Loader2, ChevronDown, Pencil, SlidersHorizontal } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
@@ -67,6 +67,7 @@ export function NewTerminalModal() {
   const [selectedEffort, setSelectedEffort] = useState<'default' | 'low' | 'medium' | 'high'>('default');
   const [plainShell, setPlainShell] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<AgentKind>('claude');
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   // Worktree state
   const [worktreeDetect, setWorktreeDetect] = useState<WorktreeDetectResult | null>(null);
@@ -387,88 +388,57 @@ export function NewTerminalModal() {
       scrimClassName="bg-black/50 z-50"
       panelClassName="w-full max-w-lg max-h-[90vh] flex flex-col"
       showHeader
-      title="New Terminal"
+      title={plainShell ? 'New Shell' : 'New Session'}
       icon={<Terminal size={16} className="text-text-secondary" />}
     >
-        {/* Content */}
-        <div className="p-4 space-y-4 overflow-y-auto flex-1 min-h-0">
-          {/* Nickname */}
-          <div>
-            <label className="block text-text-secondary text-[12px] mb-1.5">
-              Nickname
-            </label>
-            <input
-              type="text"
-              value={nickname}
-              onChange={(e) => setNickname(e.target.value)}
-              placeholder="e.g., My Project, Backend API"
-              className="w-full bg-bg-primary ring-1 ring-border-light rounded-md h-9 px-3 text-text-primary text-[13px] focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 transition-colors"
-            />
-          </div>
-
-          {/* Plain Shell Toggle */}
-          <div className="flex items-center justify-between border-t border-seam pt-4">
-            <div>
-              <label className="text-text-secondary text-[12px]">Plain shell (no Claude)</label>
-              <p className="text-text-tertiary text-[11px]">
-                Run a regular shell so you can launch wrappers like <code className="text-text-secondary">ollama launch claude</code>
-              </p>
-            </div>
-            <div className="ml-3">
-              <Toggle checked={plainShell} onChange={setPlainShell} ariaLabel="Plain shell (no Claude)" />
-            </div>
-          </div>
-
-          {/* Agent Selection */}
+        {/* Content - ordered by decision priority: WHO runs (agent) → WHAT
+            setup (profile) → WHERE (folder) → details. Rarely-touched knobs
+            live behind the Advanced disclosure. */}
+        <div className="p-5 space-y-5 overflow-y-auto flex-1 min-h-0">
+          {/* Agent */}
           {!plainShell && (
-            <div className="border-t border-seam pt-4">
-              <label className="block text-text-secondary text-[12px] mb-1.5">Agent</label>
+            <div>
+              <label className="block text-text-tertiary text-[11px] font-semibold uppercase tracking-wider mb-2">Agent</label>
               <AgentPicker value={selectedAgent} onChange={setSelectedAgent} />
             </div>
           )}
 
-          {/* Profile Selection */}
+          {/* Profile - compact chips instead of a wall of cards. The selected
+              chip's description/folder renders once, below the row. */}
           {!plainShell && (
-            <div className="border-t border-seam pt-4">
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="text-text-secondary text-[12px]">Profile</label>
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-text-tertiary text-[11px] font-semibold uppercase tracking-wider">Profile</label>
                 <button
                   onClick={() => openProfileModal()}
                   className="flex items-center gap-1 text-[11px] text-accent-primary hover:text-accent-secondary transition-colors"
                 >
                   <Plus size={12} />
-                  Add Profile
+                  New Profile
                 </button>
               </div>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="flex flex-wrap gap-1.5">
                 <button
                   onClick={() => setSelectedProfileId(null)}
-                  className={`p-2.5 rounded-md text-left transition-colors ${
+                  className={`h-7 px-3 rounded-full text-[12px] font-medium transition-colors ${
                     selectedProfileId === null
-                      ? 'bg-accent-primary/10 ring-1 ring-accent-primary/30'
-                      : 'bg-bg-primary ring-1 ring-border hover:ring-border-light'
+                      ? 'bg-accent-primary text-white'
+                      : 'bg-fill-hover text-text-secondary ring-1 ring-seam hover:bg-fill-active hover:text-text-primary'
                   }`}
                 >
-                  <p className="text-text-primary text-[12px] font-medium">No Profile</p>
-                  <p className="text-text-tertiary text-[11px]">Custom settings</p>
+                  No Profile
                 </button>
                 {profiles.map((profile) => (
-                  <div
-                    key={profile.id}
-                    className={`relative group rounded-md transition-colors ${
-                      selectedProfileId === profile.id
-                        ? 'bg-accent-primary/10 ring-1 ring-accent-primary/30'
-                        : 'bg-bg-primary ring-1 ring-border hover:ring-border-light'
-                    }`}
-                  >
+                  <div key={profile.id} className="relative group">
                     <button
                       onClick={() => setSelectedProfileId(profile.id)}
-                      className="w-full p-2.5 pr-8 text-left"
+                      className={`h-7 pl-3 pr-3 group-hover:pr-7 rounded-full text-[12px] font-medium max-w-[200px] truncate transition-all ${
+                        selectedProfileId === profile.id
+                          ? 'bg-accent-primary text-white'
+                          : 'bg-fill-hover text-text-secondary ring-1 ring-seam hover:bg-fill-active hover:text-text-primary'
+                      }`}
                     >
-                      <p className="text-text-primary text-[12px] font-medium truncate">{profile.name}</p>
-                      <p className="text-text-tertiary text-[11px] truncate">
-                        {profile.description || profile.working_directory || 'No description'}
-                      </p>
+                      {profile.name}
                     </button>
                     <button
                       onClick={(e) => {
@@ -476,19 +446,32 @@ export function NewTerminalModal() {
                         openProfileModal(profile.id);
                       }}
                       title="Edit profile"
-                      className="absolute top-1.5 right-1.5 p-1 rounded text-text-tertiary hover:text-text-primary hover:bg-fill-hover opacity-0 group-hover:opacity-100 transition-opacity"
+                      aria-label={`Edit profile ${profile.name}`}
+                      className={`absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity ${
+                        selectedProfileId === profile.id
+                          ? 'text-white/80 hover:text-white'
+                          : 'text-text-tertiary hover:text-text-primary'
+                      }`}
                     >
                       <Pencil size={11} />
                     </button>
                   </div>
                 ))}
               </div>
+              {(() => {
+                const sel = profiles.find((p) => p.id === selectedProfileId);
+                if (!sel) return null;
+                const info = [sel.description, sel.working_directory].filter(Boolean).join(' · ');
+                return info ? (
+                  <p className="mt-1.5 text-[11px] text-text-tertiary truncate">{info}</p>
+                ) : null;
+              })()}
             </div>
           )}
 
           {/* Working Directory */}
-          <div className="border-t border-seam pt-4">
-            <label className="block text-text-secondary text-[12px] mb-1.5">
+          <div>
+            <label className="block text-text-tertiary text-[11px] font-semibold uppercase tracking-wider mb-2">
               Working Directory
             </label>
             <div className="flex gap-2">
@@ -496,12 +479,12 @@ export function NewTerminalModal() {
                 type="text"
                 value={workingDirectory}
                 onChange={(e) => setWorkingDirectory(e.target.value)}
-                className="flex-1 bg-bg-primary ring-1 ring-border-light rounded-md h-9 px-3 text-text-primary text-[13px] focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 transition-colors"
+                className="flex-1 bg-elevation-0 ring-1 ring-seam rounded-lg h-9 px-3 text-text-primary text-[13px] focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 transition-colors"
                 placeholder={isMac ? "/path/to/project" : "C:\\path\\to\\project"}
               />
               <button
                 onClick={handleBrowseDirectory}
-                className="px-3 h-9 bg-bg-primary ring-1 ring-border-light rounded-md hover:bg-fill-hover transition-colors"
+                className="px-3 h-9 bg-elevation-0 ring-1 ring-seam rounded-lg hover:bg-fill-hover transition-colors"
               >
                 <FolderOpen size={16} className="text-text-secondary" />
               </button>
@@ -650,50 +633,36 @@ export function NewTerminalModal() {
             )}
           </AnimatePresence>
 
-          {/* Claude Arguments */}
-          {!plainShell && (
-          <div className="border-t border-seam pt-4">
-            <label className="block text-text-secondary text-[12px] mb-1.5">
-              {specFor(selectedAgent).displayName} Arguments (one per line)
+          {/* Details: nickname + (Claude) model - the two things people
+              actually tweak per-session. */}
+          <div>
+            <label className="block text-text-tertiary text-[11px] font-semibold uppercase tracking-wider mb-2">
+              Nickname <span className="normal-case font-normal tracking-normal text-text-tertiary/70">(optional)</span>
             </label>
-            <textarea
-              value={claudeArgs.join('\n')}
-              onChange={(e) => setClaudeArgs(e.target.value.split('\n').filter(Boolean))}
-              className="w-full bg-bg-primary ring-1 ring-border-light rounded-md py-2 px-3 text-text-primary text-[13px] focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 font-mono h-20 resize-none transition-colors"
-              placeholder={specFor(selectedAgent).defaultArgsHint}
+            <input
+              type="text"
+              value={nickname}
+              onChange={(e) => setNickname(e.target.value)}
+              placeholder="e.g., My Project, Backend API"
+              className="w-full bg-elevation-0 ring-1 ring-seam rounded-lg h-9 px-3 text-text-primary text-[13px] focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 transition-colors"
             />
-            <p className="text-text-tertiary text-[11px] mt-1">
-              Command: <code className="text-text-secondary">{specFor(selectedAgent).binary} {claudeArgs.join(' ')}</code>
-            </p>
           </div>
-          )}
-          {/* Worktree Toggle - Claude-only flag; hidden for other agents */}
-          {!plainShell && selectedAgent === 'claude' && (
-          <div className="flex items-center justify-between">
-            <div>
-              <label className="text-text-secondary text-[12px]">Isolated Worktree</label>
-              <p className="text-text-tertiary text-[11px]">Run in a separate git worktree</p>
-            </div>
-            <Toggle checked={useWorktree} onChange={setUseWorktree} ariaLabel="Isolated Worktree" />
-          </div>
-          )}
 
-          {/* Model Selector - Claude-only flags; hidden for other agents */}
           {!plainShell && selectedAgent === 'claude' && (
-          <div className="border-t border-seam pt-4">
-            <label className="block text-text-secondary text-[12px] mb-1.5">Model</label>
+          <div>
+            <label className="block text-text-tertiary text-[11px] font-semibold uppercase tracking-wider mb-2">Model</label>
             <div className="flex gap-1.5">
               {(['default', 'opus', 'sonnet', 'haiku'] as const).map((model) => (
                 <button
                   key={model}
                   onClick={() => setSelectedModel(model)}
-                  className={`px-3 py-1.5 rounded-md text-[12px] font-medium transition-colors ${
+                  className={`px-3 py-1.5 rounded-lg text-[12px] font-medium transition-colors ${
                     selectedModel === model
                       ? model === 'opus' ? 'bg-purple-500/20 text-purple-400 ring-1 ring-purple-500/30'
                       : model === 'sonnet' ? 'bg-blue-500/20 text-blue-400 ring-1 ring-blue-500/30'
                       : model === 'haiku' ? 'bg-green-500/20 text-green-400 ring-1 ring-green-500/30'
                       : 'bg-accent-primary/10 text-accent-primary ring-1 ring-accent-primary/30'
-                      : 'bg-bg-primary ring-1 ring-border-light text-text-secondary hover:ring-border'
+                      : 'bg-fill-hover ring-1 ring-seam text-text-secondary hover:bg-fill-active hover:text-text-primary'
                   }`}
                 >
                   {model === 'default' ? 'Default' : model.charAt(0).toUpperCase() + model.slice(1)}
@@ -703,27 +672,100 @@ export function NewTerminalModal() {
           </div>
           )}
 
-          {/* Effort Selector - Claude-only flag; hidden for other agents */}
-          {!plainShell && selectedAgent === 'claude' && (
-          <div>
-            <label className="block text-text-secondary text-[12px] mb-1.5">Effort</label>
-            <div className="flex gap-1.5">
-              {(['default', 'low', 'medium', 'high'] as const).map((effort) => (
-                <button
-                  key={effort}
-                  onClick={() => setSelectedEffort(effort)}
-                  className={`px-3 py-1.5 rounded-md text-[12px] font-medium transition-colors ${
-                    selectedEffort === effort
-                      ? 'bg-accent-primary/10 text-accent-primary ring-1 ring-accent-primary/30'
-                      : 'bg-bg-primary ring-1 ring-border-light text-text-secondary hover:ring-border'
-                  }`}
+          {/* Advanced - rarely-touched knobs, folded away so the main flow
+              stays three glances long. */}
+          <div className="rounded-xl ring-1 ring-seam overflow-hidden">
+            <button
+              onClick={() => setShowAdvanced((v) => !v)}
+              aria-expanded={showAdvanced}
+              className="w-full flex items-center gap-2 px-3.5 h-10 text-left hover:bg-fill-hover transition-colors"
+            >
+              <SlidersHorizontal size={13} className="text-text-tertiary" strokeWidth={1.75} />
+              <span className="text-[12.5px] font-medium text-text-primary flex-1">Advanced</span>
+              <ChevronDown
+                size={13}
+                strokeWidth={2}
+                className={`text-text-tertiary transition-transform duration-150 ${showAdvanced ? 'rotate-180' : ''}`}
+              />
+            </button>
+            <AnimatePresence initial={false}>
+              {showAdvanced && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.16 }}
+                  className="overflow-hidden"
                 >
-                  {effort === 'default' ? 'Default' : effort.charAt(0).toUpperCase() + effort.slice(1)}
-                </button>
-              ))}
-            </div>
+                  <div className="px-3.5 pb-3.5 pt-1 space-y-4 border-t border-seam">
+                    {/* Arguments */}
+                    {!plainShell && (
+                    <div>
+                      <label className="block text-text-secondary text-[12px] mb-1.5 mt-2">
+                        {specFor(selectedAgent).displayName} Arguments (one per line)
+                      </label>
+                      <textarea
+                        value={claudeArgs.join('\n')}
+                        onChange={(e) => setClaudeArgs(e.target.value.split('\n').filter(Boolean))}
+                        className="w-full bg-elevation-0 ring-1 ring-seam rounded-lg py-2 px-3 text-text-primary text-[13px] focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 font-mono h-20 resize-none transition-colors"
+                        placeholder={specFor(selectedAgent).defaultArgsHint}
+                      />
+                      <p className="text-text-tertiary text-[11px] mt-1 truncate">
+                        Command: <code className="text-text-secondary">{specFor(selectedAgent).binary} {claudeArgs.join(' ')}</code>
+                      </p>
+                    </div>
+                    )}
+
+                    {/* Effort - Claude-only flag */}
+                    {!plainShell && selectedAgent === 'claude' && (
+                    <div>
+                      <label className="block text-text-secondary text-[12px] mb-1.5">Effort</label>
+                      <div className="flex gap-1.5">
+                        {(['default', 'low', 'medium', 'high'] as const).map((effort) => (
+                          <button
+                            key={effort}
+                            onClick={() => setSelectedEffort(effort)}
+                            className={`px-3 py-1.5 rounded-lg text-[12px] font-medium transition-colors ${
+                              selectedEffort === effort
+                                ? 'bg-accent-primary/10 text-accent-primary ring-1 ring-accent-primary/30'
+                                : 'bg-fill-hover ring-1 ring-seam text-text-secondary hover:bg-fill-active hover:text-text-primary'
+                            }`}
+                          >
+                            {effort === 'default' ? 'Default' : effort.charAt(0).toUpperCase() + effort.slice(1)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    )}
+
+                    {/* Isolated Worktree - Claude-only flag */}
+                    {!plainShell && selectedAgent === 'claude' && (
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <label className="text-text-secondary text-[12px]">Isolated Worktree</label>
+                        <p className="text-text-tertiary text-[11px]">Run in a separate git worktree</p>
+                      </div>
+                      <Toggle checked={useWorktree} onChange={setUseWorktree} ariaLabel="Isolated Worktree" />
+                    </div>
+                    )}
+
+                    {/* Plain shell mode */}
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <label className="text-text-secondary text-[12px]">Plain shell (no agent)</label>
+                        <p className="text-text-tertiary text-[11px]">
+                          Run a regular shell so you can launch wrappers like <code className="text-text-secondary">ollama launch claude</code>
+                        </p>
+                      </div>
+                      <div className="ml-3">
+                        <Toggle checked={plainShell} onChange={setPlainShell} ariaLabel="Plain shell (no agent)" />
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
-          )}
 
           {error && (
             <div className="p-3 rounded-md bg-error/5 ring-1 ring-error/20">
@@ -744,7 +786,7 @@ export function NewTerminalModal() {
             loading={isCreating}
             icon={<Zap size={14} />}
           >
-            {isCreating ? 'Creating...' : (plainShell ? 'Start Shell' : 'Start Terminal')}
+            {isCreating ? 'Creating...' : (plainShell ? 'Start Shell' : 'Start Session')}
           </Button>
         </div>
     </Modal>
