@@ -180,7 +180,7 @@ export function TitleBar() {
         </span>
 
         {/* Project breadcrumb - IntelliJ main-toolbar project widget */}
-        <Tooltip label={active?.config.working_directory || 'No active terminal'}>
+        <Tooltip label={active?.config.working_directory || 'No active session'}>
         <button
           onClick={openCommandPalette}
           className="no-drag group flex items-center gap-1.5 h-7 ml-1 pl-2 pr-2 rounded-md hover:bg-fill-hover transition-colors max-w-[360px]"
