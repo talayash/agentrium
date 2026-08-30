@@ -5,7 +5,6 @@ import { registerSetting } from '../index';
 const cat = { group: 'appearance-behavior', page: 'appearance' } as const;
 registerSetting({ category: cat, id: 'theme',       label: 'Theme',          keywords: ['dark', 'light', 'auto'] });
 registerSetting({ category: cat, id: 'density',     label: 'Density',        keywords: ['compact', 'comfortable', 'spacious'] });
-registerSetting({ category: cat, id: 'tab-height',  label: 'Tab height',     keywords: ['tab', 'small', 'medium', 'large', 'strip'] });
 registerSetting({ category: cat, id: 'colorful-folders', label: 'Colorful folder icons', keywords: ['folder', 'icons', 'material', 'color', 'tree'] });
 registerSetting({ category: cat, id: 'accent',      label: 'Accent color',   keywords: ['hex', 'color', 'stripe'] });
 registerSetting({ category: cat, id: 'font-scale',  label: 'UI font scale',  keywords: ['zoom', 'size', 'font'] });
@@ -14,12 +13,12 @@ registerSetting({ category: cat, id: 'status-bar',    label: 'Status bar',     k
 registerSetting({ category: cat, id: 'tab-activity',  label: 'Tab activity',   keywords: ['minimal', 'indicator', 'dot', 'busy', 'hide'] });
 registerSetting({ category: cat, id: 'compact-titlebar', label: 'Compact title bar', keywords: ['minimal', 'brand', 'chrome', 'hide'] });
 
-const ACCENT_PRESETS = ['#3574F0', '#5FB865', '#C678DD', '#E3B341', '#DB5C5C'];
+// Apple system palette: blue, green, purple, orange, red.
+const ACCENT_PRESETS = ['#007AFF', '#34C759', '#AF52DE', '#FF9500', '#FF3B30'];
 
 export default function AppearancePage() {
   const themeMode = useAppStore((s) => s.themeMode);
   const uiDensity = useAppStore((s) => s.uiDensity);
-  const tabHeight = useAppStore((s) => s.tabHeight);
   const colorfulFolderIcons = useAppStore((s) => s.colorfulFolderIcons);
   const accentColorHex = useAppStore((s) => s.accentColorHex);
   const uiFontScale = useAppStore((s) => s.uiFontScale);
@@ -28,7 +27,7 @@ export default function AppearancePage() {
   const showTabActivity = useAppStore((s) => s.showTabActivity);
   const compactTitleBar = useAppStore((s) => s.compactTitleBar);
   const {
-    setThemeMode, setUiDensity, setTabHeight, setColorfulFolderIcons, setAccentColorHex, setUiFontScale, setUiReduceMotion,
+    setThemeMode, setUiDensity, setColorfulFolderIcons, setAccentColorHex, setUiFontScale, setUiReduceMotion,
     setShowStatusBar, setShowTabActivity, setCompactTitleBar,
   } = useAppStore.getState();
 
@@ -59,17 +58,6 @@ export default function AppearancePage() {
             ]}
           />
         </SettingRow>
-        <SettingRow label="Tab height" description="Terminal/editor tab strip height (24 / 28 / 32 px).">
-          <Segmented
-            value={tabHeight}
-            onChange={setTabHeight}
-            options={[
-              { value: 'small',  label: 'Small' },
-              { value: 'medium', label: 'Medium' },
-              { value: 'large',  label: 'Large' },
-            ]}
-          />
-        </SettingRow>
         <SettingRow
           label="Colorful folder icons"
           description="When off, all folders use one yellow icon (matches the sketch). When on, folders like .git, node_modules, docs get material-icon-theme's per-name colors."
@@ -83,8 +71,10 @@ export default function AppearancePage() {
                 key={c}
                 onClick={() => setAccentColorHex(c)}
                 style={{ background: c }}
-                className={`w-5 h-5 rounded-md transition-transform ${
-                  accentColorHex.toLowerCase() === c.toLowerCase() ? 'ring-2 ring-white scale-110' : 'hover:scale-105'
+                className={`w-5 h-5 rounded-full transition-transform ${
+                  accentColorHex.toLowerCase() === c.toLowerCase()
+                    ? 'ring-2 ring-[rgb(var(--text-primary))] ring-offset-2 ring-offset-[var(--elevation-0)] scale-110'
+                    : 'hover:scale-105'
                 }`}
                 aria-label={`Accent ${c}`}
               />
