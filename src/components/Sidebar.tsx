@@ -1,4 +1,4 @@
-import { Terminal, FolderTree, History, Plus, ChevronsRight } from 'lucide-react';
+import { Terminal, FolderTree, History, Plus, ChevronsRight, ChevronsLeft } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useAppStore } from '../store/appStore';
 import type { SidebarNav } from '../store/appStore';
@@ -65,8 +65,9 @@ export function Sidebar() {
 
   return (
     <div className="h-full material-chrome flex flex-col">
-      {/* Navigator switcher */}
-      <div className="flex gap-1 p-2">
+      {/* Navigator switcher + collapse control (the collapse affordance lives
+          IN the sidebar - the titlebar logo is a brand mark, not a toggle). */}
+      <div className="flex gap-1 p-2 items-center">
         {NAV.map(({ id, label, Icon }) => {
           const on = nav === id;
           return (
@@ -86,6 +87,15 @@ export function Sidebar() {
             </Tooltip>
           );
         })}
+        <Tooltip label="Collapse Sidebar">
+          <button
+            onClick={toggleSidebarCollapse}
+            aria-label="Collapse Sidebar"
+            className="w-7 h-9 flex items-center justify-center rounded-lg text-text-tertiary hover:text-text-secondary hover:bg-fill-hover transition-colors flex-shrink-0"
+          >
+            <ChevronsLeft size={14} strokeWidth={1.75} />
+          </button>
+        </Tooltip>
       </div>
 
       {/* Body - one navigator at a time */}

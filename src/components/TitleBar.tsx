@@ -25,6 +25,7 @@ import { toast } from '../store/toastStore';
 import { UpdatePill } from './UpdatePill';
 import { ToolsMenu } from './titlebar/ToolsMenu';
 import { SessionWidget } from './titlebar/SessionWidget';
+import { NotificationBell } from './titlebar/NotificationBell';
 import { Tooltip } from './ui/Tooltip';
 import { ThemeToggle } from './ui/ThemeToggle';
 import { ListRow } from './ui/ListRow';
@@ -34,7 +35,6 @@ const isMac = navigator.platform.toUpperCase().includes('MAC');
 
 export function TitleBar() {
   const {
-    toggleSidebar,
     openSettings,
     openCommandPalette,
     triggerChangesRefresh,
@@ -173,14 +173,11 @@ export function TitleBar() {
           </div>
         )}
 
-        <Tooltip label="Toggle Sidebar" shortcut="Ctrl+B">
-          <button
-            onClick={toggleSidebar}
-            className="no-drag w-7 h-7 flex items-center justify-center rounded-md transition-colors text-text-secondary hover:bg-fill-hover hover:text-text-primary"
-          >
-            <img src={appIcon} alt="Agentrium" className="w-[20px] h-[20px]" />
-          </button>
-        </Tooltip>
+        {/* Brand mark only - collapsing the sidebar lives IN the sidebar
+            (its ChevronsLeft button); Ctrl+B still toggles it entirely. */}
+        <span className="w-7 h-7 flex items-center justify-center">
+          <img src={appIcon} alt="Agentrium" className="w-[20px] h-[20px]" draggable={false} />
+        </span>
 
         {/* Project breadcrumb - IntelliJ main-toolbar project widget */}
         <Tooltip label={active?.config.working_directory || 'No active terminal'}>
@@ -360,6 +357,10 @@ export function TitleBar() {
           </Tooltip>
 
           <div className="w-px h-4 bg-seam-strong mx-1" />
+
+          {/* Notifications - relocated from the status bar (which is now a
+              bare version strip). */}
+          <NotificationBell />
 
           <ThemeToggle />
 

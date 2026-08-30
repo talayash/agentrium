@@ -1,106 +1,21 @@
-import { useState, useEffect, useMemo } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { useState, useEffect } from 'react';
 import { getVersion } from '@tauri-apps/api/app';
-import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
-import { useNowTick } from '../hooks/useNowTick';
-import { getLastOutputAt } from '../lib/terminalActivity';
-import {
-  Terminal,
-  Cpu,
-  Bell,
-  BellOff,
-  ArrowDownCircle,
-  Columns,
-  LayoutGrid,
-  GitBranch,
-  GitFork,
-  Check,
-  ArrowUp,
-  ArrowDown,
-} from 'lucide-react';
-import { Tooltip } from './ui/Tooltip';
 import { ProgressStripe } from './ui/ProgressStripe';
 
-const MODEL_COLORS: Record<string, { bg: string; text: string; label: string }> = {
-  opus: { bg: 'bg-purple-500/15', text: 'text-purple-400', label: 'Opus' },
-  sonnet: { bg: 'bg-blue-500/15', text: 'text-blue-400', label: 'Sonnet' },
-  haiku: { bg: 'bg-green-500/15', text: 'text-green-400', label: 'Haiku' },
-};
-
-const STATUS_COLORS: Record<string, string> = {
-  Running: 'text-success',
-  Idle: 'text-warning',
-  Stopped: 'text-text-tertiary',
-  Error: 'text-error',
-};
-
-const STATUS_DOT_COLORS: Record<string, string> = {
-  Running: 'bg-success',
-  Idle: 'bg-warning',
-  Stopped: 'bg-text-tertiary',
-  Error: 'bg-error',
-};
-
+/**
+ * Minimal status strip: just the app version (everything else moved to where
+ * it belongs - notifications to the titlebar, session/branch state to the
+ * session header and sidebar cards). The indeterminate ProgressStripe still
+ * rides on top while a global background task runs.
+ */
 export function StatusBar() {
-  const { terminals, activeTerminalId, gitInfoCache } = useTerminalStore();
-  const {
-    toggleSidebar,
-    gridMode,
-    toggleGridMode,
-    notifyOnFinish,
-    setNotifyOnFinish,
-    openSettings,
-  } = useAppStore();
-  const unreadCount = useAppStore((s) => s.unreadNotificationCount);
-  const clearUnread = useAppStore((s) => s.clearUnreadNotifications);
   const globalBusy = useAppStore((s) => s.globalBusy);
-  const activeGitInfo = activeTerminalId ? gitInfoCache.get(activeTerminalId) : null;
-  const now = useNowTick();
-
-  // "Last event" ticker - sketch showed "last event: 12s ago" in the status
-  // bar. Walk every terminal's last-output timestamp and format the most
-  // recent one. Rendered only when there's a terminal AND we've seen output
-  // within the last hour (otherwise it becomes stale-looking).
-  const lastEventLabel = useMemo(() => {
-    let latest = 0;
-    for (const id of terminals.keys()) {
-      const t = getLastOutputAt(id);
-      if (t && t > latest) latest = t;
-    }
-    if (latest === 0) return null;
-    const ageMs = now - latest;
-    if (ageMs < 0) return null;
-    if (ageMs > 60 * 60_000) return null; // >1h old - hide (stale signal)
-    if (ageMs < 3_000) return 'just now';
-    if (ageMs < 60_000) return `${Math.round(ageMs / 1000)}s ago`;
-    return `${Math.round(ageMs / 60_000)}m ago`;
-  }, [terminals, now]);
-
   const [appVersion, setAppVersion] = useState('');
-  const [claudeVersion, setClaudeVersion] = useState<string | null>(null);
 
   useEffect(() => {
     getVersion().then(setAppVersion).catch(() => {});
-    invoke<string>('get_claude_version')
-      .then((v) => setClaudeVersion(v))
-      .catch(() => setClaudeVersion(null));
   }, []);
-
-  const terminalCount = terminals.size;
-  const runningCount = Array.from(terminals.values()).filter(
-    (t) => t.config.status === 'Running'
-  ).length;
-
-  const activeTerminal = activeTerminalId ? terminals.get(activeTerminalId) : null;
-  const activeStatus = activeTerminal?.config.status || 'Stopped';
-  const activeModel = activeTerminal?.model;
-
-  // Resolve model display
-  const modelKey = activeModel
-    ? Object.keys(MODEL_COLORS).find((k) => activeModel.toLowerCase().includes(k))
-    : null;
-  const modelInfo = modelKey ? MODEL_COLORS[modelKey] : null;
 
   return (
     <div className="flex flex-col shrink-0">
@@ -109,170 +24,10 @@ export function StatusBar() {
           <ProgressStripe />
         </div>
       )}
-      <div className="h-[var(--h-status)] flex items-center justify-between pl-2 pr-1.5 material-chrome border-t border-seam-strong text-[11px] select-none">
-      {/* Left side - grouped by meaning, separated by space (no dot clutter):
-          workspace summary → active session → its branch. */}
-      <div className="flex items-center gap-2 min-w-0">
-        {/* Session count / sidebar toggle */}
-        <Tooltip label="Toggle Sidebar" shortcut="Ctrl+B" side="top">
-        <button
-          onClick={toggleSidebar}
-          className="flex items-center gap-1.5 h-[19px] px-2 rounded-md text-text-secondary hover:bg-fill-hover hover:text-text-primary transition-colors flex-shrink-0"
-        >
-          <Terminal size={11} strokeWidth={1.75} />
-          <span className="tabular-nums">
-            {terminalCount} session{terminalCount !== 1 ? 's' : ''}
-          </span>
-          {runningCount > 0 && (
-            <span className="flex items-center gap-1 text-success tabular-nums">
-              <span className="w-1.5 h-1.5 rounded-full bg-success" />
-              {runningCount}
-            </span>
-          )}
-        </button>
-        </Tooltip>
-
-        {/* Active session: status + name */}
-        {activeTerminal && (
-          <div className="flex items-center gap-1.5 h-[19px] px-2 min-w-0">
-            <Tooltip label={activeStatus} side="top">
-              <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${STATUS_DOT_COLORS[activeStatus]}`} />
-            </Tooltip>
-            <span className={`${STATUS_COLORS[activeStatus]} font-medium truncate max-w-[180px]`}>
-              {activeTerminal.config.nickname || activeTerminal.config.label}
-            </span>
-          </div>
+      <div className="h-[var(--h-status)] flex items-center justify-end px-2 material-chrome border-t border-seam-strong text-[11px] select-none">
+        {appVersion && (
+          <span className="text-text-tertiary font-mono">v{appVersion}</span>
         )}
-
-        {/* Git branch chip (active terminal's repo). Sketch showed a
-            prominent branch pill in the status bar; matches IntelliJ's
-            bottom-right branch widget. */}
-        {activeGitInfo?.is_git_repo && activeGitInfo.current_branch && (
-          <>
-            <Tooltip
-              label={
-                activeGitInfo.is_worktree
-                  ? `Worktree · ${activeGitInfo.current_branch}`
-                  : `Branch · ${activeGitInfo.current_branch}`
-              }
-              side="top"
-            >
-              <div className="flex items-center gap-1.5 h-[19px] px-2 rounded-md text-text-secondary hover:bg-fill-hover hover:text-text-primary transition-colors cursor-default">
-                {activeGitInfo.is_worktree
-                  ? <GitFork size={10} strokeWidth={1.75} className="text-accent-secondary" />
-                  : <GitBranch size={10} strokeWidth={1.75} className="text-accent-secondary" />}
-                <span className="font-mono truncate max-w-[140px]">
-                  {activeGitInfo.current_branch}
-                </span>
-                {/* Clean-state indicator - sketch's "up to date" checkmark. */}
-                {activeGitInfo.dirty_count === 0 && (activeGitInfo.ahead ?? 0) === 0 && (activeGitInfo.behind ?? 0) === 0 && (
-                  <Check size={9} strokeWidth={2.5} className="text-success" />
-                )}
-                {/* Dirty count when there ARE modifications. */}
-                {activeGitInfo.dirty_count !== null && activeGitInfo.dirty_count > 0 && (
-                  <span className="text-warning font-medium tabular-nums text-[10px]">
-                    {activeGitInfo.dirty_count}Δ
-                  </span>
-                )}
-                {/* Ahead/behind vs upstream. */}
-                {activeGitInfo.ahead !== null && activeGitInfo.ahead > 0 && (
-                  <span className="inline-flex items-center text-text-secondary tabular-nums text-[10px]">
-                    <ArrowUp size={8} strokeWidth={2.5} />{activeGitInfo.ahead}
-                  </span>
-                )}
-                {activeGitInfo.behind !== null && activeGitInfo.behind > 0 && (
-                  <span className="inline-flex items-center text-text-secondary tabular-nums text-[10px]">
-                    <ArrowDown size={8} strokeWidth={2.5} />{activeGitInfo.behind}
-                  </span>
-                )}
-              </div>
-            </Tooltip>
-          </>
-        )}
-      </div>
-
-      {/* Right side: ambient signals (last event, model) then controls. */}
-      <div className="flex items-center gap-1">
-        {/* Last-event ticker */}
-        {lastEventLabel && (
-          <span className="text-text-tertiary px-1.5 hidden md:inline">
-            last event <span className="text-text-secondary">{lastEventLabel}</span>
-          </span>
-        )}
-
-        {/* Model indicator */}
-        {modelInfo && (
-          <div
-            className={`flex items-center gap-1 h-[19px] px-2 rounded-md ${modelInfo.bg}`}
-          >
-            <Cpu size={10} className={modelInfo.text} strokeWidth={1.75} />
-            <span className={`${modelInfo.text} font-medium`}>
-              {modelInfo.label}
-            </span>
-          </div>
-        )}
-
-        {/* View toggle - icon-only, the label lived in the tooltip all along */}
-        <Tooltip label={gridMode ? 'Exit grid view' : 'Grid view'} side="top">
-        <button
-          onClick={toggleGridMode}
-          className={`flex items-center justify-center h-[19px] w-[24px] rounded-md transition-colors ${
-            gridMode
-              ? 'text-accent-primary hover:bg-accent-primary/12'
-              : 'text-text-tertiary hover:bg-fill-hover hover:text-text-secondary'
-          }`}
-        >
-          {gridMode ? <LayoutGrid size={11} strokeWidth={1.75} /> : <Columns size={11} strokeWidth={1.75} />}
-        </button>
-        </Tooltip>
-
-        {/* Notifications toggle */}
-        <Tooltip
-          label={
-            unreadCount > 0
-              ? `${unreadCount} unread notification${unreadCount === 1 ? '' : 's'}`
-              : notifyOnFinish ? 'Notifications on' : 'Notifications off'
-          }
-          side="top"
-        >
-          <button
-            onClick={() => {
-              setNotifyOnFinish(!notifyOnFinish);
-              if (unreadCount > 0) clearUnread();
-            }}
-            className={`relative flex items-center h-[19px] w-[24px] justify-center rounded-md transition-colors hover:bg-fill-hover ${
-              notifyOnFinish ? 'text-text-secondary hover:text-text-primary' : 'text-text-tertiary hover:text-text-secondary'
-            }`}
-          >
-            {notifyOnFinish ? <Bell size={11} strokeWidth={1.75} /> : <BellOff size={11} strokeWidth={1.75} />}
-            {unreadCount > 0 && (
-              <span
-                aria-hidden
-                className="absolute top-[1px] right-[2px] w-[6px] h-[6px] rounded-full bg-accent-primary"
-              />
-            )}
-          </button>
-        </Tooltip>
-
-        {/* Claude version - trimmed of the "(Claude Code)" parenthetical the
-            CLI appends; the tooltip keeps the full string. */}
-        {claudeVersion && (
-          <Tooltip label={`Claude ${claudeVersion} · Open Settings`} side="top">
-            <button
-              onClick={openSettings}
-              className="flex items-center gap-1 h-[19px] px-2 rounded-md text-text-tertiary hover:bg-fill-hover hover:text-text-secondary transition-colors"
-            >
-              <ArrowDownCircle size={10} strokeWidth={1.75} />
-              <span>Claude {claudeVersion.replace(/\s*\(.*\)\s*$/, '')}</span>
-            </button>
-          </Tooltip>
-        )}
-
-        {/* App version */}
-        <Tooltip label={`Agentrium v${appVersion}`} side="top">
-          <span className="text-text-tertiary px-1.5 font-mono">v{appVersion}</span>
-        </Tooltip>
-      </div>
       </div>
     </div>
   );
