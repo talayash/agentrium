@@ -91,7 +91,7 @@ export function FileEditorView({ path }: FileEditorViewProps) {
     <div className="h-full flex flex-col bg-bg-primary">
       {/* Breadcrumb / status bar for the file */}
       <div className="flex items-center justify-between px-3 h-7 bg-elevation-0 border-b border-seam flex-shrink-0">
-        <p className="text-text-tertiary text-[11px] font-mono truncate" title={path}>
+        <p className="text-text-tertiary text-[11px] truncate" title={path} dir="ltr">
           {path}
         </p>
         <div className="flex items-center gap-1">

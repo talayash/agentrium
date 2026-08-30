@@ -917,7 +917,7 @@ export function FileChangesPanel() {
           {result?.working_directory && (
             <div className="flex items-center gap-1.5 mb-1">
               <FolderOpen size={11} className="text-text-tertiary shrink-0" />
-              <p className="text-text-tertiary text-[11px] font-mono truncate" title={result.working_directory}>
+              <p className="text-text-tertiary text-[11px] truncate" title={result.working_directory} dir="ltr">
                 {result.working_directory}
               </p>
             </div>

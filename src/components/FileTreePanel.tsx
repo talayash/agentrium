@@ -566,7 +566,7 @@ export function FileTreePanel() {
             <p className="text-text-primary text-[13px] font-semibold truncate leading-tight">
               {basename(rootPath)}
             </p>
-            <p className="text-text-tertiary text-[10.5px] font-mono truncate" title={rootPath}>
+            <p className="text-text-tertiary text-[10.5px] truncate" title={rootPath} dir="ltr">
               {rootPath}
             </p>
           </div>
@@ -675,7 +675,7 @@ export function FileTreePanel() {
               Move to {isMac ? 'Trash' : 'Recycle Bin'}?
             </h3>
             <p className="text-text-secondary text-[12px] mb-1">
-              <span className="font-mono text-text-primary">{basename(pendingDelete.path)}</span>
+              <span className="font-medium text-text-primary">{basename(pendingDelete.path)}</span>
               {pendingDelete.isDir && (
                 <span className="text-text-tertiary"> and all its contents</span>
               )}
@@ -886,7 +886,7 @@ function RenameInput({ initial, onCommit, onCancel }: RenameInputProps) {
         settledRef.current = true;
         onCommit(e.currentTarget.value);
       }}
-      className="flex-1 min-w-0 bg-elevation-0 ring-1 ring-accent-primary rounded-md h-[20px] px-1.5 text-[12px] text-text-primary font-mono focus:outline-none"
+      className="flex-1 min-w-0 bg-elevation-0 ring-1 ring-accent-primary rounded-md h-[20px] px-1.5 text-[12px] text-text-primary focus:outline-none"
     />
   );
 }

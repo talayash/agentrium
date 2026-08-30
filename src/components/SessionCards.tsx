@@ -297,7 +297,7 @@ export function SessionCards() {
               </span>
             </div>
             <div className="mt-1 flex items-center gap-2 text-[11px] text-text-tertiary">
-              {dir && <span className="font-mono truncate">{dir}</span>}
+              {dir && <span className="truncate">{dir}</span>}
               {cost && <span className="ml-auto text-emerald-500 font-medium tabular-nums">{cost}</span>}
             </div>
           </Reorder.Item>

@@ -527,7 +527,7 @@ export function NewTerminalModal() {
 
                 {worktreeDetect.is_worktree && worktreeDetect.main_repo_path && (
                   <p className="text-[11px] text-text-tertiary mb-1.5">
-                    Worktree of <span className="font-mono text-text-secondary">{worktreeDetect.main_repo_path.replace(/^.*[\\/]/, '')}</span>
+                    Worktree of <span className="text-text-secondary font-medium">{worktreeDetect.main_repo_path.replace(/^.*[\\/]/, '')}</span>
                   </p>
                 )}
 
@@ -605,7 +605,8 @@ export function NewTerminalModal() {
                           type="text"
                           value={newWorktreePath}
                           onChange={(e) => setNewWorktreePath(e.target.value)}
-                          className="w-full bg-bg-secondary ring-1 ring-border-light rounded h-8 px-2.5 text-text-primary text-[12px] font-mono focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 transition-colors"
+                          dir="ltr"
+                          className="w-full bg-bg-secondary ring-1 ring-border-light rounded h-8 px-2.5 text-text-primary text-[12px] focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 transition-colors"
                         />
                       </div>
                       {worktreeError && (

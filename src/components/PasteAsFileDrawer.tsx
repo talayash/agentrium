@@ -258,7 +258,7 @@ export function PasteAsFileDrawer() {
                     type="text"
                     value={baseName}
                     onChange={(e) => setBaseName(e.target.value)}
-                    className="mt-1 w-full bg-bg-primary text-text-primary text-[13px] px-2 py-1.5 rounded ring-1 ring-seam-strong font-mono"
+                    className="mt-1 w-full bg-bg-primary text-text-primary text-[13px] px-2 py-1.5 rounded ring-1 ring-seam-strong"
                   />
                 </div>
                 <div className="w-24">
@@ -357,7 +357,7 @@ export function PasteAsFileDrawer() {
                           onClick={() => handleReopen(entry)}
                           className="flex-1 min-w-0 text-left"
                         >
-                          <span className="block text-text-primary text-[12px] truncate font-mono">
+                          <span className="block text-text-primary text-[12px] truncate">
                             {entry.file_name}
                           </span>
                           <span className="block text-text-tertiary text-[10px]">

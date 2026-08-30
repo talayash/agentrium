@@ -134,7 +134,7 @@ export function TerminalStatusBar({ terminalId }: TerminalStatusBarProps) {
         <Tooltip label={working_directory} side="top">
           <span className="flex items-center gap-1.5 text-text-tertiary truncate">
             <FolderOpen size={12} className="flex-shrink-0" strokeWidth={1.75} />
-            <span className="truncate font-mono text-[11px]">{truncatePath(working_directory)}</span>
+            <span className="truncate text-[11px]" dir="ltr">{truncatePath(working_directory)}</span>
           </span>
         </Tooltip>
       </div>

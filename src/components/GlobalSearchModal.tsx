@@ -291,7 +291,7 @@ export function GlobalSearchModal() {
             <div className="text-text-tertiary truncate" title={searchRoot ?? ''}>
               {searchRoot ? (
                 <>
-                  in <span className="font-mono text-text-secondary">{searchRoot}</span>
+                  in <span className="text-text-secondary" dir="ltr">{searchRoot}</span>
                 </>
               ) : (
                 'No active workspace - open a terminal first'
@@ -354,7 +354,7 @@ export function GlobalSearchModal() {
                       <ChevronDown size={11} className="text-text-tertiary flex-shrink-0" strokeWidth={1.75} />
                     )}
                     <FileCode2 size={11} className="text-text-tertiary flex-shrink-0" strokeWidth={1.75} />
-                    <span className="text-[12px] text-text-primary font-mono truncate" title={file.relative_path}>
+                    <span className="text-[12px] text-text-primary truncate" title={file.relative_path} dir="ltr">
                       {file.relative_path}
                     </span>
                     {file.name_match && (

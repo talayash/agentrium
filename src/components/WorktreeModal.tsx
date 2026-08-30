@@ -286,7 +286,8 @@ export function WorktreeModal() {
                         type="text"
                         value={newWorktreePath}
                         onChange={(e) => setNewWorktreePath(e.target.value)}
-                        className="w-full bg-bg-primary ring-1 ring-border-light rounded-md h-9 px-3 text-text-primary text-[13px] font-mono focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 transition-colors"
+                        dir="ltr"
+                        className="w-full bg-bg-primary ring-1 ring-border-light rounded-md h-9 px-3 text-text-primary text-[13px] focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 transition-colors"
                       />
                       <p className="text-text-tertiary text-[11px] mt-1">Auto-generated from branch name</p>
                     </div>
@@ -345,7 +346,7 @@ export function WorktreeModal() {
                     </div>
                     <div>
                       <label className="block text-text-tertiary text-[11px] mb-0.5">Path</label>
-                      <p className="text-text-primary text-[13px] font-mono break-all">{selectedWorktree.path}</p>
+                      <p className="text-text-primary text-[13px] break-all" dir="ltr">{selectedWorktree.path}</p>
                     </div>
                     <div>
                       <label className="block text-text-tertiary text-[11px] mb-0.5">HEAD</label>

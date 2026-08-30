@@ -235,7 +235,7 @@ export function SessionsPanel() {
         <>
           {cwd ? (
             <div className="px-3 pb-1 flex-shrink-0">
-              <p className="text-text-tertiary text-[10.5px] font-mono truncate" title={cwd}>
+              <p className="text-text-tertiary text-[10.5px] truncate" title={cwd} dir="ltr">
                 {headerCwdLabel}
               </p>
             </div>
