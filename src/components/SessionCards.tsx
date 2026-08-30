@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Reorder } from 'framer-motion';
 import { X, Copy, Grid3X3, AppWindow, Pin, PinOff, SplitSquareHorizontal, GitBranch, GitFork } from 'lucide-react';
 import { useTerminalStore } from '../store/terminalStore';
@@ -12,6 +12,7 @@ import { EmptyState } from './ui/EmptyState';
 import { Tooltip } from './ui/Tooltip';
 import { useAppStore } from '../store/appStore';
 import type { AgentKind } from '../lib/agents';
+import { resolveRenameCommit } from '../lib/renameTab';
 
 // Soft per-agent tint for the card badge (Apple-clean, theme-aware via /alpha).
 const AGENT_TINT: Record<AgentKind, string> = {
@@ -67,10 +68,12 @@ export function SessionCards() {
   const closeTerminal = useTerminalStore((s) => s.closeTerminal);
   const createTerminal = useTerminalStore((s) => s.createTerminal);
   const reorderTerminals = useTerminalStore((s) => s.reorderTerminals);
+  const updateNickname = useTerminalStore((s) => s.updateNickname);
   const { addToGrid, gridMode, toggleGridMode, gridTerminalIds, setSplitTerminals, setSplitMode } = useAppStore();
   const pinnedTabIds = useAppStore((s) => s.pinnedTabIds);
   const toggleTabPin = useAppStore((s) => s.toggleTabPin);
   const [contextMenu, setContextMenu] = useState<CardContextMenuState | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
 
   // Exclude script-child runners and plain shell terminals - they render
   // elsewhere (BottomTerminalPane), never in the session list.
@@ -151,6 +154,17 @@ export function SessionCards() {
     }
   };
 
+  const commitRename = (id: string, current: string | null, raw: string) => {
+    const { shouldCommit, nickname } = resolveRenameCommit({ currentNickname: current, raw });
+    if (shouldCommit) {
+      updateNickname(id, nickname).catch((err) => {
+        toast.error('Rename failed', 'Could not save the new name.');
+        reportInvokeFailure('update_terminal_nickname', err);
+      });
+    }
+    setRenamingId(null);
+  };
+
   const openContextMenu = (e: React.MouseEvent, terminalId: string) => {
     e.preventDefault();
     e.stopPropagation();
@@ -211,6 +225,7 @@ export function SessionCards() {
             role="button"
             tabIndex={0}
             aria-selected={active}
+            drag={renamingId !== id}
             onClick={() => setActiveTerminal(id)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setActiveTerminal(id); }
@@ -234,7 +249,21 @@ export function SessionCards() {
               {isPinned && (
                 <Pin size={10} className="text-accent-primary flex-shrink-0" aria-label="Pinned" />
               )}
-              <span className="text-[13px] font-medium text-text-primary truncate">{name}</span>
+              {renamingId === id ? (
+                <RenameInput
+                  initial={name}
+                  onCommit={(raw) => commitRename(id, t.config.nickname, raw)}
+                  onCancel={() => setRenamingId(null)}
+                />
+              ) : (
+                <span
+                  className="text-[13px] font-medium text-text-primary truncate"
+                  onDoubleClick={(e) => { e.stopPropagation(); setRenamingId(id); }}
+                  title="Double-click to rename"
+                >
+                  {name}
+                </span>
+              )}
               {unread && (
                 <span className="w-1.5 h-1.5 rounded-full bg-accent-primary flex-shrink-0" aria-label="Unread output" />
               )}
@@ -394,5 +423,59 @@ function CardMenuItem({ icon, label, onClick, disabled }: CardMenuItemProps) {
       <span className={disabled ? 'opacity-50' : 'text-text-tertiary'}>{icon}</span>
       <span className="flex-1">{label}</span>
     </button>
+  );
+}
+
+interface RenameInputProps {
+  initial: string;
+  onCommit: (raw: string) => void;
+  onCancel: () => void;
+}
+
+/**
+ * Inline text input used to rename a session card. Mounted only while the
+ * card is in edit mode. Handles focus/select on mount, Enter to commit,
+ * Escape to cancel, and blur-to-commit - with a `doneRef` guard so Escape
+ * (which unmounts the input and therefore fires blur) doesn't accidentally
+ * fire a second commit after cancel.
+ *
+ * All mouse events are stopPropagation'd so clicking inside the input
+ * doesn't also fire the card's `setActiveTerminal`, drag-reorder, or
+ * right-click menu handlers on the parent Reorder.Item.
+ */
+function RenameInput({ initial, onCommit, onCancel }: RenameInputProps) {
+  const ref = useRef<HTMLInputElement>(null);
+  const [value, setValue] = useState(initial);
+  const doneRef = useRef(false);
+
+  useEffect(() => {
+    ref.current?.focus();
+    ref.current?.select();
+  }, []);
+
+  const finish = (kind: 'commit' | 'cancel') => {
+    if (doneRef.current) return;
+    doneRef.current = true;
+    if (kind === 'commit') onCommit(value);
+    else onCancel();
+  };
+
+  return (
+    <input
+      ref={ref}
+      value={value}
+      onChange={(e) => setValue(e.target.value)}
+      onKeyDown={(e) => {
+        e.stopPropagation();
+        if (e.key === 'Enter') { e.preventDefault(); finish('commit'); }
+        else if (e.key === 'Escape') { e.preventDefault(); finish('cancel'); }
+      }}
+      onClick={(e) => e.stopPropagation()}
+      onDoubleClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+      onBlur={() => finish('commit')}
+      aria-label="Rename session"
+      className="text-[13px] font-medium text-text-primary bg-fill-active outline-none rounded px-1 py-0 min-w-0 flex-1 ring-1 ring-accent-primary/40"
+    />
   );
 }
