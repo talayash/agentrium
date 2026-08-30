@@ -175,8 +175,8 @@ export function TitleBar() {
 
         {/* Brand mark only - collapsing the sidebar lives IN the sidebar
             (its ChevronsLeft button); Ctrl+B still toggles it entirely. */}
-        <span className="w-7 h-7 flex items-center justify-center">
-          <img src={appIcon} alt="Agentrium" className="w-[20px] h-[20px]" draggable={false} />
+        <span className="w-9 h-9 flex items-center justify-center flex-shrink-0">
+          <img src={appIcon} alt="Agentrium" className="w-[30px] h-[30px]" draggable={false} />
         </span>
 
         {/* Project breadcrumb - IntelliJ main-toolbar project widget */}
