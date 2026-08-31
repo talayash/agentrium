@@ -1,5 +1,13 @@
 [
   {
+    "version": "1.33.2",
+    "date": "2026-08-31",
+    "features": [
+      { "title": "Pick a model for every agent", "description": "The New Session modal now shows a Model picker for Codex, Cursor, and Antigravity, not just Claude. Each agent gets a curated chip row of its CLI's current models (Sol/Terra/Luna for Codex, Composer 2.5 and frontier models for Cursor, Gemini 3.x and more for Antigravity); the choice is passed as --model when spawning. Tab and status-bar badges show a short, color-coded model name instead of the raw id." },
+      { "title": "Right-click no longer auto-pastes into the terminal", "description": "Right-clicking a terminal used to immediately paste the clipboard. Paste is now explicit (Ctrl+V, context menu, or middle-click where enabled), and every paste path uses bracketed paste so multi-line text no longer submits line by line." }
+    ]
+  },
+  {
     "version": "1.33.1",
     "date": "2026-08-30",
     "features": [
