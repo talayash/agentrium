@@ -9,6 +9,7 @@ import { Modal } from './ui/Modal';
 import { Button } from './ui/Button';
 import { ListRow } from './ui/ListRow';
 import { EmptyState } from './ui/EmptyState';
+import { toBracketedPaste } from '../lib/bracketedPaste';
 
 interface Snippet {
   id: string;
@@ -116,7 +117,7 @@ export function SnippetsModal() {
     const content = editing ? editContent : selectedSnippet?.content;
     if (!content || !activeTerminalId) return;
     try {
-      await writeToTerminal(activeTerminalId, content);
+      await writeToTerminal(activeTerminalId, toBracketedPaste(content));
     } catch (err) {
       toast.error('Insert Failed', 'Could not send the snippet to the terminal.');
       reportInvokeFailure('write_to_terminal', err);

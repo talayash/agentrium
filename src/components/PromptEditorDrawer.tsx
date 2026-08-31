@@ -13,6 +13,7 @@ import { captureClaudeInput, looksLikePastePlaceholder } from '../lib/terminalIn
 import { detectKindClient, kindToExt } from '../lib/pasteKind';
 import { toast } from '../store/toastStore';
 import { drawerMotion } from '../lib/motionTokens';
+import { toBracketedPaste } from '../lib/bracketedPaste';
 
 // Mirrors the backend Snippet shape (see SnippetsModal.tsx / commands.rs).
 interface Snippet {
@@ -36,16 +37,6 @@ interface HintCategory {
 }
 
 const SNIPPET_CATEGORY = 'Prompts';
-
-// Normalize line endings to LF and wrap in bracketed-paste markers. This is the
-// crux of the feature: writing a raw multi-line string to the PTY would let an
-// embedded newline submit the prompt early and split it across sends. Bracketed
-// paste (ESC[200~ ... ESC[201~) tells Claude Code "this is a paste" so newlines
-// stay literal in the input line - exactly how xterm forwards a clipboard paste.
-function toBracketedPaste(text: string): string {
-  const normalized = text.replace(/\r\n?/g, '\n');
-  return `\x1b[200~${normalized}\x1b[201~`;
-}
 
 type SidePanel = 'none' | 'guide' | 'snippets';
 

@@ -15,7 +15,34 @@
 import { writeText as tauriWriteText, readText as tauriReadText } from '@tauri-apps/plugin-clipboard-manager';
 import { reportError } from './errorReporter';
 
-export async function copyText(text: string): Promise<boolean> {
+// Every clipboard operation goes through one FIFO queue.
+//
+// Copies are routinely fire-and-forget (Ctrl+C, copy-on-select), so without
+// this a Ctrl+C immediately followed by Ctrl+V could start the read before the
+// write had landed and paste the *previous* clipboard contents. Serializing
+// makes "copy then paste" deterministic no matter how fast the user is.
+let queue: Promise<unknown> = Promise.resolve();
+
+function enqueue<T>(op: () => Promise<T>): Promise<T> {
+  // Run after the previous op settles, whether it resolved or rejected, so one
+  // failure can't wedge the queue for everything after it.
+  const run = queue.then(op, op);
+  queue = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
+
+export function copyText(text: string): Promise<boolean> {
+  return enqueue(() => copyTextNow(text));
+}
+
+export function readClipboardText(): Promise<string> {
+  return enqueue(() => readClipboardTextNow());
+}
+
+async function copyTextNow(text: string): Promise<boolean> {
   // 1. Native OS clipboard via Tauri - the reliable path in this window.
   let nativeErr: unknown;
   try {
@@ -46,7 +73,7 @@ export async function copyText(text: string): Promise<boolean> {
   }
 }
 
-export async function readClipboardText(): Promise<string> {
+async function readClipboardTextNow(): Promise<string> {
   // Mirror of copyText: native first (immune to focus gating), web fallback.
   try {
     return (await tauriReadText()) ?? '';

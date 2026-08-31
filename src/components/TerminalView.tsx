@@ -16,6 +16,9 @@ import { resolveTerminalTheme } from '../lib/terminalThemes';
 import { copyText, readClipboardText } from '../lib/clipboard';
 import { reportInvokeFailure } from '../lib/errorReporter';
 import { classifyPasteInput } from '../lib/pasteWarning';
+import { toBracketedPaste } from '../lib/bracketedPaste';
+import { decideCtrlC } from '../lib/ctrlCAction';
+import { resolveAppTheme, prefersLightScheme } from '../lib/appTheme';
 import { isVisibilityHidden } from '../utils/dragDrop';
 import { TerminalSearch } from './TerminalSearch';
 import { TerminalStatusBar } from './TerminalStatusBar';
@@ -90,9 +93,7 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
   // App appearance, resolved here (not from the DOM) so the terminal-theme
   // effect re-runs the moment the user flips light/dark and 'auto' follows.
   const themeMode = useAppStore((s) => s.themeMode);
-  const effectiveAppTheme: 'dark' | 'light' = themeMode === 'auto'
-    ? (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
-    : themeMode;
+  const effectiveAppTheme = resolveAppTheme(themeMode, prefersLightScheme());
   const bidi = useAppStore((s) => s.terminalBidi);
   const scrollbarMode = useAppStore((s) => s.terminalScrollbarMode);
 
@@ -125,7 +126,9 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
     setContextMenu(null);
     try {
       const text = await readClipboardText();
-      if (text) await writeToTerminal(terminalId, text);
+      // Must be bracketed: raw multi-line text turns every newline into an
+      // Enter, submitting the prompt line by line.
+      if (text) await writeToTerminal(terminalId, toBracketedPaste(text));
       terminalRef.current?.focus();
     } catch {
       toast.error('Paste failed', 'Could not read the clipboard.');
@@ -156,9 +159,14 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
     // Scrollback and BiDi DO require a recreate, so they appear in this
     // effect's deps.
     const terminal = new Terminal({
+      // Pass the app appearance explicitly rather than letting
+      // resolveTerminalTheme fall back to a DOM read: on first mount this
+      // effect can run before the effect that stamps data-theme, so an 'auto'
+      // terminal would construct with the wrong palette for a frame.
       theme: resolveTerminalTheme(
         useAppStore.getState().terminalTheme,
         useAppStore.getState().accentColorHex,
+        resolveAppTheme(useAppStore.getState().themeMode, prefersLightScheme()),
       ),
       fontFamily: useAppStore.getState().terminalFontFamily,
       fontSize: useAppStore.getState().terminalFontSize,
@@ -268,6 +276,28 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
     };
     container.addEventListener('mouseup', handleMouseUp);
 
+    // The right button belongs to our own context menu, never to the program.
+    //
+    // Once the running app turns on mouse reporting (Claude Code does), xterm
+    // forwards every button press to the PTY as an escape sequence - and the
+    // CLI treats a right-click as "paste from the system clipboard", reading
+    // the OS clipboard itself. The result was a double action: the clipboard
+    // was inserted the instant the menu appeared, before the user picked
+    // anything, and choosing Paste then inserted it a second time. Because the
+    // CLI does that read natively there is no DOM paste event to intercept, so
+    // the only place to stop it is before xterm sees the button.
+    //
+    // Capture phase on the wrapper runs ahead of xterm's own listener (bound on
+    // the inner .xterm element), so this keeps the press away from the PTY
+    // while leaving left-button selection and drag untouched. Shift+right-click
+    // already bypassed mouse reporting inside xterm, which is how this was
+    // isolated.
+    const swallowRightButton = (e: MouseEvent) => {
+      if (e.button === 2) e.stopPropagation();
+    };
+    container.addEventListener('mousedown', swallowRightButton, true);
+    container.addEventListener('mouseup', swallowRightButton, true);
+
     // Handle Ctrl+C (copy) and Ctrl+V (paste) keyboard shortcuts
     terminal.attachCustomKeyEventHandler((e: KeyboardEvent) => {
       const isCtrl = e.ctrlKey || e.metaKey;
@@ -287,7 +317,11 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
       }
 
       if (isCtrl && !e.shiftKey && key === 'c' && e.type === 'keydown') {
-        if (terminal.hasSelection()) {
+        const action = decideCtrlC({
+          hasSelection: terminal.hasSelection(),
+          copyOnSelect: useAppStore.getState().terminalCopyOnSelect,
+        });
+        if (action === 'copy') {
           // copyText() falls back to execCommand when navigator.clipboard
           // rejects with "Document is not focused" - which happens in this
           // WebView2 window right after a canvas drag-select.
@@ -295,7 +329,9 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
           terminal.clearSelection();
           return false; // Prevent xterm from sending \x03
         }
-        // No selection - let xterm send interrupt signal (Ctrl+C)
+        // Drop a stale selection so the next Ctrl+C isn't ambiguous either,
+        // then let xterm send the interrupt.
+        terminal.clearSelection();
         return true;
       }
 
@@ -450,6 +486,8 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
       resizeObserver.disconnect();
       terminal.textarea?.removeEventListener('blur', handleBlur);
       container.removeEventListener('mouseup', handleMouseUp);
+      container.removeEventListener('mousedown', swallowRightButton, true);
+      container.removeEventListener('mouseup', swallowRightButton, true);
       // Snapshot the buffer (viewport + scrollback, with colors) before we
       // dispose, so remounting in a different view (tab -> grid/split and back,
       // or a scrollback/bidi settings change) can replay it instead of showing

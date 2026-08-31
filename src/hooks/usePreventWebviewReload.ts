@@ -7,28 +7,26 @@ import { useTerminalStore } from '../store/terminalStore';
 // closes the remaining vectors:
 //
 //   1. Global `contextmenu` handler that suppresses the browser-native menu
-//      everywhere EXCEPT text inputs, xterm helper textareas, and Monaco
-//      editors - those retain native cut/copy/paste + spell-check.
+//      everywhere, with no exceptions.
 //   2. `beforeunload` handler that cancels any refresh attempt while
 //      terminals are open (belt-and-suspenders against menu vectors we
 //      haven't thought of).
 //
+// This used to exempt text inputs, xterm helper textareas, and Monaco editors
+// so they kept native cut/copy/paste + spell-check - but that handed those
+// fields the full native menu, Refresh included, re-opening the exact hole this
+// hook exists to close. The editing commands are now supplied in-app instead:
+// `InputContextMenu` for inputs and textareas, `TerminalView`'s own menu for
+// the terminal, and Monaco's built-in menu (its own DOM widget, unaffected by
+// preventDefault here) for the editor.
+//
 // Tauri closes windows via the OS `close_requested` event, not through
 // `beforeunload`, so blocking beforeunload does NOT prevent the user from
 // actually closing the app.
-const NATIVE_MENU_SELECTORS = [
-  'input',
-  'textarea',
-  '.monaco-editor',
-  '.xterm-helper-textarea',
-  '[contenteditable="true"]',
-].join(', ');
 
 export function usePreventWebviewReload() {
   useEffect(() => {
     const onContextMenu = (e: MouseEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (target?.closest(NATIVE_MENU_SELECTORS)) return;
       e.preventDefault();
     };
 

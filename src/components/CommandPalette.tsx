@@ -9,6 +9,7 @@ import { reportInvokeFailure } from '../lib/errorReporter';
 import { fuzzyMatch, frecencyScore } from '../lib/paletteMatching';
 import { PALETTE_SOURCES, type PaletteItem } from '../lib/paletteSources';
 import { HighlightedText } from './palette/HighlightedText';
+import { toBracketedPaste } from '../lib/bracketedPaste';
 import {
   Terminal,
   Settings,
@@ -208,7 +209,7 @@ export function CommandPalette() {
           icon: Send,
           action: () => {
             if (activeTerminalId) {
-              writeToTerminal(activeTerminalId, snippet.content).catch((err) => {
+              writeToTerminal(activeTerminalId, toBracketedPaste(snippet.content)).catch((err) => {
                 toast.error('Insert failed', 'Could not send the snippet to the terminal.');
                 reportInvokeFailure('write_to_terminal', err);
               });

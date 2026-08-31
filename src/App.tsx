@@ -49,6 +49,7 @@ import { toast } from './store/toastStore';
 import { detectUrl } from './lib/preview/detector';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { usePreventWebviewReload } from './hooks/usePreventWebviewReload';
+import { InputContextMenu } from './components/InputContextMenu';
 import { useNotification } from './hooks/useNotification';
 import { useSessionStateDetection } from './hooks/useSessionStateDetection';
 import {
@@ -942,6 +943,7 @@ function App() {
       )}
 
       <PreviewInlineHint />
+      <InputContextMenu />
       <ToastContainer />
     </div>
   );
