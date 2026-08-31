@@ -17,6 +17,7 @@ import {
   modelsInFamily,
   type ClaudeModelFamily,
 } from '../lib/claudeModels';
+import { modelsForAgent } from '../lib/agentModels';
 import { AgentPicker } from './AgentPicker';
 import { Button } from './ui/Button';
 import { Modal } from './ui/Modal';
@@ -180,6 +181,13 @@ export function NewTerminalModal() {
       setClaudeArgs(defaultAgentArgs[selectedAgent]);
     }
   }, [selectedProfileId, profiles, defaultAgentArgs, selectedAgent]);
+
+  // Model choices are agent-scoped (a Claude alias means nothing to Codex
+  // and vice versa), so switching agent snaps the picker back to Default.
+  useEffect(() => {
+    setSelectedModel('default');
+    setSelectedModelFamily('default');
+  }, [selectedAgent]);
 
   // Debounced git detection when working directory changes
   const detectGitRepo = useCallback(async (dir: string) => {
@@ -375,14 +383,17 @@ export function NewTerminalModal() {
         // with Codex, which rejects it). filterArgsForAgent is a no-op
         // shallow copy for Claude.
         const finalArgs = filterArgsForAgent(selectedAgent, claudeArgs);
-        // Model / Effort / Worktree flags are Claude Code specific. Only
-        // inject them when spawning Claude - Codex and Cursor have their
-        // own selectors (out of scope for MVP) and would arg-parse-fail
-        // on these names.
+        // Every agent CLI accepts `--model <id>` (claude, codex, agent,
+        // agy), so the picker's choice is injected for all of them. This
+        // runs AFTER filterArgsForAgent on purpose: the filter strips
+        // hand-typed Claude model args from other agents, and the picker
+        // value must win over anything a reused profile carried.
+        if (selectedModel !== 'default') {
+          finalArgs.unshift('--model', selectedModel);
+        }
+        // Effort / Worktree stay Claude-only: Cursor encodes effort in the
+        // model id, and worktree spawn mode is only wired up for Claude.
         if (selectedAgent === 'claude') {
-          if (selectedModel !== 'default') {
-            finalArgs.unshift('--model', selectedModel);
-          }
           if (selectedEffort !== 'default') {
             finalArgs.unshift('--effort', selectedEffort);
           }
@@ -745,9 +756,11 @@ export function NewTerminalModal() {
             />
           </div>
 
-          {!plainShell && selectedAgent === 'claude' && (
+          {!plainShell && (
           <div>
             <label className="block text-text-tertiary text-[11px] font-semibold uppercase tracking-wider mb-2">Model</label>
+            {selectedAgent === 'claude' ? (
+            <>
             {/* Family row - flat buttons, one per model family. A flat row
                 past ~4 entries breaks the modal's width budget, so variants
                 (opus[1m], sonnet[1m], opusplan) live in a second tier below. */}
@@ -803,6 +816,34 @@ export function NewTerminalModal() {
                   );
                 })}
               </div>
+            )}
+            </>
+            ) : (
+            /* Non-Claude agents: a single curated chip row (their CLIs all
+               accept --model <id>, verified against codex/agent/agy). The
+               'default' chip means "don't pass --model" - the agent's own
+               default applies. */
+            <div className="flex flex-wrap gap-1.5">
+              {[null, ...modelsForAgent(selectedAgent)].map((m) => {
+                const alias = m?.alias ?? 'default';
+                const isSel = selectedModel === alias;
+                const selectedClasses = m
+                  ? `${m.badgeClasses} ${m.ringClasses}`
+                  : 'bg-accent-primary/10 text-accent-primary ring-1 ring-accent-primary/30';
+                return (
+                  <button
+                    key={alias}
+                    onClick={() => setSelectedModel(alias)}
+                    title={m?.fullLabel}
+                    className={`px-3 py-1.5 rounded-lg text-[12px] font-medium transition-colors ${
+                      isSel ? selectedClasses : 'bg-fill-hover ring-1 ring-seam text-text-secondary hover:bg-fill-active hover:text-text-primary'
+                    }`}
+                  >
+                    {m?.label ?? 'Default'}
+                  </button>
+                );
+              })}
+            </div>
             )}
           </div>
           )}

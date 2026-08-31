@@ -6,7 +6,7 @@ import { captureClaudeInput } from '../lib/terminalInput';
 import { toast } from '../store/toastStore';
 import { reportInvokeFailure } from '../lib/errorReporter';
 import { copyText, readClipboardText } from '../lib/clipboard';
-import { getModelBadgeClasses } from '../lib/claudeModels';
+import { getAnyModelBadgeClasses, getModelBadgeLabel } from '../lib/agentModels';
 import { Tooltip } from './ui/Tooltip';
 
 interface TerminalStatusBarProps {
@@ -116,8 +116,8 @@ export function TerminalStatusBar({ terminalId }: TerminalStatusBarProps) {
         </Tooltip>
 
         {model && (
-          <span className={`px-1.5 h-[17px] flex items-center rounded-md font-medium flex-shrink-0 text-[10.5px] ${getModelBadgeClasses(model)}`}>
-            {model}
+          <span className={`px-1.5 h-[17px] flex items-center rounded-md font-medium flex-shrink-0 text-[10.5px] ${getAnyModelBadgeClasses(model)}`}>
+            {getModelBadgeLabel(model)}
           </span>
         )}
 

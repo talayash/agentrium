@@ -49,10 +49,10 @@ export const AGENT_SPECS: readonly AgentSpec[] = [
     binary: 'agy',
     installUrl: 'https://antigravity.google/docs/cli/install/',
     installHint: 'curl -fsSL https://antigravity.google/cli/install.sh | bash',
-    // Antigravity runs Google's Gemini models under the hood, so
-    // `--model gemini-2.5-pro` is a reasonable starter hint; check
-    // antigravity.google/docs/cli for the current flag list.
-    defaultArgsHint: '--model gemini-2.5-pro',
+    // Don't hint `--model` here: filterArgsForAgent strips typed --model
+    // pairs from non-Claude agents (the picker injects it instead), so a
+    // --model hint would suggest an arg that silently disappears.
+    defaultArgsHint: '--sandbox       # terminal restrictions',
   },
 ];
 
@@ -79,7 +79,11 @@ const NO_VALUE_STRIP: Record<AgentKind, ReadonlySet<string>> = {
 // Flags that consume the next token as their value; the value must be
 // dropped alongside the flag. `--resume` is Claude-shape - other agents
 // have their own resume form injected by the backend's resume_flags_for.
-// `--model` / `--effort` are Claude flag names other CLIs don't recognize.
+// `--model` / `--effort`: the other CLIs do accept a `--model` flag, but
+// a VALUE typed for Claude (e.g. `opus`, `sonnet[1m]`) is an unknown model
+// to them, so reused Claude args must lose the pair. The New Terminal
+// modal injects the per-agent model picked from `agentModels.ts` AFTER
+// this filter runs, so the picker is the supported way to set a model.
 const WITH_VALUE_STRIP: Record<AgentKind, ReadonlySet<string>> = {
   claude: new Set(),
   codex: new Set(['--model', '--effort', '--resume']),

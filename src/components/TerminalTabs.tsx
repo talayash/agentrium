@@ -17,7 +17,7 @@ import { getLastOutputAt } from '../lib/terminalActivity';
 import { StateDot } from './StateDot';
 import { BrandIcon } from './BrandIcon';
 import { specFor } from '../lib/agents';
-import { getModelBadgeClasses } from '../lib/claudeModels';
+import { getAnyModelBadgeClasses, getModelBadgeLabel } from '../lib/agentModels';
 import { Tooltip } from './ui/Tooltip';
 import type { SessionState } from '../lib/terminalState';
 
@@ -183,8 +183,8 @@ export function TerminalTabs() {
                 </Tooltip>
               )}
               {activeInst?.model && (
-                <span className={`text-[9px] px-1.5 h-[16px] flex items-center rounded-md font-medium flex-shrink-0 ${getModelBadgeClasses(activeInst.model)}`}>
-                  {activeInst.model}
+                <span className={`text-[9px] px-1.5 h-[16px] flex items-center rounded-md font-medium flex-shrink-0 ${getAnyModelBadgeClasses(activeInst.model)}`}>
+                  {getModelBadgeLabel(activeInst.model)}
                 </span>
               )}
               {headerCost && (
