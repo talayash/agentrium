@@ -210,7 +210,7 @@ export function useKeyboardShortcuts() {
 
       if (e.key === 'F4') {
         e.preventDefault();
-        useAppStore.getState().toggleOrchestration();
+        useAppStore.getState().toggleWorkspaces();
       }
 
       // Claude Config: F6

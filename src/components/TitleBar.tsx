@@ -33,15 +33,15 @@ export function TitleBar() {
   // Inspector state - one titlebar toggle; the tab switcher lives inside
   // the Inspector itself.
   const changesOpen = useAppStore((s) => s.changesOpen);
-  const orchestrationOpen = useAppStore((s) => s.orchestrationOpen);
+  const workspacesOpen = useAppStore((s) => s.workspacesOpen);
   const hintsOpen = useAppStore((s) => s.hintsOpen);
   const toggleChanges = useAppStore((s) => s.toggleChanges);
-  const toggleOrchestration = useAppStore((s) => s.toggleOrchestration);
+  const toggleWorkspaces = useAppStore((s) => s.toggleWorkspaces);
   const toggleHints = useAppStore((s) => s.toggleHints);
-  const inspectorOpen = changesOpen || orchestrationOpen || hintsOpen;
+  const inspectorOpen = changesOpen || workspacesOpen || hintsOpen;
   const toggleInspector = () => {
     if (changesOpen) toggleChanges();
-    else if (orchestrationOpen) toggleOrchestration();
+    else if (workspacesOpen) toggleWorkspaces();
     else if (hintsOpen) toggleHints();
     else toggleChanges();
   };
