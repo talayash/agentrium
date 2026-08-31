@@ -251,8 +251,8 @@ interface AppState {
   splitOrientation: SplitOrientation;
   splitRatio: number;
 
-  // Agent Teams (F4)
-  orchestrationOpen: boolean;
+  // Workspaces (F4)
+  workspacesOpen: boolean;
 
   // Snippets (F5)
   snippetsModalOpen: boolean;
@@ -436,8 +436,8 @@ interface AppState {
   setSplitRatio: (ratio: number) => void;
   clearSplit: () => void;
 
-  // Agent Teams actions (F4)
-  toggleOrchestration: () => void;
+  // Workspaces actions (F4)
+  toggleWorkspaces: () => void;
 
   // Snippets actions (F5)
   openSnippetsModal: () => void;
@@ -667,8 +667,8 @@ export const useAppStore = create<AppState>()(
       splitOrientation: 'horizontal' as SplitOrientation,
       splitRatio: 0.5,
 
-      // Agent Teams (F4)
-      orchestrationOpen: false,
+      // Workspaces (F4)
+      workspacesOpen: false,
 
       // Snippets (F5)
       snippetsModalOpen: false,
@@ -709,8 +709,8 @@ export const useAppStore = create<AppState>()(
       // The three right-side panels now share one Inspector frame, so opening
       // one closes the others (mutually exclusive → the Inspector shows exactly
       // one tab). ToolStripe/shortcuts/palette call these unchanged.
-      toggleHints: () => set((state) => ({ hintsOpen: !state.hintsOpen, changesOpen: false, orchestrationOpen: false })),
-      toggleChanges: () => set((state) => ({ changesOpen: !state.changesOpen, hintsOpen: false, orchestrationOpen: false })),
+      toggleHints: () => set((state) => ({ hintsOpen: !state.hintsOpen, changesOpen: false, workspacesOpen: false })),
+      toggleChanges: () => set((state) => ({ changesOpen: !state.changesOpen, hintsOpen: false, workspacesOpen: false })),
       triggerChangesRefresh: () => set((state) => ({ changesRefreshTrigger: state.changesRefreshTrigger + 1 })),
       openSettings: () => set({ settingsOpen: true }),
       closeSettings: () => set({ settingsOpen: false }),
@@ -1127,8 +1127,8 @@ export const useAppStore = create<AppState>()(
       setSplitRatio: (ratio) => set({ splitRatio: Math.max(0.2, Math.min(0.8, ratio)) }),
       clearSplit: () => set({ splitMode: false, splitTerminalIds: null, splitRatio: 0.5 }),
 
-      // Agent Teams actions (F4)
-      toggleOrchestration: () => set((state) => ({ orchestrationOpen: !state.orchestrationOpen, changesOpen: false, hintsOpen: false })),
+      // Workspaces actions (F4)
+      toggleWorkspaces: () => set((state) => ({ workspacesOpen: !state.workspacesOpen, changesOpen: false, hintsOpen: false })),
 
       // Snippets actions (F5)
       openSnippetsModal: () => set({ snippetsModalOpen: true }),
@@ -1290,7 +1290,7 @@ export const useAppStore = create<AppState>()(
         sidebarNav: state.sidebarNav,
         sessionsHeightRatio: state.sessionsHeightRatio,
         repositoriesHeightRatio: state.repositoriesHeightRatio,
-        orchestrationOpen: state.orchestrationOpen,
+        workspacesOpen: state.workspacesOpen,
         lastSeenVersion: state.lastSeenVersion,
         pasteAutoDetectEnabled: state.pasteAutoDetectEnabled,
         pasteAutoDetectThresholdBytes: state.pasteAutoDetectThresholdBytes,
