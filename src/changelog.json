@@ -1,5 +1,12 @@
 [
   {
+    "version": "1.33.3",
+    "date": "2026-08-31",
+    "features": [
+      { "title": "Workspaces panel replaces Agent Teams tab", "description": "The Inspector's middle tab (F4) is now a Workspaces manager - save the current terminal layout as a named workspace and load or delete saved ones directly from the inspector. Replaces the previous Agent Teams orchestration view." }
+    ]
+  },
+  {
     "version": "1.33.2",
     "date": "2026-08-31",
     "features": [
