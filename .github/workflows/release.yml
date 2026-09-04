@@ -135,7 +135,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          CT_INGEST_TOKEN: ${{ secrets.CT_INGEST_TOKEN }}
           # Azure auth for the Trusted Signing DLib (DefaultAzureCredential picks these up).
           # AZURE_TENANT_ID inherited from job-level env. sign-windows.ps1 no-ops when TRUSTED_SIGNING_ENABLED is unset.
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}

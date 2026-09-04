@@ -1920,6 +1920,15 @@ async fn validate_path_is_trusted(state: &State<'_, AppState>, path: &str) -> Re
         if config.working_directory.is_empty() {
             return false;
         }
+        // Shell/script terminals are execution surfaces, not filesystem grants.
+        // Otherwise a compromised renderer could create a shell at an arbitrary
+        // directory and immediately launder it into a trusted file-operation root.
+        if matches!(
+            config.claude_args.first().map(String::as_str),
+            Some("__shell__" | "__script__")
+        ) {
+            return false;
+        }
         std::path::Path::new(&config.working_directory)
             .canonicalize()
             .ok()
@@ -3189,8 +3198,7 @@ pub async fn list_claude_agents() -> Result<Vec<String>, String> {
 #[command]
 pub async fn read_claude_agent(name: String) -> Result<String, String> {
     wrap_cmd("read_claude_agent", async move {
-        validate_filename(&name)?;
-        let path = get_claude_dir()?.join("agents").join(&name);
+        let path = resolve_claude_named_file("agents", &name)?;
         if !path.exists() {
             return Err(error_reporter::user_err(format!("Agent file not found: {}", name)));
         }
@@ -3205,7 +3213,8 @@ pub async fn write_claude_agent(name: String, content: String) -> Result<(), Str
         validate_filename(&name)?;
         let agents_dir = get_claude_dir()?.join("agents");
         tokio::fs::create_dir_all(&agents_dir).await.map_err(|e| e.to_string())?;
-        tokio::fs::write(agents_dir.join(&name), &content).await.map_err(|e| e.to_string())
+        let path = resolve_claude_named_file("agents", &name)?;
+        tokio::fs::write(path, &content).await.map_err(|e| e.to_string())
     })
     .await
 }
@@ -3213,8 +3222,7 @@ pub async fn write_claude_agent(name: String, content: String) -> Result<(), Str
 #[command]
 pub async fn delete_claude_agent(name: String) -> Result<(), String> {
     wrap_cmd("delete_claude_agent", async move {
-        validate_filename(&name)?;
-        let path = get_claude_dir()?.join("agents").join(&name);
+        let path = resolve_claude_named_file("agents", &name)?;
         if path.exists() {
             tokio::fs::remove_file(&path).await.map_err(|e| e.to_string())?;
         }
@@ -3251,8 +3259,7 @@ pub async fn list_claude_commands() -> Result<Vec<String>, String> {
 #[command]
 pub async fn read_claude_command(name: String) -> Result<String, String> {
     wrap_cmd("read_claude_command", async move {
-        validate_filename(&name)?;
-        let path = get_claude_dir()?.join("commands").join(&name);
+        let path = resolve_claude_named_file("commands", &name)?;
         if !path.exists() {
             return Err(error_reporter::user_err(format!("Command file not found: {}", name)));
         }
@@ -3267,7 +3274,8 @@ pub async fn write_claude_command(name: String, content: String) -> Result<(), S
         validate_filename(&name)?;
         let commands_dir = get_claude_dir()?.join("commands");
         tokio::fs::create_dir_all(&commands_dir).await.map_err(|e| e.to_string())?;
-        tokio::fs::write(commands_dir.join(&name), &content).await.map_err(|e| e.to_string())
+        let path = resolve_claude_named_file("commands", &name)?;
+        tokio::fs::write(path, &content).await.map_err(|e| e.to_string())
     })
     .await
 }
@@ -3275,8 +3283,7 @@ pub async fn write_claude_command(name: String, content: String) -> Result<(), S
 #[command]
 pub async fn delete_claude_command(name: String) -> Result<(), String> {
     wrap_cmd("delete_claude_command", async move {
-        validate_filename(&name)?;
-        let path = get_claude_dir()?.join("commands").join(&name);
+        let path = resolve_claude_named_file("commands", &name)?;
         if path.exists() {
             tokio::fs::remove_file(&path).await.map_err(|e| e.to_string())?;
         }
@@ -3555,7 +3562,7 @@ pub struct ClaudeMdInfo {
 /// Validates that a path is under ~/.claude/
 /// Rejects traversal components (`..`, `\0`) and resolves against the canonical
 /// parent directory so not-yet-existing files still get a real containment check.
-fn validate_claude_path(path: &str) -> Result<(), String> {
+fn resolve_claude_path(path: &str) -> Result<std::path::PathBuf, String> {
     let target = std::path::Path::new(path);
 
     // Reject path traversal and null-byte components explicitly. canonicalize()
@@ -3609,7 +3616,13 @@ fn validate_claude_path(path: &str) -> Result<(), String> {
     if !canonical_target.starts_with(&canonical_claude) {
         return Err("Access denied: path is not under ~/.claude/".to_string());
     }
-    Ok(())
+    Ok(canonical_target)
+}
+
+fn resolve_claude_named_file(subdir: &str, name: &str) -> Result<std::path::PathBuf, String> {
+    validate_filename(name)?;
+    let path = get_claude_dir()?.join(subdir).join(name);
+    resolve_claude_path(&path.to_string_lossy())
 }
 
 #[command]
@@ -3625,7 +3638,7 @@ pub async fn list_memory_files(project_path: Option<String>) -> Result<Vec<Memor
         // Validate the specific-project path before entering the blocking task
         // so the validation error (not-under-.claude) surfaces synchronously.
         if let Some(ref specific_project) = project_path {
-            validate_claude_path(specific_project)?;
+            let _ = resolve_claude_path(specific_project)?;
         }
 
         // Nested read_dir + per-file metadata for every project - off-runtime.
@@ -3688,8 +3701,8 @@ pub async fn list_memory_files(project_path: Option<String>) -> Result<Vec<Memor
 #[command]
 pub async fn read_memory_file(path: String) -> Result<String, String> {
     wrap_cmd("read_memory_file", async move {
-        validate_claude_path(&path)?;
-        tokio::fs::read_to_string(&path)
+        let resolved = resolve_claude_path(&path)?;
+        tokio::fs::read_to_string(&resolved)
             .await
             .map_err(|e| format!("Failed to read memory file: {}", e))
     })
@@ -3699,12 +3712,12 @@ pub async fn read_memory_file(path: String) -> Result<String, String> {
 #[command]
 pub async fn write_memory_file(path: String, content: String) -> Result<(), String> {
     wrap_cmd("write_memory_file", async move {
-        validate_claude_path(&path)?;
+        let resolved = resolve_claude_path(&path)?;
         // Ensure parent directory exists
-        if let Some(parent) = std::path::Path::new(&path).parent() {
+        if let Some(parent) = resolved.parent() {
             tokio::fs::create_dir_all(parent).await.map_err(|e| e.to_string())?;
         }
-        tokio::fs::write(&path, &content)
+        tokio::fs::write(&resolved, &content)
             .await
             .map_err(|e| format!("Failed to write memory file: {}", e))
     })

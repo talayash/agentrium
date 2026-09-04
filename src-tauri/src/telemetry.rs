@@ -2,10 +2,6 @@ use serde::Serialize;
 
 const WORKER_URL: &str = "https://ct-analytics.claude-terminal.workers.dev";
 
-// Token baked in at build time. If unset/empty, heartbeats are skipped so
-// unsigned/dev builds never post unauthenticated traffic.
-const INGEST_TOKEN: Option<&str> = option_env!("CT_INGEST_TOKEN");
-
 #[derive(Serialize)]
 struct HeartbeatPayload {
     installation_id: String,
@@ -16,14 +12,6 @@ struct HeartbeatPayload {
 }
 
 pub async fn send_heartbeat(installation_id: String, app_version: String) {
-    let token = match INGEST_TOKEN {
-        Some(t) if !t.is_empty() => t,
-        _ => {
-            eprintln!("[telemetry] CT_INGEST_TOKEN not set at build time; skipping heartbeat");
-            return;
-        }
-    };
-
     let os = std::env::consts::OS.to_string();
     let os_version = format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH);
 
@@ -48,7 +36,6 @@ pub async fn send_heartbeat(installation_id: String, app_version: String) {
 
     match client
         .post(format!("{}/heartbeat", WORKER_URL))
-        .header("x-ct-token", token)
         .json(&payload)
         .send()
         .await

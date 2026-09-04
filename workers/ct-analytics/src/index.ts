@@ -23,7 +23,6 @@
 interface Env {
   KV_BINDING: KVNamespace;
   DB: D1Database;
-  INGEST_TOKEN: string;
   STATS_TOKEN: string;
 }
 
@@ -74,6 +73,9 @@ interface LiveMetadata {
 const CORS_HEADERS: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  // x-ct-token remains available for the protected administrative stats
+  // endpoints. Public ingestion routes deliberately do not authenticate with
+  // a secret embedded in the desktop client.
   'Access-Control-Allow-Headers': 'Content-Type, x-ct-token',
   'Access-Control-Max-Age': '86400',
 };
@@ -87,6 +89,15 @@ function requireToken(request: Request, expected: string | undefined): Response 
   if (!expected) return json({ error: 'server_misconfigured' }, 500);
   const provided = request.headers.get('x-ct-token');
   if (provided !== expected) return json({ error: 'unauthorized' }, 401);
+  return null;
+}
+
+async function rateLimitIngest(request: Request, env: Env, installationId: unknown): Promise<Response | null> {
+  const ip = request.headers.get('cf-connecting-ip') ?? 'unknown';
+  const id = typeof installationId === 'string' ? installationId.slice(0, 64) : 'unknown';
+  const key = `rl:ingest:${ip}:${id}`;
+  if (await env.KV_BINDING.get(key)) return json({ error: 'rate_limited' }, 429);
+  await env.KV_BINDING.put(key, '1', { expirationTtl: 5 });
   return null;
 }
 
@@ -516,17 +527,23 @@ export default {
 
     try {
       if (request.method === 'POST' && url.pathname === '/heartbeat') {
-        const denied = requireToken(request, env.INGEST_TOKEN);
+        const cloned = request.clone();
+        const body = await cloned.json().catch(() => ({})) as HeartbeatBody;
+        const denied = await rateLimitIngest(request, env, body.installation_id);
         if (denied) return denied;
         return await handleHeartbeat(request, env, ctx, 'heartbeats');
       }
       if (request.method === 'POST' && url.pathname === '/update_check') {
-        const denied = requireToken(request, env.INGEST_TOKEN);
+        const cloned = request.clone();
+        const body = await cloned.json().catch(() => ({})) as HeartbeatBody;
+        const denied = await rateLimitIngest(request, env, body.installation_id);
         if (denied) return denied;
         return await handleHeartbeat(request, env, ctx, 'update_checks');
       }
       if (request.method === 'POST' && url.pathname === '/error_report') {
-        const denied = requireToken(request, env.INGEST_TOKEN);
+        const cloned = request.clone();
+        const body = await cloned.json().catch(() => ({})) as ErrorReportBody;
+        const denied = await rateLimitIngest(request, env, body.installation_id);
         if (denied) return denied;
         return await handleErrorReport(request, env, ctx);
       }

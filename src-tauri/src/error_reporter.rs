@@ -138,7 +138,6 @@ use std::time::{Duration, Instant};
 use serde::Serialize;
 
 const WORKER_URL: &str = "https://ct-analytics.claude-terminal.workers.dev";
-const INGEST_TOKEN: Option<&str> = option_env!("CT_INGEST_TOKEN");
 const SEND_TIMEOUT: Duration = Duration::from_secs(5);
 const MESSAGE_MAX: usize = 2048;
 const STACK_MAX: usize = 8192;
@@ -278,10 +277,6 @@ pub async fn report(
     if !is_enabled() {
         return;
     }
-    let token = match INGEST_TOKEN {
-        Some(t) if !t.is_empty() => t,
-        _ => return,
-    };
     let state = match REPORTER.get() {
         Some(s) => s,
         None => {
@@ -324,7 +319,6 @@ pub async fn report(
 
     match client
         .post(format!("{}/error_report", WORKER_URL))
-        .header("x-ct-token", token)
         .json(&payload)
         .send()
         .await

@@ -15,17 +15,21 @@ pub struct ServerSpec {
     pub npm_packages: &'static [&'static str],
 }
 
+const RUST_ANALYZER_RELEASE: &str = "2026-07-27";
+const MAX_ARCHIVE_BYTES: usize = 32 * 1024 * 1024;
+const MAX_BINARY_BYTES: u64 = 128 * 1024 * 1024;
+
 pub fn server_spec(language: &str) -> Option<ServerSpec> {
     match language {
         "typescript" => Some(ServerSpec {
             bin: "typescript-language-server",
             args: &["--stdio"],
-            npm_packages: &["typescript-language-server", "typescript"],
+            npm_packages: &["typescript-language-server@6.0.0", "typescript@7.0.2"],
         }),
         "python" => Some(ServerSpec {
             bin: "pyright-langserver",
             args: &["--stdio"],
-            npm_packages: &["pyright"],
+            npm_packages: &["pyright@1.1.413"],
         }),
         "rust" => Some(ServerSpec {
             bin: "rust-analyzer",
@@ -155,7 +159,13 @@ pub async fn install(language: &str) -> Result<(), String> {
     if spec.npm_packages.is_empty() {
         install_rust_analyzer(&dir).await
     } else {
-        let mut args: Vec<String> = vec!["install".into(), "--prefix".into(), dir.to_string_lossy().to_string()];
+        let mut args: Vec<String> = vec![
+            "install".into(),
+            "--ignore-scripts".into(),
+            "--save-exact".into(),
+            "--prefix".into(),
+            dir.to_string_lossy().to_string(),
+        ];
         args.extend(spec.npm_packages.iter().map(|s| s.to_string()));
         let out = tokio::task::spawn_blocking(move || {
             let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
@@ -172,18 +182,18 @@ pub async fn install(language: &str) -> Result<(), String> {
     }
 }
 
-fn ra_asset() -> Result<(&'static str, bool), String> {
-    // (asset name, is_zip)
+fn ra_asset() -> Result<(&'static str, bool, &'static str), String> {
+    // (asset name, is_zip, sha256)
     if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
-        Ok(("rust-analyzer-x86_64-pc-windows-msvc.zip", true))
+        Ok(("rust-analyzer-x86_64-pc-windows-msvc.zip", true, "7abdf50734026de963b3b25eba7714be8acf43a15ffb7f4f9d8b041e796ce2c9"))
     } else if cfg!(all(target_os = "windows", target_arch = "aarch64")) {
-        Ok(("rust-analyzer-aarch64-pc-windows-msvc.zip", true))
+        Ok(("rust-analyzer-aarch64-pc-windows-msvc.zip", true, "ba6da9a8443548e7d6953d4736248019d2f92fa883dad72415a572bbbe4e0e7b"))
     } else if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
-        Ok(("rust-analyzer-aarch64-apple-darwin.gz", false))
+        Ok(("rust-analyzer-aarch64-apple-darwin.gz", false, "102215ae7e7a41c0dda8f24e910a01e757f58091204863e5e3e6696b743f7e97"))
     } else if cfg!(all(target_os = "macos", target_arch = "x86_64")) {
-        Ok(("rust-analyzer-x86_64-apple-darwin.gz", false))
+        Ok(("rust-analyzer-x86_64-apple-darwin.gz", false, "9d1a60991ead6c27baa9d265fc8fd03bba9c39cf0ec2aaf389e37e6155af7cbb"))
     } else if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
-        Ok(("rust-analyzer-x86_64-unknown-linux-gnu.gz", false))
+        Ok(("rust-analyzer-x86_64-unknown-linux-gnu.gz", false, "ac4f42ddbbd040d75d847e991894776485783e28beb744b9719a660a99abe115"))
     } else {
         Err("no rust-analyzer build for this platform - install it on PATH instead".into())
     }
@@ -204,24 +214,32 @@ fn zip_entry_index(
 }
 
 async fn install_rust_analyzer(dir: &std::path::Path) -> Result<(), String> {
-    let (asset, is_zip) = ra_asset()?;
+    let (asset, is_zip, expected_sha256) = ra_asset()?;
     let url = format!(
-        "https://github.com/rust-lang/rust-analyzer/releases/latest/download/{asset}"
+        "https://github.com/rust-lang/rust-analyzer/releases/download/{RUST_ANALYZER_RELEASE}/{asset}"
     );
     let client = reqwest::Client::builder()
         .https_only(true)
         .build()
         .map_err(|e| e.to_string())?;
-    let bytes = client
+    let mut response = client
         .get(&url)
         .send()
         .await
         .map_err(|e| e.to_string())?
         .error_for_status()
-        .map_err(|e| e.to_string())?
-        .bytes()
-        .await
         .map_err(|e| e.to_string())?;
+    if response.content_length().is_some_and(|n| n > MAX_ARCHIVE_BYTES as u64) {
+        return Err("rust-analyzer archive is larger than the allowed maximum".into());
+    }
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response.chunk().await.map_err(|e| e.to_string())? {
+        if bytes.len().saturating_add(chunk.len()) > MAX_ARCHIVE_BYTES {
+            return Err("rust-analyzer archive is larger than the allowed maximum".into());
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    verify_sha256(&bytes, expected_sha256)?;
 
     let bin_dir = dir.join("bin");
     let target = installed_bin_path(&server_spec("rust").unwrap());
@@ -229,7 +247,7 @@ async fn install_rust_analyzer(dir: &std::path::Path) -> Result<(), String> {
         // Extract to a .part file and rename into place only on success, so a
         // torn download never shows up as Installed (and overwriting a running
         // exe on Windows doesn't hit a sharing violation).
-        let part = target.with_extension("part");
+        let part = target.with_extension(format!("{}.part", uuid::Uuid::new_v4()));
         let extract = || -> Result<(), String> {
             std::fs::create_dir_all(&bin_dir).map_err(|e| e.to_string())?;
             let mut out = std::fs::File::create(&part).map_err(|e| e.to_string())?;
@@ -239,14 +257,14 @@ async fn install_rust_analyzer(dir: &std::path::Path) -> Result<(), String> {
                 } else {
                     "rust-analyzer"
                 };
-                let reader = std::io::Cursor::new(bytes.as_ref().to_vec());
+                let reader = std::io::Cursor::new(bytes.clone());
                 let mut zip = zip::ZipArchive::new(reader).map_err(|e| e.to_string())?;
                 let index = zip_entry_index(&mut zip, suffix)?;
                 let mut entry = zip.by_index(index).map_err(|e| e.to_string())?;
-                std::io::copy(&mut entry, &mut out).map_err(|e| e.to_string())?;
+                copy_bounded(&mut entry, &mut out, MAX_BINARY_BYTES)?;
             } else {
-                let mut gz = flate2::read::GzDecoder::new(bytes.as_ref());
-                std::io::copy(&mut gz, &mut out).map_err(|e| e.to_string())?;
+                let mut gz = flate2::read::GzDecoder::new(bytes.as_slice());
+                copy_bounded(&mut gz, &mut out, MAX_BINARY_BYTES)?;
             }
             drop(out);
             #[cfg(unix)]
@@ -263,6 +281,30 @@ async fn install_rust_analyzer(dir: &std::path::Path) -> Result<(), String> {
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+fn verify_sha256(bytes: &[u8], expected: &str) -> Result<(), String> {
+    use sha2::{Digest, Sha256};
+    let actual = format!("{:x}", Sha256::digest(bytes));
+    if actual == expected {
+        Ok(())
+    } else {
+        Err("rust-analyzer archive checksum mismatch".into())
+    }
+}
+
+fn copy_bounded(
+    reader: &mut impl std::io::Read,
+    writer: &mut impl std::io::Write,
+    max: u64,
+) -> Result<(), String> {
+    let mut limited = std::io::Read::take(reader, max + 1);
+    let copied = std::io::copy(&mut limited, writer).map_err(|e| e.to_string())?;
+    if copied > max {
+        Err("rust-analyzer binary is larger than the allowed maximum".into())
+    } else {
+        Ok(())
+    }
 }
 
 /// rust-analyzer needs the directory containing Cargo.toml, not the git root
@@ -302,6 +344,38 @@ mod tests {
             assert!(server_spec(lang).is_some(), "missing spec for {lang}");
         }
         assert!(server_spec("cobol").is_none());
+    }
+
+    #[test]
+    fn npm_packages_are_exactly_pinned() {
+        for language in ["typescript", "python"] {
+            let spec = server_spec(language).unwrap();
+            assert!(!spec.npm_packages.is_empty());
+            assert!(spec.npm_packages.iter().all(|p| {
+                p.rsplit_once('@').is_some_and(|(name, version)| {
+                    !name.is_empty()
+                        && !version.is_empty()
+                        && version.chars().all(|c| c.is_ascii_digit() || c == '.')
+                })
+            }));
+        }
+    }
+
+    #[test]
+    fn checksum_verification_rejects_tampering() {
+        use sha2::{Digest, Sha256};
+        let bytes = b"trusted archive";
+        let digest = format!("{:x}", Sha256::digest(bytes));
+        assert!(verify_sha256(bytes, &digest).is_ok());
+        assert!(verify_sha256(b"tampered archive", &digest).is_err());
+    }
+
+    #[test]
+    fn bounded_copy_rejects_oversized_output() {
+        let mut input = std::io::Cursor::new(vec![0u8; 9]);
+        let mut output = Vec::new();
+        assert!(copy_bounded(&mut input, &mut output, 8).is_err());
+        assert_eq!(output.len(), 9);
     }
 
     #[test]

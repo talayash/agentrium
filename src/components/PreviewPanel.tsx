@@ -150,6 +150,8 @@ export function PreviewPanel() {
               src={url}
               title="Preview"
               className="absolute inset-0 w-full h-full border-0"
+              sandbox="allow-scripts allow-forms allow-modals allow-pointer-lock"
+              referrerPolicy="no-referrer"
             />
           )}
           {url && allowed && !isSelfPreview && keepAliveAcrossTabs && keepAliveEntries.map(({ id, url: entryUrl, reloadCounter: rc }) => {
@@ -160,6 +162,8 @@ export function PreviewPanel() {
                 src={entryUrl}
                 title={`Preview (${id})`}
                 className="absolute inset-0 w-full h-full border-0"
+                sandbox="allow-scripts allow-forms allow-modals allow-pointer-lock"
+                referrerPolicy="no-referrer"
                 style={{
                   visibility: isActive ? 'visible' : 'hidden',
                   pointerEvents: isActive ? 'auto' : 'none',
