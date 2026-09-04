@@ -215,7 +215,12 @@ export function TitleBar() {
 
               {branchMenuOpen && (
                 <div
-                  className="absolute left-0 top-full mt-1 z-50 w-[260px] material-popover ct-pop-in rounded-lg overflow-hidden"
+                  // Flat New UI popover (#61): opaque `--elevation-4` surface
+                  // with a plain 1px `--seam-strong` hairline and a standard
+                  // float shadow - no `backdrop-filter`, no `edge-light` rim.
+                  // Matches the flat treatment CLAUDE.md documents for the
+                  // IntelliJ 2026.1 language.
+                  className="absolute left-0 top-full mt-1 z-50 w-[260px] bg-elevation-4 ring-1 ring-inset ring-seam-strong shadow-elevation-3 ct-pop-in rounded-lg overflow-hidden"
                   style={{ transformOrigin: 'top left' }}
                 >
                   <div className="p-2 border-b border-seam">

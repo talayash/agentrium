@@ -18,6 +18,7 @@ import { reportInvokeFailure } from '../lib/errorReporter';
 import { classifyPasteInput } from '../lib/pasteWarning';
 import { toBracketedPaste } from '../lib/bracketedPaste';
 import { decideCtrlC } from '../lib/ctrlCAction';
+import { matchesKeyCode } from '../lib/keymap';
 import { resolveAppTheme, prefersLightScheme } from '../lib/appTheme';
 import { isVisibilityHidden } from '../utils/dragDrop';
 import { TerminalSearch } from './TerminalSearch';
@@ -298,25 +299,29 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
     container.addEventListener('mousedown', swallowRightButton, true);
     container.addEventListener('mouseup', swallowRightButton, true);
 
-    // Handle Ctrl+C (copy) and Ctrl+V (paste) keyboard shortcuts
+    // Handle Ctrl+C (copy) and Ctrl+V (paste) keyboard shortcuts.
+    //
+    // Letter accelerators use `matchesKeyCode` (from lib/keymap.ts) so they
+    // still fire under non-Latin keyboard layouts (Hebrew/Cyrillic/Arabic/...).
+    // `KeyboardEvent.key` returns the LOCALIZED character produced by the
+    // physical key - on Hebrew, physical V yields `e.key === 'ה'`, so a
+    // `key === 'v'` comparison never matched, quietly breaking every Ctrl+letter
+    // shortcut for those users (see #57). `KeyboardEvent.code` reports the
+    // physical key position (`'KeyV'`) regardless of layout, which is what we
+    // want. CapsLock no longer needs a `.toLowerCase()` guard for the same
+    // reason: `e.code` is case-invariant.
     terminal.attachCustomKeyEventHandler((e: KeyboardEvent) => {
       const isCtrl = e.ctrlKey || e.metaKey;
-      // Normalize the key so CapsLock doesn't break these shortcuts: with
-      // CapsLock on, an unshifted letter arrives as uppercase (e.g. 'V'), which
-      // would otherwise miss the lowercase comparisons below and fall through to
-      // xterm's raw control byte (no paste/copy). Shift is still distinguished
-      // via e.shiftKey, so Ctrl+Shift+V stays handled by the global handler.
-      const key = e.key.toLowerCase();
 
       // Ctrl+F: Toggle in-terminal search (Ctrl+Shift+F is reserved for the
       // global file/content search - see useKeyboardShortcuts).
-      if (isCtrl && !e.shiftKey && key === 'f' && e.type === 'keydown') {
+      if (isCtrl && !e.shiftKey && matchesKeyCode(e, 'F') && e.type === 'keydown') {
         e.preventDefault();
         toggleSearch();
         return false;
       }
 
-      if (isCtrl && !e.shiftKey && key === 'c' && e.type === 'keydown') {
+      if (isCtrl && !e.shiftKey && matchesKeyCode(e, 'C') && e.type === 'keydown') {
         const action = decideCtrlC({
           hasSelection: terminal.hasSelection(),
           copyOnSelect: useAppStore.getState().terminalCopyOnSelect,
@@ -343,9 +348,9 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
       //                     Ctrl+V control byte (0x16) to the program. Pasting
       //                     is then done via right-click or Ctrl+Shift+V
       //                     ("Paste as file"), which is unaffected here.
-      // Ctrl+Shift+V (e.key === 'V') is intentionally not matched - it's
-      // handled by the global shortcut handler.
-      if (isCtrl && !e.shiftKey && key === 'v') {
+      // Ctrl+Shift+V is intentionally not matched here - it's handled by the
+      // global shortcut handler.
+      if (isCtrl && !e.shiftKey && matchesKeyCode(e, 'V')) {
         if (useAppStore.getState().terminalPasteShortcut === 'ctrl+v') {
           return false;
         }
@@ -362,7 +367,7 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
       // actual undo binding. Claude Code binds undo to Ctrl+_ (byte 0x1f), NOT
       // Ctrl+Z - a raw 0x1a is SIGTSTP/suspend and does nothing useful in the
       // prompt. So we send 0x1f. (Also prevents any browser-level undo.)
-      if (isCtrl && !e.shiftKey && key === 'z') {
+      if (isCtrl && !e.shiftKey && matchesKeyCode(e, 'Z')) {
         if (e.type === 'keydown') {
           e.preventDefault();
           writeToTerminal(terminalId, '\x1f').catch((err) => {
@@ -383,8 +388,9 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
       // not cancel) from leaking a stray \x1b[Z into the PTY.
       //
       // Plain Tab is deliberately untouched - Claude Code needs it for
-      // autocomplete and mode switching.
-      if (isCtrl && key === 'tab') {
+      // autocomplete and mode switching. `e.key === 'Tab'` is safe across
+      // layouts (Tab isn't remapped by non-Latin layouts).
+      if (isCtrl && e.key === 'Tab') {
         return false;
       }
 
