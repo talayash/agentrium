@@ -92,12 +92,17 @@ function requireToken(request: Request, expected: string | undefined): Response 
   return null;
 }
 
+// Cloudflare KV requires expirationTtl >= 60; a previous 5s value here failed
+// every PUT with 400, which surfaced as 500 on /heartbeat, /update_check, and
+// /error_report and caused active_now to drop to 0 (no live: keys written).
+const KV_MIN_TTL_SECONDS = 60;
+
 async function rateLimitIngest(request: Request, env: Env, installationId: unknown): Promise<Response | null> {
   const ip = request.headers.get('cf-connecting-ip') ?? 'unknown';
   const id = typeof installationId === 'string' ? installationId.slice(0, 64) : 'unknown';
   const key = `rl:ingest:${ip}:${id}`;
   if (await env.KV_BINDING.get(key)) return json({ error: 'rate_limited' }, 429);
-  await env.KV_BINDING.put(key, '1', { expirationTtl: 5 });
+  await env.KV_BINDING.put(key, '1', { expirationTtl: KV_MIN_TTL_SECONDS });
   return null;
 }
 
