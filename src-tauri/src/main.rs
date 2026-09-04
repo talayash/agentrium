@@ -16,6 +16,7 @@ mod changelists;
 mod otel_receiver;
 mod lsp;
 mod session_provider;
+mod feedback;
 
 use tauri::Manager;
 use std::sync::Arc;
@@ -163,6 +164,8 @@ fn main() {
             commands::check_system_requirements,
             commands::install_claude_code,
             commands::open_external_url,
+            commands::send_feedback,
+            commands::open_feedback_inbox,
             commands::reveal_in_file_manager,
             commands::list_agent_sessions,
             commands::list_claude_sessions,

@@ -84,6 +84,10 @@ const LIVE_TTL_SECONDS = 900;
 const MAX_HISTORY_DAYS = 365;
 const RATE_LIMIT_TTL_SECONDS = 60;
 const ERROR_RETENTION_DAYS = 90;
+// /feedback rate limit: 5 submissions per IP per hour is more than any real user
+// will send. Bots that survive the honeypot get squelched here.
+const FEEDBACK_RATE_LIMIT_TTL_SECONDS = 60 * 60;
+const FEEDBACK_RATE_LIMIT_MAX = 5;
 
 function requireToken(request: Request, expected: string | undefined): Response | null {
   if (!expected) return json({ error: 'server_misconfigured' }, 500);
@@ -326,6 +330,128 @@ async function handleErrorReport(request: Request, env: Env, ctx: ExecutionConte
   }
 
   return json({ ok: true });
+}
+
+async function handleFeedbackIngest(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  const { normalizeFeedback, hashIP } = await import('./feedback');
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: 'invalid_json' }, 400);
+  }
+
+  const result = normalizeFeedback(body as Parameters<typeof normalizeFeedback>[0]);
+  if (!result.ok) {
+    // Both 'spam' and 'invalid' return the same generic 400 so a bot can't
+    // distinguish "you tripped the honeypot" from "you sent bad data".
+    return json({ error: 'rejected' }, 400);
+  }
+
+  const ip = request.headers.get('cf-connecting-ip') ?? 'unknown';
+  const salt = env.STATS_TOKEN ?? 'unsalted';
+  const ipHash = await hashIP(ip, salt);
+
+  // Sliding counter: increment, reject when over the cap. Using put with TTL
+  // and get gives us a rough hour-window bucket without a heavy counter
+  // implementation. Race conditions can let one extra through, which is fine.
+  const rateKey = `rl:feedback:${ipHash}`;
+  const existing = await env.KV_BINDING.get(rateKey);
+  const count = existing ? parseInt(existing, 10) || 0 : 0;
+  if (count >= FEEDBACK_RATE_LIMIT_MAX) {
+    return json({ error: 'rate_limited' }, 429);
+  }
+  ctx.waitUntil(
+    env.KV_BINDING.put(rateKey, String(count + 1), {
+      expirationTtl: FEEDBACK_RATE_LIMIT_TTL_SECONDS,
+    }),
+  );
+
+  const country =
+    typeof (request as Request & { cf?: { country?: string } }).cf?.country === 'string'
+      ? ((request as Request & { cf?: { country?: string } }).cf!.country as string).toUpperCase().slice(0, 2)
+      : 'XX';
+
+  try {
+    await env.DB.prepare(
+      'INSERT INTO feedback (ts, name, message, app_version, os, country, ip_hash) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    )
+      .bind(
+        new Date().toISOString(),
+        result.value.name,
+        result.value.message,
+        result.value.app_version,
+        result.value.os,
+        country,
+        ipHash,
+      )
+      .run();
+  } catch (err) {
+    console.error('[feedback] D1 insert failed:', err);
+    return json({ error: 'db_error' }, 500);
+  }
+
+  return json({ ok: true });
+}
+
+async function handleFeedbackList(url: URL, env: Env): Promise<Response> {
+  const limit = Math.min(Math.max(parseInt(url.searchParams.get('limit') ?? '100', 10) || 100, 1), 500);
+  const unreadOnly = url.searchParams.get('unread_only') === '1';
+
+  const whereClause = unreadOnly ? 'WHERE read_at IS NULL' : '';
+  const rows = await env.DB.prepare(
+    `SELECT id, ts, name, message, app_version, os, country, read_at FROM feedback ${whereClause} ORDER BY id DESC LIMIT ?`,
+  )
+    .bind(limit)
+    .all<{
+      id: number;
+      ts: string;
+      name: string;
+      message: string;
+      app_version: string;
+      os: string;
+      country: string;
+      read_at: string | null;
+    }>();
+
+  const totals = await env.DB.prepare(
+    'SELECT COUNT(*) AS total, SUM(CASE WHEN read_at IS NULL THEN 1 ELSE 0 END) AS unread FROM feedback',
+  ).first<{ total: number; unread: number }>();
+
+  return json({
+    total: totals?.total ?? 0,
+    unread: totals?.unread ?? 0,
+    items: rows.results ?? [],
+  });
+}
+
+async function handleFeedbackMarkRead(request: Request, env: Env): Promise<Response> {
+  let body: { ids?: unknown };
+  try {
+    body = (await request.json()) as { ids?: unknown };
+  } catch {
+    return json({ error: 'invalid_json' }, 400);
+  }
+  if (!Array.isArray(body.ids)) return json({ error: 'invalid_payload' }, 400);
+  const ids: number[] = [];
+  for (const raw of body.ids) {
+    const n = typeof raw === 'number' ? raw : parseInt(String(raw), 10);
+    if (Number.isFinite(n) && n > 0) ids.push(Math.floor(n));
+  }
+  if (ids.length === 0) return json({ ok: true, updated: 0 });
+  const placeholders = ids.map(() => '?').join(',');
+  try {
+    const res = await env.DB.prepare(
+      `UPDATE feedback SET read_at = ? WHERE id IN (${placeholders}) AND read_at IS NULL`,
+    )
+      .bind(new Date().toISOString(), ...ids)
+      .run();
+    return json({ ok: true, updated: res.meta.changes ?? 0 });
+  } catch (err) {
+    console.error('[feedback] mark_read failed:', err);
+    return json({ error: 'db_error' }, 500);
+  }
 }
 
 async function handleStats(env: Env): Promise<Response> {
@@ -571,6 +697,19 @@ export default {
         const denied = requireToken(request, env.STATS_TOKEN);
         if (denied) return denied;
         return await handleErrorsSummary(url, env);
+      }
+      if (request.method === 'POST' && url.pathname === '/feedback') {
+        return await handleFeedbackIngest(request, env, ctx);
+      }
+      if (request.method === 'GET' && url.pathname === '/feedback/list') {
+        const denied = requireToken(request, env.STATS_TOKEN);
+        if (denied) return denied;
+        return await handleFeedbackList(url, env);
+      }
+      if (request.method === 'POST' && url.pathname === '/feedback/mark_read') {
+        const denied = requireToken(request, env.STATS_TOKEN);
+        if (denied) return denied;
+        return await handleFeedbackMarkRead(request, env);
       }
     } catch (err) {
       console.error('[fetch] unhandled error:', err);

@@ -53,6 +53,74 @@ pub async fn report_error(payload: FrontendErrorPayload) -> Result<(), String> {
     Ok(())
 }
 
+/// Open the folder containing the local dev-mode feedback inbox. The path is
+/// computed server-side (never taken from the caller), so no user-input path
+/// validation is needed.
+#[command]
+pub async fn open_feedback_inbox() -> Result<(), String> {
+    wrap_cmd("open_feedback_inbox", async move {
+        let path = crate::feedback::inbox_path()
+            .ok_or_else(|| "no data dir available".to_string())?;
+        let dir = path
+            .parent()
+            .ok_or_else(|| "inbox path has no parent".to_string())?;
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+        open::that(dir).map_err(|e| e.to_string())?;
+        Ok(())
+    })
+    .await
+}
+
+/// Result of a `send_feedback` call. `Sent` means the message was posted to the
+/// configured endpoint; `SavedLocally` means this is a build without an
+/// endpoint set and the message was written to `path` so a developer can read
+/// it during QA.
+#[derive(serde::Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum SendFeedbackOutcome {
+    Sent,
+    SavedLocally { path: String },
+}
+
+#[command]
+pub async fn send_feedback(
+    payload: crate::feedback::FeedbackInput,
+) -> Result<SendFeedbackOutcome, String> {
+    wrap_cmd("send_feedback", async move {
+        let valid = crate::feedback::validate(payload).map_err(error_reporter::user_err)?;
+        let Some(url) = crate::feedback::FEEDBACK_URL else {
+            // Build-time endpoint not set (dev builds / forks): write the
+            // submission to a local JSONL file so a developer running the app
+            // can inspect it during QA. Failure to write is surfaced to the
+            // caller so the UI can report why nothing was saved.
+            let path = crate::feedback::inbox_path()
+                .ok_or_else(|| "no data dir available for local feedback inbox".to_string())?;
+            crate::feedback::append_to_inbox(&path, &valid)
+                .map_err(|e| format!("failed to append to feedback inbox: {}", e))?;
+            eprintln!("[feedback] wrote message to {}", path.display());
+            return Ok(SendFeedbackOutcome::SavedLocally {
+                path: path.to_string_lossy().into_owned(),
+            });
+        };
+        let body = crate::feedback::FeedbackPayload::from_valid(&valid, env!("CARGO_PKG_VERSION"));
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(10))
+            .build()
+            .map_err(|e| format!("HTTP client build failed: {}", e))?;
+        let resp = client
+            .post(url)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| format!("Send failed: {}", e))?;
+        if !resp.status().is_success() {
+            return Err(format!("Feedback server responded {}", resp.status()));
+        }
+        Ok(SendFeedbackOutcome::Sent)
+    })
+    .await
+}
+
 #[command]
 pub fn set_error_reporting_enabled(enabled: bool) -> Result<(), String> {
     // Persisted so the next process start honors the choice before the

@@ -1,0 +1,541 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Agentrium · Contact form mockup</title>
+<style>
+  :root {
+    --elevation-0: #0F1320;
+    --elevation-1: #141828;
+    --elevation-2: #1B2036;
+    --elevation-3: #252B45;
+    --elevation-4: #2E3454;
+    --border: #262B44;
+    --fg-primary: #E6E9F2;
+    --fg-secondary: #A6AEC4;
+    --fg-tertiary: #6B7391;
+    --accent: #3574F0;
+    --accent-hover: #4C8AFF;
+    --accent-glow: rgba(53, 116, 240, 0.22);
+    --danger: #E5484D;
+    --success: #46A758;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    background: #0A0D18;
+    color: var(--fg-primary);
+    font-family: 'Inter', system-ui, -apple-system, Segoe UI, sans-serif;
+    font-size: 13px;
+    line-height: 1.45;
+  }
+  .page {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 32px 24px 96px;
+  }
+  h1 {
+    font-size: 20px;
+    font-weight: 600;
+    margin: 0 0 4px;
+    letter-spacing: -0.01em;
+  }
+  h2 {
+    font-size: 15px;
+    font-weight: 600;
+    margin: 32px 0 12px;
+    color: var(--fg-primary);
+  }
+  .subtitle {
+    color: var(--fg-secondary);
+    margin: 0 0 24px;
+  }
+
+  /* ---------- Faux Agentrium window ---------- */
+  .window {
+    position: relative;
+    border-radius: 10px;
+    overflow: hidden;
+    background: var(--elevation-1);
+    border: 1px solid var(--border);
+    box-shadow: 0 24px 60px rgba(0,0,0,0.55);
+    display: grid;
+    grid-template-rows: 32px 1fr 28px;
+    height: 520px;
+  }
+  .titlebar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 12px;
+    background: var(--elevation-1);
+    border-bottom: 1px solid var(--border);
+    font-size: 11.5px;
+    color: var(--fg-secondary);
+  }
+  .titlebar .title { display: flex; align-items: center; gap: 8px; }
+  .titlebar .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--elevation-3); }
+  .titlebar .win-controls { display: flex; gap: 4px; }
+  .titlebar .win-controls span {
+    width: 30px; height: 22px; border-radius: 4px;
+    display: grid; place-items: center;
+    color: var(--fg-tertiary);
+  }
+
+  .body { display: grid; grid-template-columns: 240px 1fr; min-height: 0; }
+
+  .sidebar {
+    background: var(--elevation-1);
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    min-height: 0;
+  }
+  .sidebar-head {
+    padding: 12px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 8px;
+    font-weight: 600;
+    color: var(--fg-primary);
+  }
+  .sidebar-head .badge {
+    margin-left: auto;
+    font-size: 11px;
+    padding: 2px 6px;
+    background: var(--elevation-3);
+    color: var(--fg-secondary);
+    border-radius: 4px;
+  }
+  .term-list { padding: 6px; flex: 1; overflow: hidden; }
+  .term-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 8px;
+    border-radius: 6px;
+    color: var(--fg-secondary);
+    font-size: 12.5px;
+  }
+  .term-item.active { background: var(--elevation-3); color: var(--fg-primary); }
+  .term-item .swatch { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+  .term-item.idle .swatch { background: var(--fg-tertiary); }
+
+  .terminal {
+    background: var(--elevation-0);
+    padding: 14px 16px;
+    font-family: 'JetBrains Mono', ui-monospace, Consolas, monospace;
+    font-size: 12px;
+    color: #8AA2C8;
+    overflow: hidden;
+  }
+  .terminal .prompt { color: var(--accent); }
+  .terminal .dim { color: var(--fg-tertiary); }
+  .terminal .green { color: var(--success); }
+
+  /* ---------- The action bar (this is what the arrow points at) ---------- */
+  .actionbar {
+    display: flex; align-items: center;
+    background: var(--elevation-1);
+    border-top: 1px solid var(--border);
+    padding: 0 8px;
+    gap: 2px;
+    font-size: 11px;
+    color: var(--fg-tertiary);
+  }
+  .actionbar .spacer { flex: 1; }
+  .icon-btn {
+    height: 22px;
+    min-width: 26px;
+    padding: 0 6px;
+    border-radius: 4px;
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    color: var(--fg-secondary);
+    cursor: pointer;
+    user-select: none;
+    background: transparent;
+    border: 1px solid transparent;
+    transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+  }
+  .icon-btn:hover { background: var(--elevation-3); color: var(--fg-primary); }
+  .icon-btn svg { width: 14px; height: 14px; }
+  .icon-btn.highlight {
+    color: var(--accent);
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+    animation: pulse 1.8s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%,100% { box-shadow: 0 0 0 3px var(--accent-glow); }
+    50%     { box-shadow: 0 0 0 6px var(--accent-glow); }
+  }
+  .status-text { padding: 0 8px; }
+
+  /* ---------- Callout arrow ---------- */
+  .callout {
+    position: absolute;
+    right: 90px;
+    bottom: 58px;
+    background: var(--elevation-4);
+    color: var(--fg-primary);
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    border: 1px solid var(--accent);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.5);
+    max-width: 220px;
+  }
+  .callout::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    bottom: -8px;
+    transform: translateX(-50%);
+    border: 6px solid transparent;
+    border-top-color: var(--accent);
+  }
+
+  /* ---------- Modal ---------- */
+  .modal-scrim {
+    position: absolute; inset: 0;
+    background: rgba(6, 9, 20, 0.62);
+    display: none;
+    align-items: center; justify-content: center;
+    backdrop-filter: blur(2px);
+    z-index: 10;
+  }
+  .modal-scrim.open { display: flex; }
+  .modal {
+    width: 420px;
+    background: var(--elevation-4);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: 0 30px 60px rgba(0,0,0,0.55);
+    overflow: hidden;
+  }
+  .modal-head {
+    padding: 14px 16px 10px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .modal-head h3 { margin: 0; font-size: 14px; font-weight: 600; }
+  .modal-head .close {
+    margin-left: auto;
+    width: 22px; height: 22px;
+    display: grid; place-items: center;
+    border-radius: 4px;
+    color: var(--fg-secondary);
+    cursor: pointer;
+  }
+  .modal-head .close:hover { background: var(--elevation-3); color: var(--fg-primary); }
+  .modal-body { padding: 16px; display: grid; gap: 12px; }
+  .field label {
+    display: block;
+    font-size: 11.5px;
+    color: var(--fg-secondary);
+    margin-bottom: 4px;
+  }
+  .field input, .field textarea {
+    width: 100%;
+    background: var(--elevation-2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--fg-primary);
+    font: inherit;
+    padding: 8px 10px;
+    outline: none;
+  }
+  .field input:focus, .field textarea:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+  }
+  .field textarea { min-height: 96px; resize: vertical; }
+  .hint {
+    font-size: 11px;
+    color: var(--fg-tertiary);
+    margin-top: 4px;
+  }
+  .honeypot {
+    position: absolute;
+    left: -9999px;
+    width: 1px; height: 1px;
+    opacity: 0;
+  }
+  .modal-foot {
+    padding: 12px 16px;
+    border-top: 1px solid var(--border);
+    background: var(--elevation-3);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .modal-foot .meta { font-size: 11px; color: var(--fg-tertiary); }
+  .modal-foot .spacer { flex: 1; }
+  .btn {
+    padding: 6px 14px;
+    border-radius: 6px;
+    font: inherit;
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid transparent;
+  }
+  .btn-ghost {
+    background: transparent;
+    color: var(--fg-secondary);
+    border-color: var(--border);
+  }
+  .btn-ghost:hover { color: var(--fg-primary); background: var(--elevation-2); }
+  .btn-primary {
+    background: var(--accent);
+    color: white;
+  }
+  .btn-primary:hover { background: var(--accent-hover); }
+
+  .toast {
+    position: absolute;
+    bottom: 44px;
+    right: 16px;
+    background: var(--success);
+    color: white;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    opacity: 0;
+    transform: translateY(6px);
+    transition: opacity 200ms, transform 200ms;
+    z-index: 20;
+  }
+  .toast.show { opacity: 1; transform: translateY(0); }
+
+  /* ---------- Destinations grid ---------- */
+  .options {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 12px;
+  }
+  .opt {
+    background: var(--elevation-1);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px;
+  }
+  .opt h3 {
+    font-size: 13.5px;
+    margin: 0 0 6px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .opt .tag {
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: var(--elevation-3);
+    color: var(--fg-secondary);
+    font-weight: 500;
+  }
+  .opt .tag.rec { background: var(--accent); color: white; }
+  .opt p { margin: 6px 0; color: var(--fg-secondary); font-size: 12.5px; }
+  .opt ul { margin: 6px 0 0; padding-left: 18px; color: var(--fg-tertiary); font-size: 12px; }
+  .opt li { margin: 2px 0; }
+  .opt .cost { display: block; margin-top: 8px; font-size: 11px; color: var(--fg-tertiary); }
+
+  .legend {
+    color: var(--fg-tertiary);
+    font-size: 12px;
+    margin-top: 8px;
+  }
+  .kbd {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    background: var(--elevation-3);
+    padding: 1px 5px;
+    border-radius: 3px;
+    color: var(--fg-secondary);
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>Agentrium · "Contact us" - location and form sketch</h1>
+  <p class="subtitle">Click the highlighted <span class="kbd">✉</span> icon in the bottom action bar to open the form. Everything here is a static mockup - no data is sent.</p>
+
+  <!-- ================= WINDOW MOCKUP ================= -->
+  <div class="window" id="window">
+    <div class="titlebar">
+      <div class="title">
+        <span class="dot" style="background:#E5484D"></span>
+        <span class="dot" style="background:#F5A623"></span>
+        <span class="dot" style="background:#46A758"></span>
+        <span style="margin-left:8px">Agentrium - 3 terminals</span>
+      </div>
+      <div class="win-controls">
+        <span>-</span><span>▢</span><span>✕</span>
+      </div>
+    </div>
+
+    <div class="body">
+      <aside class="sidebar">
+        <div class="sidebar-head">Terminals <span class="badge">3</span></div>
+        <div class="term-list">
+          <div class="term-item active"><span class="swatch"></span> claude · main</div>
+          <div class="term-item"><span class="swatch"></span> claude · feature/auth</div>
+          <div class="term-item idle"><span class="swatch"></span> claude · docs</div>
+        </div>
+      </aside>
+
+      <div class="terminal">
+<span class="dim">›</span> <span class="prompt">claude</span> --resume<br/>
+<span class="dim">Loaded session · 3 messages · main</span><br/><br/>
+<span class="green">✓</span> Ready. Type your message…<br/>
+<span class="dim">┌──────────────────────────────────────────────────────────┐</span><br/>
+<span class="dim">│</span> <span style="color:#E6E9F2">how do I add a contact form to this app?</span><br/>
+<span class="dim">└──────────────────────────────────────────────────────────┘</span>
+      </div>
+    </div>
+
+    <!-- THIS is the button bar (not the header) -->
+    <div class="actionbar">
+      <button class="icon-btn" title="Settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+      </button>
+      <button class="icon-btn" title="Hints">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>
+      </button>
+      <button class="icon-btn" title="Keyboard shortcuts">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></svg>
+      </button>
+
+      <span class="status-text">·</span>
+      <span class="status-text">v1.33.4</span>
+      <div class="spacer"></div>
+      <span class="status-text">3 running</span>
+
+      <!-- NEW ICON -->
+      <button class="icon-btn highlight" id="contactBtn" title="Send feedback / contact us">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16v12H4z"/><path d="M4 6l8 7 8-7"/></svg>
+        <span>Contact</span>
+      </button>
+    </div>
+
+    <!-- Arrow callout -->
+    <div class="callout">
+      New icon lives here in the bottom <b>action bar</b> - not the titlebar.
+    </div>
+
+    <!-- ============ MODAL ============ -->
+    <div class="modal-scrim" id="modalScrim">
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+        <div class="modal-head">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3574F0" stroke-width="2"><path d="M4 6h16v12H4z"/><path d="M4 6l8 7 8-7"/></svg>
+          <h3 id="modalTitle">Send us a message</h3>
+          <span class="close" id="closeBtn">✕</span>
+        </div>
+        <div class="modal-body">
+          <div class="field">
+            <label for="name">Your name</label>
+            <input id="name" type="text" placeholder="e.g. Tal" maxlength="60" />
+          </div>
+          <div class="field">
+            <label for="msg">Message</label>
+            <textarea id="msg" placeholder="Feedback, bug report, feature idea…" maxlength="2000"></textarea>
+            <div class="hint">Max 2000 characters. No email needed - reply via the app on next update.</div>
+          </div>
+          <!-- Honeypot: hidden field that real users can't see; bots fill it -->
+          <div class="honeypot" aria-hidden="true">
+            <label>Website (leave blank)</label>
+            <input type="text" name="website" tabindex="-1" autocomplete="off" />
+          </div>
+        </div>
+        <div class="modal-foot">
+          <span class="meta">🛡 Rate-limited · honeypot · app-signed</span>
+          <div class="spacer"></div>
+          <button class="btn btn-ghost" id="cancelBtn">Cancel</button>
+          <button class="btn btn-primary" id="sendBtn">Send</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="toast" id="toast">Thanks - message sent!</div>
+  </div>
+
+  <p class="legend">Click <b>Contact</b> in the bar above to open the popup. <span class="kbd">Esc</span> to close.</p>
+
+  <!-- ================= DESTINATIONS ================= -->
+  <h2>Where do the messages end up?</h2>
+  <div class="options">
+    <div class="opt">
+      <h3>Cloudflare Worker → Email/Slack <span class="tag rec">Recommended</span></h3>
+      <p>Tiny endpoint you own. Forwards to your inbox, a Slack channel, or a Discord webhook.</p>
+      <ul>
+        <li>Free tier: 100 000 requests/day</li>
+        <li>Server-side IP rate limiting & spam filtering</li>
+        <li>No vendor branding in messages</li>
+        <li>You keep the secrets off the client</li>
+      </ul>
+      <span class="cost">Cost: $0 · Setup: ~30 min</span>
+    </div>
+
+    <div class="opt">
+      <h3>GitHub Issues (private repo) <span class="tag">Great for triage</span></h3>
+      <p>Worker calls the GitHub API and creates an issue in a private feedback repo. You get labels, threading, and can turn any message into a real bug.</p>
+      <ul>
+        <li>Free, no extra infra beyond the Worker</li>
+        <li>Uses labels: <code>feedback</code>, <code>bug</code>, <code>idea</code></li>
+        <li>You already use GitHub for releases</li>
+      </ul>
+      <span class="cost">Cost: $0 · Setup: ~45 min</span>
+    </div>
+
+    <div class="opt">
+      <h3>Formspree / Web3Forms <span class="tag">Zero backend</span></h3>
+      <p>Managed form service. Frontend POSTs directly, they email you.</p>
+      <ul>
+        <li>No code on your side beyond the fetch call</li>
+        <li>Free tier: 50 submissions/mo (Formspree)</li>
+        <li>Vendor dependency, less control over anti-spam</li>
+      </ul>
+      <span class="cost">Cost: $0 → $10/mo · Setup: ~10 min</span>
+    </div>
+
+    <div class="opt">
+      <h3>Website inbox page <span class="tag">Later</span></h3>
+      <p>If you want a public "roadmap-style" view, mirror GitHub Issues onto a small Next.js page (e.g. agentrium.app/feedback).</p>
+      <ul>
+        <li>Users see status of their reports</li>
+        <li>Doubles as social proof</li>
+        <li>Only worth it once volume justifies it</li>
+      </ul>
+      <span class="cost">Cost: $0 (Vercel) · Setup: half a day</span>
+    </div>
+  </div>
+
+  <h2>Anti-spam layers baked into the sketch</h2>
+  <ul style="color: var(--fg-secondary); font-size: 12.5px; line-height: 1.7;">
+    <li><b>Honeypot field</b> - hidden <code>website</code> input; if it's filled, silently drop. Catches ~90% of naive bots.</li>
+    <li><b>App-signed request</b> - a build-embedded token proves the message came from a real Agentrium install (not a public web scraper). Not a real secret, but raises the bar.</li>
+    <li><b>Server-side IP rate limit</b> - Worker rejects &gt;5 messages/hour per IP.</li>
+    <li><b>Length caps</b> - <code>maxlength</code> on both fields; server re-validates.</li>
+    <li><b>No email field</b> - nothing to harvest, so this form is uninteresting to scrapers.</li>
+  </ul>
+
+  <p class="legend" style="margin-top:24px">Open this file in your browser: <span class="kbd">mockups/contact-us-sketch.html</span></p>
+</div>
+
+<script>
+  const scrim   = document.getElementById('modalScrim');
+  const openBtn = document.getElementById('contactBtn');
+  const closeBtn= document.getElementById('closeBtn');
+  const cancel  = document.getElementById('cancelBtn');
+  const send    = document.getElementById('sendBtn');
+  const toast   = document.getElementById('toast');
+
+  const open  = () => scrim.classList.add('open');
+  const close = () => scrim.classList.remove('open');
+
+  openBtn.addEventListener('click', open);
+  closeBtn.addEventListener('click', close);
+  cancel.addEventListener('click', close);
+  scrim.addEventListener('click', e => { if (e.target === scrim) close(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
+
+  send.addEventListener('click', () => {
+    close();
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 2400);
+  });
+</script>
+</body>
+</html>

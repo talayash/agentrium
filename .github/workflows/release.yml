@@ -139,6 +139,10 @@ jobs:
           # AZURE_TENANT_ID inherited from job-level env. sign-windows.ps1 no-ops when TRUSTED_SIGNING_ENABLED is unset.
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          # Baked into the binary at compile time via option_env!("AGENTRIUM_FEEDBACK_URL")
+          # in src-tauri/src/feedback.rs. Absence at build time = dev fallback
+          # (writes to a local file), so leaving this unset on forks is safe.
+          AGENTRIUM_FEEDBACK_URL: https://ct-analytics.claude-terminal.workers.dev/feedback
         with:
           releaseId: ${{ needs.create-release.outputs.release_id }}
           updaterJsonKeepUniversal: true
