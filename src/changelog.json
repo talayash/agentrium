@@ -1,5 +1,13 @@
 [
   {
+    "version": "1.33.5",
+    "date": "2026-09-04",
+    "features": [
+      { "title": "Send feedback from inside the app", "description": "The bottom status bar has a new Contact button. Click it, type your name + a message, and it lands in a private inbox on agentrium.app - no email needed. Reply comes through the next release. Anti-spam via honeypot, per-IP rate limit, and salted IP hashing (raw addresses are never stored)." },
+      { "title": "Desktop security boundaries tightened", "description": "Reduced the Tauri capability surface and switched the telemetry ingest to token-less rate-limited endpoints so no secret is embedded in the installer. Also fixes an internal telemetry regression where the Active Now count on the /stat page was stuck at 0." }
+    ]
+  },
+  {
     "version": "1.33.4",
     "date": "2026-09-04",
     "features": [
