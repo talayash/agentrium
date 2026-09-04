@@ -39,7 +39,7 @@ jobs:
       # crates.io intermittently returns "Error in the HTTP2 framing layer"
       # on the GitHub Actions runners (last seen 2026-05-29 run 71338258625).
       # Disabling HTTP/2 multiplexing and bumping the retry count is the
-      # documented mitigation — cargo falls back to HTTP/1.1 for the fetch.
+      # documented mitigation - cargo falls back to HTTP/1.1 for the fetch.
       CARGO_HTTP_MULTIPLEXING: 'false'
       CARGO_NET_RETRY: '10'
     steps:
@@ -84,7 +84,7 @@ jobs:
             if cargo fetch --locked; then
               exit 0
             fi
-            echo "cargo fetch failed (attempt $attempt) — retrying in 15s"
+            echo "cargo fetch failed (attempt $attempt) - retrying in 15s"
             sleep 15
           done
           echo "cargo fetch failed after 3 attempts"

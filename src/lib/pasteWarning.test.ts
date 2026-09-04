@@ -78,7 +78,7 @@ describe('classifyPasteInput', () => {
     expect(v.action).toBe('forward');
   });
 
-  it('respects the 64-byte fast-path — smaller than that is never a paste', () => {
+  it('respects the 64-byte fast-path - smaller than that is never a paste', () => {
     const v = classifyPasteInput({
       data: 'x'.repeat(64),
       msSinceLastInput: 500,
