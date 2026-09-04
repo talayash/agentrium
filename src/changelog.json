@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.33.4",
+    "date": "2026-09-04",
+    "features": [
+      { "title": "Ctrl+letter shortcuts work under non-English keyboard layouts", "description": "Ctrl+V, Ctrl+C, Ctrl+W, Ctrl+B, Ctrl+G, Ctrl+Shift+D and every other Ctrl+letter accelerator no longer break when the active Windows input language is Hebrew, Russian, Arabic, Greek etc. Shortcuts now match by physical key position (KeyboardEvent.code) instead of the layout-produced character. Fixes #57." },
+      { "title": "Enter no longer re-opens the New Terminal modal", "description": "After creating a session, pressing Enter now reaches the new terminal instead of re-triggering the sidebar's New Session button. Focus is explicitly moved into the newly-created xterm once it mounts. Fixes #58." },
+      { "title": "Close-session button in the terminal header", "description": "The active session's header bar now includes an X button so you can close the current session without going back to the sidebar - useful when the sidebar is collapsed. Fixes #59." },
+      { "title": "All four rounded window corners show a visible border in dark theme", "description": "Top-right and bottom-left corners used to blend into a dark desktop because the hairline sat outside the transparent frameless window. The border now renders inside the app fill so every corner reads the same in both dark and light themes. Fixes #60." },
+      { "title": "Branch switcher popover uses the flat New UI style", "description": "The branch dropdown in the titlebar no longer uses the old translucent glass surface; it now sits on an opaque elevation-4 surface with a flat 1px seam border, matching the rest of the IntelliJ 2026.1-style New UI. Fixes #61." }
+    ]
+  },
+  {
     "version": "1.33.3",
     "date": "2026-08-31",
     "features": [
