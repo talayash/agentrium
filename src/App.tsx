@@ -793,8 +793,16 @@ function App() {
 
   return (
     <div
+      // Frameless window (decorations: false, transparent: true): the pixels
+      // outside the rounded shape composite against the desktop, so an OUTER
+      // 1px hairline (`0 0 0 1px`) landed in the transparent slice around
+      // each corner and vanished against a dark desktop - only the top-left
+      // stayed visible because the sidebar/titlebar chrome painted a bright
+      // top edge inside it. `inset 0 0 0 1px` moves the hairline INSIDE the
+      // opaque `--canvas` fill so every corner gets an equal, visible edge
+      // in dark and light themes. See #60.
       className="app-root h-screen w-screen flex flex-col overflow-hidden rounded-[10px]"
-      style={{ boxShadow: '0 0 0 1px var(--seam-strong)' }}
+      style={{ boxShadow: 'inset 0 0 0 1px var(--seam-strong)' }}
     >
       {/* Launch splash - logo reveal video + loading bar, main window only. */}
       <AnimatePresence>

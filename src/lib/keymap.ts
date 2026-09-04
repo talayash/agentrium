@@ -1,6 +1,26 @@
 // Shared keymap definitions. Hooks/useKeyboardShortcuts.ts is the actual handler;
 // this file is the single source of truth for displayed labels and groups.
 
+// Layout-independent Ctrl+letter matcher. `KeyboardEvent.key` returns the
+// character produced by the CURRENT keyboard layout - on a Hebrew (or Cyrillic,
+// Arabic, Greek, ...) layout the physical V key produces `e.key === 'ה'`, so
+// `key === 'v'` never matches and every Ctrl+letter accelerator (paste, copy,
+// close, sidebar, ...) silently breaks. `KeyboardEvent.code` reports the
+// physical key's position on a US-QWERTY layout (`'KeyV'`, `'Digit0'`), which
+// is stable across layouts and matches how users think about shortcuts (they
+// find them by physical position, same as VS Code / browsers).
+//
+// Use for letters and digits only - non-letter accelerators (Tab, F1..F8, ,,
+// =, -, \, +) should keep reading `e.key`, whose semantic identity is layout-
+// independent for those keys.
+export function matchesKeyCode(e: KeyboardEvent, letterOrDigit: string): boolean {
+  const s = letterOrDigit.toUpperCase();
+  if (s.length !== 1) return false;
+  if (s >= 'A' && s <= 'Z') return e.code === `Key${s}`;
+  if (s >= '0' && s <= '9') return e.code === `Digit${s}`;
+  return false;
+}
+
 export interface KeymapEntry {
   id: string;
   label: string;

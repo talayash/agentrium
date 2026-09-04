@@ -140,7 +140,17 @@ export function Sidebar() {
       {/* Prominent primary action + settings */}
       <div className="p-2 flex flex-col gap-1.5">
         <button
-          onClick={() => openNewTerminalModal()}
+          onClick={(e) => {
+            // Blur the trigger BEFORE the modal opens - without this, the modal's
+            // focus trap releases back to this button on close, and if the user
+            // then presses Enter (expecting it to reach the newly-created
+            // terminal) the browser dispatches a synthetic click and re-opens
+            // the modal. Focus travels through the modal's own auto-focus and
+            // eventually into xterm; the blur just makes sure the button isn't
+            // the default target if some path skips that. See #58.
+            e.currentTarget.blur();
+            openNewTerminalModal();
+          }}
           className="w-full h-10 rounded-xl bg-accent-primary text-white text-[13px] font-semibold flex items-center justify-center gap-2 shadow-[0_4px_12px_var(--accent-glow-md)] hover:bg-accent-secondary active:scale-[0.98] transition-[background-color,transform] duration-100"
         >
           <Plus size={15} strokeWidth={2.5} />

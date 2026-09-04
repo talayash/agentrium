@@ -7,6 +7,7 @@ import { captureClaudeInput } from '../lib/terminalInput';
 import { reportInvokeFailure } from '../lib/errorReporter';
 import { readClipboardText } from '../lib/clipboard';
 import { cyclableTabIds, nextTabId } from '../lib/tabCycle';
+import { matchesKeyCode } from '../lib/keymap';
 
 /**
  * Return true when the focused element is an editable surface that is NOT
@@ -63,7 +64,11 @@ export function useKeyboardShortcuts() {
       // top-level document, which throws away all open terminals (they
       // aren't persisted). If the preview panel is open, route to the
       // preview reload instead.
-      if (e.key === 'F5' || (ctrl && !shift && (e.key === 'r' || e.key === 'R'))) {
+      //
+      // Letter accelerators use `matchesKeyCode` so they still fire on
+      // non-Latin layouts (Hebrew/Russian/Arabic/...), where `e.key` would
+      // hold the localized character instead of 'r'. See lib/keymap.ts.
+      if (e.key === 'F5' || (ctrl && !shift && matchesKeyCode(e, 'R'))) {
         e.preventDefault();
         const previewOpen = usePreviewStore.getState().globalOpen;
         const activeId = activeIdRef.current;
@@ -73,19 +78,19 @@ export function useKeyboardShortcuts() {
         return;
       }
 
-      if (ctrl && shift && e.key === 'N') {
+      if (ctrl && shift && matchesKeyCode(e, 'N')) {
         e.preventDefault();
         useAppStore.getState().openNewTerminalModal();
       }
 
       // Command Palette: Ctrl+P
-      if (ctrl && e.key === 'p') {
+      if (ctrl && !shift && matchesKeyCode(e, 'P')) {
         e.preventDefault();
         useAppStore.getState().toggleCommandPalette();
       }
 
       // Snippets: Ctrl+Shift+S
-      if (ctrl && shift && e.key === 'S') {
+      if (ctrl && shift && matchesKeyCode(e, 'S')) {
         e.preventDefault();
         useAppStore.getState().openSnippetsModal();
       }
@@ -93,7 +98,7 @@ export function useKeyboardShortcuts() {
       // Prompt Editor: Ctrl+Shift+E - compose a prompt for the active terminal,
       // seeded with whatever is already typed in its input line. Can be turned
       // off in Settings (the status-bar pencil still works).
-      if (ctrl && shift && e.key === 'E' && useAppStore.getState().promptEditorShortcutEnabled) {
+      if (ctrl && shift && matchesKeyCode(e, 'E') && useAppStore.getState().promptEditorShortcutEnabled) {
         e.preventDefault();
         const activeId = activeIdRef.current;
         const term = activeId ? terminalsRef.current.get(activeId)?.xterm : undefined;
@@ -102,7 +107,7 @@ export function useKeyboardShortcuts() {
       }
 
       // Paste as file: Ctrl+Shift+V
-      if (ctrl && shift && e.key === 'V') {
+      if (ctrl && shift && matchesKeyCode(e, 'V')) {
         e.preventDefault();
         const activeId = activeIdRef.current;
         (async () => {
@@ -116,7 +121,7 @@ export function useKeyboardShortcuts() {
       }
 
       // Preview panel toggle: Ctrl+Alt+P (Ctrl+Shift+V and Ctrl+Shift+G are taken).
-      if (ctrl && e.altKey && !shift && (e.key === 'p' || e.key === 'P')) {
+      if (ctrl && e.altKey && !shift && matchesKeyCode(e, 'P')) {
         e.preventDefault();
         usePreviewStore.getState().toggleGlobal();
       }
@@ -142,17 +147,17 @@ export function useKeyboardShortcuts() {
       }
 
       // Global file/content search (VS Code style): Ctrl+Shift+F
-      if (ctrl && shift && e.key === 'F') {
+      if (ctrl && shift && matchesKeyCode(e, 'F')) {
         e.preventDefault();
         useAppStore.getState().toggleGlobalSearch();
       }
 
-      if (ctrl && e.key === 'b') {
+      if (ctrl && !shift && matchesKeyCode(e, 'B')) {
         e.preventDefault();
         useAppStore.getState().toggleSidebar();
       }
 
-      if (ctrl && e.key === 'w') {
+      if (ctrl && !shift && matchesKeyCode(e, 'W')) {
         e.preventDefault();
         const activeId = activeIdRef.current;
         if (activeId) {
@@ -164,7 +169,7 @@ export function useKeyboardShortcuts() {
       }
 
       // Duplicate active terminal: Ctrl+Shift+D
-      if (ctrl && shift && e.key === 'D') {
+      if (ctrl && shift && matchesKeyCode(e, 'D')) {
         e.preventDefault();
         const activeId = activeIdRef.current;
         if (activeId) {
@@ -242,13 +247,13 @@ export function useKeyboardShortcuts() {
       }
 
       // Toggle Grid Mode: Ctrl+G
-      if (ctrl && e.key === 'g') {
+      if (ctrl && !shift && matchesKeyCode(e, 'G')) {
         e.preventDefault();
         useAppStore.getState().toggleGridMode();
       }
 
       // Push modal: Ctrl+Shift+K (IntelliJ parity)
-      if (ctrl && shift && e.key === 'K') {
+      if (ctrl && shift && matchesKeyCode(e, 'K')) {
         e.preventDefault();
         const activeId = activeIdRef.current;
         if (!activeId) {
@@ -270,7 +275,7 @@ export function useKeyboardShortcuts() {
       }
 
       // Worktree Modal: Ctrl+Shift+W
-      if (ctrl && shift && e.key === 'W') {
+      if (ctrl && shift && matchesKeyCode(e, 'W')) {
         e.preventDefault();
         const activeId = activeIdRef.current;
         if (activeId) {
@@ -286,7 +291,7 @@ export function useKeyboardShortcuts() {
       }
 
       // Add current terminal to grid: Ctrl+Shift+G
-      if (ctrl && shift && e.key === 'G') {
+      if (ctrl && shift && matchesKeyCode(e, 'G')) {
         e.preventDefault();
         const activeId = activeIdRef.current;
         if (activeId) {
@@ -319,7 +324,12 @@ export function useKeyboardShortcuts() {
       // Terminal font zoom. Ctrl+= / Ctrl++ / Ctrl+- / Ctrl+0.
       // Skip when the user is in a non-terminal editable surface so that
       // e.g. Ctrl+- in a Settings input still selects characters natively.
-      if (ctrl && !shift && (e.key === '=' || e.key === '-' || e.key === '0')) {
+      //
+      // Digit 0 uses `matchesKeyCode` so Ctrl+0 zooms-reset even under a layout
+      // that remaps the digit row. `=` and `-` stay on `e.key` because their
+      // physical location varies across layouts (US Equal vs. AZERTY), but
+      // `e.key` reports the intended character reliably.
+      if (ctrl && !shift && (e.key === '=' || e.key === '-' || matchesKeyCode(e, '0'))) {
         if (isFocusInNonTerminalEditable()) return;
         e.preventDefault();
         const { terminalFontSize, setTerminalFontSize } = useAppStore.getState();

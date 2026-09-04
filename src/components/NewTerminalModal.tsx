@@ -434,6 +434,20 @@ export function NewTerminalModal() {
       }
 
       closeNewTerminalModal();
+
+      // Move focus into the newly-created terminal's xterm. Without this the
+      // browser returns focus to the sidebar's New Session button (the trigger
+      // that opened this modal), and a subsequent Enter press re-fires that
+      // button as a synthetic click, re-opening the modal instead of reaching
+      // the terminal. See #58. TerminalTabs also has a rAF focus effect keyed
+      // on activeTerminalId, but the effect runs BEFORE the terminal's canvas
+      // is fully mounted on first render - so mirror the focus here after two
+      // rAFs to make it stick.
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          useTerminalStore.getState().terminals.get(newTerminalId)?.xterm?.focus();
+        });
+      });
     } catch (err) {
       setError(String(err));
       reportInvokeFailure('create_terminal', err);

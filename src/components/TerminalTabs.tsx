@@ -2,6 +2,8 @@ import { useMemo, useCallback, useEffect } from 'react';
 import { X, Grid3X3, SplitSquareHorizontal, RotateCw, GitBranch, File as FileIcon } from 'lucide-react';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
+import { toast } from '../store/toastStore';
+import { reportInvokeFailure } from '../lib/errorReporter';
 import { TerminalView } from './TerminalView';
 import { TerminalGrid } from './TerminalGrid';
 import { SplitView } from './SplitView';
@@ -42,7 +44,7 @@ function formatCost(usd: number): string {
  * the whole area when active.
  */
 export function TerminalTabs() {
-  const { terminals, activeTerminalId, scriptChildren, closeScript } = useTerminalStore();
+  const { terminals, activeTerminalId, scriptChildren, closeScript, closeTerminal } = useTerminalStore();
   const { gridMode, toggleGridMode, gridTerminalIds, splitMode, splitTerminalIds, splitOrientation, splitRatio, setSplitOrientation, setSplitRatio, clearSplit, openFiles, activeFilePath, setActiveFilePath, closeFileTab, showFileTree, showTabActivity } = useAppStore();
   const now = useNowTick();
   const terminalStates = useTerminalStore((s) => s.terminalStates);
@@ -52,6 +54,19 @@ export function TerminalTabs() {
   const focusFile = useCallback((path: string) => {
     setActiveFilePath(path);
   }, [setActiveFilePath]);
+
+  // Close the active session from the header (#59). Mirrors the sidebar
+  // SessionCards' `closeWithReport` so error handling + telemetry stay
+  // consistent with the existing close paths (per CLAUDE.md's frontend
+  // error-handling rules).
+  const closeActiveSession = useCallback(() => {
+    const id = activeTerminalId;
+    if (!id) return;
+    closeTerminal(id).catch((err) => {
+      toast.error('Close failed', 'Could not close the session.');
+      reportInvokeFailure('close_terminal', err);
+    });
+  }, [activeTerminalId, closeTerminal]);
 
   // Script-child terminals are rendered below their parent and bottom-pane
   // shells are rendered in BottomTerminalPane - neither belongs in the main
@@ -267,7 +282,7 @@ export function TerminalTabs() {
             </>
           )}
 
-          {/* Right cluster: project scripts + grid toggle */}
+          {/* Right cluster: project scripts + grid toggle + close active */}
           <div className="ml-auto flex items-center gap-1 flex-shrink-0">
             {showFileTree && activeTerminalId && !activeFilePath && (() => {
               const inst = terminals.get(activeTerminalId);
@@ -292,6 +307,22 @@ export function TerminalTabs() {
                 <span className="hidden sm:inline">Grid</span>
               </button>
             </Tooltip>
+            {/* Close active session (#59). Only visible while a real terminal
+                is focused - hidden while browsing a file, and hidden entirely
+                when there is no active session. Mirrors the sidebar card X,
+                which also closes without a confirm. */}
+            {activeConfig && !activeFilePath && (
+              <Tooltip label="Close Session">
+                <button
+                  onClick={closeActiveSession}
+                  aria-label="Close Session"
+                  aria-keyshortcuts="Control+W"
+                  className="flex items-center justify-center h-7 w-7 rounded-lg text-[11.5px] font-medium hover:bg-fill-hover text-text-secondary hover:text-text-primary transition-colors"
+                >
+                  <X size={13} strokeWidth={1.75} />
+                </button>
+              </Tooltip>
+            )}
           </div>
         </div>
       )}
