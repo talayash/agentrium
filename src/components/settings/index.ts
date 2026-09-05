@@ -40,9 +40,10 @@ export const CATEGORY_GROUPS: {
     { id: 'git',         label: 'Git' },
     { id: 'changelists', label: 'Changelists' },
   ]},
-  { id: 'claude', label: 'Claude Code', pages: [
-    { id: 'defaults', label: 'Defaults' },
-    { id: 'updates',  label: 'Updates' },
+  { id: 'claude', label: 'Agents', pages: [
+    { id: 'agents-keys', label: 'Agents & Keys' },
+    { id: 'defaults',    label: 'Claude Code Defaults' },
+    { id: 'updates',     label: 'Claude Code Updates' },
   ]},
   { id: 'tools', label: 'Tools', pages: [
     { id: 'launchers', label: 'Launchers' },

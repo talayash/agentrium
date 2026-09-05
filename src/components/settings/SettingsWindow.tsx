@@ -19,6 +19,7 @@ const pages: Record<string, React.LazyExoticComponent<React.ComponentType>> = {
   'terminal.pastes':                      lazy(() => import('./categories/TerminalPastesPage')),
   'vcs.git':                              lazy(() => import('./categories/GitPage')),
   'vcs.changelists':                      lazy(() => import('./categories/ChangelistsPage')),
+  'claude.agents-keys':                   lazy(() => import('./categories/AgentsKeysPage')),
   'claude.defaults':                      lazy(() => import('./categories/ClaudeDefaultsPage')),
   'claude.updates':                       lazy(() => import('./categories/ClaudeUpdatesPage')),
   'tools.launchers':                      lazy(() => import('./categories/ToolsLaunchersPage')),
