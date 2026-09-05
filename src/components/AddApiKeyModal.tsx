@@ -41,6 +41,10 @@ export function AddApiKeyModal({ editing }: { editing?: CredentialMeta | null } 
   const [saving, setSaving] = useState(false);
   const [test, setTest] = useState<CredentialTestResult | null>(null);
   const [testing, setTesting] = useState(false);
+  // The credential id we're targeting. Seeded from `editing`; also set by
+  // Test connection (which upserts to reach the value in the OS store) so a
+  // follow-up Save Key is treated as an update, not a duplicate-label insert.
+  const [savedId, setSavedId] = useState<string>(editing?.id ?? '');
 
   // Provider pick fills the env defaults unless the user already typed one.
   const pickProvider = (p: ProviderId) => {
@@ -58,12 +62,27 @@ export function AddApiKeyModal({ editing }: { editing?: CredentialMeta | null } 
   );
   useEffect(() => { setUseFor(new Set()); }, [envName]);
 
+  // Resolve which credential id this save targets. If `savedId` is set (from
+  // an in-modal Test click or from `editing`), use it. Otherwise fall back to
+  // matching the label against the store's credentials list — this recovers
+  // if the user re-opens Add API Key on a row whose id we've lost track of
+  // (e.g. a stale modal after a Test) so we upsert instead of duplicate-fail.
+  const resolveId = (): string =>
+    savedId || credentials.find(c => c.label === label.trim())?.id || '';
+
   const validate = (): string | null => {
     if (!label.trim() || label.trim().length > 40) return 'Label is required (1-40 characters).';
-    if (credentials.some(c => c.label === label.trim() && c.id !== editing?.id)) return `A key labelled "${label.trim()}" already exists.`;
+    const targetId = resolveId();
+    if (credentials.some(c => c.label === label.trim() && c.id !== targetId)) return `A key labelled "${label.trim()}" already exists.`;
     if (!ENV_NAME_RE.test(envName)) return 'Environment variable must look like ANTHROPIC_API_KEY.';
-    const hasKey = key.trim().length > 0 || !!editing?.has_key;
-    const hasEndpoint = endpoint.trim().length > 0 || !!editing?.has_endpoint;
+    // Look up the row we're targeting — from `editing`, or from an existing
+    // credential (e.g. one Test connection just saved) — so a blank key field
+    // doesn't wrongly read as "no key" after Test cleared the input.
+    const resolved = credentials.find(c => c.id === targetId);
+    const alreadyHasKey = resolved?.has_key ?? !!editing?.has_key;
+    const alreadyHasEndpoint = resolved?.has_endpoint ?? !!editing?.has_endpoint;
+    const hasKey = key.trim().length > 0 || alreadyHasKey;
+    const hasEndpoint = endpoint.trim().length > 0 || alreadyHasEndpoint;
     if (hasEndpoint && !ENV_NAME_RE.test(endpointEnv)) return 'Endpoint variable must look like ANTHROPIC_BASE_URL.';
     if (!hasKey && !hasEndpoint) return 'Enter an API key or an endpoint override.';
     return null;
@@ -76,7 +95,7 @@ export function AddApiKeyModal({ editing }: { editing?: CredentialMeta | null } 
     setSaving(true);
     try {
       const meta: CredentialMeta = {
-        id: editing?.id ?? '',
+        id: resolveId(),
         label: label.trim(),
         provider,
         env_name: envName,
@@ -84,6 +103,7 @@ export function AddApiKeyModal({ editing }: { editing?: CredentialMeta | null } 
         has_key: false, has_endpoint: false, masked_tail: null, created_at: '', last_used_at: null,
       };
       const saved = await saveCredential(meta, key.trim() || undefined, endpoint.trim() || undefined);
+      setSavedId(saved.id);
       for (const kind of useFor) {
         const existing = defaultBindingsFor(kind).filter(b => b.env !== envName);
         await setBindings(kind, [...existing, { env: envName, credential_id: saved.id }]);
@@ -110,10 +130,11 @@ export function AddApiKeyModal({ editing }: { editing?: CredentialMeta | null } 
     setTesting(true);
     try {
       const meta: CredentialMeta = {
-        id: editing?.id ?? '', label: label.trim(), provider, env_name: envName, endpoint_env: endpointEnv || null,
+        id: resolveId(), label: label.trim(), provider, env_name: envName, endpoint_env: endpointEnv || null,
         has_key: false, has_endpoint: false, masked_tail: null, created_at: '', last_used_at: null,
       };
       const saved = await saveCredential(meta, key.trim() || undefined, endpoint.trim() || undefined);
+      setSavedId(saved.id);
       setKey('');
       setTest(await testCredential(saved.id));
     } catch (err) {

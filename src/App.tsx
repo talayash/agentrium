@@ -912,8 +912,8 @@ function App() {
             {settingsOpen && <SettingsWindow />}
             {profileModalOpen && <ProfileModal />}
             {newTerminalModalOpen && <NewTerminalModal />}
-            {addAgentOpen && <AddAgentModal />}
-            {!addAgentOpen && addKeyOpen && <AddApiKeyModal />}
+            {addAgentOpen && <AddAgentModal key="add-agent" />}
+            {addKeyOpen && <AddApiKeyModal key="add-key" />}
             {workspaceModalOpen && <WorkspaceModal />}
             {worktreeModalOpen && <WorktreeModal />}
             {pushModalOpen && <PushModal />}

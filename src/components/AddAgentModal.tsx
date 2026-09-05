@@ -8,7 +8,6 @@ import { useAgentRegistryStore } from '../store/agentRegistryStore';
 import { monogramFor } from '../lib/agents';
 import { AGENT_COLORS, AGENT_PRESETS, ENV_NAME_RE, type AgentColor, type AgentPreset } from '../lib/agentPresets';
 import type { BinaryProbe, CredentialBinding, CustomAgent } from '../lib/credentials';
-import { AddApiKeyModal } from './AddApiKeyModal';
 
 const inputCls = 'w-full bg-elevation-2 ring-1 ring-seam rounded-lg h-9 px-3 text-text-primary text-[13px] focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 transition-colors';
 
@@ -21,7 +20,7 @@ type Tab = 'cli' | 'key';
  * The "Hosted API (key only)" tab swaps the body for the Add API Key form.
  */
 export function AddAgentModal() {
-  const { closeAddAgent, editingAgentId, customAgents, saveAgent, deleteAgent, probe, credentialsForEnv, openAddKey, addKeyOpen } = useAgentRegistryStore();
+  const { closeAddAgent, editingAgentId, customAgents, saveAgent, deleteAgent, probe, credentialsForEnv, openAddKey } = useAgentRegistryStore();
   const editing = useMemo(() => customAgents.find(a => a.id === editingAgentId) ?? null, [customAgents, editingAgentId]);
 
   const [tab, setTab] = useState<Tab>('cli');
@@ -138,7 +137,6 @@ export function AddAgentModal() {
   const commandPreview = [binary.trim(), ...argsText.split('\n').map(s => s.trim()).filter(Boolean)].filter(Boolean).join(' ');
 
   return (
-    <>
     <Modal onClose={closeAddAgent} closeOn="doubleClick" scrimClassName="bg-black/50 z-[55]" panelClassName="w-full max-w-lg max-h-[90vh] flex flex-col" showHeader title={editing ? 'Edit Agent' : 'New Agent'} icon={<PlusSquare size={16} className="text-text-secondary" />}>
       <div className="p-5 space-y-5 overflow-y-auto flex-1 min-h-0">
         {!editing && (
@@ -263,7 +261,5 @@ export function AddAgentModal() {
         </div>
       </div>
     </Modal>
-    {addKeyOpen && <AddApiKeyModal />}
-    </>
   );
 }
