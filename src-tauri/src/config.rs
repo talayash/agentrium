@@ -124,6 +124,10 @@ pub struct ConfigProfile {
     /// behavior for profiles saved before this field existed.
     #[serde(default)]
     pub agent_args: HashMap<AgentKind, Vec<String>>,
+    /// Credentials pinned by this profile, applied when the New Session modal
+    /// is in API-key mode and the user has not overridden the row.
+    #[serde(default)]
+    pub credential_bindings: Vec<CredentialBinding>,
 }
 
 impl ConfigProfile {
@@ -397,6 +401,7 @@ mod tests {
             agent: AgentKind::default(),
             preview: None,
             agent_args: HashMap::new(),
+            credential_bindings: Vec::new(),
         }
     }
 
@@ -428,6 +433,7 @@ mod tests {
             agent: AgentKind::default(),
             preview: None,
             agent_args: HashMap::new(),
+            credential_bindings: Vec::new(),
         };
         let json = serde_json::to_string(&p).unwrap();
         let back: ConfigProfile = serde_json::from_str(&json).unwrap();
