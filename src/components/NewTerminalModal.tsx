@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FolderOpen, Terminal, GitBranch, GitFork, Plus, Loader2, ChevronDown, Check, Pencil, Pin, PinOff, Trash2, SlidersHorizontal } from 'lucide-react';
+import { FolderOpen, Terminal, GitBranch, GitFork, Plus, Loader2, ChevronDown, Check, Pencil, Pin, PinOff, Trash2, SlidersHorizontal, KeyRound } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore, NEW_PROFILE_ID } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
@@ -9,7 +9,9 @@ import { open } from '@tauri-apps/plugin-dialog';
 import type { WorktreeInfo, WorktreeDetectResult } from '../types/git';
 import { reportInvokeFailure } from '../lib/errorReporter';
 import { toast } from '../store/toastStore';
-import { defaultArgsFor, filterArgsForAgent, specFor, type AgentKind } from '../lib/agents';
+import { defaultArgsFor, filterArgsForAgent, isCustomAgent, specFor, type AgentKind } from '../lib/agents';
+import { useAgentRegistryStore } from '../store/agentRegistryStore';
+import type { CredentialBinding } from '../lib/credentials';
 import {
   CLAUDE_MODEL_FAMILIES,
   familyLabel,
@@ -46,6 +48,7 @@ interface ConfigProfile {
   // textarea should reflect that agent's stored entry from this profile
   // (falling back to claude_args if none is stored - e.g. legacy rows).
   agent_args?: Partial<Record<AgentKind, string[]>>;
+  credential_bindings?: CredentialBinding[];
 }
 
 const TAG_COLORS = [
@@ -68,7 +71,10 @@ export function NewTerminalModal() {
   const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
   const [nickname, setNickname] = useState('');
   const [workingDirectory, setWorkingDirectory] = useState('');
-  const [claudeArgs, setClaudeArgs] = useState<string[]>(defaultAgentArgs.claude);
+  // Welcome-screen agent cards open this modal with an agent preselected;
+  // read once on mount (the modal is unmounted while closed).
+  const preselectedAgent = useAppStore.getState().newTerminalPreselectedAgent;
+  const [claudeArgs, setClaudeArgs] = useState<string[]>(defaultArgsFor(preselectedAgent ?? 'claude', defaultAgentArgs));
   const [envVars, setEnvVars] = useState<Record<string, string>>({});
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -81,10 +87,16 @@ export function NewTerminalModal() {
   const [selectedModel, setSelectedModel] = useState<string>('default');
   const [selectedEffort, setSelectedEffort] = useState<'default' | 'low' | 'medium' | 'high'>('default');
   const [plainShell, setPlainShell] = useState(false);
-  // Welcome-screen agent cards open this modal with an agent preselected;
-  // read once on mount (the modal is unmounted while closed).
-  const preselectedAgent = useAppStore.getState().newTerminalPreselectedAgent;
   const [selectedAgent, setSelectedAgent] = useState<AgentKind>(preselectedAgent ?? 'claude');
+  const { credentials, defaultBindingsFor, openAddAgent, openAddKey } = useAgentRegistryStore();
+  const [authMode, setAuthMode] = useState<'cli' | 'key'>('cli');
+  // env -> credential id chosen for this session. Seeded from the agent's
+  // defaults (and the selected profile's pins) whenever agent/profile change.
+  const [sessionBindings, setSessionBindings] = useState<CredentialBinding[]>([]);
+  const requiredEnvFor = (kind: AgentKind): string[] =>
+    isCustomAgent(kind)
+      ? (specFor(kind).requiredEnv ?? [])
+      : ({ claude: ['ANTHROPIC_API_KEY'], codex: ['OPENAI_API_KEY'], cursor: ['CURSOR_API_KEY'], antigravity: [] } as Record<string, string[]>)[kind] ?? [];
   const [showAdvanced, setShowAdvanced] = useState(false);
   // Two-step inline delete: first trash click arms this id, the red confirm
   // deletes. Leaves the row (or picking another) disarms.
@@ -188,6 +200,16 @@ export function NewTerminalModal() {
     setSelectedModel('default');
     setSelectedModelFamily('default');
   }, [selectedAgent]);
+
+  useEffect(() => {
+    const profile = profiles.find(p => p.id === selectedProfileId);
+    const agentDefaults = defaultBindingsFor(selectedAgent);
+    const merged = new Map<string, CredentialBinding>();
+    for (const b of agentDefaults) merged.set(b.env, b);
+    for (const b of profile?.credential_bindings ?? []) merged.set(b.env, b); // profile pins win
+    setSessionBindings([...merged.values()]);
+    setAuthMode(merged.size > 0 ? 'key' : 'cli');
+  }, [selectedAgent, selectedProfileId, profiles, defaultBindingsFor]);
 
   // Debounced git detection when working directory changes
   const detectGitRepo = useCallback(async (dir: string) => {
@@ -411,11 +433,20 @@ export function NewTerminalModal() {
             }
           : undefined;
 
+        // Only env vars the agent actually needs, and only in API-key mode.
+        const needed = new Set(requiredEnvFor(selectedAgent));
+        const bindingsToSend = authMode === 'key'
+          ? sessionBindings.filter(b => needed.size === 0 || needed.has(b.env))
+          : [];
+        // Never let a plaintext profile var shadow a keychain binding.
+        const envForSpawn = { ...envVars };
+        for (const b of bindingsToSend) delete envForSpawn[b.env];
+
         newTerminalId = await createTerminal(
           label,
           workingDirectory,
           finalArgs,
-          envVars,
+          envForSpawn,
           colorTag,
           nickname || undefined,
           undefined,
@@ -423,6 +454,7 @@ export function NewTerminalModal() {
           undefined,
           previewInit,
           selectedAgent,
+          bindingsToSend,
         );
       }
 
@@ -474,7 +506,49 @@ export function NewTerminalModal() {
           {!plainShell && (
             <div>
               <label className="block text-text-tertiary text-[11px] font-semibold uppercase tracking-wider mb-2">Agent</label>
-              <AgentPicker value={selectedAgent} onChange={setSelectedAgent} />
+              <AgentPicker value={selectedAgent} onChange={setSelectedAgent} onAddAgent={() => openAddAgent()} />
+            </div>
+          )}
+
+          {/* Authentication */}
+          {!plainShell && (
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-text-tertiary text-[11px] font-semibold uppercase tracking-wider">Authentication</label>
+                <button type="button" onClick={() => openAddKey({ env_name: requiredEnvFor(selectedAgent)[0] })} className="text-accent-primary text-[11px] hover:underline">Manage keys</button>
+              </div>
+              <div className="flex gap-1 mb-2">
+                {([['cli', 'CLI login'], ['key', 'API key']] as const).map(([mode, label]) => (
+                  <button key={mode} type="button" aria-pressed={authMode === mode} onClick={() => setAuthMode(mode)}
+                    className={`px-3 h-7 text-[12px] font-medium rounded-lg transition-colors ${authMode === mode ? 'bg-accent-primary text-white shadow-[0_2px_8px_var(--accent-glow-md)]' : 'bg-fill-hover ring-1 ring-seam text-text-secondary hover:text-text-primary hover:bg-fill-active'}`}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {authMode === 'key' && (
+                <div className="rounded-xl ring-1 ring-seam bg-elevation-2 divide-y divide-[var(--seam)]">
+                  {(requiredEnvFor(selectedAgent).length ? requiredEnvFor(selectedAgent) : [...new Set(credentials.map(c => c.env_name))]).map(env => {
+                    const options = credentials.filter(c => c.env_name === env);
+                    const current = sessionBindings.find(b => b.env === env)?.credential_id ?? '';
+                    const chosen = options.find(c => c.id === current);
+                    return (
+                      <div key={env} className="flex items-center gap-2.5 h-[42px] px-3">
+                        <KeyRound size={15} className="text-accent-primary flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-text-primary text-[12.5px] font-medium leading-tight truncate">{chosen?.label ?? 'No key selected'}</p>
+                          <p className="text-text-tertiary text-[11px] font-mono leading-tight truncate">{env}{chosen?.has_endpoint ? ' · endpoint override' : ''}</p>
+                        </div>
+                        <select aria-label={`Key for ${env}`} value={current}
+                          onChange={e => setSessionBindings(prev => [...prev.filter(b => b.env !== env), ...(e.target.value ? [{ env, credential_id: e.target.value }] : [])])}
+                          className="bg-elevation-0 text-text-primary text-[12px] px-2 h-7 rounded ring-1 ring-border-light">
+                          <option value="">None</option>
+                          {options.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+                        </select>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 
@@ -770,7 +844,7 @@ export function NewTerminalModal() {
             />
           </div>
 
-          {!plainShell && (
+          {!plainShell && !isCustomAgent(selectedAgent) && (
           <div>
             <label className="block text-text-tertiary text-[11px] font-semibold uppercase tracking-wider mb-2">Model</label>
             {selectedAgent === 'claude' ? (
@@ -902,6 +976,7 @@ export function NewTerminalModal() {
                       />
                       <p className="text-text-tertiary text-[11px] mt-1 truncate">
                         Command: <code className="text-text-secondary">{specFor(selectedAgent).binary} {claudeArgs.join(' ')}</code>
+                        {authMode === 'key' && sessionBindings.length > 0 && <span className="text-success"> · key injected at launch</span>}
                       </p>
                     </div>
                     )}
