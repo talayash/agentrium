@@ -9,7 +9,8 @@
 // Adding a model = one edit here. The modal picker and the tab-strip /
 // status-bar badge lookups all read from these arrays.
 
-import type { AgentKind } from './agents';
+import type { AgentKind, BuiltinAgentKind } from './agents';
+import { isCustomAgent } from './agents';
 import { CLAUDE_MODELS } from './claudeModels';
 
 export interface AgentModel {
@@ -36,7 +37,7 @@ const GEMINI = { badgeClasses: 'bg-sky-500/20 text-sky-400', ringClasses: 'ring-
 const SONNET = { badgeClasses: 'bg-blue-500/20 text-blue-400', ringClasses: 'ring-1 ring-blue-500/30' };
 const OPUS = { badgeClasses: 'bg-purple-500/20 text-purple-400', ringClasses: 'ring-1 ring-purple-500/30' };
 
-export const AGENT_MODELS: Record<Exclude<AgentKind, 'claude'>, readonly AgentModel[]> = {
+export const AGENT_MODELS: Record<Exclude<BuiltinAgentKind, 'claude'>, readonly AgentModel[]> = {
   codex: [
     { alias: 'gpt-5.6-sol', label: 'Sol', fullLabel: 'GPT-5.6 Sol - flagship', ...OPENAI },
     { alias: 'gpt-5.6-terra', label: 'Terra', fullLabel: 'GPT-5.6 Terra - everyday workhorse', ...OPENAI },
@@ -66,7 +67,8 @@ export const AGENT_MODELS: Record<Exclude<AgentKind, 'claude'>, readonly AgentMo
  * its picker is driven by `claudeModels.ts`, not this catalog.
  */
 export function modelsForAgent(kind: AgentKind): readonly AgentModel[] {
-  return kind === 'claude' ? [] : AGENT_MODELS[kind];
+  if (kind === 'claude' || isCustomAgent(kind)) return [];
+  return AGENT_MODELS[kind];
 }
 
 // Flat alias -> model lookup across every agent catalog. Aliases don't

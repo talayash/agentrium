@@ -9,7 +9,7 @@ import { open } from '@tauri-apps/plugin-dialog';
 import type { WorktreeInfo, WorktreeDetectResult } from '../types/git';
 import { reportInvokeFailure } from '../lib/errorReporter';
 import { toast } from '../store/toastStore';
-import { filterArgsForAgent, specFor, type AgentKind } from '../lib/agents';
+import { defaultArgsFor, filterArgsForAgent, specFor, type AgentKind } from '../lib/agents';
 import {
   CLAUDE_MODEL_FAMILIES,
   familyLabel,
@@ -174,11 +174,11 @@ export function NewTerminalModal() {
         const resolved =
           savedForAgent && savedForAgent.length > 0
             ? savedForAgent
-            : legacyForDefault ?? defaultAgentArgs[selectedAgent];
+            : legacyForDefault ?? defaultArgsFor(selectedAgent, defaultAgentArgs);
         setClaudeArgs(resolved);
       }
     } else {
-      setClaudeArgs(defaultAgentArgs[selectedAgent]);
+      setClaudeArgs(defaultArgsFor(selectedAgent, defaultAgentArgs));
     }
   }, [selectedProfileId, profiles, defaultAgentArgs, selectedAgent]);
 

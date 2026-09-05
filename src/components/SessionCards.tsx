@@ -11,16 +11,21 @@ import { BrandIcon } from './BrandIcon';
 import { EmptyState } from './ui/EmptyState';
 import { Tooltip } from './ui/Tooltip';
 import { useAppStore } from '../store/appStore';
-import type { AgentKind } from '../lib/agents';
+import type { AgentKind, BuiltinAgentKind } from '../lib/agents';
+import { isCustomAgent } from '../lib/agents';
 import { resolveRenameCommit } from '../lib/renameTab';
 
 // Soft per-agent tint for the card badge (Apple-clean, theme-aware via /alpha).
-const AGENT_TINT: Record<AgentKind, string> = {
+const AGENT_TINT: Record<BuiltinAgentKind, string> = {
   claude: 'bg-orange-500/15 text-orange-500',
   codex: 'bg-teal-500/15 text-teal-500',
   cursor: 'bg-indigo-500/15 text-indigo-500',
   antigravity: 'bg-sky-500/15 text-sky-500',
 };
+
+function agentTint(kind: AgentKind): string {
+  return isCustomAgent(kind) ? 'bg-fill-hover text-text-secondary' : AGENT_TINT[kind];
+}
 
 const STATUS_DOT: Record<string, string> = {
   Running: 'bg-success',
@@ -270,7 +275,7 @@ export function SessionCards() {
               {/* Badge first, actions after: when the hover actions appear the
                   badge slides LEFT instead of being covered. */}
               <span
-                className={`ml-auto flex items-center gap-1 text-[10px] font-semibold px-1.5 h-[17px] rounded-md flex-shrink-0 ${AGENT_TINT[t.config.agent]}`}
+                className={`ml-auto flex items-center gap-1 text-[10px] font-semibold px-1.5 h-[17px] rounded-md flex-shrink-0 ${agentTint(t.config.agent)}`}
               >
                 <BrandIcon kind={t.config.agent} size={10} />
               </span>
