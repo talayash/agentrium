@@ -1,4 +1,17 @@
-export type AgentKind = 'claude' | 'codex' | 'cursor' | 'antigravity';
+export type BuiltinAgentKind = 'claude' | 'codex' | 'cursor' | 'antigravity';
+export type AgentKind = BuiltinAgentKind | `custom:${string}`;
+
+export const BUILTIN_AGENT_KINDS: readonly BuiltinAgentKind[] = ['claude', 'codex', 'cursor', 'antigravity'];
+
+export function isCustomAgent(kind: AgentKind): kind is `custom:${string}` {
+  return kind.startsWith('custom:');
+}
+export function customKind(id: string): `custom:${string}` {
+  return `custom:${id}`;
+}
+export function customIdOf(kind: AgentKind): string | null {
+  return isCustomAgent(kind) ? kind.slice('custom:'.length) : null;
+}
 
 export interface AgentSpec {
   kind: AgentKind;
@@ -12,6 +25,12 @@ export interface AgentSpec {
    * Newline-separated so it can preview a multi-flag setup.
    */
   defaultArgsHint: string;
+  /** Custom agents only. */
+  color?: string;
+  monogram?: string;
+  defaultArgs?: string[];
+  resumeFlag?: string | null;
+  requiredEnv?: string[];
 }
 
 export const AGENT_SPECS: readonly AgentSpec[] = [
@@ -56,10 +75,29 @@ export const AGENT_SPECS: readonly AgentSpec[] = [
   },
 ];
 
+let customSpecs: AgentSpec[] = [];
+export function setCustomAgentSpecs(specs: AgentSpec[]) {
+  customSpecs = specs;
+}
+export function allAgentSpecs(): AgentSpec[] {
+  return [...AGENT_SPECS, ...customSpecs];
+}
+
 export function specFor(kind: AgentKind): AgentSpec {
-  const spec = AGENT_SPECS.find(s => s.kind === kind);
+  const spec = allAgentSpecs().find(s => s.kind === kind);
   if (!spec) throw new Error(`Unknown agent kind: ${kind}`);
   return spec;
+}
+
+export function monogramFor(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase();
+  return name.trim().slice(0, 2).toUpperCase() || '?';
+}
+
+export function defaultArgsFor(kind: AgentKind, builtinMap: Record<BuiltinAgentKind, string[]>): string[] {
+  if (isCustomAgent(kind)) return [...(specFor(kind).defaultArgs ?? [])];
+  return builtinMap[kind] ?? [];
 }
 
 // Per-agent set of flags that must be stripped before spawning that agent
@@ -69,7 +107,7 @@ export function specFor(kind: AgentKind): AgentSpec {
 // - `--worktree`: Claude-only spawn mode.
 // - `--continue`: valid on Claude/Cursor/Antigravity, but Codex uses the
 //   `resume --last` subcommand instead - a raw `--continue` on Codex errors.
-const NO_VALUE_STRIP: Record<AgentKind, ReadonlySet<string>> = {
+const NO_VALUE_STRIP: Record<BuiltinAgentKind, ReadonlySet<string>> = {
   claude: new Set(),
   codex: new Set(['--dangerously-skip-permissions', '--worktree', '--continue']),
   cursor: new Set(['--dangerously-skip-permissions', '--worktree']),
@@ -84,7 +122,7 @@ const NO_VALUE_STRIP: Record<AgentKind, ReadonlySet<string>> = {
 // to them, so reused Claude args must lose the pair. The New Terminal
 // modal injects the per-agent model picked from `agentModels.ts` AFTER
 // this filter runs, so the picker is the supported way to set a model.
-const WITH_VALUE_STRIP: Record<AgentKind, ReadonlySet<string>> = {
+const WITH_VALUE_STRIP: Record<BuiltinAgentKind, ReadonlySet<string>> = {
   claude: new Set(),
   codex: new Set(['--model', '--effort', '--resume']),
   cursor: new Set(['--model', '--effort', '--resume']),
@@ -99,8 +137,9 @@ const WITH_VALUE_STRIP: Record<AgentKind, ReadonlySet<string>> = {
  */
 export function filterArgsForAgent(agent: AgentKind, args: string[]): string[] {
   if (agent === 'claude') return [...args];
-  const noValue = NO_VALUE_STRIP[agent];
-  const withValue = WITH_VALUE_STRIP[agent];
+  const key: BuiltinAgentKind = isCustomAgent(agent) ? 'cursor' : agent;
+  const noValue = NO_VALUE_STRIP[key];
+  const withValue = WITH_VALUE_STRIP[key];
   const out: string[] = [];
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
