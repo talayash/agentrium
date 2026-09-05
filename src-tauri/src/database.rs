@@ -863,6 +863,32 @@ impl Database {
 
     // App meta methods
 
+    /// Profiles whose env vars hold something that looks like a secret.
+    /// Drives the one-time "move keys to the OS store" prompt.
+    pub fn count_profiles_with_plaintext_keys(&self) -> Result<usize, String> {
+        let looks_secret = |k: &str| k.ends_with("_API_KEY") || k.ends_with("_TOKEN") || k.ends_with("_SECRET");
+        Ok(self
+            .get_profiles()?
+            .iter()
+            .filter(|p| p.env_vars.iter().any(|(k, v)| looks_secret(k) && !v.trim().is_empty()))
+            .count())
+    }
+
+    pub fn get_meta_flag(&self, key: &str) -> Result<bool, String> {
+        let v: Option<String> = self
+            .conn
+            .query_row("SELECT value FROM app_meta WHERE key = ?1", params![key], |r| r.get(0))
+            .ok();
+        Ok(v.as_deref() == Some("1"))
+    }
+
+    pub fn set_meta_flag(&self, key: &str) -> Result<(), String> {
+        self.conn
+            .execute("INSERT OR REPLACE INTO app_meta (key, value) VALUES (?1, '1')", params![key])
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
     pub fn get_or_create_installation_id(&self) -> Result<String, String> {
         let result: Result<String, _> = self.conn.query_row(
             "SELECT value FROM app_meta WHERE key = 'installation_id'",
@@ -1419,6 +1445,23 @@ mod tests {
         assert_eq!(db.get_custom_agent("a1").unwrap().unwrap().bindings, vec![keep.clone()]);
         assert_eq!(db.get_agent_bindings("codex").unwrap(), vec![keep.clone()]);
         assert_eq!(db.get_profiles().unwrap()[0].credential_bindings, vec![keep]);
+    }
+
+    #[test]
+    fn plaintext_key_profile_count_and_prompt_flag() {
+        let db = Database::new_in_memory().unwrap();
+        let mut p = crate::config::ConfigProfile {
+            id: "p1".into(), name: "P".into(), description: None, working_directory: "C:\\w".into(),
+            claude_args: vec![], env_vars: Default::default(), is_default: false,
+            agent: crate::config::AgentKind::Claude, preview: None, agent_args: Default::default(),
+            credential_bindings: vec![],
+        };
+        p.env_vars.insert("ANTHROPIC_API_KEY".into(), "sk-ant-x".into());
+        db.save_profile(&p).unwrap();
+        assert_eq!(db.count_profiles_with_plaintext_keys().unwrap(), 1);
+        assert!(!db.get_meta_flag("keys_migration_prompted").unwrap());
+        db.set_meta_flag("keys_migration_prompted").unwrap();
+        assert!(db.get_meta_flag("keys_migration_prompted").unwrap());
     }
 
     #[test]

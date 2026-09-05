@@ -188,6 +188,16 @@ function App() {
     // startup. Failure here degrades to built-ins only; the settings page
     // surfaces the error when the user opens it.
     useAgentRegistryStore.getState().refresh().catch(() => {});
+    invoke<number>('plaintext_key_profiles_to_prompt')
+      .then((n) => {
+        if (n > 0) {
+          toast.warning(
+            `${n} profile${n === 1 ? '' : 's'} store API keys as plain text`,
+            'Move them to your OS credential store from Settings > Agents > Agents & Keys, or open the profile and use the key icon next to the variable.',
+          );
+        }
+      })
+      .catch(() => {});
   }, []);
 
   // Follow the OS "reduce motion" setting (WCAG 2.2 SC 2.3.3) on startup and

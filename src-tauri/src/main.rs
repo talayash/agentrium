@@ -155,6 +155,7 @@ fn main() {
             commands::get_profiles,
             commands::delete_profile,
             commands::strip_profile_env_var,
+            commands::plaintext_key_profiles_to_prompt,
             commands::get_claude_version,
             commands::get_agent_version,
             commands::probe_binary,

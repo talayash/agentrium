@@ -833,6 +833,26 @@ pub async fn strip_profile_env_var(
     .await
 }
 
+/// Returns how many profiles still hold plaintext API keys, but only the
+/// first time it is asked (then stamps app_meta so the toast shows once).
+#[command]
+pub async fn plaintext_key_profiles_to_prompt(state: State<'_, AppState>) -> Result<usize, String> {
+    wrap_cmd("plaintext_key_profiles_to_prompt", async move {
+        db_op(&state.db, |db| {
+            if db.get_meta_flag("keys_migration_prompted")? {
+                return Ok(0);
+            }
+            let n = db.count_profiles_with_plaintext_keys()?;
+            if n > 0 {
+                db.set_meta_flag("keys_migration_prompted")?;
+            }
+            Ok(n)
+        })
+        .await
+    })
+    .await
+}
+
 #[command]
 pub async fn get_claude_version() -> Result<String, String> {
     wrap_cmd("get_claude_version", async move {
