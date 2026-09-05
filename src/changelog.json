@@ -1,5 +1,13 @@
 [
   {
+    "version": "1.34.0",
+    "date": "2026-09-04",
+    "features": [
+      { "title": "Add your own agents", "description": "Register any coding-agent CLI (OpenCode, Gemini CLI, Aider, Goose, Qwen Code, or a custom binary) from the agent picker or Settings > Agents. Presets fill in the binary, resume flag and the API key variable it needs; Agentrium probes your PATH live." },
+      { "title": "API keys in your OS credential store", "description": "Store Anthropic, OpenAI, Google, Cursor, OpenRouter or custom keys once. They live in Windows Credential Manager / macOS Keychain and are injected into the agent process only at launch - never in profiles, logs or telemetry. An endpoint override lets Claude Code run against Ollama or a gateway." }
+    ]
+  },
+  {
     "version": "1.33.5",
     "date": "2026-09-04",
     "features": [
