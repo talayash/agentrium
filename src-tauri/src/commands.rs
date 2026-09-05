@@ -366,6 +366,25 @@ pub struct CreateTerminalRequest {
     pub agent: crate::config::AgentKind,
 }
 
+/// Built-ins resolve statically; `Custom(id)` reads the `custom_agents` row.
+/// A deleted custom agent is a user-state error, not a bug.
+async fn resolve_agent_spec(
+    state: &State<'_, AppState>,
+    kind: &crate::config::AgentKind,
+) -> Result<crate::agents::AgentSpec, String> {
+    if let Some(spec) = crate::agents::builtin_spec(kind) {
+        return Ok(spec);
+    }
+    let id = kind.custom_id().unwrap_or_default().to_string();
+    let row = db_op(&state.db, move |db| db.get_custom_agent(&id)).await?;
+    match row {
+        Some(a) => Ok(crate::agents::AgentSpec::from_custom(&a)),
+        None => Err(error_reporter::user_err(
+            "This agent was removed. Pick another agent or add it again in Settings > Agents & Keys.",
+        )),
+    }
+}
+
 #[command]
 pub async fn create_terminal(
     app: AppHandle,
@@ -392,6 +411,10 @@ pub async fn create_terminal(
         };
 
         let agent = request.agent.clone();
+        // Resolve the agent spec (built-in table lookup or custom_agents DB row)
+        // BEFORE we grab the terminals mutex - db_op is async, and holding a
+        // mutex across an await would serialize spawn requests unnecessarily.
+        let spec = resolve_agent_spec(&state, &agent).await?;
         // Snapshot the agent's session store *before* spawning so we can later
         // diff for the new session file. Cheap (a few dozen file paths) and
         // synchronous - must happen before the PTY starts the agent process.
@@ -412,7 +435,7 @@ pub async fn create_terminal(
             let mut terminals = state.terminals.lock().await;
             terminals.create_terminal(
                 request.label.clone(),
-                request.agent,
+                spec,
                 request.working_directory,
                 request.claude_args,
                 request.env_vars,
@@ -787,7 +810,10 @@ pub async fn get_claude_version() -> Result<String, String> {
 /// Claude keeps its dedicated cached-path helper so users with PATH set
 /// only in .zshrc still resolve it.
 #[command]
-pub async fn get_agent_version(agent: crate::config::AgentKind) -> Result<String, String> {
+pub async fn get_agent_version(
+    state: State<'_, AppState>,
+    agent: crate::config::AgentKind,
+) -> Result<String, String> {
     wrap_cmd("get_agent_version", async move {
         if agent == crate::config::AgentKind::Claude {
             let output = run_claude(&["--version"])
@@ -800,11 +826,11 @@ pub async fn get_agent_version(agent: crate::config::AgentKind) -> Result<String
             return Ok(extract_version_line(&stdout));
         }
 
-        let binary = crate::agents::spec_for(&agent).binary;
+        let binary = resolve_agent_spec(&state, &agent).await?.binary;
 
         // Stage 1: try --version. Look at both stdout and stderr because
         // many CLIs print version info to stderr.
-        let mut cmd: tokio::process::Command = shell_command(binary, &["--version"]).into();
+        let mut cmd: tokio::process::Command = shell_command(&binary, &["--version"]).into();
         if let Ok(output) = cmd.output().await {
             let stdout = String::from_utf8_lossy(&output.stdout);
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -825,9 +851,9 @@ pub async fn get_agent_version(agent: crate::config::AgentKind) -> Result<String
         // so we route the probe through the shell_command helper which
         // already handles CREATE_NO_WINDOW.
         let mut probe: tokio::process::Command = if cfg!(target_os = "windows") {
-            shell_command("where", &[binary]).into()
+            shell_command("where", &[binary.as_str()]).into()
         } else {
-            shell_command("which", &[binary]).into()
+            shell_command("which", &[binary.as_str()]).into()
         };
         if let Ok(output) = probe.output().await {
             if output.status.success() && !output.stdout.is_empty() {
