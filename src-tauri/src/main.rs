@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod agents;
+mod custom_agents;
 mod commands;
 mod terminal;
 mod config;

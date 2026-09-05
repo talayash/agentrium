@@ -156,7 +156,7 @@ impl TerminalManager {
     }
 
     /// Characters that could enable shell injection when passed through `cmd /C` or `sh -c`
-    const SHELL_METACHARACTERS: &'static [char] = &[
+    pub(crate) const SHELL_METACHARACTERS: &'static [char] = &[
         '&', '|', ';', '`', '$', '(', ')', '{', '}', '<', '>', '^', '\n', '\r',
         '\'', '"', '\\', '~', '*', '?', '[', ']', '!', '\t', '#',
     ];
@@ -170,7 +170,7 @@ impl TerminalManager {
     ];
 
     /// Environment variable names that must not be overridden by user profiles
-    const BLOCKED_ENV_VARS: &'static [&'static str] = &[
+    pub(crate) const BLOCKED_ENV_VARS: &'static [&'static str] = &[
         "PATH", "PATHEXT", "COMSPEC", "SYSTEMROOT", "WINDIR",
         "LD_PRELOAD", "LD_LIBRARY_PATH", "DYLD_INSERT_LIBRARIES", "DYLD_LIBRARY_PATH",
         "NODE_OPTIONS", "NODE_EXTRA_CA_CERTS",

@@ -84,6 +84,14 @@ impl<'de> Deserialize<'de> for AgentKind {
     }
 }
 
+/// Links an environment variable an agent needs to a stored credential.
+/// Values are never carried here - only the id of the credential row.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CredentialBinding {
+    pub env: String,
+    pub credential_id: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct PreviewProfile {
