@@ -2,7 +2,8 @@ import { motion } from 'framer-motion';
 import type { Variants } from 'framer-motion';
 import appIconUrl from '../assets/app-icon.png';
 import { useAppStore } from '../store/appStore';
-import { AGENT_SPECS } from '../lib/agents';
+import { useAgentRegistryStore } from '../store/agentRegistryStore';
+import { allAgentSpecs } from '../lib/agents';
 import { BrandIcon } from './BrandIcon';
 import { SPRING_DEFAULT, SPRING_DRAWER } from '../lib/motionTokens';
 
@@ -28,6 +29,8 @@ const hero: Variants = {
  */
 export function WelcomeScreen() {
   const openNewTerminalModal = useAppStore((s) => s.openNewTerminalModal);
+  // Reactive subscription so the grid re-renders when custom agents load or change.
+  useAgentRegistryStore((s) => s.customAgents);
   return (
     <div className="absolute inset-0 flex flex-col items-center justify-center text-text-secondary p-8 overflow-hidden">
       {/* Drifting gradient orbs (ambient depth) */}
@@ -61,8 +64,8 @@ export function WelcomeScreen() {
           <div className="text-center text-text-tertiary text-[11px] font-semibold uppercase tracking-[0.14em] mb-3">
             Start a session
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 w-full">
-            {AGENT_SPECS.map((spec) => (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 w-full">
+            {allAgentSpecs().map((spec) => (
               <button
                 key={spec.kind}
                 onClick={() => openNewTerminalModal(spec.kind)}

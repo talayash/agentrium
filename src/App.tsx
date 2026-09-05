@@ -740,10 +740,12 @@ function App() {
             mode.kind === 'continue',
             undefined,
             config.agent,
+            config.credential_bindings ?? [],
           );
           keyToNewId[stableKey] = newId;
         }
       } catch (err) {
+        toast.error('Could not restore a session', String(err));
         reportInvokeFailure('restore_terminal', err);
       }
     }

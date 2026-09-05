@@ -5,6 +5,7 @@ import type { TerminalThemeName } from '../lib/terminalThemes';
 import { MAX_GRID_TERMINALS } from '../lib/gridEmptyCells';
 import { addPin, removePin, togglePin } from '../lib/pinnedTabs';
 import type { AgentKind, BuiltinAgentKind } from '../lib/agents';
+import type { CredentialBinding } from '../lib/credentials';
 
 export type TerminalCursorStyle = 'bar' | 'block' | 'underline';
 export type TerminalScrollbarMode = 'auto-hide' | 'always' | 'hidden';
@@ -489,6 +490,7 @@ interface SavedTerminalConfig {
   color_tag: string | null;
   claude_session_id?: string | null;
   agent: AgentKind;
+  credential_bindings?: CredentialBinding[];
 }
 
 // Helper to determine optimal layout based on terminal count
