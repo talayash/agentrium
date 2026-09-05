@@ -123,9 +123,13 @@ pub fn validate(agent: &CustomAgent) -> Result<(), String> {
             return Err(format!("\"{}\" cannot be set by an agent", env));
         }
     }
+    let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
     for b in &agent.bindings {
         if !agent.required_env.contains(&b.env) {
             return Err(format!("Binding for \"{}\" has no matching required variable", b.env));
+        }
+        if !seen.insert(b.env.as_str()) {
+            return Err(format!("Duplicate binding for \"{}\"", b.env));
         }
     }
     Ok(())
@@ -210,5 +214,42 @@ mod tests {
         let mut a = ok_agent();
         a.bindings = vec![CredentialBinding { env: "OTHER".into(), credential_id: "c1".into() }];
         assert!(validate(&a).unwrap_err().contains("no matching required variable"));
+    }
+
+    #[test]
+    fn binary_forbidden_matches_terminal_metacharacters_minus_backslash_tilde() {
+        // BINARY_FORBIDDEN must stay in sync with the terminal's shell
+        // metacharacter list, minus the two chars we allow in Windows paths.
+        // If SHELL_METACHARACTERS gains a new char, add it here too.
+        let expected: Vec<char> = crate::terminal::TerminalManager::SHELL_METACHARACTERS
+            .iter()
+            .copied()
+            .filter(|c| *c != '\\' && *c != '~')
+            .collect();
+        assert_eq!(BINARY_FORBIDDEN, expected.as_slice());
+    }
+
+    #[test]
+    fn rejects_duplicate_binding_for_same_env() {
+        let mut a = ok_agent();
+        a.bindings = vec![
+            CredentialBinding { env: "OPENAI_API_KEY".into(), credential_id: "a".into() },
+            CredentialBinding { env: "OPENAI_API_KEY".into(), credential_id: "b".into() },
+        ];
+        assert!(validate(&a).unwrap_err().contains("Duplicate binding"));
+    }
+
+    #[test]
+    fn rejects_empty_binary() {
+        let mut a = ok_agent();
+        a.binary = "   ".into();
+        assert!(validate(&a).unwrap_err().contains("Command is required"));
+    }
+
+    #[test]
+    fn rejects_binary_over_512_chars() {
+        let mut a = ok_agent();
+        a.binary = "x".repeat(513);
+        assert!(validate(&a).unwrap_err().contains("too long"));
     }
 }
