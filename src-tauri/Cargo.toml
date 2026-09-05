@@ -36,6 +36,9 @@ trash = "5"
 tiny_http = "0.12"
 zip = { version = "8", default-features = false, features = ["deflate"] }
 flate2 = "1"
+# OS credential store (Windows Credential Manager / macOS Keychain / Linux
+# Secret Service) for API keys. Values never touch SQLite or the WebView.
+keyring = { version = "3", features = ["windows-native", "apple-native", "sync-secret-service"] }
 
 # On Windows, we reach into the underlying CoreWebView2 to disable the
 # default browser context menu (Back/Refresh/Save-as/Inspect) - otherwise

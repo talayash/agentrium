@@ -2,6 +2,7 @@
 
 mod agents;
 mod custom_agents;
+mod credentials;
 mod commands;
 mod terminal;
 mod config;
