@@ -796,6 +796,43 @@ pub async fn get_claude_version() -> Result<String, String> {
     .await
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct BinaryProbe {
+    pub found: bool,
+    pub resolved_path: Option<String>,
+    pub version: Option<String>,
+}
+
+pub(crate) fn first_path_line(stdout: &str) -> Option<String> {
+    stdout.lines().map(str::trim).find(|l| !l.is_empty()).map(str::to_string)
+}
+
+pub(crate) async fn probe_binary_impl(binary: &str) -> BinaryProbe {
+    let mut version: Option<String> = None;
+    let mut cmd: tokio::process::Command = shell_command(binary, &["--version"]).into();
+    if let Ok(output) = cmd.output().await {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        for buf in [&stdout, &stderr] {
+            let line = extract_version_line(buf);
+            if !line.is_empty() && has_semver_like(&line) {
+                version = Some(line);
+                break;
+            }
+        }
+    }
+    let mut probe: tokio::process::Command = if cfg!(target_os = "windows") {
+        shell_command("where", &[binary]).into()
+    } else {
+        shell_command("which", &[binary]).into()
+    };
+    let resolved_path = match probe.output().await {
+        Ok(o) if o.status.success() => first_path_line(&String::from_utf8_lossy(&o.stdout)),
+        _ => None,
+    };
+    BinaryProbe { found: version.is_some() || resolved_path.is_some(), resolved_path, version }
+}
+
 /// Generic per-agent version detector.
 ///
 /// Two-stage check: (1) run `<binary> --version` and try to extract a
@@ -827,46 +864,70 @@ pub async fn get_agent_version(
         }
 
         let binary = resolve_agent_spec(&state, &agent).await?.binary;
-
-        // Stage 1: try --version. Look at both stdout and stderr because
-        // many CLIs print version info to stderr.
-        let mut cmd: tokio::process::Command = shell_command(&binary, &["--version"]).into();
-        if let Ok(output) = cmd.output().await {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            for buf in [&stdout, &stderr] {
-                let line = extract_version_line(buf);
-                if !line.is_empty() && has_semver_like(&line) {
-                    return Ok(line);
-                }
-            }
+        let probe = probe_binary_impl(&binary).await;
+        if let Some(v) = probe.version {
+            return Ok(v);
         }
-
-        // Stage 2: fall back to a PATH lookup. `where` on Windows, `which`
-        // on Unix. If the binary is resolvable, we know it's installed even
-        // though we couldn't parse a version out of it - return a stable
-        // "installed" marker so the UI reflects reality. Small console
-        // flash on Windows is acceptable for a fallback path that rarely
-        // fires; tokio::process::Command doesn't expose creation_flags,
-        // so we route the probe through the shell_command helper which
-        // already handles CREATE_NO_WINDOW.
-        let mut probe: tokio::process::Command = if cfg!(target_os = "windows") {
-            shell_command("where", &[binary.as_str()]).into()
-        } else {
-            shell_command("which", &[binary.as_str()]).into()
-        };
-        if let Ok(output) = probe.output().await {
-            if output.status.success() && !output.stdout.is_empty() {
-                return Ok("installed".to_string());
-            }
+        if probe.found {
+            return Ok("installed".to_string());
         }
-
-        // Optional agent CLIs (agent, agy, codex, ...) are commonly not
-        // installed - that's a user-environment state, not a bug. Tag with
-        // `user_err` so wrap_cmd suppresses telemetry; the UI still receives
-        // the plain message and treats it as "not installed" (both callers
-        // just .catch and clear the version, they don't inspect the text).
         Err(error_reporter::user_err(format!("`{}` not found on PATH", binary)))
+    })
+    .await
+}
+
+#[command]
+pub async fn probe_binary(binary: String) -> Result<BinaryProbe, String> {
+    wrap_cmd("probe_binary", async move {
+        crate::custom_agents::validate_binary(&binary).map_err(error_reporter::user_err)?;
+        Ok(probe_binary_impl(binary.trim()).await)
+    })
+    .await
+}
+
+#[command]
+pub async fn list_custom_agents(
+    state: State<'_, AppState>,
+) -> Result<Vec<crate::custom_agents::CustomAgent>, String> {
+    wrap_cmd("list_custom_agents", async move {
+        db_op(&state.db, |db| db.list_custom_agents()).await
+    })
+    .await
+}
+
+#[command]
+pub async fn save_custom_agent(
+    state: State<'_, AppState>,
+    mut agent: crate::custom_agents::CustomAgent,
+) -> Result<crate::custom_agents::CustomAgent, String> {
+    wrap_cmd("save_custom_agent", async move {
+        crate::custom_agents::validate(&agent).map_err(error_reporter::user_err)?;
+        let now = chrono::Utc::now().to_rfc3339();
+        if agent.id.trim().is_empty() {
+            agent.id = uuid::Uuid::new_v4().to_string();
+            agent.created_at = now.clone();
+        } else {
+            let id = agent.id.clone();
+            if let Some(existing) = db_op(&state.db, move |db| db.get_custom_agent(&id)).await? {
+                agent.created_at = existing.created_at;
+            } else if agent.created_at.is_empty() {
+                agent.created_at = now.clone();
+            }
+        }
+        agent.updated_at = now;
+        agent.name = agent.name.trim().to_string();
+        agent.binary = agent.binary.trim().to_string();
+        let to_save = agent.clone();
+        db_op(&state.db, move |db| db.save_custom_agent(&to_save)).await?;
+        Ok(agent)
+    })
+    .await
+}
+
+#[command]
+pub async fn delete_custom_agent(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    wrap_cmd("delete_custom_agent", async move {
+        db_op(&state.db, move |db| db.delete_custom_agent(&id)).await
     })
     .await
 }
@@ -5481,7 +5542,14 @@ pub async fn lsp_server_log(
 
 #[cfg(test)]
 mod version_extraction_tests {
-    use super::{extract_version_line, has_semver_like};
+    use super::{extract_version_line, first_path_line, has_semver_like};
+
+    #[test]
+    fn first_path_line_takes_first_non_empty_trimmed_line() {
+        assert_eq!(first_path_line("  C:\\a\\b.cmd\r\nC:\\a\\b\r\n"), Some("C:\\a\\b.cmd".to_string()));
+        assert_eq!(first_path_line("\n\n"), None);
+        assert_eq!(first_path_line(""), None);
+    }
 
     #[test]
     fn extracts_simple_version() {
