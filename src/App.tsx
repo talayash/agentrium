@@ -12,6 +12,7 @@ import { SettingsWindow } from './components/settings/SettingsWindow';
 import { ProfileModal } from './components/ProfileModal';
 import { NewTerminalModal } from './components/NewTerminalModal';
 import { AddApiKeyModal } from './components/AddApiKeyModal';
+import { AddAgentModal } from './components/AddAgentModal';
 import { WorkspaceModal } from './components/WorkspaceModal';
 import { WorktreeModal } from './components/WorktreeModal';
 import { PushModal } from './components/PushModal';
@@ -163,6 +164,7 @@ function App() {
   const uiReduceMotion = useAppStore((s) => s.uiReduceMotion);
   const uiFontScale = useAppStore((s) => s.uiFontScale);
   const addKeyOpen = useAgentRegistryStore((s) => s.addKeyOpen);
+  const addAgentOpen = useAgentRegistryStore((s) => s.addAgentOpen);
   useEffect(() => {
     applyThemeMode(themeMode);
     applyDensity(uiDensity);
@@ -903,7 +905,8 @@ function App() {
             {settingsOpen && <SettingsWindow />}
             {profileModalOpen && <ProfileModal />}
             {newTerminalModalOpen && <NewTerminalModal />}
-            {addKeyOpen && <AddApiKeyModal />}
+            {addAgentOpen && <AddAgentModal />}
+            {!addAgentOpen && addKeyOpen && <AddApiKeyModal />}
             {workspaceModalOpen && <WorkspaceModal />}
             {worktreeModalOpen && <WorktreeModal />}
             {pushModalOpen && <PushModal />}
