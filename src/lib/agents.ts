@@ -90,9 +90,14 @@ export function specFor(kind: AgentKind): AgentSpec {
 }
 
 export function monogramFor(name: string): string {
-  const words = name.trim().split(/\s+/).filter(Boolean);
+  const trimmed = name.trim();
+  const words = trimmed.split(/\s+/).filter(Boolean);
   if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase();
-  return name.trim().slice(0, 2).toUpperCase() || '?';
+  // Single word: try CamelCase split ("OpenCode" -> "OC") before falling
+  // back to the first two characters.
+  const camel = trimmed.match(/[A-Z][a-z]*/g);
+  if (camel && camel.length >= 2) return (camel[0][0] + camel[1][0]).toUpperCase();
+  return trimmed.slice(0, 2).toUpperCase() || '?';
 }
 
 export function defaultArgsFor(kind: AgentKind, builtinMap: Record<BuiltinAgentKind, string[]>): string[] {
