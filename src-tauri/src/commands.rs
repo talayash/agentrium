@@ -932,6 +932,254 @@ pub async fn delete_custom_agent(state: State<'_, AppState>, id: String) -> Resu
     .await
 }
 
+/// URL + headers for a one-shot "list models" call. `None` = the provider has
+/// no cheap test endpoint (Cursor). Anthropic-compatible endpoints (Ollama,
+/// LiteLLM) take the Anthropic shape; OpenAI-compatible gateways take Bearer.
+pub(crate) fn credential_test_request(
+    provider: &crate::credentials::Provider,
+    endpoint: Option<&str>,
+    key: &str,
+) -> Option<(String, HashMap<String, String>)> {
+    use crate::credentials::Provider;
+    let base = |default: &str| endpoint.unwrap_or(default).trim_end_matches('/').to_string();
+    let mut headers = HashMap::new();
+    let url = match provider {
+        Provider::Anthropic => {
+            headers.insert("x-api-key".into(), key.to_string());
+            headers.insert("anthropic-version".into(), "2023-06-01".into());
+            format!("{}/v1/models", base("https://api.anthropic.com"))
+        }
+        Provider::OpenAI => {
+            headers.insert("authorization".into(), format!("Bearer {}", key));
+            format!("{}/models", base("https://api.openai.com/v1"))
+        }
+        Provider::OpenRouter => {
+            headers.insert("authorization".into(), format!("Bearer {}", key));
+            format!("{}/models", base("https://openrouter.ai/api/v1"))
+        }
+        Provider::Google => {
+            format!("https://generativelanguage.googleapis.com/v1beta/models?key={}", key)
+        }
+        Provider::Custom => {
+            headers.insert("authorization".into(), format!("Bearer {}", key));
+            format!("{}/models", base(""))
+        }
+        Provider::Cursor => return None,
+    };
+    Some((url, headers))
+}
+
+#[derive(Debug, Serialize)]
+pub struct CredentialTestResult {
+    pub ok: bool,
+    pub detail: String,
+    pub latency_ms: u64,
+}
+
+#[command]
+pub async fn list_credentials(
+    state: State<'_, AppState>,
+) -> Result<Vec<crate::credentials::CredentialMeta>, String> {
+    wrap_cmd("list_credentials", async move {
+        db_op(&state.db, |db| db.list_credentials()).await
+    })
+    .await
+}
+
+/// `key` / `endpoint`: `None` = leave unchanged, `Some("")` = clear,
+/// `Some(v)` = set. Values are written to the OS store before metadata so a
+/// failed store write never leaves a row claiming `has_key`.
+#[command]
+pub async fn save_credential(
+    state: State<'_, AppState>,
+    mut meta: crate::credentials::CredentialMeta,
+    key: Option<String>,
+    endpoint: Option<String>,
+) -> Result<crate::credentials::CredentialMeta, String> {
+    wrap_cmd("save_credential", async move {
+        use crate::credentials::{endpoint_entry, key_entry, masked_tail_of};
+        let existing = if meta.id.trim().is_empty() {
+            meta.id = uuid::Uuid::new_v4().to_string();
+            None
+        } else {
+            let id = meta.id.clone();
+            db_op(&state.db, move |db| db.get_credential(&id)).await?
+        };
+        let will_have_key = match key.as_deref() {
+            None => existing.as_ref().map(|e| e.has_key).unwrap_or(false),
+            Some("") => false,
+            Some(_) => true,
+        };
+        let will_have_endpoint = match endpoint.as_deref() {
+            None => existing.as_ref().map(|e| e.has_endpoint).unwrap_or(false),
+            Some("") => false,
+            Some(_) => true,
+        };
+        crate::credentials::validate_save(&meta, key.as_deref(), endpoint.as_deref(), will_have_key, will_have_endpoint)
+            .map_err(error_reporter::user_err)?;
+
+        let store = state.secrets.clone();
+        let id = meta.id.clone();
+        match key.as_deref() {
+            None => {
+                meta.has_key = will_have_key;
+                meta.masked_tail = existing.as_ref().and_then(|e| e.masked_tail.clone());
+            }
+            Some("") => {
+                store.delete(&key_entry(&id))?;
+                meta.has_key = false;
+                meta.masked_tail = None;
+            }
+            Some(v) => {
+                store.set(&key_entry(&id), v)?;
+                meta.has_key = true;
+                meta.masked_tail = Some(masked_tail_of(v));
+            }
+        }
+        match endpoint.as_deref() {
+            None => meta.has_endpoint = will_have_endpoint,
+            Some("") => {
+                store.delete(&endpoint_entry(&id))?;
+                meta.has_endpoint = false;
+            }
+            Some(v) => {
+                store.set(&endpoint_entry(&id), v.trim_end_matches('/'))?;
+                meta.has_endpoint = true;
+            }
+        }
+        meta.label = meta.label.trim().to_string();
+        meta.created_at = existing
+            .as_ref()
+            .map(|e| e.created_at.clone())
+            .unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
+        meta.last_used_at = existing.as_ref().and_then(|e| e.last_used_at.clone());
+        let to_save = meta.clone();
+        db_op(&state.db, move |db| db.upsert_credential(&to_save)).await?;
+        Ok(meta)
+    })
+    .await
+}
+
+#[command]
+pub async fn delete_credential(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    wrap_cmd("delete_credential", async move {
+        use crate::credentials::{endpoint_entry, key_entry};
+        state.secrets.delete(&key_entry(&id))?;
+        state.secrets.delete(&endpoint_entry(&id))?;
+        db_op(&state.db, move |db| db.delete_credential_cascade(&id)).await
+    })
+    .await
+}
+
+#[command]
+pub async fn test_credential(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<CredentialTestResult, String> {
+    wrap_cmd("test_credential", async move {
+        use crate::credentials::{endpoint_entry, key_entry, Provider};
+        let lookup_id = id.clone();
+        let meta = db_op(&state.db, move |db| db.get_credential(&lookup_id))
+            .await?
+            .ok_or_else(|| error_reporter::user_err("Key not found"))?;
+        let key = if meta.has_key { state.secrets.get(&key_entry(&id))?.unwrap_or_default() } else { String::new() };
+        let endpoint = if meta.has_endpoint { state.secrets.get(&endpoint_entry(&id))? } else { None };
+        if meta.provider == Provider::Cursor {
+            return Ok(CredentialTestResult { ok: false, detail: "No test endpoint for Cursor; saved anyway".into(), latency_ms: 0 });
+        }
+        let Some((url, headers)) = credential_test_request(&meta.provider, endpoint.as_deref(), &key) else {
+            return Ok(CredentialTestResult { ok: false, detail: "No test endpoint".into(), latency_ms: 0 });
+        };
+        if meta.provider == Provider::Custom && endpoint.is_none() {
+            return Err(error_reporter::user_err("Custom providers need an endpoint override to test"));
+        }
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(8))
+            .build()
+            .map_err(|e| e.to_string())?;
+        let mut req = client.get(&url);
+        for (k, v) in &headers {
+            req = req.header(k.as_str(), v.as_str());
+        }
+        let started = std::time::Instant::now();
+        let resp = req.send().await.map_err(|e| error_reporter::user_err(format!("Connection failed: {}", e)))?;
+        let latency_ms = started.elapsed().as_millis() as u64;
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        if !status.is_success() {
+            let snippet: String = body.chars().take(160).collect();
+            return Ok(CredentialTestResult { ok: false, detail: format!("HTTP {} {}", status.as_u16(), snippet.trim()), latency_ms });
+        }
+        // Every provider returns a JSON list of models under `data` (OpenAI,
+        // Anthropic) or `models` (Google); grab the first id/name.
+        let first_model = serde_json::from_str::<serde_json::Value>(&body)
+            .ok()
+            .and_then(|v| {
+                let list = v.get("data").or_else(|| v.get("models"))?.as_array()?.first()?.clone();
+                list.get("id").or_else(|| list.get("name"))?.as_str().map(|s| s.to_string())
+            })
+            .unwrap_or_else(|| "models listed".to_string());
+        let _ = db_op(&state.db, move |db| db.touch_credential_used(&id)).await;
+        Ok(CredentialTestResult { ok: true, detail: first_model, latency_ms })
+    })
+    .await
+}
+
+/// Default credential bindings for an agent. Built-ins live in
+/// `agent_defaults`; custom agents carry theirs on the row.
+#[command]
+pub async fn get_agent_bindings(
+    state: State<'_, AppState>,
+    agent: crate::config::AgentKind,
+) -> Result<Vec<crate::config::CredentialBinding>, String> {
+    wrap_cmd("get_agent_bindings", async move {
+        if let Some(id) = agent.custom_id() {
+            let id = id.to_string();
+            return Ok(db_op(&state.db, move |db| db.get_custom_agent(&id))
+                .await?
+                .map(|a| a.bindings)
+                .unwrap_or_default());
+        }
+        let wire = agent.to_wire();
+        db_op(&state.db, move |db| db.get_agent_bindings(&wire)).await
+    })
+    .await
+}
+
+#[command]
+pub async fn set_agent_bindings(
+    state: State<'_, AppState>,
+    agent: crate::config::AgentKind,
+    bindings: Vec<crate::config::CredentialBinding>,
+) -> Result<(), String> {
+    wrap_cmd("set_agent_bindings", async move {
+        for b in &bindings {
+            if !crate::custom_agents::is_valid_env_name(&b.env) || crate::custom_agents::is_blocked_env(&b.env) {
+                return Err(error_reporter::user_err(format!("\"{}\" is not an allowed variable", b.env)));
+            }
+        }
+        if let Some(id) = agent.custom_id() {
+            let id = id.to_string();
+            return db_op(&state.db, move |db| {
+                let Some(mut a) = db.get_custom_agent(&id)? else {
+                    return Err(error_reporter::user_err("Agent not found"));
+                };
+                for b in &bindings {
+                    if !a.required_env.contains(&b.env) {
+                        a.required_env.push(b.env.clone());
+                    }
+                }
+                a.bindings = bindings;
+                db.save_custom_agent(&a)
+            })
+            .await;
+        }
+        let wire = agent.to_wire();
+        db_op(&state.db, move |db| db.set_agent_bindings(&wire, &bindings)).await
+    })
+    .await
+}
+
 /// Run `claude` with the given args. Prefers the cached absolute path resolved
 /// via an interactive login shell (so users with PATH set in `.zshrc` work);
 /// falls back to the shell-PATH lookup if resolution failed.
@@ -5660,6 +5908,24 @@ mod tests {
         }"#;
         let req: CreateTerminalRequest = serde_json::from_str(json).unwrap();
         assert_eq!(req.agent, crate::config::AgentKind::Codex);
+    }
+
+    #[test]
+    fn credential_test_request_shapes_per_provider() {
+        use crate::credentials::Provider;
+        let (url, headers) = credential_test_request(&Provider::Anthropic, None, "sk-ant-x").unwrap();
+        assert_eq!(url, "https://api.anthropic.com/v1/models");
+        assert_eq!(headers.get("x-api-key").unwrap(), "sk-ant-x");
+        assert!(headers.contains_key("anthropic-version"));
+
+        let (url, headers) = credential_test_request(&Provider::OpenAI, Some("http://localhost:11434/v1"), "k").unwrap();
+        assert_eq!(url, "http://localhost:11434/v1/models");
+        assert_eq!(headers.get("authorization").unwrap(), "Bearer k");
+
+        let (url, _) = credential_test_request(&Provider::Google, None, "AIza").unwrap();
+        assert_eq!(url, "https://generativelanguage.googleapis.com/v1beta/models?key=AIza");
+
+        assert!(credential_test_request(&Provider::Cursor, None, "k").is_none());
     }
 }
 

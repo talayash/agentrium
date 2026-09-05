@@ -26,7 +26,6 @@ pub trait SecretStore: Send + Sync {
     fn display_name(&self) -> &'static str;
 }
 
-#[allow(dead_code)]
 pub struct KeyringStore;
 
 impl KeyringStore {

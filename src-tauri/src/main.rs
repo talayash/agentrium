@@ -37,6 +37,8 @@ pub struct AppState {
     /// Shared aggregator so close_terminal can forget a terminal's metrics.
     pub otel_agg: std::sync::Arc<std::sync::Mutex<crate::otel_receiver::MetricsAggregator>>,
     pub lsp: Arc<Mutex<lsp::LspManager>>,
+    /// OS credential store. `Arc<dyn ...>` so tests can swap in `MemoryStore`.
+    pub secrets: Arc<dyn credentials::SecretStore>,
 }
 
 fn main() {
@@ -114,6 +116,7 @@ fn main() {
                 otel_port,
                 otel_agg,
                 lsp: Arc::new(Mutex::new(lsp_manager)),
+                secrets: Arc::new(credentials::KeyringStore),
             });
 
             // WebView2 ships a default browser context menu with "Refresh" that
@@ -157,6 +160,12 @@ fn main() {
             commands::list_custom_agents,
             commands::save_custom_agent,
             commands::delete_custom_agent,
+            commands::list_credentials,
+            commands::save_credential,
+            commands::delete_credential,
+            commands::test_credential,
+            commands::get_agent_bindings,
+            commands::set_agent_bindings,
             commands::check_claude_update,
             commands::update_claude_code,
             commands::get_hints,
