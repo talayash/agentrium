@@ -11,6 +11,7 @@ import { Splash } from './components/Splash';
 import { SettingsWindow } from './components/settings/SettingsWindow';
 import { ProfileModal } from './components/ProfileModal';
 import { NewTerminalModal } from './components/NewTerminalModal';
+import { AddApiKeyModal } from './components/AddApiKeyModal';
 import { WorkspaceModal } from './components/WorkspaceModal';
 import { WorktreeModal } from './components/WorktreeModal';
 import { PushModal } from './components/PushModal';
@@ -43,6 +44,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import type { TerminalConfig } from './store/terminalStore';
 import type { AgentKind } from './lib/agents';
 import { useAppStore } from './store/appStore';
+import { useAgentRegistryStore } from './store/agentRegistryStore';
 import { useTerminalStore } from './store/terminalStore';
 import { usePreviewStore } from './store/previewStore';
 import { toast } from './store/toastStore';
@@ -160,6 +162,7 @@ function App() {
   const accentColorHex = useAppStore((s) => s.accentColorHex);
   const uiReduceMotion = useAppStore((s) => s.uiReduceMotion);
   const uiFontScale = useAppStore((s) => s.uiFontScale);
+  const addKeyOpen = useAgentRegistryStore((s) => s.addKeyOpen);
   useEffect(() => {
     applyThemeMode(themeMode);
     applyDensity(uiDensity);
@@ -179,6 +182,10 @@ function App() {
   useEffect(() => {
     applyVibrancy(false);
     getCurrentWindow().clearEffects().catch(() => {}); // best-effort cleanup, safe to ignore
+    // Custom agents + credentials feed the agent picker, so load them once at
+    // startup. Failure here degrades to built-ins only; the settings page
+    // surfaces the error when the user opens it.
+    useAgentRegistryStore.getState().refresh().catch(() => {});
   }, []);
 
   // Follow the OS "reduce motion" setting (WCAG 2.2 SC 2.3.3) on startup and
@@ -896,6 +903,7 @@ function App() {
             {settingsOpen && <SettingsWindow />}
             {profileModalOpen && <ProfileModal />}
             {newTerminalModalOpen && <NewTerminalModal />}
+            {addKeyOpen && <AddApiKeyModal />}
             {workspaceModalOpen && <WorkspaceModal />}
             {worktreeModalOpen && <WorktreeModal />}
             {pushModalOpen && <PushModal />}

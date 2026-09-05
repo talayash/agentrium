@@ -808,6 +808,31 @@ pub async fn delete_profile(state: State<'_, AppState>, id: String) -> Result<()
     .await
 }
 
+/// Move-to-keychain helper: drop `env` from the profile's plaintext env vars
+/// and pin the new credential instead. Idempotent.
+#[command]
+pub async fn strip_profile_env_var(
+    state: State<'_, AppState>,
+    profile_id: String,
+    env: String,
+    credential_id: String,
+) -> Result<(), String> {
+    wrap_cmd("strip_profile_env_var", async move {
+        db_op(&state.db, move |db| {
+            let profiles = db.get_profiles()?;
+            let Some(mut p) = profiles.into_iter().find(|p| p.id == profile_id) else {
+                return Err(error_reporter::user_err("Profile not found"));
+            };
+            p.env_vars.remove(&env);
+            p.credential_bindings.retain(|b| b.env != env);
+            p.credential_bindings.push(crate::config::CredentialBinding { env, credential_id });
+            db.save_profile(&p)
+        })
+        .await
+    })
+    .await
+}
+
 #[command]
 pub async fn get_claude_version() -> Result<String, String> {
     wrap_cmd("get_claude_version", async move {
