@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { X, Plus, Trash2, Save, FolderOpen, User } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { X, Plus, Trash2, Save, FolderOpen, User, KeyRound } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { useAppStore, NEW_PROFILE_ID } from '../store/appStore';
@@ -12,6 +12,9 @@ import { Button } from './ui/Button';
 import { Modal } from './ui/Modal';
 import { ListRow } from './ui/ListRow';
 import { EmptyState } from './ui/EmptyState';
+import type { CredentialBinding } from '../lib/credentials';
+import { SECRET_ENV_RE } from '../lib/agentPresets';
+import { useAgentRegistryStore } from '../store/agentRegistryStore';
 
 interface PreviewProfile {
   enabled: boolean;
@@ -37,10 +40,13 @@ interface ConfigProfile {
   // A missing entry falls back to claude_args (for profiles saved before
   // this field existed).
   agent_args?: Partial<Record<AgentKind, string[]>>;
+  credential_bindings?: CredentialBinding[];
 }
 
 export function ProfileModal() {
   const { closeProfileModal, editingProfileId } = useAppStore();
+  const openAddKey = useAgentRegistryStore((s) => s.openAddKey);
+  const addKeyOpen = useAgentRegistryStore((s) => s.addKeyOpen);
   const [profiles, setProfiles] = useState<ConfigProfile[]>([]);
   const [selectedProfile, setSelectedProfile] = useState<ConfigProfile | null>(null);
   const [isCreating, setIsCreating] = useState(false);
@@ -54,6 +60,16 @@ export function ProfileModal() {
   useEffect(() => {
     loadProfiles();
   }, []);
+
+  // Reload profiles when the Add API Key modal closes - picks up the fresh
+  // credential_bindings the user just pinned without forcing a reopen.
+  const prevAddKeyOpen = useRef(addKeyOpen);
+  useEffect(() => {
+    if (prevAddKeyOpen.current && !addKeyOpen) {
+      loadProfiles();
+    }
+    prevAddKeyOpen.current = addKeyOpen;
+  }, [addKeyOpen]);
 
   useEffect(() => {
     if (editingProfileId && editingProfileId !== NEW_PROFILE_ID && profiles.length > 0) {
@@ -87,6 +103,7 @@ export function ProfileModal() {
       working_directory: '',
       claude_args: [],
       env_vars: {},
+      credential_bindings: [],
       is_default: false,
       agent: 'claude',
       agent_args: { claude: [], codex: [], cursor: [], antigravity: [] },
@@ -335,6 +352,17 @@ export function ProfileModal() {
                           className="flex-1 bg-bg-primary ring-1 ring-border-light rounded-md h-8 px-2 text-text-primary text-[12px] font-mono focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 transition-colors"
                           placeholder="value"
                         />
+                        {SECRET_ENV_RE.test(key) && value && (
+                          <button
+                            type="button"
+                            title="Move to keychain"
+                            aria-label={`Move ${key} to keychain`}
+                            onClick={() => openAddKey({ env_name: key, key: value, label: `${selectedProfile.name} ${key.replace(/_API_KEY|_TOKEN|_SECRET$/, '')}`.trim(), fromProfileId: selectedProfile.id })}
+                            className="p-1 rounded hover:bg-accent-primary/10 text-text-tertiary hover:text-accent-primary transition-colors flex-shrink-0"
+                          >
+                            <KeyRound size={13} />
+                          </button>
+                        )}
                         <button
                           onClick={() => {
                             const newVars = { ...selectedProfile.env_vars };
@@ -357,6 +385,20 @@ export function ProfileModal() {
                       Add Variable
                     </button>
                   </div>
+                  {(selectedProfile.credential_bindings ?? []).length > 0 && (
+                    <div className="mt-3">
+                      <label className="block text-text-secondary text-[12px] mb-1.5">Keys from the OS credential store</label>
+                      <div className="space-y-1">
+                        {(selectedProfile.credential_bindings ?? []).map((b) => (
+                          <div key={b.env} className="flex items-center gap-2 h-8 px-2 rounded-md bg-bg-primary ring-1 ring-border-light text-[12px]">
+                            <KeyRound size={12} className="text-accent-primary" />
+                            <span className="font-mono text-text-primary flex-1">{b.env}</span>
+                            <button type="button" onClick={() => setSelectedProfile({ ...selectedProfile, credential_bindings: (selectedProfile.credential_bindings ?? []).filter((x) => x.env !== b.env) })} className="text-text-tertiary hover:text-error">Unpin</button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-2 border-t border-seam pt-4">
