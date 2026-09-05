@@ -819,6 +819,11 @@ pub async fn strip_profile_env_var(
 ) -> Result<(), String> {
     wrap_cmd("strip_profile_env_var", async move {
         db_op(&state.db, move |db| {
+            // Reject unknown credential ids up-front so we never leave an
+            // orphan binding pointing at a row that doesn't exist.
+            if db.get_credential(&credential_id)?.is_none() {
+                return Err(error_reporter::user_err("Credential not found"));
+            }
             let profiles = db.get_profiles()?;
             let Some(mut p) = profiles.into_iter().find(|p| p.id == profile_id) else {
                 return Err(error_reporter::user_err("Profile not found"));

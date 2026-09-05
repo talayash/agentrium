@@ -2,27 +2,17 @@ import { useState, useEffect } from 'react';
 import { Save, Trash2, FolderOpen, Play } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from '../store/appStore';
+import type { SavedTerminalConfig } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
 import { toast } from '../store/toastStore';
 import { reportInvokeFailure } from '../lib/errorReporter';
 import { Modal } from './ui/Modal';
 import { Button } from './ui/Button';
-import type { AgentKind } from '../lib/agents';
 
 interface WorkspaceInfo {
   name: string;
   terminal_count: number;
   created_at: string;
-}
-
-interface SavedTerminalConfig {
-  label: string;
-  nickname: string | null;
-  working_directory: string;
-  claude_args: string[];
-  env_vars: Record<string, string>;
-  color_tag: string | null;
-  agent: AgentKind;
 }
 
 export function WorkspaceModal() {

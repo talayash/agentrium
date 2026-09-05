@@ -480,7 +480,7 @@ interface AppState {
   setPromptEditorShortcutEnabled: (enabled: boolean) => void;
 }
 
-interface SavedTerminalConfig {
+export interface SavedTerminalConfig {
   id: string;
   label: string;
   nickname: string | null;

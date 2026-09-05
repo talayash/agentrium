@@ -43,8 +43,8 @@ import { keyOf, upsertEntry, removeEntry, getDetachedEntries, currentGeometry } 
 import { planRestoreModes } from './lib/restorePlan';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import type { TerminalConfig } from './store/terminalStore';
-import type { AgentKind } from './lib/agents';
 import { useAppStore } from './store/appStore';
+import type { SavedTerminalConfig } from './store/appStore';
 import { useAgentRegistryStore } from './store/agentRegistryStore';
 import { useTerminalStore } from './store/terminalStore';
 import { usePreviewStore } from './store/previewStore';
@@ -117,18 +117,6 @@ interface SystemStatus {
   claude_version: string | null;
 }
 
-interface SavedTerminalConfig {
-  id: string;
-  label: string;
-  nickname: string | null;
-  working_directory: string;
-  claude_args: string[];
-  env_vars: Record<string, string>;
-  color_tag: string | null;
-  claude_session_id?: string | null;
-  agent: AgentKind;
-}
-
 function App() {
   const { sidebarOpen, sidebarCollapsed, hintsOpen, changesOpen, workspacesOpen, settingsOpen, profileModalOpen, newTerminalModalOpen, workspaceModalOpen, worktreeModalOpen, pushModalOpen, sessionHistoryOpen, snippetsModalOpen, commandPaletteOpen, globalSearchOpen, whatsNewOpen, claudeConfigOpen, sessionTimelineOpen, memoryEditorOpen, showStatusBar, notifyOnFinish, restoreSession, triggerChangesRefresh, showRestoreBanner, pendingRestoreConfigs, setShowRestoreBanner, setPendingRestoreConfigs, lastSeenVersion, setLastSeenVersion, openWhatsNew } = useAppStore();
   const { handleTerminalOutput, updateTerminalStatus, setLoopMode, setSessionSummary, createTerminal, createShellTerminalTab, applyTerminalMetrics, adoptTerminal, detachTerminals, closeTerminal, terminals } = useTerminalStore();
@@ -188,17 +176,24 @@ function App() {
     // startup. Failure here degrades to built-ins only; the settings page
     // surfaces the error when the user opens it.
     useAgentRegistryStore.getState().refresh().catch(() => {});
-    invoke<number>('plaintext_key_profiles_to_prompt')
-      .then((n) => {
-        if (n > 0) {
-          toast.warning(
-            `${n} profile${n === 1 ? '' : 's'} store API keys as plain text`,
-            'Move them to your OS credential store from Settings > Agents > Agents & Keys, or open the profile and use the key icon next to the variable.',
-          );
-        }
-      })
-      .catch(() => {});
-  }, []);
+    // Only the main window prompts the one-time plaintext-key migration.
+    // Detached windows already skip AutoUpdater / session restore / telemetry
+    // heartbeat / What's New, and the backend flips its meta flag on first
+    // call - firing this from a torn-off window would burn the prompt without
+    // the user ever seeing the toast in a normal launch.
+    if (!isDetached) {
+      invoke<number>('plaintext_key_profiles_to_prompt')
+        .then((n) => {
+          if (n > 0) {
+            toast.warning(
+              `${n} profile${n === 1 ? '' : 's'} store API keys as plain text`,
+              'Move them to your OS credential store from Settings > Agents > Agents & Keys, or open the profile and use the key icon next to the variable.',
+            );
+          }
+        })
+        .catch(() => {});
+    }
+  }, [isDetached]);
 
   // Follow the OS "reduce motion" setting (WCAG 2.2 SC 2.3.3) on startup and
   // whenever it changes - but only until the user makes an explicit choice in

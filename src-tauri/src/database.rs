@@ -1379,6 +1379,12 @@ mod tests {
     }
 
     #[test]
+    fn get_credential_returns_none_for_unknown_id() {
+        let db = Database::new_in_memory().unwrap();
+        assert!(db.get_credential("nope").unwrap().is_none());
+    }
+
+    #[test]
     fn credential_meta_round_trips_and_label_is_unique() {
         let db = Database::new_in_memory().unwrap();
         db.upsert_credential(&sample_meta("c1", "Work")).unwrap();

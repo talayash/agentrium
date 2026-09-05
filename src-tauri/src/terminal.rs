@@ -344,8 +344,13 @@ impl TerminalManager {
             };
             let mut c = CommandBuilder::new(&shell);
             // Build command string with shell-escaped args as defense-in-depth
-            // (args are already validated against metacharacters above)
-            let mut full_cmd = agent_binary.clone();
+            // (args are already validated against metacharacters above).
+            // Single-quote the binary path so spaces in the path (e.g.
+            // `/opt/my agent/x`) don't get tokenised. Any single quote inside
+            // the path is escaped by closing the quote, injecting `\'`, and
+            // reopening - the standard shell trick.
+            let quoted_binary = format!("'{}'", agent_binary.replace('\'', r"'\''"));
+            let mut full_cmd = quoted_binary;
             for arg in &spawn_args {
                 full_cmd.push(' ');
                 // Single-quote wrap each arg; escape embedded single quotes
@@ -1022,6 +1027,20 @@ mod tests {
                 last_input_at: None,
             },
         );
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn shell_quoted_binary_survives_spaces_and_single_quotes() {
+        // Just a sanity check that our quoting pattern produces valid POSIX
+        // shell - full spawn integration is exercised by the existing PTY
+        // tests, which don't have space-in-path scenarios yet.
+        let path = "/opt/my agent/x";
+        let quoted = format!("'{}'", path.replace('\'', r"'\''"));
+        assert_eq!(quoted, "'/opt/my agent/x'");
+        let path2 = "/opt/it's/x";
+        let quoted2 = format!("'{}'", path2.replace('\'', r"'\''"));
+        assert_eq!(quoted2, r"'/opt/it'\''s/x'");
     }
 
     #[test]
