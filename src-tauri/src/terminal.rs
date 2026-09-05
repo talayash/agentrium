@@ -30,6 +30,10 @@ pub struct TerminalConfig {
     /// restored rows from before this field existed migrate to Claude.
     #[serde(default)]
     pub agent: crate::config::AgentKind,
+    /// Credentials this terminal was launched with, by id only. Session
+    /// restore re-resolves them from the OS store; values are never stored.
+    #[serde(default)]
+    pub credential_bindings: Vec<crate::config::CredentialBinding>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -206,6 +210,8 @@ impl TerminalManager {
         working_directory: String,
         claude_args: Vec<String>,
         env_vars: HashMap<String, String>,
+        secret_env_vars: HashMap<String, String>,
+        credential_bindings: Vec<crate::config::CredentialBinding>,
         color_tag: Option<String>,
         nickname: Option<String>,
         tx: mpsc::Sender<(String, Vec<u8>)>,
@@ -262,6 +268,14 @@ impl TerminalManager {
 
         // Filter out blocked environment variables
         let safe_env_vars: HashMap<String, String> = env_vars
+            .into_iter()
+            .filter(|(key, _)| {
+                let upper = key.to_uppercase();
+                !Self::BLOCKED_ENV_VARS.iter().any(|blocked| blocked.eq_ignore_ascii_case(&upper))
+            })
+            .collect();
+
+        let safe_secret_env: HashMap<String, String> = secret_env_vars
             .into_iter()
             .filter(|(key, _)| {
                 let upper = key.to_uppercase();
@@ -360,6 +374,11 @@ impl TerminalManager {
             cmd.env(key, value);
         }
 
+        // Bindings win over profile env vars with the same name.
+        for (key, value) in &safe_secret_env {
+            cmd.env(key, value);
+        }
+
         // Claude Code is the only agent that speaks the OTel env-var protocol
         // we ship with. Codex ignores these, but injecting them is harmless -
         // still, we skip to keep the process env clean and to make the intent
@@ -402,6 +421,7 @@ impl TerminalManager {
             color_tag,
             claude_session_id: resume_session_id,
             agent: spec.kind.clone(),
+            credential_bindings,
         };
 
         let mut reader = pty_pair.master.try_clone_reader()
@@ -573,6 +593,7 @@ impl TerminalManager {
             color_tag: None,
             claude_session_id: None,
             agent: crate::config::AgentKind::Claude,
+            credential_bindings: Vec::new(),
         };
 
         let mut reader = pty_pair.master.try_clone_reader()
@@ -694,6 +715,7 @@ impl TerminalManager {
             color_tag: None,
             claude_session_id: None,
             agent: crate::config::AgentKind::Claude,
+            credential_bindings: Vec::new(),
         };
 
         let mut reader = pty_pair.master.try_clone_reader()
@@ -991,6 +1013,7 @@ mod tests {
                     color_tag: None,
                     claude_session_id: None,
                     agent: crate::config::AgentKind::Claude,
+                    credential_bindings: Vec::new(),
                 },
                 pty_pair,
                 writer,
@@ -1050,6 +1073,8 @@ mod tests {
                 String::new(),
                 vec!["--flag&&evil".into()],
                 HashMap::new(),
+                HashMap::new(),
+                Vec::new(),
                 None,
                 None,
                 tx,
@@ -1262,5 +1287,35 @@ mod tests {
         let (bin, args) = build_agent_command(&spec, &["--agent".into(), "build".into()]);
         assert_eq!(bin, "opencode");
         assert_eq!(args, vec!["--agent".to_string(), "build".to_string()]);
+    }
+
+    #[test]
+    fn terminal_config_carries_bindings_but_serializes_no_secret_values() {
+        let cfg = TerminalConfig {
+            id: "t1".into(),
+            label: "L".into(),
+            nickname: None,
+            profile_id: None,
+            working_directory: "C:\\w".into(),
+            claude_args: vec![],
+            env_vars: HashMap::from([("PLAIN".to_string(), "1".to_string())]),
+            created_at: Utc::now(),
+            status: TerminalStatus::Running,
+            color_tag: None,
+            claude_session_id: None,
+            agent: crate::config::AgentKind::Claude,
+            credential_bindings: vec![crate::config::CredentialBinding {
+                env: "ANTHROPIC_API_KEY".into(),
+                credential_id: "c1".into(),
+            }],
+        };
+        let json = serde_json::to_string(&cfg).unwrap();
+        assert!(json.contains("\"credential_bindings\""));
+        assert!(json.contains("\"c1\""));
+        assert!(!json.contains("ANTHROPIC_API_KEY\":\"sk"));
+        // Older rows without the field still load.
+        let old = json.replace(",\"credential_bindings\":[{\"env\":\"ANTHROPIC_API_KEY\",\"credential_id\":\"c1\"}]", "");
+        let back: TerminalConfig = serde_json::from_str(&old).unwrap();
+        assert!(back.credential_bindings.is_empty());
     }
 }

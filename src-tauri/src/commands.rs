@@ -364,6 +364,9 @@ pub struct CreateTerminalRequest {
     /// send this field.
     #[serde(default)]
     pub agent: crate::config::AgentKind,
+    /// Credentials to inject, by id. Resolved from the OS store at spawn.
+    #[serde(default)]
+    pub credential_bindings: Vec<crate::config::CredentialBinding>,
 }
 
 /// Built-ins resolve statically; `Custom(id)` reads the `custom_agents` row.
@@ -415,6 +418,31 @@ pub async fn create_terminal(
         // BEFORE we grab the terminals mutex - db_op is async, and holding a
         // mutex across an await would serialize spawn requests unnecessarily.
         let spec = resolve_agent_spec(&state, &agent).await?;
+        let secret_env = if request.credential_bindings.is_empty() {
+            HashMap::new()
+        } else {
+            let ids: Vec<String> = request.credential_bindings.iter().map(|b| b.credential_id.clone()).collect();
+            let metas = db_op(&state.db, move |db| {
+                let mut m = HashMap::new();
+                for id in ids {
+                    if let Some(meta) = db.get_credential(&id)? {
+                        m.insert(id, meta);
+                    }
+                }
+                Ok(m)
+            })
+            .await?;
+            let env = crate::credentials::resolve_for_spawn(state.secrets.as_ref(), &metas, &request.credential_bindings)?;
+            let used: Vec<String> = metas.keys().cloned().collect();
+            let _ = db_op(&state.db, move |db| {
+                for id in &used {
+                    db.touch_credential_used(id)?;
+                }
+                Ok(())
+            })
+            .await;
+            env
+        };
         // Snapshot the agent's session store *before* spawning so we can later
         // diff for the new session file. Cheap (a few dozen file paths) and
         // synchronous - must happen before the PTY starts the agent process.
@@ -439,6 +467,8 @@ pub async fn create_terminal(
                 request.working_directory,
                 request.claude_args,
                 request.env_vars,
+                secret_env,
+                request.credential_bindings.clone(),
                 request.color_tag,
                 request.nickname,
                 tx,

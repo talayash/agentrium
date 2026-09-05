@@ -924,6 +924,7 @@ mod tests {
             color_tag: None,
             claude_session_id: None,
             agent: crate::config::AgentKind::Claude,
+            credential_bindings: Vec::new(),
         }
     }
 
