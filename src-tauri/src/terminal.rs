@@ -58,7 +58,7 @@ fn is_benign_close_error(e: &std::io::Error) -> bool {
 /// Resolve the binary + arg list for a given agent. Extracted so the spawn
 /// pipeline (which is IO-heavy and awkward to test directly) has one testable
 /// seam. Args are cloned so callers keep ownership of the original vec.
-pub fn build_agent_command(agent: crate::config::AgentKind, args: &[String]) -> (String, Vec<String>) {
+pub fn build_agent_command(agent: &crate::config::AgentKind, args: &[String]) -> (String, Vec<String>) {
     let spec = crate::agents::spec_for(agent);
     (spec.binary.to_string(), args.to_vec())
 }
@@ -76,7 +76,7 @@ pub(crate) struct ResumeInjection {
 /// Compute the resume/continue argv injection for `agent`. Returns an
 /// empty injection when neither a session id nor `continue_recent` is set.
 pub(crate) fn resume_flags_for(
-    agent: crate::config::AgentKind,
+    agent: &crate::config::AgentKind,
     resume_id: Option<&str>,
     continue_recent: bool,
 ) -> ResumeInjection {
@@ -120,6 +120,7 @@ pub(crate) fn resume_flags_for(
             subcommand: None,
             leading: vec!["--continue".to_string()],
         },
+        (AgentKind::Custom(_), _) => ResumeInjection::default(),
         _ => ResumeInjection::default(),
     }
 }
@@ -229,7 +230,7 @@ impl TerminalManager {
                 return Err(error_reporter::user_err("Invalid session id"));
             }
         }
-        let injection = resume_flags_for(agent, resume_session_id.as_deref(), continue_recent);
+        let injection = resume_flags_for(&agent, resume_session_id.as_deref(), continue_recent);
         let injected_len = injection.subcommand.as_ref().map_or(0, |_| 1) + injection.leading.len();
         let claude_args: Vec<String> = if injected_len > 0 {
             let mut v = Vec::with_capacity(claude_args.len() + injected_len);
@@ -276,7 +277,7 @@ impl TerminalManager {
         // Resolve which agent binary to launch. `build_agent_command` returns
         // the binary name and echoes the args back so we can hand them to
         // CommandBuilder platform-appropriately.
-        let (agent_binary, spawn_args) = build_agent_command(agent, &claude_args);
+        let (agent_binary, spawn_args) = build_agent_command(&agent, &claude_args);
 
         // Spawn the agent binary directly so the process exits when it
         // finishes, allowing the terminal-finished event to fire for
@@ -382,7 +383,7 @@ impl TerminalManager {
             status: TerminalStatus::Running,
             color_tag,
             claude_session_id: resume_session_id,
-            agent,
+            agent: agent.clone(),
         };
 
         let mut reader = pty_pair.master.try_clone_reader()
@@ -1079,21 +1080,21 @@ mod tests {
 
     #[test]
     fn build_agent_command_uses_claude_binary_for_claude() {
-        let (bin, args) = build_agent_command(crate::config::AgentKind::Claude, &["--model".into(), "opus".into()]);
+        let (bin, args) = build_agent_command(&crate::config::AgentKind::Claude, &["--model".into(), "opus".into()]);
         assert_eq!(bin, "claude");
         assert_eq!(args, vec!["--model", "opus"]);
     }
 
     #[test]
     fn build_agent_command_uses_codex_binary_for_codex() {
-        let (bin, args) = build_agent_command(crate::config::AgentKind::Codex, &["--json".into()]);
+        let (bin, args) = build_agent_command(&crate::config::AgentKind::Codex, &["--json".into()]);
         assert_eq!(bin, "codex");
         assert_eq!(args, vec!["--json"]);
     }
 
     #[test]
     fn build_agent_command_passes_through_empty_args() {
-        let (bin, args) = build_agent_command(crate::config::AgentKind::Codex, &[]);
+        let (bin, args) = build_agent_command(&crate::config::AgentKind::Codex, &[]);
         assert_eq!(bin, "codex");
         assert!(args.is_empty());
     }
@@ -1102,81 +1103,81 @@ mod tests {
 
     #[test]
     fn resume_flags_for_claude_use_equals_form() {
-        let out = super::resume_flags_for(AgentKind::Claude, Some("abc-123"), false);
+        let out = super::resume_flags_for(&AgentKind::Claude, Some("abc-123"), false);
         assert_eq!(out.leading, vec!["--resume=abc-123".to_string()]);
         assert!(out.subcommand.is_none());
     }
 
     #[test]
     fn continue_flag_for_claude() {
-        let out = super::resume_flags_for(AgentKind::Claude, None, true);
+        let out = super::resume_flags_for(&AgentKind::Claude, None, true);
         assert_eq!(out.leading, vec!["--continue".to_string()]);
         assert!(out.subcommand.is_none());
     }
 
     #[test]
     fn resume_for_codex_uses_subcommand() {
-        let out = super::resume_flags_for(AgentKind::Codex, Some("sess-9"), false);
+        let out = super::resume_flags_for(&AgentKind::Codex, Some("sess-9"), false);
         assert_eq!(out.subcommand.as_deref(), Some("resume"));
         assert_eq!(out.leading, vec!["sess-9".to_string()]);
     }
 
     #[test]
     fn continue_for_codex_uses_resume_last_subcommand() {
-        let out = super::resume_flags_for(AgentKind::Codex, None, true);
+        let out = super::resume_flags_for(&AgentKind::Codex, None, true);
         assert_eq!(out.subcommand.as_deref(), Some("resume"));
         assert_eq!(out.leading, vec!["--last".to_string()]);
     }
 
     #[test]
     fn resume_for_cursor_uses_flag() {
-        let out = super::resume_flags_for(AgentKind::Cursor, Some("chat-77"), false);
+        let out = super::resume_flags_for(&AgentKind::Cursor, Some("chat-77"), false);
         assert_eq!(out.leading, vec!["--resume".to_string(), "chat-77".to_string()]);
         assert!(out.subcommand.is_none());
     }
 
     #[test]
     fn continue_for_cursor() {
-        let out = super::resume_flags_for(AgentKind::Cursor, None, true);
+        let out = super::resume_flags_for(&AgentKind::Cursor, None, true);
         assert_eq!(out.leading, vec!["--continue".to_string()]);
     }
 
     #[test]
     fn resume_for_antigravity_uses_conversation_flag() {
-        let out = super::resume_flags_for(AgentKind::Antigravity, Some("conv-1"), false);
+        let out = super::resume_flags_for(&AgentKind::Antigravity, Some("conv-1"), false);
         assert_eq!(out.leading, vec!["--conversation".to_string(), "conv-1".to_string()]);
     }
 
     #[test]
     fn continue_for_antigravity() {
-        let out = super::resume_flags_for(AgentKind::Antigravity, None, true);
+        let out = super::resume_flags_for(&AgentKind::Antigravity, None, true);
         assert_eq!(out.leading, vec!["--continue".to_string()]);
     }
 
     #[test]
     fn no_flags_when_neither_resume_nor_continue_codex() {
-        let out = super::resume_flags_for(AgentKind::Codex, None, false);
+        let out = super::resume_flags_for(&AgentKind::Codex, None, false);
         assert!(out.leading.is_empty());
         assert!(out.subcommand.is_none());
     }
 
     #[test]
     fn no_flags_when_neither_resume_nor_continue_claude() {
-        let out = super::resume_flags_for(AgentKind::Claude, None, false);
+        let out = super::resume_flags_for(&AgentKind::Claude, None, false);
         assert!(out.leading.is_empty());
         assert!(out.subcommand.is_none());
     }
 
     #[test]
     fn no_flags_when_neither_resume_nor_continue_cursor() {
-        let out = super::resume_flags_for(AgentKind::Cursor, None, false);
+        let out = super::resume_flags_for(&AgentKind::Cursor, None, false);
         assert!(out.leading.is_empty());
         assert!(out.subcommand.is_none());
     }
 
     #[test]
     fn no_flags_when_neither_resume_nor_continue_antigravity() {
-        let out = super::resume_flags_for(AgentKind::Antigravity, None, false);
+        let out = super::resume_flags_for(&AgentKind::Antigravity, None, false);
         assert!(out.leading.is_empty());
         assert!(out.subcommand.is_none());
     }

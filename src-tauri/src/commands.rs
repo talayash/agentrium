@@ -391,11 +391,11 @@ pub async fn create_terminal(
             logs_dir.join(filename).to_string_lossy().to_string()
         };
 
-        let agent = request.agent;
+        let agent = request.agent.clone();
         // Snapshot the agent's session store *before* spawning so we can later
         // diff for the new session file. Cheap (a few dozen file paths) and
         // synchronous - must happen before the PTY starts the agent process.
-        let session_snapshot = crate::session_provider::provider_for(agent).snapshot();
+        let session_snapshot = crate::session_provider::provider_for(&agent).snapshot();
         let resume_id = request.resume_session_id.clone();
         let continue_recent = request.continue_recent && resume_id.is_none();
         let working_directory = request.working_directory.clone();
@@ -442,7 +442,7 @@ pub async fn create_terminal(
             // again (a second `--continue` in the same cwd would attach to
             // whatever session happens to be newest by then - possibly a
             // different terminal's conversation).
-            let sessions = crate::session_provider::provider_for(agent).list_for_cwd(&working_directory);
+            let sessions = crate::session_provider::provider_for(&agent).list_for_cwd(&working_directory);
             if let Some(newest) = sessions.first() {
                 eprintln!(
                     "[session-resume] '{}' recorded --continue target session {}",
@@ -468,6 +468,7 @@ pub async fn create_terminal(
             let detect_id = config.id.clone();
             let detect_label = config.label.clone();
             let cwd_for_log = working_directory.clone();
+            let agent_for_detect = agent.clone();
             tokio::spawn(async move {
                 let mut last_recorded: Option<String> = None;
                 loop {
@@ -499,7 +500,7 @@ pub async fn create_terminal(
                             .filter_map(|(_, t)| t.config.claude_session_id.clone())
                             .collect::<std::collections::HashSet<String>>()
                     };
-                    if let Some(session_id) = crate::session_provider::provider_for(agent).find_new_for_cwd(
+                    if let Some(session_id) = crate::session_provider::provider_for(&agent_for_detect).find_new_for_cwd(
                         &session_snapshot,
                         &cwd_for_log,
                         &claimed_by_others,
@@ -799,7 +800,7 @@ pub async fn get_agent_version(agent: crate::config::AgentKind) -> Result<String
             return Ok(extract_version_line(&stdout));
         }
 
-        let binary = crate::agents::spec_for(agent).binary;
+        let binary = crate::agents::spec_for(&agent).binary;
 
         // Stage 1: try --version. Look at both stdout and stderr because
         // many CLIs print version info to stderr.
@@ -1252,7 +1253,7 @@ pub async fn list_agent_sessions(
         if cwd.is_empty() || cwd.contains('\0') {
             return Err("Invalid cwd".to_string());
         }
-        Ok(crate::session_provider::provider_for(agent).list_for_cwd(&cwd))
+        Ok(crate::session_provider::provider_for(&agent).list_for_cwd(&cwd))
     })
     .await
 }

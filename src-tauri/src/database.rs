@@ -239,7 +239,7 @@ impl Database {
                 env_vars_json,
                 profile.is_default as i32,
                 preview_json,
-                profile.agent.as_str(),
+                profile.agent.to_wire(),
                 agent_args_json,
             ],
         ).map_err(|e| e.to_string())?;
@@ -303,13 +303,13 @@ impl Database {
                         Err(e) => {
                             eprintln!("[profiles] corrupt agent_args for '{}' ({}): {}", name, id, e);
                             let mut m = std::collections::HashMap::new();
-                            m.insert(agent, claude_args.clone());
+                            m.insert(agent.clone(), claude_args.clone());
                             m
                         }
                     },
                     None => {
                         let mut m = std::collections::HashMap::new();
-                        m.insert(agent, claude_args.clone());
+                        m.insert(agent.clone(), claude_args.clone());
                         m
                     }
                 };

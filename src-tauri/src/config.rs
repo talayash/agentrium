@@ -4,45 +4,83 @@ use std::collections::HashMap;
 /// The coding-agent CLI a terminal should launch. `Default` is `Claude` so
 /// profile rows written before this field existed migrate transparently on
 /// their next deserialize.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
-#[serde(rename_all = "lowercase")]
+///
+/// Wire/DB form is a plain string: built-ins are their lowercase name,
+/// user-defined agents are `custom:<custom_agents.id>`. Serde is hand-rolled
+/// so the enum can carry the id while still serialising as a string (and so
+/// it works as a JSON map key in `ConfigProfile::agent_args`).
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub enum AgentKind {
     #[default]
     Claude,
     Codex,
     Cursor,
     Antigravity,
+    /// A user-registered CLI. The payload is the `custom_agents.id`.
+    Custom(String),
 }
 
+pub const CUSTOM_AGENT_PREFIX: &str = "custom:";
+
 impl AgentKind {
-    /// String form used for database storage and error messages. Matches
-    /// the `#[serde(rename_all = "lowercase")]` wire format.
-    pub fn as_str(&self) -> &'static str {
+    /// String form used for database storage, the IPC wire, and error
+    /// messages. Inverse of `from_str_lossy` for every valid value.
+    pub fn to_wire(&self) -> String {
         match self {
-            AgentKind::Claude => "claude",
-            AgentKind::Codex => "codex",
-            AgentKind::Cursor => "cursor",
-            AgentKind::Antigravity => "antigravity",
+            AgentKind::Claude => "claude".to_string(),
+            AgentKind::Codex => "codex".to_string(),
+            AgentKind::Cursor => "cursor".to_string(),
+            AgentKind::Antigravity => "antigravity".to_string(),
+            AgentKind::Custom(id) => format!("{}{}", CUSTOM_AGENT_PREFIX, id),
         }
     }
 
     /// Parse from the wire/DB string form. Unknown strings become Claude,
     /// which is the same fallback strategy `#[serde(default)]` uses on
-    /// missing fields. This means an unrecognized value (e.g., a future
-    /// agent name loaded by an older build) is silently downgraded rather
-    /// than crashing at startup.
+    /// missing fields, so an unrecognized value (e.g. a future agent name
+    /// loaded by an older build) is silently downgraded rather than
+    /// crashing at startup.
     ///
     /// The legacy `"gemini"` token maps to `Antigravity`: Antigravity
-    /// replaced Gemini as the fourth agent slot, so rows written by an
-    /// older build should upgrade in place rather than be silently
-    /// downgraded to Claude and lose their args.
+    /// replaced Gemini as the fourth agent slot. `custom:<id>` with a
+    /// non-empty id is a user-defined agent.
     pub fn from_str_lossy(s: &str) -> Self {
+        if let Some(id) = s.strip_prefix(CUSTOM_AGENT_PREFIX) {
+            if !id.is_empty() {
+                return AgentKind::Custom(id.to_string());
+            }
+            return AgentKind::Claude;
+        }
         match s {
             "codex" => AgentKind::Codex,
             "cursor" => AgentKind::Cursor,
             "antigravity" | "gemini" => AgentKind::Antigravity,
             _ => AgentKind::Claude,
         }
+    }
+
+    pub fn is_custom(&self) -> bool {
+        matches!(self, AgentKind::Custom(_))
+    }
+
+    pub fn custom_id(&self) -> Option<&str> {
+        match self {
+            AgentKind::Custom(id) => Some(id.as_str()),
+            _ => None,
+        }
+    }
+}
+
+impl Serialize for AgentKind {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(&self.to_wire())
+    }
+}
+
+impl<'de> Deserialize<'de> for AgentKind {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(d)?;
+        Ok(AgentKind::from_str_lossy(&s))
     }
 }
 
@@ -493,11 +531,11 @@ mod tests {
     }
 
     #[test]
-    fn agent_kind_as_str_matches_wire_format() {
-        assert_eq!(AgentKind::Claude.as_str(), "claude");
-        assert_eq!(AgentKind::Codex.as_str(), "codex");
-        assert_eq!(AgentKind::Cursor.as_str(), "cursor");
-        assert_eq!(AgentKind::Antigravity.as_str(), "antigravity");
+    fn agent_kind_to_wire_matches_wire_format() {
+        assert_eq!(AgentKind::Claude.to_wire(), "claude");
+        assert_eq!(AgentKind::Codex.to_wire(), "codex");
+        assert_eq!(AgentKind::Cursor.to_wire(), "cursor");
+        assert_eq!(AgentKind::Antigravity.to_wire(), "antigravity");
     }
 
     #[test]
@@ -571,5 +609,52 @@ mod tests {
         // would wipe user config on upgrade, so the loader promotes the
         // legacy value to the current fourth-agent slot.
         assert_eq!(AgentKind::from_str_lossy("gemini"), AgentKind::Antigravity);
+    }
+}
+
+#[cfg(test)]
+mod agent_kind_tests {
+    use super::*;
+
+    #[test]
+    fn builtins_serialize_lowercase() {
+        assert_eq!(serde_json::to_string(&AgentKind::Claude).unwrap(), "\"claude\"");
+        assert_eq!(serde_json::to_string(&AgentKind::Antigravity).unwrap(), "\"antigravity\"");
+    }
+
+    #[test]
+    fn custom_round_trips_with_prefix() {
+        let k = AgentKind::Custom("abc-123".to_string());
+        let json = serde_json::to_string(&k).unwrap();
+        assert_eq!(json, "\"custom:abc-123\"");
+        let back: AgentKind = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, k);
+    }
+
+    #[test]
+    fn from_str_lossy_handles_custom_legacy_and_garbage() {
+        assert_eq!(AgentKind::from_str_lossy("custom:xyz"), AgentKind::Custom("xyz".into()));
+        assert_eq!(AgentKind::from_str_lossy("gemini"), AgentKind::Antigravity);
+        assert_eq!(AgentKind::from_str_lossy("nonsense"), AgentKind::Claude);
+        // Empty id after the prefix is not a custom agent.
+        assert_eq!(AgentKind::from_str_lossy("custom:"), AgentKind::Claude);
+    }
+
+    #[test]
+    fn custom_works_as_hashmap_key_in_json() {
+        let mut m: HashMap<AgentKind, Vec<String>> = HashMap::new();
+        m.insert(AgentKind::Custom("k1".into()), vec!["--x".into()]);
+        let json = serde_json::to_string(&m).unwrap();
+        assert!(json.contains("\"custom:k1\""));
+        let back: HashMap<AgentKind, Vec<String>> = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.get(&AgentKind::Custom("k1".into())).unwrap(), &vec!["--x".to_string()]);
+    }
+
+    #[test]
+    fn is_custom_and_custom_id() {
+        assert!(AgentKind::Custom("a".into()).is_custom());
+        assert!(!AgentKind::Codex.is_custom());
+        assert_eq!(AgentKind::Custom("a".into()).custom_id(), Some("a"));
+        assert_eq!(AgentKind::Claude.custom_id(), None);
     }
 }

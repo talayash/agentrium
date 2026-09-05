@@ -13,7 +13,7 @@ pub struct AgentSpec {
     pub install_hint: &'static str,
 }
 
-pub fn spec_for(kind: AgentKind) -> AgentSpec {
+pub fn spec_for(kind: &AgentKind) -> AgentSpec {
     match kind {
         AgentKind::Claude => AgentSpec {
             kind: AgentKind::Claude,
@@ -50,6 +50,7 @@ pub fn spec_for(kind: AgentKind) -> AgentSpec {
             install_url: "https://antigravity.google/docs/cli/install/",
             install_hint: "curl -fsSL https://antigravity.google/cli/install.sh | bash",
         },
+        AgentKind::Custom(_) => unreachable!("custom specs resolve through the DB in Task 4"),
     }
 }
 
@@ -57,10 +58,10 @@ pub fn spec_for(kind: AgentKind) -> AgentSpec {
 #[allow(dead_code)]
 pub fn all_specs() -> Vec<AgentSpec> {
     vec![
-        spec_for(AgentKind::Claude),
-        spec_for(AgentKind::Codex),
-        spec_for(AgentKind::Cursor),
-        spec_for(AgentKind::Antigravity),
+        spec_for(&AgentKind::Claude),
+        spec_for(&AgentKind::Codex),
+        spec_for(&AgentKind::Cursor),
+        spec_for(&AgentKind::Antigravity),
     ]
 }
 
@@ -70,12 +71,12 @@ mod tests {
 
     #[test]
     fn claude_spec_has_claude_binary() {
-        assert_eq!(spec_for(AgentKind::Claude).binary, "claude");
+        assert_eq!(spec_for(&AgentKind::Claude).binary, "claude");
     }
 
     #[test]
     fn codex_spec_has_codex_binary() {
-        assert_eq!(spec_for(AgentKind::Codex).binary, "codex");
+        assert_eq!(spec_for(&AgentKind::Codex).binary, "codex");
     }
 
     #[test]
@@ -83,7 +84,7 @@ mod tests {
         // Cursor's official CLI binary is `agent`, not `cursor` (which is
         // the editor's file-opener command). Guard against future edits
         // that "correct" this to `cursor` and break the spawn path.
-        assert_eq!(spec_for(AgentKind::Cursor).binary, "agent");
+        assert_eq!(spec_for(&AgentKind::Cursor).binary, "agent");
     }
 
     #[test]
@@ -91,7 +92,7 @@ mod tests {
         // Antigravity's official CLI binary is `agy` (per
         // antigravity.google/docs/cli), NOT `antigravity`. Guard against
         // future edits that "correct" it to the intuitive-but-wrong name.
-        assert_eq!(spec_for(AgentKind::Antigravity).binary, "agy");
+        assert_eq!(spec_for(&AgentKind::Antigravity).binary, "agy");
     }
 
     #[test]
