@@ -132,6 +132,21 @@ impl Database {
                 PRIMARY KEY (repo_path, file_path)
             );
 
+            CREATE TABLE IF NOT EXISTS custom_agents (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                binary TEXT NOT NULL,
+                default_args TEXT NOT NULL,
+                resume_flag TEXT,
+                color TEXT NOT NULL,
+                required_env TEXT NOT NULL,
+                bindings TEXT NOT NULL,
+                install_url TEXT,
+                install_hint TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+
             CREATE INDEX IF NOT EXISTS idx_changelist_files_repo ON changelist_files(repo_path);
             CREATE INDEX IF NOT EXISTS idx_changelist_files_list ON changelist_files(changelist_id);
             ",
@@ -328,6 +343,86 @@ impl Database {
         }).map_err(|e| e.to_string())?;
 
         profiles.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    }
+
+    pub fn save_custom_agent(&self, a: &crate::custom_agents::CustomAgent) -> Result<(), String> {
+        let default_args = serde_json::to_string(&a.default_args).map_err(|e| e.to_string())?;
+        let required_env = serde_json::to_string(&a.required_env).map_err(|e| e.to_string())?;
+        let bindings = serde_json::to_string(&a.bindings).map_err(|e| e.to_string())?;
+        self.conn
+            .execute(
+                "INSERT OR REPLACE INTO custom_agents
+                 (id, name, binary, default_args, resume_flag, color, required_env, bindings, install_url, install_hint, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                params![
+                    a.id, a.name, a.binary, default_args, a.resume_flag, a.color,
+                    required_env, bindings, a.install_url, a.install_hint, a.created_at, a.updated_at,
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    fn row_to_custom_agent(row: &rusqlite::Row<'_>) -> rusqlite::Result<crate::custom_agents::CustomAgent> {
+        let id: String = row.get(0)?;
+        let default_args_raw: String = row.get(3)?;
+        let required_env_raw: String = row.get(6)?;
+        let bindings_raw: String = row.get(7)?;
+        // Corrupt JSON degrades to empty lists (logged) rather than failing
+        // the whole listing - same policy as profile args.
+        let default_args = serde_json::from_str(&default_args_raw).unwrap_or_else(|e| {
+            eprintln!("[custom_agents] corrupt default_args for {}: {}", id, e);
+            Vec::new()
+        });
+        let required_env = serde_json::from_str(&required_env_raw).unwrap_or_else(|e| {
+            eprintln!("[custom_agents] corrupt required_env for {}: {}", id, e);
+            Vec::new()
+        });
+        let bindings = serde_json::from_str(&bindings_raw).unwrap_or_else(|e| {
+            eprintln!("[custom_agents] corrupt bindings for {}: {}", id, e);
+            Vec::new()
+        });
+        Ok(crate::custom_agents::CustomAgent {
+            id,
+            name: row.get(1)?,
+            binary: row.get(2)?,
+            default_args,
+            resume_flag: row.get(4)?,
+            color: row.get(5)?,
+            required_env,
+            bindings,
+            install_url: row.get(8)?,
+            install_hint: row.get(9)?,
+            created_at: row.get(10)?,
+            updated_at: row.get(11)?,
+        })
+    }
+
+    const CUSTOM_AGENT_COLUMNS: &'static str =
+        "id, name, binary, default_args, resume_flag, color, required_env, bindings, install_url, install_hint, created_at, updated_at";
+
+    pub fn list_custom_agents(&self) -> Result<Vec<crate::custom_agents::CustomAgent>, String> {
+        let sql = format!("SELECT {} FROM custom_agents ORDER BY created_at ASC, name ASC", Self::CUSTOM_AGENT_COLUMNS);
+        let mut stmt = self.conn.prepare(&sql).map_err(|e| e.to_string())?;
+        let rows = stmt.query_map([], Self::row_to_custom_agent).map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    }
+
+    pub fn get_custom_agent(&self, id: &str) -> Result<Option<crate::custom_agents::CustomAgent>, String> {
+        let sql = format!("SELECT {} FROM custom_agents WHERE id = ?1", Self::CUSTOM_AGENT_COLUMNS);
+        let mut stmt = self.conn.prepare(&sql).map_err(|e| e.to_string())?;
+        let mut rows = stmt.query_map(params![id], Self::row_to_custom_agent).map_err(|e| e.to_string())?;
+        match rows.next() {
+            Some(r) => Ok(Some(r.map_err(|e| e.to_string())?)),
+            None => Ok(None),
+        }
+    }
+
+    pub fn delete_custom_agent(&self, id: &str) -> Result<(), String> {
+        self.conn
+            .execute("DELETE FROM custom_agents WHERE id = ?1", params![id])
+            .map_err(|e| e.to_string())?;
+        Ok(())
     }
 
     pub fn delete_profile(&self, id: &str) -> Result<(), String> {
@@ -982,6 +1077,59 @@ mod tests {
             loaded[0].agent_args.get(&crate::config::AgentKind::Antigravity).unwrap(),
             &vec!["--yolo".to_string()]
         );
+    }
+
+    fn sample_custom_agent(id: &str) -> crate::custom_agents::CustomAgent {
+        crate::custom_agents::CustomAgent {
+            id: id.to_string(),
+            name: "OpenCode".into(),
+            binary: "opencode".into(),
+            default_args: vec!["--agent".into(), "build".into()],
+            resume_flag: Some("--session {id}".into()),
+            color: "#30C55E".into(),
+            required_env: vec!["OPENAI_API_KEY".into()],
+            bindings: vec![crate::config::CredentialBinding { env: "OPENAI_API_KEY".into(), credential_id: "cred-1".into() }],
+            install_url: Some("https://opencode.ai".into()),
+            install_hint: Some("npm i -g opencode-ai".into()),
+            created_at: "2026-09-04T00:00:00Z".into(),
+            updated_at: "2026-09-04T00:00:00Z".into(),
+        }
+    }
+
+    #[test]
+    fn custom_agent_round_trips() {
+        let db = Database::new_in_memory().unwrap();
+        let a = sample_custom_agent("a1");
+        db.save_custom_agent(&a).unwrap();
+        let list = db.list_custom_agents().unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0], a);
+        assert_eq!(db.get_custom_agent("a1").unwrap().unwrap().binary, "opencode");
+        assert!(db.get_custom_agent("missing").unwrap().is_none());
+    }
+
+    #[test]
+    fn custom_agent_save_replaces_and_delete_removes() {
+        let db = Database::new_in_memory().unwrap();
+        let mut a = sample_custom_agent("a1");
+        db.save_custom_agent(&a).unwrap();
+        a.name = "OpenCode v2".into();
+        db.save_custom_agent(&a).unwrap();
+        assert_eq!(db.list_custom_agents().unwrap()[0].name, "OpenCode v2");
+        db.delete_custom_agent("a1").unwrap();
+        assert!(db.list_custom_agents().unwrap().is_empty());
+    }
+
+    #[test]
+    fn custom_agents_list_orders_by_created_at() {
+        let db = Database::new_in_memory().unwrap();
+        let mut b = sample_custom_agent("b");
+        b.created_at = "2026-09-05T00:00:00Z".into();
+        let a = sample_custom_agent("a");
+        db.save_custom_agent(&b).unwrap();
+        db.save_custom_agent(&a).unwrap();
+        let ids: Vec<String> = db.list_custom_agents().unwrap().into_iter().map(|x| x.id).collect();
+        assert_eq!(ids, vec!["a".to_string(), "b".to_string()]);
     }
 
     #[test]
