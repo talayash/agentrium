@@ -23,6 +23,7 @@ import { resolveAppTheme, prefersLightScheme } from '../lib/appTheme';
 import { isVisibilityHidden } from '../utils/dragDrop';
 import { TerminalSearch } from './TerminalSearch';
 import { TerminalStatusBar } from './TerminalStatusBar';
+import { attachTerminalScrollbar } from './terminalScrollbar';
 import '@xterm/xterm/css/xterm.css';
 
 function formatDroppedPath(path: string): string {
@@ -557,52 +558,12 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
     });
   }, [fontFamily, fontSize, lineHeight, cursorStyle, cursorBlink, themeName, accentColorHex, effectiveAppTheme, terminalId, resizeTerminal]);
 
-  // Scrollbar visibility. The native xterm scrollbar (`.xterm-viewport`) is
-  // transparent by default (see index.css); a class drives whether it shows.
-  //  - 'hidden'    → `ct-sb-hidden` collapses the gutter.
-  //  - 'always'    → `ct-sb-show` stays on (CSS still draws no thumb if the
-  //                  buffer isn't scrollable).
-  //  - 'auto-hide' → reveal on mouse move / scroll, but only when there's
-  //                  something to scroll, then fade out ~1.5s after the last
-  //                  interaction. PTY output alone never reveals it.
-  // scrollback/bidi are in the deps because they recreate the xterm instance
-  // (and thus the .xterm-viewport element), so we must re-grab and re-wire it.
   useEffect(() => {
     const container = containerRef.current;
-    if (!container) return;
-    const viewport = container.querySelector('.xterm-viewport') as HTMLElement | null;
-    if (!viewport) return;
-
-    viewport.classList.remove('ct-sb-show', 'ct-sb-hidden');
-
-    if (scrollbarMode === 'hidden') {
-      viewport.classList.add('ct-sb-hidden');
-      return;
-    }
-    if (scrollbarMode === 'always') {
-      viewport.classList.add('ct-sb-show');
-      return;
-    }
-
-    // auto-hide
-    let hideTimer: number | undefined;
-    const isScrollable = () => viewport.scrollHeight - viewport.clientHeight > 2;
-    const reveal = () => {
-      if (!isScrollable()) return;
-      viewport.classList.add('ct-sb-show');
-      if (hideTimer) window.clearTimeout(hideTimer);
-      hideTimer = window.setTimeout(() => viewport.classList.remove('ct-sb-show'), 1500);
-    };
-    container.addEventListener('mousemove', reveal);
-    viewport.addEventListener('scroll', reveal);
-
-    return () => {
-      if (hideTimer) window.clearTimeout(hideTimer);
-      container.removeEventListener('mousemove', reveal);
-      viewport.removeEventListener('scroll', reveal);
-      viewport.classList.remove('ct-sb-show');
-    };
-  }, [scrollbarMode, terminalId, scrollback, bidi]);
+    const terminal = terminalRef.current;
+    if (!container || !terminal) return;
+    return attachTerminalScrollbar(container, terminal, scrollbarMode);
+  }, [scrollbarMode, terminalId, !!instance, toggleSearch, scrollback, bidi]);
 
   // OS → terminal file drag-drop. Tauri intercepts drag events at the window
   // level and delivers physical-pixel positions, so we hit-test against this
