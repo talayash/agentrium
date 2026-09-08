@@ -200,6 +200,18 @@ Download the latest release for your platform from the [Releases page](https://g
 - **Close**: click X on the tab or use the context menu
 - **Search**: use the sidebar search bar to filter terminals
 
+Each terminal has an overlay scrollbar for its native scrollback. In auto-hide
+mode it stays visible while you read older output and fades after returning to
+the bottom. Settings > Terminal Appearance > Scrollbar also offers always and
+hidden modes.
+
+Agentrium launches Claude with `CLAUDE_CODE_NO_FLICKER=0` so its conversation uses
+native scrollback and the thumb can track and drag through real history. Reopen
+or resume an existing fullscreen session to apply this default. An explicit
+profile environment value of `CLAUDE_CODE_NO_FLICKER=1` enables Claude's fullscreen
+renderer instead; fullscreen applications manage their own history, so Agentrium
+hides its scrollbar in that mode and leaves scrolling to the application.
+
 ### Configuration profiles
 
 1. Click **Manage Profiles** in the sidebar footer (or click **+ Add Profile** in the New Terminal dialog)

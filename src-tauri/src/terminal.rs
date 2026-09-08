@@ -63,6 +63,22 @@ pub fn build_agent_command(agent: crate::config::AgentKind, args: &[String]) -> 
     (spec.binary.to_string(), args.to_vec())
 }
 
+fn configure_agent_environment(
+    cmd: &mut CommandBuilder,
+    agent: crate::config::AgentKind,
+    env_vars: &HashMap<String, String>,
+) {
+    // Claude's fullscreen renderer owns a virtual transcript that xterm cannot
+    // measure or drag. Keep output in native scrollback by default (also
+    // supported by Claude 2.1.117). Explicit profile/session env takes priority.
+    if agent == crate::config::AgentKind::Claude {
+        cmd.env("CLAUDE_CODE_NO_FLICKER", "0");
+    }
+    for (key, value) in env_vars {
+        cmd.env(key, value);
+    }
+}
+
 /// The bits `create_terminal` injects to open a prior conversation for a
 /// given agent. `subcommand` is prepended as the first positional (Codex
 /// uses `codex resume <id> ...`). `leading` goes after the subcommand
@@ -337,9 +353,7 @@ impl TerminalManager {
         }
 
         // Set environment variables (blocked keys already filtered out)
-        for (key, value) in &safe_env_vars {
-            cmd.env(key, value);
-        }
+        configure_agent_environment(&mut cmd, agent, &safe_env_vars);
 
         // Claude Code is the only agent that speaks the OTel env-var protocol
         // we ship with. Codex ignores these, but injecting them is harmless -
@@ -915,6 +929,24 @@ fn reap_terminal(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn claude_uses_native_scrollback_unless_session_explicitly_overrides_it() {
+        use crate::config::AgentKind;
+        let mut cmd = CommandBuilder::new("claude");
+        cmd.env("CLAUDE_CODE_NO_FLICKER", "1");
+        configure_agent_environment(&mut cmd, AgentKind::Claude, &HashMap::new());
+        assert_eq!(cmd.get_env("CLAUDE_CODE_NO_FLICKER"), Some(std::ffi::OsStr::new("0")));
+
+        let overrides = HashMap::from([("CLAUDE_CODE_NO_FLICKER".to_string(), "1".to_string())]);
+        configure_agent_environment(&mut cmd, AgentKind::Claude, &overrides);
+        assert_eq!(cmd.get_env("CLAUDE_CODE_NO_FLICKER"), Some(std::ffi::OsStr::new("1")));
+
+        let mut other = CommandBuilder::new("codex");
+        other.env_remove("CLAUDE_CODE_NO_FLICKER");
+        configure_agent_environment(&mut other, AgentKind::Codex, &HashMap::new());
+        assert!(other.get_env("CLAUDE_CODE_NO_FLICKER").is_none());
+    }
 
     /// Writer that fails every write the way a dead ConPTY pipe does on
     /// Windows (os error 232 maps to ErrorKind::BrokenPipe).

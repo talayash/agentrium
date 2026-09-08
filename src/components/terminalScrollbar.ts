@@ -22,18 +22,7 @@ export function attachTerminalScrollbar(container: HTMLElement, terminal: Termin
   let wasScrolledUp = false;
 
   const isAlternate = () => terminal.buffer.active.type === 'alternate';
-  // Full-screen CLIs own their history. Route wheel input through xterm so
-  // its negotiated mouse protocol reaches the application correctly.
-  const scrollLines = (lines: number) => {
-    if (!isAlternate()) { terminal.scrollLines(lines); return; }
-    const screen = container.querySelector('.xterm-screen');
-    if (!screen) return;
-    const rect = screen.getBoundingClientRect();
-    screen.dispatchEvent(new WheelEvent('wheel', {
-      bubbles: true, cancelable: true, deltaY: lines, deltaMode: 1,
-      clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2,
-    }));
-  };
+  const scrollLines = (lines: number) => terminal.scrollLines(lines);
   const reveal = () => {
     track.classList.add('is-visible');
     clearTimeout(timer);
@@ -51,25 +40,25 @@ export function attachTerminalScrollbar(container: HTMLElement, terminal: Termin
     if ((scrollable && !wasScrollable) || scrolledUp || (wasScrolledUp && !scrolledUp)) reveal();
     wasScrollable = scrollable;
     wasScrolledUp = scrolledUp;
-    track.hidden = mode === 'hidden' || (!alternate && buffer.baseY === 0);
-    track.classList.toggle('is-alternate', alternate);
-    track.title = alternate ? 'Scroll terminal application (drag up or down)' : 'Scroll terminal history';
-    if (alternate) track.setAttribute('aria-valuetext', 'Application-managed scroll position');
-    else track.removeAttribute('aria-valuetext');
+    // Alternate-screen applications own their history. xterm has no position
+    // or extent for it, so never draw a fabricated thumb (previously 50%).
+    track.hidden = mode === 'hidden' || !scrollable;
+    if (track.hidden && drag) endDrag();
+    track.title = 'Scroll terminal history';
     const height = track.clientHeight;
 
-    thumbHeight = Math.min(height, Math.max(28, (alternate ? height * 0.15 : height * terminal.rows / (buffer.baseY + terminal.rows))));
+    thumbHeight = Math.min(height, Math.max(28, height * terminal.rows / (buffer.baseY + terminal.rows)));
     thumb.style.height = `${thumbHeight}px`;
-    thumb.style.transform = `translateY(${alternate ? (height - thumbHeight) / 2 : buffer.baseY ? (height - thumbHeight) * buffer.viewportY / buffer.baseY : 0}px)`;
-    track.setAttribute('aria-valuemax', String(alternate ? 100 : buffer.baseY));
-    track.setAttribute('aria-valuenow', String(alternate ? 50 : buffer.viewportY));
+    thumb.style.transform = `translateY(${buffer.baseY ? (height - thumbHeight) * buffer.viewportY / buffer.baseY : 0}px)`;
+    track.setAttribute('aria-valuemax', String(buffer.baseY));
+    track.setAttribute('aria-valuenow', String(buffer.viewportY));
   };
   const schedule = () => { if (!frame) frame = requestAnimationFrame(update); };
   if (mode === 'always') track.classList.add('is-always-visible');
   track.onpointerenter = () => { hovered = true; reveal(); };
   track.onpointerleave = () => { hovered = false; reveal(); };
   track.onpointerdown = (event) => {
-    if (event.button !== 0) return;
+    if (event.button !== 0 || isAlternate() || track.hidden) return;
     event.preventDefault();
     event.stopPropagation();
     const buffer = terminal.buffer.active;
@@ -85,17 +74,14 @@ export function attachTerminalScrollbar(container: HTMLElement, terminal: Termin
   };
   track.onpointermove = (event) => {
     if (!drag || event.pointerId !== drag.pointer) return;
-    if (isAlternate()) {
-      const lines = Math.trunc((event.clientY - drag.y) / 6);
-      if (lines) { scrollLines(lines); drag.y += lines * 6; }
-      return;
-    }
+    if (isAlternate()) { endDrag(); return; }
     const travel = track.clientHeight - thumbHeight;
     if (travel > 0) terminal.scrollToLine(Math.round(drag.top + (event.clientY - drag.y) * terminal.buffer.active.baseY / travel));
   };
   const endDrag = () => {
-    if (drag && track.hasPointerCapture(drag.pointer)) track.releasePointerCapture(drag.pointer);
+    const pointer = drag?.pointer;
     drag = undefined;
+    if (pointer !== undefined && track.hasPointerCapture(pointer)) track.releasePointerCapture(pointer);
     track.classList.remove('is-dragging');
     reveal();
   };
@@ -103,13 +89,14 @@ export function attachTerminalScrollbar(container: HTMLElement, terminal: Termin
   track.onpointercancel = endDrag;
   track.onlostpointercapture = endDrag;
   track.onkeydown = (event) => {
+    if (isAlternate() || track.hidden) return;
     switch (event.key) {
       case 'ArrowUp': scrollLines(-1); break;
       case 'ArrowDown': scrollLines(1); break;
       case 'PageUp': scrollLines(-terminal.rows); break;
       case 'PageDown': scrollLines(terminal.rows); break;
-      case 'Home': if (isAlternate()) return; terminal.scrollToTop(); break;
-      case 'End': if (isAlternate()) return; terminal.scrollToBottom(); break;
+      case 'Home': terminal.scrollToTop(); break;
+      case 'End': terminal.scrollToBottom(); break;
       default: return;
     }
     event.preventDefault();
