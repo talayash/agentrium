@@ -67,13 +67,13 @@ pub fn build_agent_command(spec: &crate::agents::AgentSpec, args: &[String]) -> 
 
 fn configure_agent_environment(
     cmd: &mut CommandBuilder,
-    agent: crate::config::AgentKind,
+    spec: &crate::agents::AgentSpec,
     env_vars: &HashMap<String, String>,
 ) {
     // Claude's fullscreen renderer owns a virtual transcript that xterm cannot
     // measure or drag. Keep output in native scrollback by default (also
     // supported by Claude 2.1.117). Explicit profile/session env takes priority.
-    if agent == crate::config::AgentKind::Claude {
+    if spec.kind == crate::config::AgentKind::Claude {
         cmd.env("CLAUDE_CODE_NO_FLICKER", "0");
     }
     for (key, value) in env_vars {
@@ -391,7 +391,7 @@ impl TerminalManager {
         }
 
         // Set environment variables (blocked keys already filtered out)
-        configure_agent_environment(&mut cmd, agent, &safe_env_vars);
+        configure_agent_environment(&mut cmd, &spec, &safe_env_vars);
 
         // Bindings win over profile env vars with the same name.
         for (key, value) in &safe_secret_env {
@@ -979,18 +979,20 @@ mod tests {
     #[test]
     fn claude_uses_native_scrollback_unless_session_explicitly_overrides_it() {
         use crate::config::AgentKind;
+        let claude_spec = crate::agents::builtin_spec(&AgentKind::Claude).unwrap();
+        let codex_spec = crate::agents::builtin_spec(&AgentKind::Codex).unwrap();
         let mut cmd = CommandBuilder::new("claude");
         cmd.env("CLAUDE_CODE_NO_FLICKER", "1");
-        configure_agent_environment(&mut cmd, AgentKind::Claude, &HashMap::new());
+        configure_agent_environment(&mut cmd, &claude_spec, &HashMap::new());
         assert_eq!(cmd.get_env("CLAUDE_CODE_NO_FLICKER"), Some(std::ffi::OsStr::new("0")));
 
         let overrides = HashMap::from([("CLAUDE_CODE_NO_FLICKER".to_string(), "1".to_string())]);
-        configure_agent_environment(&mut cmd, AgentKind::Claude, &overrides);
+        configure_agent_environment(&mut cmd, &claude_spec, &overrides);
         assert_eq!(cmd.get_env("CLAUDE_CODE_NO_FLICKER"), Some(std::ffi::OsStr::new("1")));
 
         let mut other = CommandBuilder::new("codex");
         other.env_remove("CLAUDE_CODE_NO_FLICKER");
-        configure_agent_environment(&mut other, AgentKind::Codex, &HashMap::new());
+        configure_agent_environment(&mut other, &codex_spec, &HashMap::new());
         assert!(other.get_env("CLAUDE_CODE_NO_FLICKER").is_none());
     }
 
