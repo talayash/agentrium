@@ -17,6 +17,13 @@ export interface ClaudeModel {
   fullLabel: string;
   family: ClaudeModelFamily;
   /**
+   * Concrete upstream version this alias currently resolves to (e.g. "4.7").
+   * Display-only - the CLI still receives the family alias verbatim. Absent
+   * for families with no fixed version (Default, Fable). Bump this alongside
+   * the model on each Anthropic release; see issue #65.
+   */
+  resolvedVersion?: string;
+  /**
    * Tailwind background+text classes for the model badge as it appears in
    * the tab strip / status bar (bg tint + colored text, no ring). The
    * modal picker adds its own ring on top of these classes when a chip
@@ -52,49 +59,55 @@ export const CLAUDE_MODELS: readonly ClaudeModel[] = [
   },
   {
     alias: 'opus',
-    label: 'Opus',
-    fullLabel: 'Opus',
+    label: 'Opus 4.7',
+    fullLabel: 'Opus 4.7',
     family: 'opus',
+    resolvedVersion: '4.7',
     badgeClasses: 'bg-purple-500/20 text-purple-400',
     ringClasses: 'ring-1 ring-purple-500/30',
   },
   {
     alias: 'opus[1m]',
     label: '1M context',
-    fullLabel: 'Opus - 1M context',
+    fullLabel: 'Opus 4.7 · 1M context',
     family: 'opus',
+    resolvedVersion: '4.7',
     badgeClasses: 'bg-purple-500/20 text-purple-400',
     ringClasses: 'ring-1 ring-purple-500/30',
   },
   {
     alias: 'opusplan',
     label: 'Plan',
-    fullLabel: 'Opus Plan',
+    fullLabel: 'Opus 4.7 · Plan',
     family: 'opus',
+    resolvedVersion: '4.7',
     badgeClasses: 'bg-purple-500/20 text-purple-400',
     ringClasses: 'ring-1 ring-purple-500/30',
   },
   {
     alias: 'sonnet',
-    label: 'Sonnet',
-    fullLabel: 'Sonnet',
+    label: 'Sonnet 4.6',
+    fullLabel: 'Sonnet 4.6',
     family: 'sonnet',
+    resolvedVersion: '4.6',
     badgeClasses: 'bg-blue-500/20 text-blue-400',
     ringClasses: 'ring-1 ring-blue-500/30',
   },
   {
     alias: 'sonnet[1m]',
     label: '1M context',
-    fullLabel: 'Sonnet - 1M context',
+    fullLabel: 'Sonnet 4.6 · 1M context',
     family: 'sonnet',
+    resolvedVersion: '4.6',
     badgeClasses: 'bg-blue-500/20 text-blue-400',
     ringClasses: 'ring-1 ring-blue-500/30',
   },
   {
     alias: 'haiku',
-    label: 'Haiku',
-    fullLabel: 'Haiku',
+    label: 'Haiku 4.5',
+    fullLabel: 'Haiku 4.5',
     family: 'haiku',
+    resolvedVersion: '4.5',
     badgeClasses: 'bg-green-500/20 text-green-400',
     ringClasses: 'ring-1 ring-green-500/30',
   },
@@ -119,8 +132,11 @@ export function modelsInFamily(family: ClaudeModelFamily): ClaudeModel[] {
 }
 
 export function familyLabel(family: ClaudeModelFamily): string {
+  // Return the base entry's label as-is so version suffixes ("Opus 4.7")
+  // surface on the top-row family chip. The base entry per family is the
+  // one without a variant qualifier (opus, sonnet, haiku, fable, default).
   const first = CLAUDE_MODELS.find(m => m.family === family);
-  return first ? (family === 'default' ? 'Default' : first.label.split(' ')[0]) : family;
+  return first ? first.label : family;
 }
 
 /**

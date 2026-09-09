@@ -6,6 +6,7 @@ import {
   modelsInFamily,
   getModelBadgeClasses,
   familyOfModel,
+  familyLabel,
 } from './claudeModels';
 
 describe('claudeModels catalog', () => {
@@ -81,5 +82,77 @@ describe('familyOfModel', () => {
   it('returns "default" for undefined or unknown', () => {
     expect(familyOfModel(undefined)).toBe('default');
     expect(familyOfModel('unknown-alias')).toBe('default');
+  });
+});
+
+describe('resolved-version display (issue #65)', () => {
+  // Byte-identical alias guard: enriching labels must NEVER change what we
+  // send to `claude --model`. If this snapshot ever needs updating, the CLI
+  // contract is being changed - not just the display.
+  it('keeps every alias byte-identical to the pre-enrichment set', () => {
+    expect(CLAUDE_MODELS.map(m => m.alias)).toEqual([
+      'default',
+      'fable',
+      'opus',
+      'opus[1m]',
+      'opusplan',
+      'sonnet',
+      'sonnet[1m]',
+      'haiku',
+    ]);
+  });
+
+  it('pins resolvedVersion for family-alias entries so users see which sub-version they get', () => {
+    const byAlias = (a: string) => CLAUDE_MODELS.find(m => m.alias === a)!;
+    expect(byAlias('opus').resolvedVersion).toBe('4.7');
+    expect(byAlias('sonnet').resolvedVersion).toBe('4.6');
+    expect(byAlias('haiku').resolvedVersion).toBe('4.5');
+    // Variants inherit the family's resolved version.
+    expect(byAlias('opus[1m]').resolvedVersion).toBe('4.7');
+    expect(byAlias('opusplan').resolvedVersion).toBe('4.7');
+    expect(byAlias('sonnet[1m]').resolvedVersion).toBe('4.6');
+  });
+
+  it('leaves Default and Fable without a fixed version (their aliases don\'t map to one)', () => {
+    const byAlias = (a: string) => CLAUDE_MODELS.find(m => m.alias === a)!;
+    expect(byAlias('default').resolvedVersion).toBeUndefined();
+    expect(byAlias('fable').resolvedVersion).toBeUndefined();
+  });
+
+  it('renders the base label with the version suffix so the family chip shows "Opus 4.7"', () => {
+    const byAlias = (a: string) => CLAUDE_MODELS.find(m => m.alias === a)!;
+    expect(byAlias('opus').label).toBe('Opus 4.7');
+    expect(byAlias('sonnet').label).toBe('Sonnet 4.6');
+    expect(byAlias('haiku').label).toBe('Haiku 4.5');
+    // Base fullLabel matches label (no extra qualifier).
+    expect(byAlias('opus').fullLabel).toBe('Opus 4.7');
+    expect(byAlias('sonnet').fullLabel).toBe('Sonnet 4.6');
+    expect(byAlias('haiku').fullLabel).toBe('Haiku 4.5');
+  });
+
+  it('keeps variant chip labels compact but includes the family+version in the tooltip fullLabel', () => {
+    const byAlias = (a: string) => CLAUDE_MODELS.find(m => m.alias === a)!;
+    // Variant chips sit under an already-versioned family chip, so the chip
+    // itself stays short.
+    expect(byAlias('opus[1m]').label).toBe('1M context');
+    expect(byAlias('opusplan').label).toBe('Plan');
+    expect(byAlias('sonnet[1m]').label).toBe('1M context');
+    // fullLabel (title tooltip) gets the family+version so users see the
+    // resolved version even when hovering a variant.
+    expect(byAlias('opus[1m]').fullLabel).toBe('Opus 4.7 · 1M context');
+    expect(byAlias('opusplan').fullLabel).toBe('Opus 4.7 · Plan');
+    expect(byAlias('sonnet[1m]').fullLabel).toBe('Sonnet 4.6 · 1M context');
+  });
+});
+
+describe('familyLabel', () => {
+  it('returns the base entry label so the top-row family chip carries the version', () => {
+    // Regression guard for the old `split(' ')[0]` behavior, which would
+    // silently truncate "Opus 4.7" back to "Opus".
+    expect(familyLabel('opus')).toBe('Opus 4.7');
+    expect(familyLabel('sonnet')).toBe('Sonnet 4.6');
+    expect(familyLabel('haiku')).toBe('Haiku 4.5');
+    expect(familyLabel('fable')).toBe('Fable');
+    expect(familyLabel('default')).toBe('Default');
   });
 });
