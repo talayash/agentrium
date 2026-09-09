@@ -132,6 +132,38 @@ impl Database {
                 PRIMARY KEY (repo_path, file_path)
             );
 
+            CREATE TABLE IF NOT EXISTS custom_agents (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                binary TEXT NOT NULL,
+                default_args TEXT NOT NULL,
+                resume_flag TEXT,
+                color TEXT NOT NULL,
+                required_env TEXT NOT NULL,
+                bindings TEXT NOT NULL,
+                install_url TEXT,
+                install_hint TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS credentials (
+                id TEXT PRIMARY KEY,
+                label TEXT NOT NULL UNIQUE,
+                provider TEXT NOT NULL,
+                env_name TEXT NOT NULL,
+                endpoint_env TEXT,
+                has_key INTEGER NOT NULL DEFAULT 0,
+                has_endpoint INTEGER NOT NULL DEFAULT 0,
+                masked_tail TEXT,
+                created_at TEXT NOT NULL,
+                last_used_at TEXT
+            );
+            CREATE TABLE IF NOT EXISTS agent_defaults (
+                agent TEXT PRIMARY KEY,
+                bindings TEXT NOT NULL
+            );
+
             CREATE INDEX IF NOT EXISTS idx_changelist_files_repo ON changelist_files(repo_path);
             CREATE INDEX IF NOT EXISTS idx_changelist_files_list ON changelist_files(changelist_id);
             ",
@@ -163,6 +195,10 @@ impl Database {
             // written before this column existed reads as NULL; the loader
             // then migrates in-memory by seeding {profile.agent: claude_args}.
             "agent_args_json TEXT",
+            // Credentials pinned by this profile (Vec<CredentialBinding>).
+            // Nullable JSON so a pre-migration row reads as NULL, which the
+            // loader treats as an empty list.
+            "credential_bindings_json TEXT",
         ] {
             let sql = format!("ALTER TABLE profiles ADD COLUMN {}", column);
             if let Err(e) = conn.execute(&sql, []) {
@@ -227,9 +263,11 @@ impl Database {
         };
         let agent_args_json = serde_json::to_string(&profile.agent_args)
             .map_err(|e| format!("Failed to serialize agent_args: {}", e))?;
+        let credential_bindings_json = serde_json::to_string(&profile.credential_bindings)
+            .map_err(|e| e.to_string())?;
         self.conn.execute(
-            "INSERT OR REPLACE INTO profiles (id, name, description, working_directory, claude_args, env_vars, is_default, preview_json, agent, agent_args_json)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            "INSERT OR REPLACE INTO profiles (id, name, description, working_directory, claude_args, env_vars, is_default, preview_json, agent, agent_args_json, credential_bindings_json)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             params![
                 profile.id,
                 profile.name,
@@ -239,8 +277,9 @@ impl Database {
                 env_vars_json,
                 profile.is_default as i32,
                 preview_json,
-                profile.agent.as_str(),
+                profile.agent.to_wire(),
                 agent_args_json,
+                credential_bindings_json,
             ],
         ).map_err(|e| e.to_string())?;
         Ok(())
@@ -248,7 +287,7 @@ impl Database {
 
     pub fn get_profiles(&self) -> Result<Vec<ConfigProfile>, String> {
         let mut stmt = self.conn
-            .prepare("SELECT id, name, description, working_directory, claude_args, env_vars, is_default, preview_json, agent, agent_args_json FROM profiles")
+            .prepare("SELECT id, name, description, working_directory, claude_args, env_vars, is_default, preview_json, agent, agent_args_json, credential_bindings_json FROM profiles")
             .map_err(|e| e.to_string())?;
 
         let profiles = stmt.query_map([], |row| {
@@ -303,16 +342,24 @@ impl Database {
                         Err(e) => {
                             eprintln!("[profiles] corrupt agent_args for '{}' ({}): {}", name, id, e);
                             let mut m = std::collections::HashMap::new();
-                            m.insert(agent, claude_args.clone());
+                            m.insert(agent.clone(), claude_args.clone());
                             m
                         }
                     },
                     None => {
                         let mut m = std::collections::HashMap::new();
-                        m.insert(agent, claude_args.clone());
+                        m.insert(agent.clone(), claude_args.clone());
                         m
                     }
                 };
+            let cb_raw: Option<String> = row.get(10)?;
+            let credential_bindings: Vec<crate::config::CredentialBinding> = match cb_raw {
+                Some(raw) => serde_json::from_str(&raw).unwrap_or_else(|e| {
+                    eprintln!("[profiles] corrupt credential_bindings for '{}' ({}): {}", name, id, e);
+                    Vec::new()
+                }),
+                None => Vec::new(),
+            };
             Ok(ConfigProfile {
                 id,
                 name,
@@ -324,10 +371,261 @@ impl Database {
                 agent,
                 preview,
                 agent_args,
+                credential_bindings,
             })
         }).map_err(|e| e.to_string())?;
 
         profiles.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    }
+
+    pub fn save_custom_agent(&self, a: &crate::custom_agents::CustomAgent) -> Result<(), String> {
+        let default_args = serde_json::to_string(&a.default_args).map_err(|e| e.to_string())?;
+        let required_env = serde_json::to_string(&a.required_env).map_err(|e| e.to_string())?;
+        let bindings = serde_json::to_string(&a.bindings).map_err(|e| e.to_string())?;
+        self.conn
+            .execute(
+                "INSERT OR REPLACE INTO custom_agents
+                 (id, name, binary, default_args, resume_flag, color, required_env, bindings, install_url, install_hint, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                params![
+                    a.id, a.name, a.binary, default_args, a.resume_flag, a.color,
+                    required_env, bindings, a.install_url, a.install_hint, a.created_at, a.updated_at,
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    fn row_to_custom_agent(row: &rusqlite::Row<'_>) -> rusqlite::Result<crate::custom_agents::CustomAgent> {
+        let id: String = row.get(0)?;
+        let default_args_raw: String = row.get(3)?;
+        let required_env_raw: String = row.get(6)?;
+        let bindings_raw: String = row.get(7)?;
+        // Corrupt JSON degrades to empty lists (logged) rather than failing
+        // the whole listing - same policy as profile args.
+        let default_args = serde_json::from_str(&default_args_raw).unwrap_or_else(|e| {
+            eprintln!("[custom_agents] corrupt default_args for {}: {}", id, e);
+            Vec::new()
+        });
+        let required_env = serde_json::from_str(&required_env_raw).unwrap_or_else(|e| {
+            eprintln!("[custom_agents] corrupt required_env for {}: {}", id, e);
+            Vec::new()
+        });
+        let bindings = serde_json::from_str(&bindings_raw).unwrap_or_else(|e| {
+            eprintln!("[custom_agents] corrupt bindings for {}: {}", id, e);
+            Vec::new()
+        });
+        Ok(crate::custom_agents::CustomAgent {
+            id,
+            name: row.get(1)?,
+            binary: row.get(2)?,
+            default_args,
+            resume_flag: row.get(4)?,
+            color: row.get(5)?,
+            required_env,
+            bindings,
+            install_url: row.get(8)?,
+            install_hint: row.get(9)?,
+            created_at: row.get(10)?,
+            updated_at: row.get(11)?,
+        })
+    }
+
+    const CUSTOM_AGENT_COLUMNS: &'static str =
+        "id, name, binary, default_args, resume_flag, color, required_env, bindings, install_url, install_hint, created_at, updated_at";
+
+    pub fn list_custom_agents(&self) -> Result<Vec<crate::custom_agents::CustomAgent>, String> {
+        let sql = format!("SELECT {} FROM custom_agents ORDER BY created_at ASC, name ASC", Self::CUSTOM_AGENT_COLUMNS);
+        let mut stmt = self.conn.prepare(&sql).map_err(|e| e.to_string())?;
+        let rows = stmt.query_map([], Self::row_to_custom_agent).map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    }
+
+    pub fn get_custom_agent(&self, id: &str) -> Result<Option<crate::custom_agents::CustomAgent>, String> {
+        let sql = format!("SELECT {} FROM custom_agents WHERE id = ?1", Self::CUSTOM_AGENT_COLUMNS);
+        let mut stmt = self.conn.prepare(&sql).map_err(|e| e.to_string())?;
+        let mut rows = stmt.query_map(params![id], Self::row_to_custom_agent).map_err(|e| e.to_string())?;
+        match rows.next() {
+            Some(r) => Ok(Some(r.map_err(|e| e.to_string())?)),
+            None => Ok(None),
+        }
+    }
+
+    pub fn delete_custom_agent(&self, id: &str) -> Result<(), String> {
+        self.conn
+            .execute("DELETE FROM custom_agents WHERE id = ?1", params![id])
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    const CREDENTIAL_COLUMNS: &'static str =
+        "id, label, provider, env_name, endpoint_env, has_key, has_endpoint, masked_tail, created_at, last_used_at";
+
+    fn row_to_credential(row: &rusqlite::Row<'_>) -> rusqlite::Result<crate::credentials::CredentialMeta> {
+        let provider_raw: String = row.get(2)?;
+        Ok(crate::credentials::CredentialMeta {
+            id: row.get(0)?,
+            label: row.get(1)?,
+            provider: crate::credentials::Provider::from_str_lossy(&provider_raw),
+            env_name: row.get(3)?,
+            endpoint_env: row.get(4)?,
+            has_key: row.get::<_, i32>(5)? != 0,
+            has_endpoint: row.get::<_, i32>(6)? != 0,
+            masked_tail: row.get(7)?,
+            created_at: row.get(8)?,
+            last_used_at: row.get(9)?,
+        })
+    }
+
+    pub fn upsert_credential(&self, m: &crate::credentials::CredentialMeta) -> Result<(), String> {
+        // Label uniqueness is a user-facing rule; report it in their words.
+        let clash: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT id FROM credentials WHERE label = ?1 AND id != ?2",
+                params![m.label, m.id],
+                |r| r.get(0),
+            )
+            .ok();
+        if clash.is_some() {
+            return Err(crate::error_reporter::user_err(format!(
+                "A key labelled \"{}\" already exists",
+                m.label
+            )));
+        }
+        self.conn
+            .execute(
+                "INSERT OR REPLACE INTO credentials
+                 (id, label, provider, env_name, endpoint_env, has_key, has_endpoint, masked_tail, created_at, last_used_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                params![
+                    m.id,
+                    m.label,
+                    m.provider.as_str(),
+                    m.env_name,
+                    m.endpoint_env,
+                    m.has_key as i32,
+                    m.has_endpoint as i32,
+                    m.masked_tail,
+                    m.created_at,
+                    m.last_used_at,
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn list_credentials(&self) -> Result<Vec<crate::credentials::CredentialMeta>, String> {
+        let sql = format!(
+            "SELECT {} FROM credentials ORDER BY created_at ASC, label ASC",
+            Self::CREDENTIAL_COLUMNS
+        );
+        let mut stmt = self.conn.prepare(&sql).map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], Self::row_to_credential)
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    }
+
+    pub fn get_credential(&self, id: &str) -> Result<Option<crate::credentials::CredentialMeta>, String> {
+        let sql = format!("SELECT {} FROM credentials WHERE id = ?1", Self::CREDENTIAL_COLUMNS);
+        let mut stmt = self.conn.prepare(&sql).map_err(|e| e.to_string())?;
+        let mut rows = stmt
+            .query_map(params![id], Self::row_to_credential)
+            .map_err(|e| e.to_string())?;
+        match rows.next() {
+            Some(r) => Ok(Some(r.map_err(|e| e.to_string())?)),
+            None => Ok(None),
+        }
+    }
+
+    pub fn touch_credential_used(&self, id: &str) -> Result<(), String> {
+        let now = chrono::Utc::now().to_rfc3339();
+        self.conn
+            .execute(
+                "UPDATE credentials SET last_used_at = ?1 WHERE id = ?2",
+                params![now, id],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn get_agent_bindings(&self, agent_wire: &str) -> Result<Vec<crate::config::CredentialBinding>, String> {
+        let raw: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT bindings FROM agent_defaults WHERE agent = ?1",
+                params![agent_wire],
+                |r| r.get(0),
+            )
+            .ok();
+        Ok(raw
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default())
+    }
+
+    pub fn set_agent_bindings(
+        &self,
+        agent_wire: &str,
+        bindings: &[crate::config::CredentialBinding],
+    ) -> Result<(), String> {
+        let json = serde_json::to_string(bindings).map_err(|e| e.to_string())?;
+        self.conn
+            .execute(
+                "INSERT OR REPLACE INTO agent_defaults (agent, bindings) VALUES (?1, ?2)",
+                params![agent_wire, json],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// Delete a credential row and strip every binding that referenced it
+    /// (custom agents, built-in defaults, profiles). One transaction so a
+    /// dangling binding can never survive a partial failure.
+    pub fn delete_credential_cascade(&self, id: &str) -> Result<(), String> {
+        self.conn.execute_batch("BEGIN").map_err(|e| e.to_string())?;
+        let result = (|| -> Result<(), String> {
+            self.conn
+                .execute("DELETE FROM credentials WHERE id = ?1", params![id])
+                .map_err(|e| e.to_string())?;
+            for mut a in self.list_custom_agents()? {
+                if a.bindings.iter().any(|b| b.credential_id == id) {
+                    a.bindings.retain(|b| b.credential_id != id);
+                    self.save_custom_agent(&a)?;
+                }
+            }
+            let agents: Vec<String> = {
+                let mut stmt = self
+                    .conn
+                    .prepare("SELECT agent FROM agent_defaults")
+                    .map_err(|e| e.to_string())?;
+                let rows = stmt
+                    .query_map([], |r| r.get::<_, String>(0))
+                    .map_err(|e| e.to_string())?;
+                rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?
+            };
+            for agent in agents {
+                let mut b = self.get_agent_bindings(&agent)?;
+                if b.iter().any(|x| x.credential_id == id) {
+                    b.retain(|x| x.credential_id != id);
+                    self.set_agent_bindings(&agent, &b)?;
+                }
+            }
+            for mut p in self.get_profiles()? {
+                if p.credential_bindings.iter().any(|b| b.credential_id == id) {
+                    p.credential_bindings.retain(|b| b.credential_id != id);
+                    self.save_profile(&p)?;
+                }
+            }
+            Ok(())
+        })();
+        match result {
+            Ok(()) => self.conn.execute_batch("COMMIT").map_err(|e| e.to_string()),
+            Err(e) => {
+                let _ = self.conn.execute_batch("ROLLBACK");
+                Err(e)
+            }
+        }
     }
 
     pub fn delete_profile(&self, id: &str) -> Result<(), String> {
@@ -565,6 +863,32 @@ impl Database {
 
     // App meta methods
 
+    /// Profiles whose env vars hold something that looks like a secret.
+    /// Drives the one-time "move keys to the OS store" prompt.
+    pub fn count_profiles_with_plaintext_keys(&self) -> Result<usize, String> {
+        let looks_secret = |k: &str| k.ends_with("_API_KEY") || k.ends_with("_TOKEN") || k.ends_with("_SECRET");
+        Ok(self
+            .get_profiles()?
+            .iter()
+            .filter(|p| p.env_vars.iter().any(|(k, v)| looks_secret(k) && !v.trim().is_empty()))
+            .count())
+    }
+
+    pub fn get_meta_flag(&self, key: &str) -> Result<bool, String> {
+        let v: Option<String> = self
+            .conn
+            .query_row("SELECT value FROM app_meta WHERE key = ?1", params![key], |r| r.get(0))
+            .ok();
+        Ok(v.as_deref() == Some("1"))
+    }
+
+    pub fn set_meta_flag(&self, key: &str) -> Result<(), String> {
+        self.conn
+            .execute("INSERT OR REPLACE INTO app_meta (key, value) VALUES (?1, '1')", params![key])
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
     pub fn get_or_create_installation_id(&self) -> Result<String, String> {
         let result: Result<String, _> = self.conn.query_row(
             "SELECT value FROM app_meta WHERE key = 'installation_id'",
@@ -608,6 +932,7 @@ mod tests {
             agent: crate::config::AgentKind::default(),
             preview: None,
             agent_args: HashMap::new(),
+            credential_bindings: Vec::new(),
         }
     }
 
@@ -625,6 +950,7 @@ mod tests {
             color_tag: None,
             claude_session_id: None,
             agent: crate::config::AgentKind::Claude,
+            credential_bindings: Vec::new(),
         }
     }
 
@@ -982,6 +1308,166 @@ mod tests {
             loaded[0].agent_args.get(&crate::config::AgentKind::Antigravity).unwrap(),
             &vec!["--yolo".to_string()]
         );
+    }
+
+    fn sample_custom_agent(id: &str) -> crate::custom_agents::CustomAgent {
+        crate::custom_agents::CustomAgent {
+            id: id.to_string(),
+            name: "OpenCode".into(),
+            binary: "opencode".into(),
+            default_args: vec!["--agent".into(), "build".into()],
+            resume_flag: Some("--session {id}".into()),
+            color: "#30C55E".into(),
+            required_env: vec!["OPENAI_API_KEY".into()],
+            bindings: vec![crate::config::CredentialBinding { env: "OPENAI_API_KEY".into(), credential_id: "cred-1".into() }],
+            install_url: Some("https://opencode.ai".into()),
+            install_hint: Some("npm i -g opencode-ai".into()),
+            created_at: "2026-09-04T00:00:00Z".into(),
+            updated_at: "2026-09-04T00:00:00Z".into(),
+        }
+    }
+
+    #[test]
+    fn custom_agent_round_trips() {
+        let db = Database::new_in_memory().unwrap();
+        let a = sample_custom_agent("a1");
+        db.save_custom_agent(&a).unwrap();
+        let list = db.list_custom_agents().unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0], a);
+        assert_eq!(db.get_custom_agent("a1").unwrap().unwrap().binary, "opencode");
+        assert!(db.get_custom_agent("missing").unwrap().is_none());
+    }
+
+    #[test]
+    fn custom_agent_save_replaces_and_delete_removes() {
+        let db = Database::new_in_memory().unwrap();
+        let mut a = sample_custom_agent("a1");
+        db.save_custom_agent(&a).unwrap();
+        a.name = "OpenCode v2".into();
+        db.save_custom_agent(&a).unwrap();
+        assert_eq!(db.list_custom_agents().unwrap()[0].name, "OpenCode v2");
+        db.delete_custom_agent("a1").unwrap();
+        assert!(db.list_custom_agents().unwrap().is_empty());
+    }
+
+    #[test]
+    fn custom_agents_list_orders_by_created_at() {
+        let db = Database::new_in_memory().unwrap();
+        let mut b = sample_custom_agent("b");
+        b.created_at = "2026-09-05T00:00:00Z".into();
+        let a = sample_custom_agent("a");
+        db.save_custom_agent(&b).unwrap();
+        db.save_custom_agent(&a).unwrap();
+        let ids: Vec<String> = db.list_custom_agents().unwrap().into_iter().map(|x| x.id).collect();
+        assert_eq!(ids, vec!["a".to_string(), "b".to_string()]);
+    }
+
+    fn sample_meta(id: &str, label: &str) -> crate::credentials::CredentialMeta {
+        crate::credentials::CredentialMeta {
+            id: id.into(),
+            label: label.into(),
+            provider: crate::credentials::Provider::OpenAI,
+            env_name: "OPENAI_API_KEY".into(),
+            endpoint_env: Some("OPENAI_BASE_URL".into()),
+            has_key: true,
+            has_endpoint: false,
+            masked_tail: Some("9fQ2".into()),
+            created_at: "2026-09-04T00:00:00Z".into(),
+            last_used_at: None,
+        }
+    }
+
+    #[test]
+    fn get_credential_returns_none_for_unknown_id() {
+        let db = Database::new_in_memory().unwrap();
+        assert!(db.get_credential("nope").unwrap().is_none());
+    }
+
+    #[test]
+    fn credential_meta_round_trips_and_label_is_unique() {
+        let db = Database::new_in_memory().unwrap();
+        db.upsert_credential(&sample_meta("c1", "Work")).unwrap();
+        assert_eq!(db.list_credentials().unwrap()[0], sample_meta("c1", "Work"));
+        assert_eq!(db.get_credential("c1").unwrap().unwrap().label, "Work");
+        let dup = db.upsert_credential(&sample_meta("c2", "Work"));
+        assert!(dup.is_err());
+    }
+
+    #[test]
+    fn touch_credential_used_sets_last_used() {
+        let db = Database::new_in_memory().unwrap();
+        db.upsert_credential(&sample_meta("c1", "Work")).unwrap();
+        db.touch_credential_used("c1").unwrap();
+        assert!(db.get_credential("c1").unwrap().unwrap().last_used_at.is_some());
+    }
+
+    #[test]
+    fn agent_default_bindings_round_trip() {
+        let db = Database::new_in_memory().unwrap();
+        let b = vec![crate::config::CredentialBinding { env: "ANTHROPIC_API_KEY".into(), credential_id: "c1".into() }];
+        db.set_agent_bindings("claude", &b).unwrap();
+        assert_eq!(db.get_agent_bindings("claude").unwrap(), b);
+        assert!(db.get_agent_bindings("codex").unwrap().is_empty());
+    }
+
+    #[test]
+    fn profile_credential_bindings_persist() {
+        let db = Database::new_in_memory().unwrap();
+        let mut p = crate::config::ConfigProfile {
+            id: "p1".into(), name: "P".into(), description: None, working_directory: "C:\\w".into(),
+            claude_args: vec![], env_vars: Default::default(), is_default: false,
+            agent: crate::config::AgentKind::Claude, preview: None, agent_args: Default::default(),
+            credential_bindings: vec![],
+        };
+        p.credential_bindings = vec![crate::config::CredentialBinding { env: "ANTHROPIC_API_KEY".into(), credential_id: "c1".into() }];
+        db.save_profile(&p).unwrap();
+        assert_eq!(db.get_profiles().unwrap()[0].credential_bindings, p.credential_bindings);
+    }
+
+    #[test]
+    fn delete_credential_cascades_to_every_binding_site() {
+        let db = Database::new_in_memory().unwrap();
+        db.upsert_credential(&sample_meta("c1", "Work")).unwrap();
+        db.upsert_credential(&sample_meta("c2", "Other")).unwrap();
+        let keep = crate::config::CredentialBinding { env: "OTHER".into(), credential_id: "c2".into() };
+        let gone = crate::config::CredentialBinding { env: "OPENAI_API_KEY".into(), credential_id: "c1".into() };
+        let mut a = sample_custom_agent("a1");
+        a.required_env = vec!["OPENAI_API_KEY".into(), "OTHER".into()];
+        a.bindings = vec![gone.clone(), keep.clone()];
+        db.save_custom_agent(&a).unwrap();
+        db.set_agent_bindings("codex", &[gone.clone(), keep.clone()]).unwrap();
+        let p = crate::config::ConfigProfile {
+            id: "p1".into(), name: "P".into(), description: None, working_directory: "C:\\w".into(),
+            claude_args: vec![], env_vars: Default::default(), is_default: false,
+            agent: crate::config::AgentKind::Claude, preview: None, agent_args: Default::default(),
+            credential_bindings: vec![gone.clone(), keep.clone()],
+        };
+        db.save_profile(&p).unwrap();
+
+        db.delete_credential_cascade("c1").unwrap();
+
+        assert!(db.get_credential("c1").unwrap().is_none());
+        assert_eq!(db.get_custom_agent("a1").unwrap().unwrap().bindings, vec![keep.clone()]);
+        assert_eq!(db.get_agent_bindings("codex").unwrap(), vec![keep.clone()]);
+        assert_eq!(db.get_profiles().unwrap()[0].credential_bindings, vec![keep]);
+    }
+
+    #[test]
+    fn plaintext_key_profile_count_and_prompt_flag() {
+        let db = Database::new_in_memory().unwrap();
+        let mut p = crate::config::ConfigProfile {
+            id: "p1".into(), name: "P".into(), description: None, working_directory: "C:\\w".into(),
+            claude_args: vec![], env_vars: Default::default(), is_default: false,
+            agent: crate::config::AgentKind::Claude, preview: None, agent_args: Default::default(),
+            credential_bindings: vec![],
+        };
+        p.env_vars.insert("ANTHROPIC_API_KEY".into(), "sk-ant-x".into());
+        db.save_profile(&p).unwrap();
+        assert_eq!(db.count_profiles_with_plaintext_keys().unwrap(), 1);
+        assert!(!db.get_meta_flag("keys_migration_prompted").unwrap());
+        db.set_meta_flag("keys_migration_prompted").unwrap();
+        assert!(db.get_meta_flag("keys_migration_prompted").unwrap());
     }
 
     #[test]

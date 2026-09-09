@@ -25,13 +25,14 @@ pub trait SessionProvider: Send + Sync {
     fn list_for_cwd(&self, cwd: &str) -> Vec<AgentSessionInfo>;
 }
 
-pub fn provider_for(agent: AgentKind) -> Box<dyn SessionProvider> {
+pub fn provider_for(agent: &AgentKind) -> Box<dyn SessionProvider> {
     match agent {
         AgentKind::Claude => Box::new(crate::claude_session::ClaudeSessionProvider),
         // Placeholder impls until later tasks land.
         AgentKind::Codex => Box::new(crate::codex_session::CodexSessionProvider),
         AgentKind::Cursor => Box::new(crate::cursor_session::CursorSessionProvider),
         AgentKind::Antigravity => Box::new(NoOpProvider),
+        AgentKind::Custom(_) => Box::new(NoOpProvider),
     }
 }
 
@@ -48,7 +49,7 @@ mod tests {
 
     #[test]
     fn claude_provider_is_wired() {
-        let p = provider_for(AgentKind::Claude);
+        let p = provider_for(&AgentKind::Claude);
         // list_for_cwd on a non-existent path returns empty, not panic.
         let out = p.list_for_cwd("Z:\\does\\not\\exist");
         assert!(out.is_empty());
@@ -62,7 +63,7 @@ mod tests {
         // machine has real files under `~/.cursor/chats` that would break
         // the empty-snapshot assertion.
         for a in [AgentKind::Antigravity] {
-            let p = provider_for(a);
+            let p = provider_for(&a);
             assert!(p.snapshot().is_empty());
             assert!(p.find_new_for_cwd(&HashSet::new(), "x", &HashSet::new()).is_none());
             assert!(p.list_for_cwd("x").is_empty());

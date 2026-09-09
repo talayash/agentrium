@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { AGENT_SPECS, filterArgsForAgent, specFor } from './agents';
+import { isCustomAgent, customKind, setCustomAgentSpecs, allAgentSpecs, defaultArgsFor } from './agents';
 
 describe('agents catalog', () => {
   it('resolves claude by kind', () => {
@@ -94,5 +95,49 @@ describe('filterArgsForAgent', () => {
     expect(filterArgsForAgent('codex', args)).toEqual([]);
     expect(filterArgsForAgent('cursor', args)).toEqual(['--continue']);
     expect(filterArgsForAgent('antigravity', args)).toEqual(['--continue']);
+  });
+});
+
+describe('custom agent kinds', () => {
+  const oc = {
+    kind: customKind('a1'),
+    displayName: 'OpenCode',
+    binary: 'opencode',
+    installUrl: 'https://opencode.ai',
+    installHint: 'npm i -g opencode-ai',
+    defaultArgsHint: '',
+    color: '#30C55E',
+    monogram: 'OC',
+    defaultArgs: ['--agent', 'build'],
+    resumeFlag: '--session {id}',
+    requiredEnv: ['OPENAI_API_KEY'],
+  };
+
+  it('customKind builds the wire form and isCustomAgent detects it', () => {
+    expect(customKind('a1')).toBe('custom:a1');
+    expect(isCustomAgent('custom:a1')).toBe(true);
+    expect(isCustomAgent('claude')).toBe(false);
+  });
+
+  it('specFor resolves a registered custom spec and allAgentSpecs appends it after built-ins', () => {
+    setCustomAgentSpecs([oc]);
+    expect(specFor('custom:a1').binary).toBe('opencode');
+    const kinds = allAgentSpecs().map(s => s.kind);
+    expect(kinds.slice(0, 4)).toEqual(['claude', 'codex', 'cursor', 'antigravity']);
+    expect(kinds[4]).toBe('custom:a1');
+    setCustomAgentSpecs([]);
+    expect(() => specFor('custom:a1')).toThrow();
+  });
+
+  it('filterArgsForAgent treats custom kinds like cursor', () => {
+    const out = filterArgsForAgent('custom:a1', ['--dangerously-skip-permissions', '--model', 'opus', '--verbose']);
+    expect(out).toEqual(['--verbose']);
+  });
+
+  it('defaultArgsFor returns the custom agent default args, else the builtin map entry', () => {
+    setCustomAgentSpecs([oc]);
+    expect(defaultArgsFor('custom:a1', { claude: ['--x'], codex: [], cursor: [], antigravity: [] })).toEqual(['--agent', 'build']);
+    expect(defaultArgsFor('claude', { claude: ['--x'], codex: [], cursor: [], antigravity: [] })).toEqual(['--x']);
+    setCustomAgentSpecs([]);
   });
 });

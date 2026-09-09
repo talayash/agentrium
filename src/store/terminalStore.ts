@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { Terminal } from '@xterm/xterm';
 import type { WorktreeDetectResult } from '../types/git';
 import type { AgentKind } from '../lib/agents';
+import type { CredentialBinding } from '../lib/credentials';
 import { markTerminalActive, clearTerminalActivity } from '../lib/terminalActivity';
 import { reportInvokeFailure } from '../lib/errorReporter';
 import { chunkUtf8Bytes } from '../lib/chunkUtf8';
@@ -112,6 +113,10 @@ export interface TerminalConfig {
    *  ~/.claude/projects/<encoded-cwd>/*.jsonl) and used by session restore to
    *  re-attach via `claude --resume <id>`. */
   claude_session_id?: string | null;
+  /** Per-terminal env-var → credential-id bindings applied when the PTY is
+   *  spawned. Optional so older persisted rows (Rust `#[serde(default)]`)
+   *  deserialize to `[]`. */
+  credential_bindings?: CredentialBinding[];
 }
 
 export interface LoopInfo {
@@ -178,6 +183,7 @@ interface TerminalState {
     continueRecent?: boolean,
     previewInit?: Partial<PreviewState>,
     agent?: AgentKind,
+    credentialBindings?: CredentialBinding[],
   ) => Promise<string>;
   createShellTerminalTab: (
     label: string,
@@ -244,7 +250,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
   bottomTerminalIds: [],
   activeBottomTerminalId: null,
 
-  createTerminal: async (label, workingDirectory, claudeArgs, envVars, colorTag, nickname, restoredOutput, resumeSessionId, continueRecent, previewInit, agent: AgentKind = 'claude') => {
+  createTerminal: async (label, workingDirectory, claudeArgs, envVars, colorTag, nickname, restoredOutput, resumeSessionId, continueRecent, previewInit, agent: AgentKind = 'claude', credentialBindings) => {
     try {
       const { useAppStore } = await import('./appStore');
       const costTracking = useAppStore.getState().costTrackingEnabled;
@@ -260,6 +266,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
           continue_recent: !!continueRecent,
           cost_tracking: costTracking,
           agent,
+          credential_bindings: credentialBindings ?? [],
         },
       });
       // Parse model, effort, worktree from claude_args

@@ -1,4 +1,4 @@
-import type { AgentKind } from '../lib/agents';
+import { allAgentSpecs, type AgentKind } from '../lib/agents';
 
 // Official brand marks used under nominative fair use to identify which CLI
 // a terminal is running. SVG paths sourced from simple-icons (CC0) for
@@ -85,5 +85,34 @@ export function BrandIcon({ kind, size = 22 }: BrandIconProps) {
       return <span className="text-text-primary"><CursorMark size={size} /></span>;
     case 'antigravity':
       return <span style={{ color: '#7C3AED' }}><AntigravityMark size={size} /></span>;
+    default: {
+      // Custom agent: render a tinted rounded-square monogram tile using
+      // the spec's color and monogram. Falls back to a neutral blue and
+      // "?" if the spec isn't registered yet (e.g. stale reference).
+      const spec = allAgentSpecs().find(s => s.kind === kind);
+      const color = spec?.color ?? '#5AC8FA';
+      const monogram = spec?.monogram ?? '?';
+      return (
+        <span
+          aria-hidden
+          style={{
+            width: size,
+            height: size,
+            background: `${color}22`,
+            color,
+            borderRadius: Math.max(4, Math.round(size * 0.22)),
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontWeight: 700,
+            fontSize: Math.round(size * 0.5),
+            lineHeight: 1,
+            letterSpacing: '-0.02em',
+          }}
+        >
+          {monogram}
+        </span>
+      );
+    }
   }
 }

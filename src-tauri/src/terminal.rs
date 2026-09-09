@@ -30,6 +30,10 @@ pub struct TerminalConfig {
     /// restored rows from before this field existed migrate to Claude.
     #[serde(default)]
     pub agent: crate::config::AgentKind,
+    /// Credentials this terminal was launched with, by id only. Session
+    /// restore re-resolves them from the OS store; values are never stored.
+    #[serde(default)]
+    pub credential_bindings: Vec<crate::config::CredentialBinding>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -55,23 +59,21 @@ fn is_benign_close_error(e: &std::io::Error) -> bool {
     matches!(e.raw_os_error(), Some(6) | Some(109) | Some(232))
 }
 
-/// Resolve the binary + arg list for a given agent. Extracted so the spawn
-/// pipeline (which is IO-heavy and awkward to test directly) has one testable
-/// seam. Args are cloned so callers keep ownership of the original vec.
-pub fn build_agent_command(agent: crate::config::AgentKind, args: &[String]) -> (String, Vec<String>) {
-    let spec = crate::agents::spec_for(agent);
-    (spec.binary.to_string(), args.to_vec())
+/// Resolve the binary + arg list for a resolved agent spec. Args are cloned
+/// so callers keep ownership of the original vec.
+pub fn build_agent_command(spec: &crate::agents::AgentSpec, args: &[String]) -> (String, Vec<String>) {
+    (spec.binary.clone(), args.to_vec())
 }
 
 fn configure_agent_environment(
     cmd: &mut CommandBuilder,
-    agent: crate::config::AgentKind,
+    spec: &crate::agents::AgentSpec,
     env_vars: &HashMap<String, String>,
 ) {
     // Claude's fullscreen renderer owns a virtual transcript that xterm cannot
     // measure or drag. Keep output in native scrollback by default (also
     // supported by Claude 2.1.117). Explicit profile/session env takes priority.
-    if agent == crate::config::AgentKind::Claude {
+    if spec.kind == crate::config::AgentKind::Claude {
         cmd.env("CLAUDE_CODE_NO_FLICKER", "0");
     }
     for (key, value) in env_vars {
@@ -92,12 +94,12 @@ pub(crate) struct ResumeInjection {
 /// Compute the resume/continue argv injection for `agent`. Returns an
 /// empty injection when neither a session id nor `continue_recent` is set.
 pub(crate) fn resume_flags_for(
-    agent: crate::config::AgentKind,
+    spec: &crate::agents::AgentSpec,
     resume_id: Option<&str>,
     continue_recent: bool,
 ) -> ResumeInjection {
     use crate::config::AgentKind;
-    match (agent, resume_id) {
+    match (&spec.kind, resume_id) {
         // Claude: `--resume=<id>` is the only safe binding form because
         // Commander.js parses `--resume <id>` as "open picker" plus a
         // stray positional (see the existing comment we inherited).
@@ -136,6 +138,27 @@ pub(crate) fn resume_flags_for(
             subcommand: None,
             leading: vec!["--continue".to_string()],
         },
+        // Custom agents: render the user's template. `{id}` templates need an
+        // id; templates without `{id}` are the "continue recent" form and only
+        // fire on `continue_recent`. A leading token that is not a flag is a
+        // subcommand (Codex-style `resume <id>`).
+        (AgentKind::Custom(_), _) => {
+            let Some(tpl) = spec.resume_flag.as_deref() else {
+                return ResumeInjection::default();
+            };
+            let has_id = tpl.contains("{id}");
+            let rendered = match (has_id, resume_id) {
+                (true, Some(id)) => tpl.replace("{id}", id),
+                (false, None) if continue_recent => tpl.to_string(),
+                _ => return ResumeInjection::default(),
+            };
+            let mut tokens: Vec<String> = rendered.split_whitespace().map(String::from).collect();
+            let subcommand = match tokens.first() {
+                Some(first) if !first.starts_with('-') => Some(tokens.remove(0)),
+                _ => None,
+            };
+            ResumeInjection { subcommand, leading: tokens }
+        }
         _ => ResumeInjection::default(),
     }
 }
@@ -171,7 +194,7 @@ impl TerminalManager {
     }
 
     /// Characters that could enable shell injection when passed through `cmd /C` or `sh -c`
-    const SHELL_METACHARACTERS: &'static [char] = &[
+    pub(crate) const SHELL_METACHARACTERS: &'static [char] = &[
         '&', '|', ';', '`', '$', '(', ')', '{', '}', '<', '>', '^', '\n', '\r',
         '\'', '"', '\\', '~', '*', '?', '[', ']', '!', '\t', '#',
     ];
@@ -185,7 +208,7 @@ impl TerminalManager {
     ];
 
     /// Environment variable names that must not be overridden by user profiles
-    const BLOCKED_ENV_VARS: &'static [&'static str] = &[
+    pub(crate) const BLOCKED_ENV_VARS: &'static [&'static str] = &[
         "PATH", "PATHEXT", "COMSPEC", "SYSTEMROOT", "WINDIR",
         "LD_PRELOAD", "LD_LIBRARY_PATH", "DYLD_INSERT_LIBRARIES", "DYLD_LIBRARY_PATH",
         "NODE_OPTIONS", "NODE_EXTRA_CA_CERTS",
@@ -199,10 +222,12 @@ impl TerminalManager {
     pub fn create_terminal(
         &mut self,
         label: String,
-        agent: crate::config::AgentKind,
+        spec: crate::agents::AgentSpec,
         working_directory: String,
         claude_args: Vec<String>,
         env_vars: HashMap<String, String>,
+        secret_env_vars: HashMap<String, String>,
+        credential_bindings: Vec<crate::config::CredentialBinding>,
         color_tag: Option<String>,
         nickname: Option<String>,
         tx: mpsc::Sender<(String, Vec<u8>)>,
@@ -245,7 +270,7 @@ impl TerminalManager {
                 return Err(error_reporter::user_err("Invalid session id"));
             }
         }
-        let injection = resume_flags_for(agent, resume_session_id.as_deref(), continue_recent);
+        let injection = resume_flags_for(&spec, resume_session_id.as_deref(), continue_recent);
         let injected_len = injection.subcommand.as_ref().map_or(0, |_| 1) + injection.leading.len();
         let claude_args: Vec<String> = if injected_len > 0 {
             let mut v = Vec::with_capacity(claude_args.len() + injected_len);
@@ -259,6 +284,14 @@ impl TerminalManager {
 
         // Filter out blocked environment variables
         let safe_env_vars: HashMap<String, String> = env_vars
+            .into_iter()
+            .filter(|(key, _)| {
+                let upper = key.to_uppercase();
+                !Self::BLOCKED_ENV_VARS.iter().any(|blocked| blocked.eq_ignore_ascii_case(&upper))
+            })
+            .collect();
+
+        let safe_secret_env: HashMap<String, String> = secret_env_vars
             .into_iter()
             .filter(|(key, _)| {
                 let upper = key.to_uppercase();
@@ -292,7 +325,7 @@ impl TerminalManager {
         // Resolve which agent binary to launch. `build_agent_command` returns
         // the binary name and echoes the args back so we can hand them to
         // CommandBuilder platform-appropriately.
-        let (agent_binary, spawn_args) = build_agent_command(agent, &claude_args);
+        let (agent_binary, spawn_args) = build_agent_command(&spec, &claude_args);
 
         // Spawn the agent binary directly so the process exits when it
         // finishes, allowing the terminal-finished event to fire for
@@ -327,8 +360,13 @@ impl TerminalManager {
             };
             let mut c = CommandBuilder::new(&shell);
             // Build command string with shell-escaped args as defense-in-depth
-            // (args are already validated against metacharacters above)
-            let mut full_cmd = agent_binary.clone();
+            // (args are already validated against metacharacters above).
+            // Single-quote the binary path so spaces in the path (e.g.
+            // `/opt/my agent/x`) don't get tokenised. Any single quote inside
+            // the path is escaped by closing the quote, injecting `\'`, and
+            // reopening - the standard shell trick.
+            let quoted_binary = format!("'{}'", agent_binary.replace('\'', r"'\''"));
+            let mut full_cmd = quoted_binary;
             for arg in &spawn_args {
                 full_cmd.push(' ');
                 // Single-quote wrap each arg; escape embedded single quotes
@@ -353,13 +391,18 @@ impl TerminalManager {
         }
 
         // Set environment variables (blocked keys already filtered out)
-        configure_agent_environment(&mut cmd, agent, &safe_env_vars);
+        configure_agent_environment(&mut cmd, &spec, &safe_env_vars);
+
+        // Bindings win over profile env vars with the same name.
+        for (key, value) in &safe_secret_env {
+            cmd.env(key, value);
+        }
 
         // Claude Code is the only agent that speaks the OTel env-var protocol
         // we ship with. Codex ignores these, but injecting them is harmless -
         // still, we skip to keep the process env clean and to make the intent
         // obvious to future readers.
-        if agent == crate::config::AgentKind::Claude {
+        if spec.kind == crate::config::AgentKind::Claude {
             if let Some(endpoint) = otel_endpoint.as_deref() {
                 cmd.env("CLAUDE_CODE_ENABLE_TELEMETRY", "1");
                 cmd.env("OTEL_METRICS_EXPORTER", "otlp");
@@ -396,7 +439,8 @@ impl TerminalManager {
             status: TerminalStatus::Running,
             color_tag,
             claude_session_id: resume_session_id,
-            agent,
+            agent: spec.kind.clone(),
+            credential_bindings,
         };
 
         let mut reader = pty_pair.master.try_clone_reader()
@@ -568,6 +612,7 @@ impl TerminalManager {
             color_tag: None,
             claude_session_id: None,
             agent: crate::config::AgentKind::Claude,
+            credential_bindings: Vec::new(),
         };
 
         let mut reader = pty_pair.master.try_clone_reader()
@@ -689,6 +734,7 @@ impl TerminalManager {
             color_tag: None,
             claude_session_id: None,
             agent: crate::config::AgentKind::Claude,
+            credential_bindings: Vec::new(),
         };
 
         let mut reader = pty_pair.master.try_clone_reader()
@@ -933,18 +979,20 @@ mod tests {
     #[test]
     fn claude_uses_native_scrollback_unless_session_explicitly_overrides_it() {
         use crate::config::AgentKind;
+        let claude_spec = crate::agents::builtin_spec(&AgentKind::Claude).unwrap();
+        let codex_spec = crate::agents::builtin_spec(&AgentKind::Codex).unwrap();
         let mut cmd = CommandBuilder::new("claude");
         cmd.env("CLAUDE_CODE_NO_FLICKER", "1");
-        configure_agent_environment(&mut cmd, AgentKind::Claude, &HashMap::new());
+        configure_agent_environment(&mut cmd, &claude_spec, &HashMap::new());
         assert_eq!(cmd.get_env("CLAUDE_CODE_NO_FLICKER"), Some(std::ffi::OsStr::new("0")));
 
         let overrides = HashMap::from([("CLAUDE_CODE_NO_FLICKER".to_string(), "1".to_string())]);
-        configure_agent_environment(&mut cmd, AgentKind::Claude, &overrides);
+        configure_agent_environment(&mut cmd, &claude_spec, &overrides);
         assert_eq!(cmd.get_env("CLAUDE_CODE_NO_FLICKER"), Some(std::ffi::OsStr::new("1")));
 
         let mut other = CommandBuilder::new("codex");
         other.env_remove("CLAUDE_CODE_NO_FLICKER");
-        configure_agent_environment(&mut other, AgentKind::Codex, &HashMap::new());
+        configure_agent_environment(&mut other, &codex_spec, &HashMap::new());
         assert!(other.get_env("CLAUDE_CODE_NO_FLICKER").is_none());
     }
 
@@ -1004,6 +1052,7 @@ mod tests {
                     color_tag: None,
                     claude_session_id: None,
                     agent: crate::config::AgentKind::Claude,
+                    credential_bindings: Vec::new(),
                 },
                 pty_pair,
                 writer,
@@ -1012,6 +1061,20 @@ mod tests {
                 last_input_at: None,
             },
         );
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn shell_quoted_binary_survives_spaces_and_single_quotes() {
+        // Just a sanity check that our quoting pattern produces valid POSIX
+        // shell - full spawn integration is exercised by the existing PTY
+        // tests, which don't have space-in-path scenarios yet.
+        let path = "/opt/my agent/x";
+        let quoted = format!("'{}'", path.replace('\'', r"'\''"));
+        assert_eq!(quoted, "'/opt/my agent/x'");
+        let path2 = "/opt/it's/x";
+        let quoted2 = format!("'{}'", path2.replace('\'', r"'\''"));
+        assert_eq!(quoted2, r"'/opt/it'\''s/x'");
     }
 
     #[test]
@@ -1059,10 +1122,12 @@ mod tests {
         let err = mgr
             .create_terminal(
                 "l".into(),
-                crate::config::AgentKind::Claude,
+                crate::agents::builtin_spec(&crate::config::AgentKind::Claude).unwrap(),
                 String::new(),
                 vec!["--flag&&evil".into()],
                 HashMap::new(),
+                HashMap::new(),
+                Vec::new(),
                 None,
                 None,
                 tx,
@@ -1111,21 +1176,21 @@ mod tests {
 
     #[test]
     fn build_agent_command_uses_claude_binary_for_claude() {
-        let (bin, args) = build_agent_command(crate::config::AgentKind::Claude, &["--model".into(), "opus".into()]);
+        let (bin, args) = build_agent_command(&crate::agents::builtin_spec(&crate::config::AgentKind::Claude).unwrap(), &["--model".into(), "opus".into()]);
         assert_eq!(bin, "claude");
         assert_eq!(args, vec!["--model", "opus"]);
     }
 
     #[test]
     fn build_agent_command_uses_codex_binary_for_codex() {
-        let (bin, args) = build_agent_command(crate::config::AgentKind::Codex, &["--json".into()]);
+        let (bin, args) = build_agent_command(&crate::agents::builtin_spec(&crate::config::AgentKind::Codex).unwrap(), &["--json".into()]);
         assert_eq!(bin, "codex");
         assert_eq!(args, vec!["--json"]);
     }
 
     #[test]
     fn build_agent_command_passes_through_empty_args() {
-        let (bin, args) = build_agent_command(crate::config::AgentKind::Codex, &[]);
+        let (bin, args) = build_agent_command(&crate::agents::builtin_spec(&crate::config::AgentKind::Codex).unwrap(), &[]);
         assert_eq!(bin, "codex");
         assert!(args.is_empty());
     }
@@ -1134,82 +1199,176 @@ mod tests {
 
     #[test]
     fn resume_flags_for_claude_use_equals_form() {
-        let out = super::resume_flags_for(AgentKind::Claude, Some("abc-123"), false);
+        let out = super::resume_flags_for(&crate::agents::builtin_spec(&AgentKind::Claude).unwrap(), Some("abc-123"), false);
         assert_eq!(out.leading, vec!["--resume=abc-123".to_string()]);
         assert!(out.subcommand.is_none());
     }
 
     #[test]
     fn continue_flag_for_claude() {
-        let out = super::resume_flags_for(AgentKind::Claude, None, true);
+        let out = super::resume_flags_for(&crate::agents::builtin_spec(&AgentKind::Claude).unwrap(), None, true);
         assert_eq!(out.leading, vec!["--continue".to_string()]);
         assert!(out.subcommand.is_none());
     }
 
     #[test]
     fn resume_for_codex_uses_subcommand() {
-        let out = super::resume_flags_for(AgentKind::Codex, Some("sess-9"), false);
+        let out = super::resume_flags_for(&crate::agents::builtin_spec(&AgentKind::Codex).unwrap(), Some("sess-9"), false);
         assert_eq!(out.subcommand.as_deref(), Some("resume"));
         assert_eq!(out.leading, vec!["sess-9".to_string()]);
     }
 
     #[test]
     fn continue_for_codex_uses_resume_last_subcommand() {
-        let out = super::resume_flags_for(AgentKind::Codex, None, true);
+        let out = super::resume_flags_for(&crate::agents::builtin_spec(&AgentKind::Codex).unwrap(), None, true);
         assert_eq!(out.subcommand.as_deref(), Some("resume"));
         assert_eq!(out.leading, vec!["--last".to_string()]);
     }
 
     #[test]
     fn resume_for_cursor_uses_flag() {
-        let out = super::resume_flags_for(AgentKind::Cursor, Some("chat-77"), false);
+        let out = super::resume_flags_for(&crate::agents::builtin_spec(&AgentKind::Cursor).unwrap(), Some("chat-77"), false);
         assert_eq!(out.leading, vec!["--resume".to_string(), "chat-77".to_string()]);
         assert!(out.subcommand.is_none());
     }
 
     #[test]
     fn continue_for_cursor() {
-        let out = super::resume_flags_for(AgentKind::Cursor, None, true);
+        let out = super::resume_flags_for(&crate::agents::builtin_spec(&AgentKind::Cursor).unwrap(), None, true);
         assert_eq!(out.leading, vec!["--continue".to_string()]);
     }
 
     #[test]
     fn resume_for_antigravity_uses_conversation_flag() {
-        let out = super::resume_flags_for(AgentKind::Antigravity, Some("conv-1"), false);
+        let out = super::resume_flags_for(&crate::agents::builtin_spec(&AgentKind::Antigravity).unwrap(), Some("conv-1"), false);
         assert_eq!(out.leading, vec!["--conversation".to_string(), "conv-1".to_string()]);
     }
 
     #[test]
     fn continue_for_antigravity() {
-        let out = super::resume_flags_for(AgentKind::Antigravity, None, true);
+        let out = super::resume_flags_for(&crate::agents::builtin_spec(&AgentKind::Antigravity).unwrap(), None, true);
         assert_eq!(out.leading, vec!["--continue".to_string()]);
     }
 
     #[test]
     fn no_flags_when_neither_resume_nor_continue_codex() {
-        let out = super::resume_flags_for(AgentKind::Codex, None, false);
+        let out = super::resume_flags_for(&crate::agents::builtin_spec(&AgentKind::Codex).unwrap(), None, false);
         assert!(out.leading.is_empty());
         assert!(out.subcommand.is_none());
     }
 
     #[test]
     fn no_flags_when_neither_resume_nor_continue_claude() {
-        let out = super::resume_flags_for(AgentKind::Claude, None, false);
+        let out = super::resume_flags_for(&crate::agents::builtin_spec(&AgentKind::Claude).unwrap(), None, false);
         assert!(out.leading.is_empty());
         assert!(out.subcommand.is_none());
     }
 
     #[test]
     fn no_flags_when_neither_resume_nor_continue_cursor() {
-        let out = super::resume_flags_for(AgentKind::Cursor, None, false);
+        let out = super::resume_flags_for(&crate::agents::builtin_spec(&AgentKind::Cursor).unwrap(), None, false);
         assert!(out.leading.is_empty());
         assert!(out.subcommand.is_none());
     }
 
     #[test]
     fn no_flags_when_neither_resume_nor_continue_antigravity() {
-        let out = super::resume_flags_for(AgentKind::Antigravity, None, false);
+        let out = super::resume_flags_for(&crate::agents::builtin_spec(&AgentKind::Antigravity).unwrap(), None, false);
         assert!(out.leading.is_empty());
         assert!(out.subcommand.is_none());
+    }
+
+    fn custom_spec(tpl: Option<&str>) -> crate::agents::AgentSpec {
+        crate::agents::AgentSpec {
+            kind: AgentKind::Custom("c1".into()),
+            display_name: "OpenCode".into(),
+            binary: "opencode".into(),
+            install_url: None,
+            install_hint: None,
+            resume_flag: tpl.map(|s| s.to_string()),
+        }
+    }
+
+    #[test]
+    fn custom_resume_substitutes_id_into_flag_template() {
+        let spec = custom_spec(Some("--session {id}"));
+        let out = super::resume_flags_for(&spec, Some("s-42"), false);
+        assert_eq!(out.subcommand, None);
+        assert_eq!(out.leading, vec!["--session".to_string(), "s-42".to_string()]);
+    }
+
+    #[test]
+    fn custom_resume_leading_non_flag_token_becomes_subcommand() {
+        let spec = custom_spec(Some("resume {id}"));
+        let out = super::resume_flags_for(&spec, Some("s-42"), false);
+        assert_eq!(out.subcommand, Some("resume".to_string()));
+        assert_eq!(out.leading, vec!["s-42".to_string()]);
+    }
+
+    #[test]
+    fn custom_continue_uses_template_without_id_verbatim() {
+        let spec = custom_spec(Some("--continue"));
+        let out = super::resume_flags_for(&spec, None, true);
+        assert_eq!(out.leading, vec!["--continue".to_string()]);
+    }
+
+    #[test]
+    fn custom_id_template_with_no_id_is_empty() {
+        let spec = custom_spec(Some("--session {id}"));
+        let out = super::resume_flags_for(&spec, None, true);
+        assert!(out.subcommand.is_none() && out.leading.is_empty());
+    }
+
+    #[test]
+    fn custom_continue_template_ignores_a_supplied_id() {
+        // A `--continue`-style template has nowhere to put the id: spawn fresh
+        // rather than pass an id the CLI would misread as a prompt.
+        let spec = custom_spec(Some("--continue"));
+        let out = super::resume_flags_for(&spec, Some("s-1"), false);
+        assert!(out.leading.is_empty());
+    }
+
+    #[test]
+    fn custom_without_template_never_injects() {
+        let spec = custom_spec(None);
+        assert!(super::resume_flags_for(&spec, Some("x"), true).leading.is_empty());
+    }
+
+    #[test]
+    fn build_agent_command_uses_custom_binary() {
+        let spec = custom_spec(None);
+        let (bin, args) = build_agent_command(&spec, &["--agent".into(), "build".into()]);
+        assert_eq!(bin, "opencode");
+        assert_eq!(args, vec!["--agent".to_string(), "build".to_string()]);
+    }
+
+    #[test]
+    fn terminal_config_carries_bindings_but_serializes_no_secret_values() {
+        let cfg = TerminalConfig {
+            id: "t1".into(),
+            label: "L".into(),
+            nickname: None,
+            profile_id: None,
+            working_directory: "C:\\w".into(),
+            claude_args: vec![],
+            env_vars: HashMap::from([("PLAIN".to_string(), "1".to_string())]),
+            created_at: Utc::now(),
+            status: TerminalStatus::Running,
+            color_tag: None,
+            claude_session_id: None,
+            agent: crate::config::AgentKind::Claude,
+            credential_bindings: vec![crate::config::CredentialBinding {
+                env: "ANTHROPIC_API_KEY".into(),
+                credential_id: "c1".into(),
+            }],
+        };
+        let json = serde_json::to_string(&cfg).unwrap();
+        assert!(json.contains("\"credential_bindings\""));
+        assert!(json.contains("\"c1\""));
+        assert!(!json.contains("ANTHROPIC_API_KEY\":\"sk"));
+        // Older rows without the field still load.
+        let old = json.replace(",\"credential_bindings\":[{\"env\":\"ANTHROPIC_API_KEY\",\"credential_id\":\"c1\"}]", "");
+        let back: TerminalConfig = serde_json::from_str(&old).unwrap();
+        assert!(back.credential_bindings.is_empty());
     }
 }

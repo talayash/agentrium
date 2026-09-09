@@ -95,6 +95,7 @@ Key Tauri commands exposed to the frontend:
 - `check_system_requirements` / `install_claude_code`
 - `get_claude_version` / `check_claude_update` / `update_claude_code`
 - `get_hints` / `send_notification` / `open_external_url`
+- `probe_binary` / `list_custom_agents` / `save_custom_agent` / `delete_custom_agent` / `list_credentials` / `save_credential` / `delete_credential` / `test_credential` / `get_agent_bindings` / `set_agent_bindings` / `strip_profile_env_var` / `plaintext_key_profiles_to_prompt`
 
 ## Development
 
@@ -154,3 +155,4 @@ If not using `/publish`, the same steps can be done manually:
 - **Unread indicator**: Terminals receiving output while not active are tracked in `unreadTerminalIds` Set
 - **Database location**: `ProjectDirs::from("com", "claudeterminal", "ClaudeTerminal")` → data dir → `claudeterminal.db`
 - **Multi-agent session restore**: session id capture / listing / resume-flag injection is routed through `session_provider::provider_for(agent)` (Rust) and `listAgentSessions(agent, cwd)` (TypeScript). Each agent's on-disk convention lives in its own module (`claude_session.rs`, `codex_session.rs`, `cursor_session.rs`; Antigravity is cloud-backed with no local index). To add a new agent, implement `SessionProvider` for its storage layout and extend `resume_flags_for` in `terminal.rs` with its CLI form (flag vs subcommand).
+- **Custom agents and credentials**: `AgentKind::Custom(id)` (wire form `custom:<id>`) resolves through `custom_agents.rs` + the `custom_agents` table into an owned `agents::AgentSpec`; `resume_flags_for` renders the agent's `resume_flag` template. API keys live only in the OS credential store behind `credentials::SecretStore` (`keyring` crate); SQLite keeps `CredentialMeta` (label, env var, masked tail). `create_terminal` resolves `credential_bindings` into a `secret_env_vars` map applied to the PTY but never written to `TerminalConfig`. Frontend: `AgentKind` is `BuiltinAgentKind | \`custom:${string}\``, custom specs are registered via `setCustomAgentSpecs` from `agentRegistryStore`, and any `Record<AgentKind, T>` must be `Record<BuiltinAgentKind, T>` plus a fallback for custom kinds.

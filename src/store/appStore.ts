@@ -4,7 +4,8 @@ import { invoke } from '@tauri-apps/api/core';
 import type { TerminalThemeName } from '../lib/terminalThemes';
 import { MAX_GRID_TERMINALS } from '../lib/gridEmptyCells';
 import { addPin, removePin, togglePin } from '../lib/pinnedTabs';
-import type { AgentKind } from '../lib/agents';
+import type { AgentKind, BuiltinAgentKind } from '../lib/agents';
+import type { CredentialBinding } from '../lib/credentials';
 
 export type TerminalCursorStyle = 'bar' | 'block' | 'underline';
 export type TerminalScrollbarMode = 'auto-hide' | 'always' | 'hidden';
@@ -82,8 +83,8 @@ interface AppState {
    * setDefaultClaudeArgs. Codex/Cursor/Antigravity defaults start empty
    * and can be edited in Settings (planned) or inline in the modal.
    */
-  defaultAgentArgs: Record<import('../lib/agents').AgentKind, string[]>;
-  setDefaultAgentArgs: (agent: import('../lib/agents').AgentKind, args: string[]) => void;
+  defaultAgentArgs: Record<BuiltinAgentKind, string[]>;
+  setDefaultAgentArgs: (agent: BuiltinAgentKind, args: string[]) => void;
   notifyOnFinish: boolean;
   /** Count of terminal-finished events fired while the app was hidden and not
    *  yet acknowledged by the user. Renders the accent dot on the status-bar bell. */
@@ -479,7 +480,7 @@ interface AppState {
   setPromptEditorShortcutEnabled: (enabled: boolean) => void;
 }
 
-interface SavedTerminalConfig {
+export interface SavedTerminalConfig {
   id: string;
   label: string;
   nickname: string | null;
@@ -489,6 +490,7 @@ interface SavedTerminalConfig {
   color_tag: string | null;
   claude_session_id?: string | null;
   agent: AgentKind;
+  credential_bindings?: CredentialBinding[];
 }
 
 // Helper to determine optimal layout based on terminal count

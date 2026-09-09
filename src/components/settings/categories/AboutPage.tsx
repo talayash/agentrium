@@ -16,12 +16,7 @@ registerSetting({
 
 export default function AboutPage() {
   const [appVersion, setAppVersion] = useState('');
-  const [agentVersions, setAgentVersions] = useState<Record<AgentKind, string | null>>({
-    claude: null,
-    codex: null,
-    cursor: null,
-    antigravity: null,
-  });
+  const [agentVersions, setAgentVersions] = useState<Partial<Record<AgentKind, string | null>>>({});
 
   useEffect(() => {
     getVersion().then(setAppVersion).catch(() => {});
@@ -42,7 +37,7 @@ export default function AboutPage() {
         <div className="py-2 text-[12.5px] text-text-primary space-y-1.5">
           <p>Agentrium <span className="font-mono text-text-secondary">v{appVersion}</span></p>
           {AGENT_SPECS.map((spec) => {
-            const version = agentVersions[spec.kind];
+            const version = agentVersions[spec.kind] ?? null;
             return (
               <p key={spec.kind} className="flex items-center gap-1.5">
                 <span className="opacity-70 flex items-center"><BrandIcon kind={spec.kind} size={12} /></span>

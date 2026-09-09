@@ -1,35 +1,33 @@
-import { AGENT_SPECS, type AgentKind } from '../lib/agents';
+import { Plus } from 'lucide-react';
+import { allAgentSpecs, isCustomAgent, type AgentKind } from '../lib/agents';
 import { BrandIcon } from './BrandIcon';
 
 interface AgentPickerProps {
   value: AgentKind;
   onChange: (kind: AgentKind) => void;
+  onAddAgent?: () => void;
   className?: string;
 }
 
-/**
- * Agent picker: a row of buttons (one per registered agent) with each
- * brand's official logo. Rendered above the Profile grid in
- * NewTerminalModal and at the top of ProfileModal. The layout auto-grows
- * with `AGENT_SPECS` - a 5th agent needs a new entry in the catalog and
- * a new `BrandIcon` case in `./BrandIcon.tsx`.
- */
-export function AgentPicker({ value, onChange, className = '' }: AgentPickerProps) {
-  // Tailwind JIT needs literal class names, so map count -> class explicitly.
-  // Falls back to grid-cols-4 for 5+ agents (would wrap into two rows).
+export function AgentPicker({ value, onChange, onAddAgent, className = '' }: AgentPickerProps) {
+  const specs = allAgentSpecs();
+  const tileCount = specs.length + (onAddAgent ? 1 : 0);
   const cols =
-    AGENT_SPECS.length <= 2 ? 'grid-cols-2'
-    : AGENT_SPECS.length === 3 ? 'grid-cols-3'
-    : 'grid-cols-4';
+    tileCount <= 2 ? 'grid-cols-2'
+    : tileCount === 3 ? 'grid-cols-3'
+    : tileCount === 4 ? 'grid-cols-4'
+    : 'grid-cols-3';
   return (
     <div className={`grid ${cols} gap-2 ${className}`}>
-      {AGENT_SPECS.map((spec) => {
+      {specs.map((spec) => {
         const selected = spec.kind === value;
         return (
           <button
             key={spec.kind}
+            type="button"
+            aria-pressed={selected}
             onClick={() => onChange(spec.kind)}
-            className={`flex flex-col items-center gap-1.5 p-3 rounded-xl transition-[background-color,box-shadow,transform] duration-100 active:scale-[0.97] ${
+            className={`relative flex flex-col items-center gap-1.5 p-3 rounded-xl transition-[background-color,box-shadow,transform] duration-100 active:scale-[0.97] ${
               selected
                 ? 'bg-accent-primary/12 ring-1 ring-accent-primary/45 shadow-[0_2px_10px_var(--accent-glow-md)]'
                 : 'bg-fill-hover ring-1 ring-seam hover:bg-fill-active hover:ring-seam-strong'
@@ -37,9 +35,22 @@ export function AgentPicker({ value, onChange, className = '' }: AgentPickerProp
           >
             <BrandIcon kind={spec.kind} />
             <p className="text-text-primary text-[12px] font-medium text-center leading-tight">{spec.displayName}</p>
+            {isCustomAgent(spec.kind) && (
+              <span className="absolute top-1.5 right-2 text-[9px] font-semibold uppercase tracking-[0.04em] text-text-tertiary">Local</span>
+            )}
           </button>
         );
       })}
+      {onAddAgent && (
+        <button
+          type="button"
+          onClick={onAddAgent}
+          className="flex flex-col items-center justify-center gap-1.5 p-3 rounded-xl border border-dashed border-[rgba(255,255,255,0.14)] text-text-tertiary hover:text-text-secondary hover:bg-fill-hover transition-colors"
+        >
+          <Plus size={18} strokeWidth={2.25} />
+          <p className="text-[12px] font-medium leading-tight">Add agent</p>
+        </button>
+      )}
     </div>
   );
 }

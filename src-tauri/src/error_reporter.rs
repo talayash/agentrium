@@ -49,6 +49,27 @@ pub fn should_report(err: &str) -> bool {
     !is_user_error(err)
 }
 
+/// Secret values resolved for a spawn. `scrub` replaces any occurrence in an
+/// outgoing report with `<credential>`. Bounded so a long session cannot grow
+/// it without limit; the oldest entries fall off.
+static RUNTIME_SECRETS: std::sync::Mutex<std::collections::VecDeque<String>> =
+    std::sync::Mutex::new(std::collections::VecDeque::new());
+const MAX_RUNTIME_SECRETS: usize = 64;
+
+pub fn register_secret(value: &str) {
+    if value.len() < 8 {
+        return; // too short to redact safely without mangling ordinary text
+    }
+    let mut q = RUNTIME_SECRETS.lock().unwrap_or_else(|p| p.into_inner());
+    if q.iter().any(|v| v == value) {
+        return;
+    }
+    if q.len() >= MAX_RUNTIME_SECRETS {
+        q.pop_front();
+    }
+    q.push_back(value.to_string());
+}
+
 pub fn scrub(input: &str) -> String {
     use std::sync::OnceLock;
     static WIN_USER: OnceLock<regex::Regex> = OnceLock::new();
@@ -99,7 +120,15 @@ pub fn scrub(input: &str) -> String {
     let s = openai.replace_all(&s, "<api_key>");
     let s = bearer.replace_all(&s, "Bearer <token>");
     let s = npm_token.replace_all(&s, "_authToken=<token>");
-    s.into_owned()
+    let mut s = s.into_owned();
+    if let Ok(q) = RUNTIME_SECRETS.lock() {
+        for secret in q.iter() {
+            if s.contains(secret.as_str()) {
+                s = s.replace(secret.as_str(), "<credential>");
+            }
+        }
+    }
+    s
 }
 
 pub fn fingerprint(
@@ -487,6 +516,13 @@ mod tests {
     fn scrub_handles_file_uri_username_followed_by_quote() {
         let input = r#"src=file:///C:/Users/eve" loaded"#;
         assert_eq!(scrub(input), r#"src=file:///C:/Users/<user>" loaded"#);
+    }
+
+    #[test]
+    fn scrub_replaces_registered_runtime_secret() {
+        register_secret("zz-runtime-secret-value-123");
+        let out = scrub("failed with key zz-runtime-secret-value-123 in env");
+        assert_eq!(out, "failed with key <credential> in env");
     }
 
     #[test]
