@@ -1,5 +1,14 @@
 [
   {
+    "version": "1.33.7",
+    "date": "2026-09-10",
+    "features": [
+      { "title": "Editor reliability fixes", "description": "Prevents data loss when switching files with unsaved edits." },
+      { "title": "Session restore fixes", "description": "More reliable resume of prior Claude Code sessions and cross-window tab transfers." },
+      { "title": "Git integration fixes", "description": "Corrects Git path handling on Windows." }
+    ]
+  },
+  {
     "version": "1.33.6",
     "date": "2026-09-09",
     "features": [
