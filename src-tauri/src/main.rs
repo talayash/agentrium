@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod git_files;
 mod agents;
 mod custom_agents;
 mod credentials;

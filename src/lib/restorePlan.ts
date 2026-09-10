@@ -9,6 +9,7 @@
 // other terminal tabs".
 
 export interface RestorePlanInput {
+  agent?: string;
   claude_session_id?: string | null;
   working_directory: string;
   /** Saved spawn args; `__shell__` / `__script__` sentinels mark non-claude
@@ -32,6 +33,15 @@ export type RestoreMode =
  *    reason.
  */
 export function planRestoreModes(configs: RestorePlanInput[]): RestoreMode[] {
+  const isAgent = (c: RestorePlanInput) => !['__shell__', '__script__'].includes(c.claude_args?.[0] ?? '');
+  const directoryKey = (c: RestorePlanInput) => {
+    let path = c.working_directory.replace(/\\/g, '/').replace(/\/+$/, '');
+    // Fold drive/UNC paths only; Unix filesystems may distinguish case.
+    if (/^[a-z]:/i.test(path) || path.startsWith('//')) path = path.toLowerCase();
+    return JSON.stringify([c.agent ?? 'claude', path]);
+  };
+  // Reserve all explicit claims before assigning continuation, regardless of order.
+  const reservedCwds = new Set(configs.filter(c => isAgent(c) && c.claude_session_id).map(directoryKey));
   const usedSessionIds = new Set<string>();
   const continuedCwds = new Set<string>();
 
@@ -44,13 +54,15 @@ export function planRestoreModes(configs: RestorePlanInput[]): RestoreMode[] {
     }
     const sessionId = config.claude_session_id ?? null;
     if (sessionId) {
-      if (usedSessionIds.has(sessionId)) return { kind: 'fresh' };
-      usedSessionIds.add(sessionId);
+      const sessionKey = JSON.stringify([config.agent ?? 'claude', sessionId]);
+      if (usedSessionIds.has(sessionKey)) return { kind: 'fresh' };
+      usedSessionIds.add(sessionKey);
       return { kind: 'resume', sessionId };
     }
     // Windows paths are case-insensitive; normalize so "C:\Dev" and "c:\dev"
     // count as the same project.
-    const cwd = config.working_directory.toLowerCase();
+    const cwd = directoryKey(config);
+    if (reservedCwds.has(cwd)) return { kind: 'fresh' };
     if (continuedCwds.has(cwd)) return { kind: 'fresh' };
     continuedCwds.add(cwd);
     return { kind: 'continue' };
