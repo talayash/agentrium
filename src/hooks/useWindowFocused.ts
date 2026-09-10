@@ -10,14 +10,24 @@ export function useWindowFocused(): boolean {
   useEffect(() => {
     const win = getCurrentWindow();
     let unlisten: (() => void) | undefined;
+    let cancelled = false;
+    let receivedFocusEvent = false;
 
-    win.isFocused().then(setFocused).catch(() => { /* default true */ });
+    win.isFocused().then((value) => {
+      if (!cancelled && !receivedFocusEvent) setFocused(value);
+    }).catch(() => { /* default true */ });
     win
-      .onFocusChanged(({ payload }) => setFocused(payload))
-      .then((fn) => { unlisten = fn; })
+      .onFocusChanged(({ payload }) => {
+        receivedFocusEvent = true;
+        if (!cancelled) setFocused(payload);
+      })
+      .then((fn) => {
+        if (cancelled) fn();
+        else unlisten = fn;
+      })
       .catch(() => { /* ignore */ });
 
-    return () => { unlisten?.(); };
+    return () => { cancelled = true; unlisten?.(); };
   }, []);
 
   return focused;
