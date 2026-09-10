@@ -30,7 +30,22 @@ export function keyOf(cfg: Pick<TerminalConfig, 'claude_session_id' | 'working_d
 
 function read(): Layout {
   try {
-    return JSON.parse(localStorage.getItem(KEY) || '{}') as Layout;
+    const parsed: unknown = JSON.parse(localStorage.getItem(KEY) || '{}');
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    const layout: Layout = Object.create(null);
+    for (const [label, value] of Object.entries(parsed)) {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+      const { sessionKeys, geometry } = value;
+      if (!Array.isArray(sessionKeys) || !sessionKeys.every((key: unknown) => typeof key === 'string')) continue;
+      const entry: WindowEntry = { sessionKeys };
+      if (geometry && typeof geometry === 'object' &&
+          [geometry.x, geometry.y, geometry.w, geometry.h].every(Number.isFinite) &&
+          geometry.w > 0 && geometry.h > 0) {
+        entry.geometry = { x: geometry.x, y: geometry.y, w: geometry.w, h: geometry.h };
+      }
+      layout[label] = entry;
+    }
+    return layout;
   } catch {
     return {};
   }
