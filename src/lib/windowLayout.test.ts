@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { currentGeometry, getDetachedEntries, keyOf, removeEntry, upsertEntry } from './windowLayout';
+import { currentGeometry, getDetachedEntries, keyOf, restoreLayoutKeys, removeEntry, upsertEntry } from './windowLayout';
 
 const win = vi.hoisted(() => ({ outerPosition: vi.fn(), outerSize: vi.fn() }));
 vi.mock('@tauri-apps/api/window', () => ({ getCurrentWindow: () => win }));
@@ -8,9 +8,14 @@ const key = 'ct-window-layout';
 describe('window layout persistence', () => {
   beforeEach(() => localStorage.clear());
 
-  it('uses session identity with a working-directory fallback', () => {
-    expect(keyOf({ claude_session_id: 's1', working_directory: '/repo' })).toBe('sid:s1');
-    expect(keyOf({ claude_session_id: null, working_directory: '/repo' })).toBe('cwd:/repo');
+  it('keeps same-directory shells distinct and refuses ambiguous legacy routing', () => {
+    const configs = [
+      { id: 'a', claude_session_id: null, working_directory: '/repo' },
+      { id: 'b', claude_session_id: null, working_directory: '/repo' },
+      { id: 'c', claude_session_id: 's1', working_directory: '/repo' },
+    ];
+    expect(configs.map(keyOf)).toEqual(['tab:a', 'tab:b', 'tab:c']);
+    expect(restoreLayoutKeys(configs)).toEqual([['tab:a'], ['tab:b'], ['tab:c', 'sid:s1']]);
   });
 
   it('updates and removes one window without losing others; excludes main', () => {

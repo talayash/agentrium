@@ -55,6 +55,12 @@ export function TerminalTabs() {
     setActiveFilePath(path);
   }, [setActiveFilePath]);
 
+  const requestCloseFile = (path: string) => {
+    const tab = useAppStore.getState().openFiles.find(t => t.path === path);
+    if (tab && tab.content !== tab.original && !window.confirm(`Discard unsaved changes in ${fileBasename(path)}?`)) return;
+    closeFileTab(path);
+  };
+
   // Close the active session from the header (#59). Mirrors the sidebar
   // SessionCards' `closeWithReport` so error handling + telemetry stay
   // consistent with the existing close paths (per CLAUDE.md's frontend
@@ -234,11 +240,7 @@ export function TerminalTabs() {
                       onAuxClick={(e) => {
                         if (e.button !== 1) return;
                         e.preventDefault();
-                        if (dirty) {
-                          const ok = window.confirm(`Discard unsaved changes in ${fileBasename(tab.path)}?`);
-                          if (!ok) return;
-                        }
-                        closeFileTab(tab.path);
+                        requestCloseFile(tab.path);
                       }}
                       className={`group relative flex items-center gap-1.5 px-2.5 h-7 rounded-[10px] text-[12px] transition-colors flex-shrink-0 ${
                         isActive
@@ -251,18 +253,15 @@ export function TerminalTabs() {
                       <span
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (dirty) {
-                            const ok = window.confirm(`Discard unsaved changes in ${fileBasename(tab.path)}?`);
-                            if (!ok) return;
-                          }
-                          closeFileTab(tab.path);
+                          requestCloseFile(tab.path);
                         }}
                         role="button"
                         tabIndex={0}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
                             e.stopPropagation();
-                            closeFileTab(tab.path);
+                            requestCloseFile(tab.path);
                           }
                         }}
                         className="p-0.5 rounded hover:bg-fill-active text-text-tertiary hover:text-text-primary transition-colors flex items-center justify-center"

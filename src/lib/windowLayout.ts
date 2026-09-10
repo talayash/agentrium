@@ -19,13 +19,17 @@ export interface WindowEntry {
 }
 type Layout = Record<string, WindowEntry>;
 
-/**
- * Stable identity for a terminal across an app restart. Tab/config ids are
- * regenerated on restore, so we key off the Claude session id when present and
- * fall back to the working directory (good enough for plain shells).
- */
-export function keyOf(cfg: Pick<TerminalConfig, 'claude_session_id' | 'working_directory'>): string {
-  return cfg.claude_session_id ? `sid:${cfg.claude_session_id}` : `cwd:${cfg.working_directory}`;
+/** Saved terminal IDs identify tabs independently of conversation or directory. */
+export function keyOf(cfg: Pick<TerminalConfig, 'id'>): string {
+  return `tab:${cfg.id}`;
+}
+
+/** Legacy layout keys are usable only when they identify exactly one saved tab. */
+export function restoreLayoutKeys(configs: Array<Pick<TerminalConfig, 'id' | 'claude_session_id' | 'working_directory'>>): string[][] {
+  const legacy = configs.map(c => c.claude_session_id ? `sid:${c.claude_session_id}` : `cwd:${c.working_directory}`);
+  const counts = new Map<string, number>();
+  for (const key of legacy) counts.set(key, (counts.get(key) ?? 0) + 1);
+  return configs.map((c, i) => [keyOf(c), ...(counts.get(legacy[i]) === 1 ? [legacy[i]] : [])]);
 }
 
 function read(): Layout {

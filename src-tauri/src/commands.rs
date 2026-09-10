@@ -2088,18 +2088,7 @@ pub async fn get_terminal_changes(
         };
 
         // Check if it's a git repo and get branch name
-        let branch_output = git_cmd_async(&["rev-parse", "--abbrev-ref", "HEAD"])
-            .current_dir(&working_directory)
-            .output()
-            .await;
-
-        let (is_git_repo, branch) = match branch_output {
-            Ok(output) if output.status.success() => {
-                let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                (true, Some(branch))
-            }
-            _ => (false, None),
-        };
+        let (is_git_repo, branch) = crate::git_files::repository_branch(&working_directory).await;
 
         if !is_git_repo {
             return Ok(FileChangesResult {
@@ -2116,7 +2105,7 @@ pub async fn get_terminal_changes(
         let repo_root = resolve_repo_root(&working_directory).await.ok();
 
         // Get changed files
-        let status_output = git_cmd_async(&["status", "--porcelain"])
+        let status_output = git_cmd_async(&["status", "--porcelain=v1", "-z"])
             .current_dir(&working_directory)
             .output()
             .await
@@ -2134,52 +2123,7 @@ pub async fn get_terminal_changes(
             });
         }
 
-        let stdout = String::from_utf8_lossy(&status_output.stdout);
-        let mut changes: Vec<FileChange> = Vec::new();
-        for line in stdout.lines() {
-            if line.len() < 3 { continue; }
-            let x = line.as_bytes().get(0).copied().unwrap_or(b' ') as char;
-            let y = line.as_bytes().get(1).copied().unwrap_or(b' ') as char;
-            // Rename line: "R  old -> new"
-            let raw_path = &line[3..];
-            let path = if raw_path.contains(" -> ") {
-                raw_path.split(" -> ").nth(1).unwrap_or(raw_path).to_string()
-            } else {
-                raw_path.to_string()
-            };
-
-            if x == '?' && y == '?' {
-                // Untracked - always unstaged
-                changes.push(FileChange { path, status: "untracked".into(), staged: false });
-                continue;
-            }
-
-            let map_code = |c: char| match c {
-                'A' => "new",
-                'M' => "modified",
-                'D' => "deleted",
-                'R' => "renamed",
-                'C' => "new",
-                'U' => "modified", // conflicted - treat as modified
-                'T' => "modified", // type change
-                _ => "",
-            };
-
-            // Staged side (X)
-            if x != ' ' && x != '?' {
-                let status = map_code(x);
-                if !status.is_empty() {
-                    changes.push(FileChange { path: path.clone(), status: status.into(), staged: true });
-                }
-            }
-            // Unstaged side (Y)
-            if y != ' ' && y != '?' {
-                let status = map_code(y);
-                if !status.is_empty() {
-                    changes.push(FileChange { path, status: status.into(), staged: false });
-                }
-            }
-        }
+        let changes = crate::git_files::parse_status(&status_output.stdout);
 
         Ok(FileChangesResult {
             terminal_id: id,
@@ -4527,18 +4471,7 @@ pub async fn get_path_changes(
     wrap_cmd("get_path_changes", async move {
         validate_path_is_trusted(&state, &path).await?;
 
-        let branch_output = git_cmd_async(&["rev-parse", "--abbrev-ref", "HEAD"])
-            .current_dir(&path)
-            .output()
-            .await;
-
-        let (is_git_repo, branch) = match branch_output {
-            Ok(output) if output.status.success() => {
-                let b = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                (true, Some(b))
-            }
-            _ => (false, None),
-        };
+        let (is_git_repo, branch) = crate::git_files::repository_branch(&path).await;
 
         if !is_git_repo {
             return Ok(FileChangesResult {
@@ -4554,7 +4487,7 @@ pub async fn get_path_changes(
 
         let repo_root = resolve_repo_root(&path).await.ok();
 
-        let status_output = git_cmd_async(&["status", "--porcelain"])
+        let status_output = git_cmd_async(&["status", "--porcelain=v1", "-z"])
             .current_dir(&path)
             .output()
             .await
@@ -4572,48 +4505,7 @@ pub async fn get_path_changes(
             });
         }
 
-        let stdout = String::from_utf8_lossy(&status_output.stdout);
-        let mut changes: Vec<FileChange> = Vec::new();
-        for line in stdout.lines() {
-            if line.len() < 3 { continue; }
-            let x = line.as_bytes().get(0).copied().unwrap_or(b' ') as char;
-            let y = line.as_bytes().get(1).copied().unwrap_or(b' ') as char;
-            let raw_path = &line[3..];
-            let fpath = if raw_path.contains(" -> ") {
-                raw_path.split(" -> ").nth(1).unwrap_or(raw_path).to_string()
-            } else {
-                raw_path.to_string()
-            };
-
-            if x == '?' && y == '?' {
-                changes.push(FileChange { path: fpath, status: "untracked".into(), staged: false });
-                continue;
-            }
-
-            let map_code = |c: char| match c {
-                'A' => "new",
-                'M' => "modified",
-                'D' => "deleted",
-                'R' => "renamed",
-                'C' => "new",
-                'U' => "modified",
-                'T' => "modified",
-                _ => "",
-            };
-
-            if x != ' ' && x != '?' {
-                let status = map_code(x);
-                if !status.is_empty() {
-                    changes.push(FileChange { path: fpath.clone(), status: status.into(), staged: true });
-                }
-            }
-            if y != ' ' && y != '?' {
-                let status = map_code(y);
-                if !status.is_empty() {
-                    changes.push(FileChange { path: fpath, status: status.into(), staged: false });
-                }
-            }
-        }
+        let changes = crate::git_files::parse_status(&status_output.stdout);
 
         Ok(FileChangesResult {
             terminal_id: String::new(),
@@ -5156,34 +5048,9 @@ pub async fn git_discard_file(
         let root = resolve_repo_root(&path).await?;
 
         if untracked {
-            // Untracked files/directories aren't tracked by git - just remove from disk.
-            // Resolve and sanity-check it ends up inside the repo to avoid `..` escapes.
-            let joined = std::path::Path::new(&root).join(&file);
-            let canonical_target = joined.canonicalize().map_err(|e| {
-                format!("Cannot resolve '{}': {}", joined.display(), e)
-            })?;
-            let canonical_root = std::path::Path::new(&root)
-                .canonicalize()
-                .map_err(|e| format!("Cannot resolve repo '{}': {}", root, e))?;
-            if !canonical_target.starts_with(&canonical_root) {
-                return Err(format!(
-                    "Refusing to delete path outside repo: {}",
-                    canonical_target.display()
-                ));
-            }
-            let meta = tokio::fs::metadata(&canonical_target)
-                .await
-                .map_err(|e| format!("Failed to stat '{}': {}", canonical_target.display(), e))?;
-            if meta.is_dir() {
-                tokio::fs::remove_dir_all(&canonical_target)
-                    .await
-                    .map_err(|e| format!("Failed to delete directory: {}", e))?;
-            } else {
-                tokio::fs::remove_file(&canonical_target)
-                    .await
-                    .map_err(|e| format!("Failed to delete file: {}", e))?;
-            }
-            return Ok(());
+            return tokio::task::spawn_blocking(move || {
+                crate::git_files::discard_untracked(std::path::Path::new(&root), &file)
+            }).await.map_err(|e| format!("Discard task failed: {}", e))?;
         }
 
         // Tracked file - reset index + worktree for just this file to HEAD.

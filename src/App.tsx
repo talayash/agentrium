@@ -39,7 +39,7 @@ import { DragPreview } from './components/DragPreview';
 import { WebviewWindow, getAllWebviewWindows } from '@tauri-apps/api/webviewWindow';
 import { installTransferReceiver, requestTransfer, restoreDetachedWindow } from './lib/tabTransfer';
 import { filterLivePins } from './lib/pinnedTabs';
-import { keyOf, upsertEntry, removeEntry, getDetachedEntries, currentGeometry } from './lib/windowLayout';
+import { keyOf, restoreLayoutKeys, upsertEntry, removeEntry, getDetachedEntries, currentGeometry } from './lib/windowLayout';
 import { planRestoreModes } from './lib/restorePlan';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import type { TerminalConfig } from './store/terminalStore';
@@ -347,7 +347,7 @@ function App() {
   // Detached windows adopt the specific tabs named in their URL: fetch configs
   // from the shared backend (no spawn) and seed scrollback from the session log.
   useEffect(() => {
-    if (!isDetached) return;
+    if (!isDetached || initialIds.length === 0) return;
     let cancelled = false;
     (async () => {
       try {
@@ -387,7 +387,7 @@ function App() {
     let active = true;
     getCurrentWindow()
       .onCloseRequested((event) => {
-        if (closeConfirmedRef.current) return; // a choice was already made
+        if (closeConfirmedRef.current || useTerminalStore.getState().terminals.size === 0) return;
         event.preventDefault();
         setClosePrompt(true);
       })
@@ -426,6 +426,7 @@ function App() {
     ? Array.from(terminals.values()).filter((t) => !t.scriptParentId && !t.isShellTerminal).length
     : 0;
   useEffect(() => {
+    if (isDetached && detachedTabCount > 0) hasAdoptedRef.current = true;
     if (isDetached && hasAdoptedRef.current && detachedTabCount === 0) {
       forceCloseWindow();
     }
@@ -700,13 +701,10 @@ function App() {
     // session in a cwd). A duplicate would make everything typed/pasted in
     // one terminal show up in the others after restore.
     const restoreModes = planRestoreModes(pendingRestoreConfigs);
+    const layoutKeys = restoreLayoutKeys(pendingRestoreConfigs);
 
     for (let i = 0; i < pendingRestoreConfigs.length; i++) {
       const config = pendingRestoreConfigs[i];
-      const stableKey = keyOf({
-        claude_session_id: config.claude_session_id ?? null,
-        working_directory: config.working_directory,
-      });
       try {
         if (config.claude_args[0] === '__shell__') {
           // Plain shell - re-spawn as a main-tab shell. We deliberately don't
@@ -718,7 +716,7 @@ function App() {
             config.color_tag ?? undefined,
             config.nickname ?? undefined,
           );
-          keyToNewId[stableKey] = newId;
+          for (const key of layoutKeys[i]) keyToNewId[key] = newId;
         } else if (config.claude_args[0] === '__script__') {
           // Script runner - owned by parent terminal, skip on restore.
           continue;
@@ -747,7 +745,7 @@ function App() {
             config.agent,
             config.credential_bindings ?? [],
           );
-          keyToNewId[stableKey] = newId;
+          for (const key of layoutKeys[i]) keyToNewId[key] = newId;
         }
       } catch (err) {
         toast.error('Could not restore a session', String(err));
@@ -759,12 +757,14 @@ function App() {
     // of the main window into freshly-created windows at their saved geometry.
     try {
       const entries = getDetachedEntries();
+      const routedIds = new Set<string>();
       for (const { label, entry } of entries) {
         const ids = entry.sessionKeys
           .map((k) => keyToNewId[k])
-          .filter((x): x is string => !!x);
+          .filter((x): x is string => !!x && !routedIds.has(x));
         if (ids.length > 0) {
-          await restoreDetachedWindow(ids, entry.geometry);
+          await restoreDetachedWindow([...new Set(ids)], entry.geometry);
+          ids.forEach(id => routedIds.add(id));
         }
         removeEntry(label); // stale label; the reopened window re-persists fresh
       }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { Loader2, AlertCircle, Save, RefreshCw, FileCode2, GitCompareArrows } from 'lucide-react';
 import Editor, { DiffEditor, type OnMount, type DiffOnMount } from '@monaco-editor/react';
 import type { editor } from 'monaco-editor';
@@ -26,6 +26,55 @@ export function FileEditorView({ path }: FileEditorViewProps) {
   const clearEditorNavigation = useAppStore((s) => s.clearEditorNavigation);
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const diffEditorRef = useRef<editor.IStandaloneDiffEditor | null>(null);
+
+  const {
+    editorFontFamily, editorFontSize, editorLineHeight, editorTabSize,
+    editorWordWrap, editorMinimap, editorRenderWhitespace,
+  } = useAppStore();
+  const options: editor.IEditorOptions = {
+    fontFamily: editorFontFamily,
+    fontSize: editorFontSize,
+    lineHeight: Math.round(editorFontSize * editorLineHeight),
+    wordWrap: editorWordWrap ? 'on' : 'off',
+    minimap: { enabled: editorMinimap },
+    renderWhitespace: editorRenderWhitespace ? 'all' : 'none',
+    automaticLayout: true,
+    scrollBeyondLastLine: false,
+    smoothScrolling: true,
+    padding: { top: 8, bottom: 8 },
+  };
+  const waitingForSave = useRef<(() => void) | null>(null);
+  const autoSave = useCallback((): void => {
+    const state = useAppStore.getState();
+    const current = state.openFiles.find(t => t.path === path);
+    if (!state.editorAutoSaveOnBlur || !current || current.loading || current.content === current.original) return;
+    if (current.saving) {
+      if (!waitingForSave.current) {
+        waitingForSave.current = useAppStore.subscribe(next => {
+          const latest = next.openFiles.find(t => t.path === path);
+          if (latest?.saving) return;
+          waitingForSave.current?.();
+          waitingForSave.current = null;
+          if (latest && !latest.error) autoSave();
+        });
+      }
+      return;
+    }
+    state.saveFileTab(path).catch(err => toast.error('Auto-save failed', String(err)));
+  }, [path]);
+  useEffect(() => {
+    window.addEventListener('blur', autoSave);
+    return () => {
+      window.removeEventListener('blur', autoSave);
+      // Tab switches unmount the editor; closing/discarding removes the tab
+      // from the store first, so it cannot accidentally save discarded edits.
+      autoSave();
+    };
+  }, [autoSave]);
+  useEffect(() => {
+    editorRef.current?.getModel()?.updateOptions({ tabSize: editorTabSize });
+    diffEditorRef.current?.getModifiedEditor().getModel()?.updateOptions({ tabSize: editorTabSize });
+  }, [editorTabSize]);
 
   const dirty = tab ? tab.content !== tab.original : false;
   const language = useMemo(() => languageFromPath(path), [path]);
@@ -69,6 +118,7 @@ export function FileEditorView({ path }: FileEditorViewProps) {
 
   const onMount: OnMount = (ed) => {
     editorRef.current = ed;
+    ed.getModel()?.updateOptions({ tabSize: editorTabSize });
     ed.focus();
     applyNavigation(ed);
   };
@@ -76,6 +126,7 @@ export function FileEditorView({ path }: FileEditorViewProps) {
   const onDiffMount: DiffOnMount = (ed) => {
     diffEditorRef.current = ed;
     const modified = ed.getModifiedEditor();
+    modified.getModel()?.updateOptions({ tabSize: editorTabSize });
     // Treat the modified (right) side as editable and pipe its changes into
     // the store so dirty tracking and Save continue to work in diff mode.
     modified.onDidChangeModelContent(() => {
@@ -88,7 +139,9 @@ export function FileEditorView({ path }: FileEditorViewProps) {
   if (!tab) return null;
 
   return (
-    <div className="h-full flex flex-col bg-bg-primary">
+    <div className="h-full flex flex-col bg-bg-primary" onBlurCapture={(e) => {
+      if (!e.currentTarget.contains(e.relatedTarget as Node | null)) autoSave();
+    }}>
       {/* Breadcrumb / status bar for the file */}
       <div className="flex items-center justify-between px-3 h-7 bg-elevation-0 border-b border-seam flex-shrink-0">
         <p className="text-text-tertiary text-[11px] truncate" title={path} dir="ltr">
@@ -168,17 +221,7 @@ export function FileEditorView({ path }: FileEditorViewProps) {
             modifiedModelPath={modelUri}
             onMount={onDiffMount}
             theme="vs-dark"
-            options={{
-              fontSize: 13,
-              renderSideBySide: true,
-              automaticLayout: true,
-              readOnly: false,
-              originalEditable: false,
-              wordWrap: 'off',
-              scrollBeyondLastLine: false,
-              smoothScrolling: true,
-              padding: { top: 8, bottom: 8 },
-            }}
+            options={{ ...options, renderSideBySide: true, readOnly: false, originalEditable: false }}
           />
         ) : (
           <Editor
@@ -189,18 +232,7 @@ export function FileEditorView({ path }: FileEditorViewProps) {
             onChange={(v) => setFileTabContent(path, v ?? '')}
             onMount={onMount}
             theme="vs-dark"
-            options={{
-              fontSize: 13,
-              minimap: { enabled: true },
-              automaticLayout: true,
-              wordWrap: 'off',
-              tabSize: 2,
-              scrollBeyondLastLine: false,
-              renderWhitespace: 'selection',
-              smoothScrolling: true,
-              cursorBlinking: 'smooth',
-              padding: { top: 8, bottom: 8 },
-            }}
+            options={{ ...options, tabSize: editorTabSize, cursorBlinking: 'smooth' }}
           />
         )}
       </div>

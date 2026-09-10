@@ -58,7 +58,7 @@ describe('planRestoreModes', () => {
     ]);
   });
 
-  it('mixes id and id-less terminals independently', () => {
+  it('reserves explicit conversations before assigning continuation', () => {
     const modes = planRestoreModes([
       { claude_session_id: 'aaa', working_directory: 'C:\\proj' },
       { claude_session_id: null, working_directory: 'C:\\proj' },
@@ -67,9 +67,23 @@ describe('planRestoreModes', () => {
     ]);
     expect(modes).toEqual([
       { kind: 'resume', sessionId: 'aaa' },
-      { kind: 'continue' },
+      { kind: 'fresh' },
       { kind: 'fresh' },
       { kind: 'fresh' },
     ]);
   });
+  it('reserves later explicit claims too and scopes claims by agent', () => {
+    expect(planRestoreModes([
+      { agent: 'claude', working_directory: 'C:/repo' },
+      { agent: 'claude', working_directory: 'c:\\repo\\', claude_session_id: 's' },
+      { agent: 'codex', working_directory: 'C:/repo' },
+      { agent: 'cursor', working_directory: 'C:/repo', claude_session_id: 's' },
+    ])).toEqual([{ kind: 'fresh' }, { kind: 'resume', sessionId: 's' }, { kind: 'continue' }, { kind: 'resume', sessionId: 's' }]);
+  });
+
+  it('preserves case-sensitive Unix directories', () => {
+    expect(planRestoreModes([{ working_directory: '/Repo' }, { working_directory: '/repo' }]))
+      .toEqual([{ kind: 'continue' }, { kind: 'continue' }]);
+  });
+
 });
