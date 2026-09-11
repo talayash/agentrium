@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { LogIn } from 'lucide-react';
 import { Modal } from './ui/Modal';
 import { Button } from './ui/Button';
 import { startOAuthLogin, markAuthPromptSeen } from '../lib/auth';
@@ -57,7 +56,6 @@ export function LoginModal({ onClose }: LoginModalProps) {
       onClose={onClose}
       showHeader
       title="Sign in to Agentrium"
-      icon={<LogIn size={14} className="text-accent-primary" />}
       panelClassName="w-full max-w-md"
     >
       <div className="p-5 space-y-4">

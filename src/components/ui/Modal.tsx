@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { MouseEvent, ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { motion } from 'framer-motion';
 import { X } from 'lucide-react';
 import { overlayMotion, dialogMotion } from '../../lib/motionTokens';
@@ -105,7 +106,11 @@ export function Modal({
     if (closeOn === 'doubleClick' && e.target === e.currentTarget) onClose();
   };
 
-  return (
+  // Portal into document.body so no ancestor `transform` / `filter` /
+  // `will-change` in the render tree (TitleBar's framer-motion drag region,
+  // popovers, etc.) can capture our `position: fixed` scrim. Without this,
+  // modals triggered from inside TitleBar get clipped by the titlebar's height.
+  return createPortal(
     <motion.div
       {...overlayMotion}
       className={`fixed inset-0 flex items-center justify-center backdrop-blur-[3px] ${scrimClassName}`}
@@ -140,6 +145,7 @@ export function Modal({
         )}
         {children}
       </motion.div>
-    </motion.div>
+    </motion.div>,
+    document.body,
   );
 }
