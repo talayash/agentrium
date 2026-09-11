@@ -302,6 +302,7 @@ fn main() {
             auth::logout,
             auth::mark_auth_prompt_seen,
             auth::get_auth_prompt_seen,
+            auth::rehydrate_auth,
         ])
         .on_window_event(|window, event| {
             // Only the main window owns the app lifecycle. Detached (tear-off)

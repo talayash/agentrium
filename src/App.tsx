@@ -24,6 +24,7 @@ import { CommandPalette } from './components/CommandPalette';
 import { SetupWizard } from './components/SetupWizard';
 import { AutoUpdater } from './components/AutoUpdater';
 import { WhatsNewModal } from './components/WhatsNewModal';
+import { LoginModal } from './components/LoginModal';
 import { ClaudeConfigModal } from './components/ClaudeConfigModal';
 import { PreviewPanel } from './components/PreviewPanel';
 import { PreviewInlineHint } from './components/PreviewInlineHint';
@@ -46,10 +47,12 @@ import type { TerminalConfig } from './store/terminalStore';
 import { useAppStore } from './store/appStore';
 import type { SavedTerminalConfig } from './store/appStore';
 import { useAgentRegistryStore } from './store/agentRegistryStore';
+import { useAuthStore } from './store/authStore';
 import { useTerminalStore } from './store/terminalStore';
 import { usePreviewStore } from './store/previewStore';
 import { toast } from './store/toastStore';
 import { detectUrl } from './lib/preview/detector';
+import { getAuthPromptSeen, subscribeToAuthEvents, fetchCurrentUser } from './lib/auth';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { usePreventWebviewReload } from './hooks/usePreventWebviewReload';
 import { InputContextMenu } from './components/InputContextMenu';
@@ -117,6 +120,24 @@ interface SystemStatus {
   claude_version: string | null;
 }
 
+/**
+ * Boot-time refresh: if there's a refresh token in the OS keychain, swap it
+ * for a fresh access token and hydrate authStore. Returns true when the user
+ * is now signed in, so the caller can skip the first-launch popup.
+ */
+async function tryRehydrateAuth(): Promise<boolean> {
+  try {
+    const result = await invoke<{ access_token: string } | null>('rehydrate_auth');
+    if (!result) return false;
+    const user = await fetchCurrentUser(result.access_token);
+    useAuthStore.getState().setAuthed(user, result.access_token);
+    return true;
+  } catch (e) {
+    console.warn('[auth] rehydrate failed:', e);
+    return false;
+  }
+}
+
 function App() {
   const { sidebarOpen, sidebarCollapsed, hintsOpen, changesOpen, workspacesOpen, settingsOpen, profileModalOpen, newTerminalModalOpen, workspaceModalOpen, worktreeModalOpen, pushModalOpen, sessionHistoryOpen, snippetsModalOpen, commandPaletteOpen, globalSearchOpen, whatsNewOpen, claudeConfigOpen, sessionTimelineOpen, memoryEditorOpen, showStatusBar, notifyOnFinish, restoreSession, triggerChangesRefresh, showRestoreBanner, pendingRestoreConfigs, setShowRestoreBanner, setPendingRestoreConfigs, lastSeenVersion, setLastSeenVersion, openWhatsNew } = useAppStore();
   const { handleTerminalOutput, updateTerminalStatus, setLoopMode, setSessionSummary, createTerminal, createShellTerminalTab, applyTerminalMetrics, adoptTerminal, detachTerminals, closeTerminal, terminals } = useTerminalStore();
@@ -132,6 +153,11 @@ function App() {
   const [showSetup, setShowSetup] = useState<boolean | null>(isDetached ? false : null);
   // Launch splash - main window only, once per launch.
   const [showSplash, setShowSplash] = useState(!isDetached);
+  // First-launch auth prompt (main window only). Gated by `getAuthPromptSeen`
+  // and the boot-time refresh flow: if we can rehydrate a session from the
+  // keychain, we skip the popup entirely.
+  const authMode = useAuthStore((s) => s.mode);
+  const [showLoginModal, setShowLoginModal] = useState(false);
   const { notify } = useNotification();
 
   // Detached-window close ("ask each time") state.
@@ -264,6 +290,45 @@ function App() {
   useEffect(() => {
     initLsp();
   }, []);
+
+  // Auth boot (main window only): subscribe to `auth-tokens-received` for the
+  // OAuth flow completion, then try to rehydrate from the keychain refresh
+  // token. If rehydrate succeeds the user is already signed in. Otherwise
+  // check the "seen the prompt before?" flag - unseen shows the LoginModal,
+  // seen falls back to guest mode silently.
+  useEffect(() => {
+    if (isDetached) return; // main window owns the auth prompt
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+    (async () => {
+      unlisten = await subscribeToAuthEvents();
+      if (cancelled) return;
+
+      const rehydrated = await tryRehydrateAuth();
+      if (cancelled) return;
+      if (rehydrated) return; // already signed in - no modal needed
+
+      const seen = await getAuthPromptSeen();
+      if (cancelled) return;
+      if (!seen) {
+        useAuthStore.getState().setUnknown();
+        setShowLoginModal(true);
+      } else {
+        useAuthStore.getState().setGuest();
+      }
+    })();
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [isDetached]);
+
+  // Close the login modal automatically once auth succeeds (OAuth flow
+  // completes in the browser, deep-link fires auth-tokens-received, listener
+  // flips the store).
+  useEffect(() => {
+    if (authMode === 'authed') setShowLoginModal(false);
+  }, [authMode]);
 
   // Ghost-pin GC. Session restore is user-triggered (banner click) and
   // restored terminals get fresh UUIDs from Uuid::new_v4() in Rust, so 100%
@@ -923,6 +988,9 @@ function App() {
             {claudeConfigOpen && <ClaudeConfigModal />}
             {sessionTimelineOpen && <SessionTimeline />}
             {memoryEditorOpen && <MemoryEditor />}
+            {!isDetached && showLoginModal && (
+              <LoginModal onClose={() => setShowLoginModal(false)} />
+            )}
           </AnimatePresence>
           {commandPaletteOpen && <CommandPalette />}
           <AnimatePresence>
