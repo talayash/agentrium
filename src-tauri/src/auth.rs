@@ -15,9 +15,11 @@ use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use tauri::{command, State};
+use tauri::{command, Emitter, Manager, State};
+use url::Url;
 
 use crate::commands::wrap_cmd;
+use crate::credentials;
 use crate::error_reporter;
 
 const PENDING_TTL: Duration = Duration::from_secs(3 * 60);
@@ -137,6 +139,68 @@ pub async fn start_oauth_login(
         Ok(StartOAuthLoginResult { opened_url: url })
     })
     .await
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct AuthTokensReceivedPayload {
+    pub access_token: String,
+    pub state: String,
+}
+
+/// Called by the deep-link plugin when the OS routes `agentrium://` URLs to us.
+///
+/// Only handles `agentrium://auth-return?token=...&refresh=...&state=...`.
+/// Other paths are ignored (M2/M3 will add `import/<id>` etc.).
+pub fn handle_deep_link(app: &tauri::AppHandle, url: &str) {
+    let parsed = match Url::parse(url) {
+        Ok(u) => u,
+        Err(e) => {
+            eprintln!("[auth] bad deep-link URL {url}: {e}");
+            return;
+        }
+    };
+
+    // Some OSes route the path segment as host, some as path. Handle both.
+    let is_auth_return = parsed.host_str() == Some("auth-return")
+        || parsed.path() == "/auth-return";
+    if !is_auth_return {
+        return; // not for us
+    }
+
+    let mut token = None;
+    let mut refresh = None;
+    let mut state = None;
+    for (k, v) in parsed.query_pairs() {
+        match k.as_ref() {
+            "token" => token = Some(v.to_string()),
+            "refresh" => refresh = Some(v.to_string()),
+            "state" => state = Some(v.to_string()),
+            _ => {}
+        }
+    }
+
+    let (Some(token), Some(refresh), Some(state)) = (token, refresh, state) else {
+        eprintln!("[auth] missing token/refresh/state in deep-link URL");
+        return;
+    };
+
+    let pending = app.state::<Arc<PendingMap>>();
+    if pending.take(&state).is_none() {
+        eprintln!("[auth] unknown or expired state; ignoring deep-link");
+        return;
+    }
+
+    if let Err(e) = credentials::store_refresh_token(&refresh) {
+        eprintln!("[auth] failed to store refresh token: {e}");
+        let _ = app.emit("auth-error", &format!("keychain error: {e}"));
+        return;
+    }
+
+    // Emit access token to the frontend. authStore fetches user via /api/me.
+    let payload = AuthTokensReceivedPayload { access_token: token, state };
+    if let Err(e) = app.emit("auth-tokens-received", payload) {
+        eprintln!("[auth] failed to emit event: {e}");
+    }
 }
 
 #[cfg(test)]
