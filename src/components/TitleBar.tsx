@@ -144,7 +144,20 @@ export function TitleBar() {
 
   return (
     <div
-      onMouseDown={(e) => { if (e.buttons === 1 && (e.target as HTMLElement).closest('.no-drag') === null) appWindow.startDragging(); }}
+      onMouseDown={(e) => {
+        // Portal events bubble through the React tree even when their DOM
+        // nodes are outside the title bar. Starting a native drag there
+        // consumes mouseup/click, leaving dialog buttons unresponsive.
+        const target = e.target;
+        if (
+          e.buttons === 1 &&
+          target instanceof Element &&
+          e.currentTarget.contains(target) &&
+          target.closest('.no-drag') === null
+        ) {
+          appWindow.startDragging();
+        }
+      }}
       className="h-[var(--h-header)] material-chrome flex items-center justify-between pl-2 pr-0 border-b border-seam-strong drag-region select-none"
     >
       {/* Left cluster - traffic lights (mac), sidebar toggle */}
