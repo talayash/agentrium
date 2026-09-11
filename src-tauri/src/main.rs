@@ -122,6 +122,11 @@ fn main() {
                 secrets: Arc::new(credentials::KeyringStore),
             });
 
+            // Pending OAuth flows (state -> PKCE verifier). Separate from
+            // AppState so the auth module owns its own state and can be
+            // extended (Tasks 20, 26) without churning AppState's shape.
+            app.manage(Arc::new(auth::PendingMap::default()));
+
             // WebView2 ships a default browser context menu with "Refresh" that
             // reloads the top-level document - clicking it inside the preview
             // iframe closes every open terminal. Parent-window JS can't cancel
@@ -294,6 +299,7 @@ fn main() {
             commands::lsp_install_server,
             commands::lsp_restart_server,
             commands::lsp_server_log,
+            auth::start_oauth_login,
         ])
         .on_window_event(|window, event| {
             // Only the main window owns the app lifecycle. Detached (tear-off)

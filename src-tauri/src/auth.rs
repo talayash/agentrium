@@ -8,13 +8,17 @@
 //! 5. Deep-link handler validates state, stores refresh token in keychain, emits auth-changed.
 
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use tauri::{command, State};
+
+use crate::commands::wrap_cmd;
+use crate::error_reporter;
 
 const PENDING_TTL: Duration = Duration::from_secs(3 * 60);
 
@@ -74,6 +78,65 @@ pub struct AuthUser {
     pub email: String,
     pub name: Option<String>,
     pub image: Option<String>,
+}
+
+/// Broker base URL. The Vercel endpoint owns the Google OAuth client secret;
+/// the desktop app only sees state + PKCE + the final refresh token via the
+/// `agentrium://auth-return` deep link.
+const API_BASE: &str = "https://agentrium-api.vercel.app";
+const CALLBACK_URL: &str = "agentrium://auth-return";
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct StartOAuthLoginResult {
+    pub opened_url: String,
+}
+
+/// Kick off an OAuth sign-in: generate state + PKCE, record them in the
+/// pending map, and launch the system browser at the Vercel broker URL. The
+/// browser redirects through the identity provider back to
+/// `agentrium://auth-return?token=...&state=...`, which the deep-link handler
+/// (Task 20) validates against the pending map.
+#[command]
+pub async fn start_oauth_login(
+    provider: String,
+    pending: State<'_, Arc<PendingMap>>,
+) -> Result<StartOAuthLoginResult, String> {
+    // Clone once so the async move only captures owned data.
+    let pending = pending.inner().clone();
+    wrap_cmd("start_oauth_login", async move {
+        if provider != "google" {
+            // Wrong provider is a caller-side bug/config choice, not a
+            // runtime failure - skip telemetry.
+            return Err(error_reporter::user_err(format!(
+                "provider not supported in M1: {provider}"
+            )));
+        }
+
+        let state = generate_state();
+        let (verifier, challenge) = generate_pkce();
+
+        pending.insert(PendingFlow {
+            state: state.clone(),
+            code_verifier: verifier,
+            created_at: Instant::now(),
+        });
+
+        let url = format!(
+            "{API_BASE}/api/auth/desktop/start?provider={provider}&state={state}&callback={cb}&code_challenge={challenge}&code_challenge_method=S256",
+            provider = urlencoding::encode(&provider),
+            state = urlencoding::encode(&state),
+            cb = urlencoding::encode(CALLBACK_URL),
+            challenge = urlencoding::encode(&challenge),
+        );
+
+        // Match `open_external_url` / `open_feedback_inbox`: the `open` crate
+        // is already a direct dep and hands the URL to the OS default handler.
+        // Avoids pulling in `tauri-plugin-shell` just for this.
+        open::that(&url).map_err(|e| format!("failed to open browser: {e}"))?;
+
+        Ok(StartOAuthLoginResult { opened_url: url })
+    })
+    .await
 }
 
 #[cfg(test)]
