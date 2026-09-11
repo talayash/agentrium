@@ -1,5 +1,7 @@
 # Account Auth Phase B - Sync Engine Implementation Plan
 
+> **⚠️ SUPERSEDED — 2026-09-11.** The parent spec was replaced by [2026-09-11-auth-sync-sharing-design.md](../specs/2026-09-11-auth-sync-sharing-design.md). The new stack is Vercel + Auth.js + Neon Postgres. Sync is covered in the new M2 plan (`2026-09-11-auth-sync-sharing-m2-sync.md`), to be written after M1 ships. **Do not execute this plan.**
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Turn on cross-device sync. When a user signs in, their profiles, workspaces, snippets, session_history, session_summaries, and sync-safe settings converge across devices via debounced push + cursor pull. Session log bodies upload to R2 via presigned URLs. On first login on a device with local data, a merge modal offers Merge/Replace/Push.

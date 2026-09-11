@@ -1,7 +1,9 @@
 # Account authentication and cross-device sync
 
+> **⚠️ SUPERSEDED — 2026-09-11.** This design has been replaced by [2026-09-11-auth-sync-sharing-design.md](2026-09-11-auth-sync-sharing-design.md), which changes the backend stack (Cloudflare Workers/WorkOS → Vercel/Auth.js), adds sharing as a first-class feature, drops session history sync, and drops the admin dashboard from Phase 1. See Section 0 of the new spec for the full delta and reasoning. **Do not implement from this document.**
+
 - **Date:** 2026-08-29
-- **Status:** Design approved, ready for implementation planning
+- **Status:** Superseded (was: Design approved, ready for implementation planning)
 - **Owner:** Tal Ayash
 - **Related code paths:** `src-tauri/src/database.rs`, `src/store/appStore.ts`, `src/components/TitleBar.tsx`, `workers/ct-analytics/src/index.ts`
 

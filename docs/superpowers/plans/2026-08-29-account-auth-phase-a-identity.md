@@ -1,5 +1,7 @@
 # Account Auth Phase A - Identity Implementation Plan
 
+> **⚠️ SUPERSEDED — 2026-09-11.** The parent spec ([2026-08-29-account-auth-and-sync-design.md](../specs/2026-08-29-account-auth-and-sync-design.md)) was replaced by [2026-09-11-auth-sync-sharing-design.md](../specs/2026-09-11-auth-sync-sharing-design.md). The new stack is Vercel + Auth.js + Neon Postgres (not Cloudflare + WorkOS + D1). Follow the new plan series starting with `2026-09-11-auth-sync-sharing-m1-signin.md` instead. **Do not execute this plan.**
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Ship end-to-end user login (Google, GitHub, Microsoft, email/password via WorkOS), OS-keychain session storage, header widget, first-run popup, logout, and delete-account. Sync tables are added but the sync loop stays dormant until Phase B.
