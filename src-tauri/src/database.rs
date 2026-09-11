@@ -116,6 +116,11 @@ impl Database {
                 value TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS user_meta (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            );
+
             CREATE TABLE IF NOT EXISTS changelists (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 repo_path TEXT NOT NULL,
@@ -908,6 +913,42 @@ impl Database {
             Err(e) => Err(e.to_string()),
         }
     }
+
+    /// Read a `user_meta` value. Returns `Ok(None)` for both a missing row and
+    /// a row with a SQL NULL value, which is what auth callers want ("not set"
+    /// vs "explicitly cleared" are the same signal here).
+    pub fn get_user_meta(&self, key: &str) -> Result<Option<String>, String> {
+        use rusqlite::OptionalExtension;
+        self.conn
+            .query_row(
+                "SELECT value FROM user_meta WHERE key = ?1",
+                [key],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .optional()
+            .map_err(|e| e.to_string())
+            .map(|opt| opt.flatten())
+    }
+
+    /// Upsert a `user_meta` value. Passing `None` writes SQL NULL, which
+    /// `get_user_meta` surfaces as `Ok(None)`.
+    pub fn set_user_meta(&self, key: &str, value: Option<&str>) -> Result<(), String> {
+        self.conn
+            .execute(
+                "INSERT INTO user_meta (key, value) VALUES (?1, ?2)
+                 ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                params![key, value],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn delete_user_meta(&self, key: &str) -> Result<(), String> {
+        self.conn
+            .execute("DELETE FROM user_meta WHERE key = ?1", [key])
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -1489,5 +1530,14 @@ mod tests {
 
         let loaded = db.get_profiles().unwrap();
         assert_eq!(loaded[0].agent, crate::config::AgentKind::Claude);
+    }
+
+    #[test]
+    fn user_meta_round_trip() {
+        let db = Database::new_in_memory().unwrap();
+        db.set_user_meta("auth_prompt_seen", Some("1")).unwrap();
+        assert_eq!(db.get_user_meta("auth_prompt_seen").unwrap().as_deref(), Some("1"));
+        db.delete_user_meta("auth_prompt_seen").unwrap();
+        assert!(db.get_user_meta("auth_prompt_seen").unwrap().is_none());
     }
 }
