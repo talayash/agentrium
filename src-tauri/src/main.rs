@@ -20,6 +20,7 @@ mod otel_receiver;
 mod lsp;
 mod session_provider;
 mod feedback;
+mod auth;
 
 use tauri::Manager;
 use std::sync::Arc;
