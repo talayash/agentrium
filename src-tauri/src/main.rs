@@ -77,6 +77,7 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_deep_link::init())
         .setup(|app| {
             let db = database::Database::new()?;
             let installation_id = match db.get_or_create_installation_id() {
@@ -139,6 +140,22 @@ fn main() {
                         }
                     });
                 }
+            }
+
+            #[cfg(desktop)]
+            {
+                use tauri_plugin_deep_link::DeepLinkExt;
+                // register() is idempotent; safe to call every launch during dev.
+                let _ = app.deep_link().register("agentrium");
+
+                let _handle = app.handle().clone();
+                app.deep_link().on_open_url(move |event| {
+                    for url in event.urls() {
+                        // Task 20 will route this through crate::auth::handle_deep_link(&_handle, ...).
+                        // For now, just prove the plumbing works.
+                        println!("[deep-link] received: {}", url);
+                    }
+                });
             }
 
             Ok(())
