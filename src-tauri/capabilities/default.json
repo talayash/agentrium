@@ -26,6 +26,8 @@
     "dialog:default",
     "clipboard-manager:allow-write-text",
     "clipboard-manager:allow-read-text",
-    "updater:default"
+    "updater:default",
+    "deep-link:default",
+    "deep-link:allow-get-current"
   ]
 }
