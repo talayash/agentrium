@@ -19,6 +19,7 @@ import { useTerminalStore } from '../store/terminalStore';
 import { toast } from '../store/toastStore';
 import { UpdatePill } from './UpdatePill';
 import { SessionWidget } from './titlebar/SessionWidget';
+import { HeaderAuth } from './HeaderAuth';
 import { Tooltip } from './ui/Tooltip';
 import { ThemeToggle } from './ui/ThemeToggle';
 import { ListRow } from './ui/ListRow';
@@ -316,6 +317,8 @@ export function TitleBar() {
           <div className="w-px h-4 bg-seam-strong mx-1" />
 
           <ThemeToggle />
+
+          <HeaderAuth />
         </div>
 
         {!isMac && (
