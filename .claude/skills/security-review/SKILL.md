@@ -5,7 +5,7 @@ description: Security audit checklist and patterns for Tauri desktop apps with P
 
 # Security Review Skill
 
-## Threat Surface for ClaudeTerminal
+## Threat Surface for Agentrium
 
 1. **PTY Command Injection** - user input → xterm.js → IPC → PTY
 2. **IPC Boundary** - frontend can invoke any registered command

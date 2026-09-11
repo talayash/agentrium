@@ -1,15 +1,15 @@
 ---
-name: claude-terminal-conventions
-description: Development conventions and patterns for claude-terminal. TypeScript Vite project with freeform commits.
+name: agentrium-conventions
+description: Development conventions and patterns for Agentrium (formerly claude-terminal). TypeScript Vite project with freeform commits.
 ---
 
-# Claude Terminal Conventions
+# Agentrium Conventions
 
-> Generated from [talayash/claude-terminal](https://github.com/talayash/claude-terminal) on 2026-03-24
+> Generated from [talayash/agentrium](https://github.com/talayash/agentrium) on 2026-03-24 (originally as claude-terminal)
 
 ## Overview
 
-This skill teaches Claude the development patterns and conventions used in claude-terminal.
+This skill teaches Claude the development patterns and conventions used in Agentrium (formerly claude-terminal).
 
 ## Tech Stack
 

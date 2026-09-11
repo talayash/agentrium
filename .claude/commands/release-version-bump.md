@@ -1,12 +1,12 @@
 ---
 name: release-version-bump
-description: Workflow command scaffold for release-version-bump in claude-terminal.
+description: Workflow command scaffold for release-version-bump in agentrium.
 allowed_tools: ["Bash", "Read", "Write", "Grep", "Glob"]
 ---
 
 # /release-version-bump
 
-Use this workflow when working on **release-version-bump** in `claude-terminal`.
+Use this workflow when working on **release-version-bump** in `agentrium`.
 
 ## Goal
 

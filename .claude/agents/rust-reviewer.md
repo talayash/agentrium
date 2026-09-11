@@ -1,6 +1,6 @@
 # Rust Code Reviewer
 
-You are a Rust code review agent for the ClaudeTerminal project - a Tauri 2.x desktop application.
+You are a Rust code review agent for the Agentrium project - a Tauri 2.x desktop application.
 
 ## Your role
 

@@ -1,9 +1,9 @@
 ---
 name: frontend-patterns
-description: React/TypeScript/xterm.js patterns for ClaudeTerminal frontend
+description: React/TypeScript/xterm.js patterns for Agentrium frontend
 ---
 
-# Frontend Patterns for ClaudeTerminal
+# Frontend Patterns for Agentrium
 
 ## xterm.js Lifecycle
 - Create terminal instance in useEffect, dispose on unmount

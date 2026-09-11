@@ -7,7 +7,7 @@ Right now the macOS DMG and `.app` shipped from CI are **unsigned and un-notariz
 - `src-tauri/tauri.conf.json` `bundle.macOS` only sets `minimumSystemVersion`. There's no `signingIdentity`, no `notarize` block.
 - `.github/workflows/release.yml` passes `TAURI_SIGNING_PRIVATE_KEY` (the **updater**'s minisign key - a different thing) but no Apple Developer ID secrets to `tauri-action`.
 
-When users download the DMG via Safari/Chrome, macOS attaches `com.apple.quarantine`. On first launch, Gatekeeper sees no Developer ID signature and shows the misleading "ClaudeTerminal is damaged and can't be opened" dialog. The `xattr -dr com.apple.quarantine` workaround works because it strips the quarantine bit - but it should not be required of normal users.
+When users download the DMG via Safari/Chrome, macOS attaches `com.apple.quarantine`. On first launch, Gatekeeper sees no Developer ID signature and shows the misleading "Agentrium is damaged and can't be opened" dialog. The `xattr -dr com.apple.quarantine` workaround works because it strips the quarantine bit - but it should not be required of normal users.
 
 The fix is to sign with a **Developer ID Application** certificate and notarize with Apple's notary service so Gatekeeper recognizes the binary as trusted.
 
@@ -111,13 +111,13 @@ The Windows job ignores Apple secrets (no `if:` guard needed; they're just unuse
 2. Mount, drag to Applications, double-click. The "damaged" dialog should not appear. macOS may show the standard "downloaded from internet, are you sure?" prompt once - that's expected and normal.
 3. Verify on the command line:
    ```
-   spctl --assess --type execute -vvv /Applications/ClaudeTerminal.app
-   # → /Applications/ClaudeTerminal.app: accepted
+   spctl --assess --type execute -vvv /Applications/Agentrium.app
+   # → /Applications/Agentrium.app: accepted
    #   source=Notarized Developer ID
    ```
 4. Verify the staple is attached:
    ```
-   stapler validate /Applications/ClaudeTerminal.app
+   stapler validate /Applications/Agentrium.app
    # → The validate action worked!
    ```
 
@@ -136,9 +136,9 @@ Until the cert is set up, the README's macOS section can document the workaround
 ```markdown
 ### First launch on macOS
 
-The current macOS builds are unsigned. macOS will show "ClaudeTerminal is damaged and can't be opened" - this is Gatekeeper, not actual damage. To allow the app to run:
+The current macOS builds are unsigned. macOS will show "Agentrium is damaged and can't be opened" - this is Gatekeeper, not actual damage. To allow the app to run:
 
-  xattr -dr com.apple.quarantine /Applications/ClaudeTerminal.app
+  xattr -dr com.apple.quarantine /Applications/Agentrium.app
 
 This strips the quarantine flag set by your browser. We're working on getting the app signed and notarized so this step will not be needed.
 ```

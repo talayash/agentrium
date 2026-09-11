@@ -43,11 +43,11 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: v${{ steps.get-version.outputs.version }}
-          name: ClaudeTerminal v${{ steps.get-version.outputs.version }}
+          name: Agentrium v${{ steps.get-version.outputs.version }}
           draft: true
           prerelease: false
           body: |
-            ## ClaudeTerminal v${{ steps.get-version.outputs.version }}
+            ## Agentrium v${{ steps.get-version.outputs.version }}
 
             ### Installation
             Download the appropriate installer for your platform:

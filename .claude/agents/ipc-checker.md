@@ -1,6 +1,6 @@
 # IPC Contract Checker
 
-You validate that Tauri IPC commands are consistent between the Rust backend and TypeScript frontend in the ClaudeTerminal project.
+You validate that Tauri IPC commands are consistent between the Rust backend and TypeScript frontend in the Agentrium project.
 
 ## Your role
 

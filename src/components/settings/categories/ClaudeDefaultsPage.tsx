@@ -6,10 +6,10 @@ import { CLAUDE_MODELS } from '../../../lib/claudeModels';
 
 const cat = { group: 'claude', page: 'defaults' } as const;
 ['default-args', 'default-model', 'binary-path'].forEach((id) =>
-  registerSetting({ category: cat, id, label: id.replace(/-/g, ' '), keywords: ['claude', 'args', id] })
+  registerSetting({ category: cat, id, label: id.replace(/-/g, ' '), keywords: ['agent', 'claude', 'args', id] })
 );
-registerSetting({ category: cat, id: 'cost-tracking',  label: 'Track per-session cost', keywords: ['cost', 'token', 'telemetry', 'otel', 'budget', 'tracking', 'usage'] });
-registerSetting({ category: cat, id: 'session-budget', label: 'Per-session budget cap', keywords: ['cost', 'budget', 'cap', 'limit', 'usd', 'spend'] });
+registerSetting({ category: cat, id: 'cost-tracking',  label: 'Track per-session cost', keywords: ['agent', 'cost', 'token', 'telemetry', 'otel', 'budget', 'tracking', 'usage'] });
+registerSetting({ category: cat, id: 'session-budget', label: 'Per-session budget cap', keywords: ['agent', 'cost', 'budget', 'cap', 'limit', 'usd', 'spend'] });
 
 export default function ClaudeDefaultsPage() {
   const defaultClaudeArgs = useAppStore((s) => s.defaultClaudeArgs);
@@ -27,7 +27,7 @@ export default function ClaudeDefaultsPage() {
 
   return (
     <div>
-      <PageHeader title="Claude Code - Defaults" />
+      <PageHeader title="Agent Defaults" />
 
       <PageSection title="Arguments">
         <SettingRow

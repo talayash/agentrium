@@ -1,12 +1,12 @@
 ---
 name: feature-development
-description: Workflow command scaffold for feature-development in claude-terminal.
+description: Workflow command scaffold for feature-development in agentrium.
 allowed_tools: ["Bash", "Read", "Write", "Grep", "Glob"]
 ---
 
 # /feature-development
 
-Use this workflow when working on **feature-development** in `claude-terminal`.
+Use this workflow when working on **feature-development** in `agentrium`.
 
 ## Goal
 

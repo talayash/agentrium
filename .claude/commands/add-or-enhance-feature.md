@@ -1,12 +1,12 @@
 ---
 name: add-or-enhance-feature
-description: Workflow command scaffold for add-or-enhance-feature in claude-terminal.
+description: Workflow command scaffold for add-or-enhance-feature in agentrium.
 allowed_tools: ["Bash", "Read", "Write", "Grep", "Glob"]
 ---
 
 # /add-or-enhance-feature
 
-Use this workflow when working on **add-or-enhance-feature** in `claude-terminal`.
+Use this workflow when working on **add-or-enhance-feature** in `agentrium`.
 
 ## Goal
 

@@ -42,8 +42,8 @@ export const CATEGORY_GROUPS: {
   ]},
   { id: 'claude', label: 'Agents', pages: [
     { id: 'agents-keys', label: 'Agents & Keys' },
-    { id: 'defaults',    label: 'Claude Code Defaults' },
-    { id: 'updates',     label: 'Claude Code Updates' },
+    { id: 'defaults',    label: 'Agent Defaults' },
+    { id: 'updates',     label: 'Agent Updates' },
   ]},
   { id: 'tools', label: 'Tools', pages: [
     { id: 'launchers', label: 'Launchers' },

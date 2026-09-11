@@ -1,6 +1,6 @@
 interface:
-  display_name: "Claude Terminal"
-  short_description: "Repo-specific patterns and workflows for claude-terminal"
-  default_prompt: "Use the claude-terminal repo skill to follow existing architecture, testing, and workflow conventions."
+  display_name: "Agentrium"
+  short_description: "Repo-specific patterns and workflows for agentrium"
+  default_prompt: "Use the agentrium repo skill to follow existing architecture, testing, and workflow conventions."
 policy:
   allow_implicit_invocation: true

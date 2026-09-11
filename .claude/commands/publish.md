@@ -1,6 +1,6 @@
-# Publish a new release of ClaudeTerminal
+# Publish a new release of Agentrium
 
-You are performing a full release of ClaudeTerminal. Follow every step below in order. Stop and ask the user if anything is ambiguous or fails.
+You are performing a full release of Agentrium. Follow every step below in order. Stop and ask the user if anything is ambiguous or fails.
 
 ## Arguments
 
@@ -98,5 +98,5 @@ This will trigger the `Release` GitHub Actions workflow which builds the install
 After pushing, tell the user:
 - The commit and tag have been pushed
 - The GitHub Actions release workflow should now be running
-- Provide the link: `https://github.com/talayash/claude-terminal/actions`
+- Provide the link: `https://github.com/talayash/agentrium/actions`
 - Remind them that existing users will receive the update automatically via the in-app updater once the release is published

@@ -1,6 +1,6 @@
 ---
 name: verification-loop
-description: Full build/type/lint/security verification pipeline for ClaudeTerminal
+description: Full build/type/lint/security verification pipeline for Agentrium
 ---
 
 # Verification Loop

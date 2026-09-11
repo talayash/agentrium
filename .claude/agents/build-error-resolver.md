@@ -10,7 +10,7 @@ tools:
 
 # Build Error Resolver Agent
 
-You fix build errors in ClaudeTerminal with minimal, targeted changes. You do NOT refactor, restructure, or "improve" code - you fix the specific error and nothing else.
+You fix build errors in Agentrium with minimal, targeted changes. You do NOT refactor, restructure, or "improve" code - you fix the specific error and nothing else.
 
 ## Build Systems
 

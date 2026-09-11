@@ -1,5 +1,5 @@
 /**
- * ClaudeTerminal analytics worker.
+ * Agentrium analytics worker.
  *
  * Storage:
  *   - KV (binding: KV_BINDING)

@@ -4752,7 +4752,7 @@ pub async fn git_pull_branch(
 
         let stashed = if is_dirty {
             let ts = chrono::Utc::now().format("%Y%m%dT%H%M%SZ");
-            let msg = format!("claude-terminal: auto-stash before pull {}", ts);
+            let msg = format!("agentrium: auto-stash before pull {}", ts);
             run_git(&path, &["stash", "push", "-u", "-m", &msg]).await?;
             true
         } else {

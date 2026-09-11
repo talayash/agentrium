@@ -1,9 +1,9 @@
 ---
 name: rust-patterns
-description: Rust/Tauri patterns and best practices for ClaudeTerminal backend
+description: Rust/Tauri patterns and best practices for Agentrium backend
 ---
 
-# Rust Patterns for ClaudeTerminal
+# Rust Patterns for Agentrium
 
 ## Error Handling
 - Commands return `Result<T, String>` - use `.map_err(|e| e.to_string())`
