@@ -298,6 +298,10 @@ fn main() {
             commands::lsp_restart_server,
             commands::lsp_server_log,
             auth::start_oauth_login,
+            auth::fetch_current_user,
+            auth::logout,
+            auth::mark_auth_prompt_seen,
+            auth::get_auth_prompt_seen,
         ])
         .on_window_event(|window, event| {
             // Only the main window owns the app lifecycle. Detached (tear-off)

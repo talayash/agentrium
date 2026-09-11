@@ -21,6 +21,7 @@ use url::Url;
 use crate::commands::wrap_cmd;
 use crate::credentials;
 use crate::error_reporter;
+use crate::AppState;
 
 const PENDING_TTL: Duration = Duration::from_secs(3 * 60);
 
@@ -201,6 +202,87 @@ pub fn handle_deep_link(app: &tauri::AppHandle, url: &str) {
     if let Err(e) = app.emit("auth-tokens-received", payload) {
         eprintln!("[auth] failed to emit event: {e}");
     }
+}
+
+/// Fetch the currently-signed-in user from the broker `/api/me`, using the
+/// short-lived access token the frontend obtained via `auth-tokens-received`.
+/// The frontend calls this after every access-token refresh; refresh itself is
+/// Task 26. Refresh tokens never travel through this command - they live in the
+/// OS keychain and are only sent to the broker's `/api/auth/desktop/refresh`.
+#[command]
+pub async fn fetch_current_user(access_token: String) -> Result<AuthUser, String> {
+    wrap_cmd("fetch_current_user", async move {
+        let resp = reqwest::Client::new()
+            .get(format!("{API_BASE}/api/me"))
+            .bearer_auth(&access_token)
+            .send()
+            .await
+            .map_err(|e| format!("network: {e}"))?;
+
+        if !resp.status().is_success() {
+            return Err(format!("api returned {}", resp.status()));
+        }
+
+        #[derive(Deserialize)]
+        struct MeResponse {
+            user: AuthUser,
+        }
+        let body: MeResponse = resp.json().await.map_err(|e| format!("decode: {e}"))?;
+        Ok(body.user)
+    })
+    .await
+}
+
+/// Sign out locally: drop the refresh token from the OS keychain and clear the
+/// cached logged-in-user id. The broker has no session state to revoke in M1;
+/// M3 will add server-side revocation when we introduce sync.
+#[command]
+pub async fn logout(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    let db_arc = state.db.clone();
+    wrap_cmd("logout", async move {
+        credentials::clear_refresh_token()?;
+        tokio::task::spawn_blocking(move || {
+            let db = db_arc.lock().unwrap_or_else(|p| p.into_inner());
+            db.delete_user_meta("logged_in_user_id")
+        })
+        .await
+        .map_err(|e| format!("DB task failed: {e}"))??;
+        Ok(())
+    })
+    .await
+}
+
+/// Record that we've shown the "sign in to sync" prompt to this user, so we
+/// don't nag them again on every launch. The M1 UI shows the prompt once; the
+/// frontend inspects `get_auth_prompt_seen` at boot.
+#[command]
+pub async fn mark_auth_prompt_seen(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    let db_arc = state.db.clone();
+    wrap_cmd("mark_auth_prompt_seen", async move {
+        tokio::task::spawn_blocking(move || {
+            let db = db_arc.lock().unwrap_or_else(|p| p.into_inner());
+            db.set_user_meta("auth_prompt_seen", Some("1"))
+        })
+        .await
+        .map_err(|e| format!("DB task failed: {e}"))??;
+        Ok(())
+    })
+    .await
+}
+
+#[command]
+pub async fn get_auth_prompt_seen(state: tauri::State<'_, AppState>) -> Result<bool, String> {
+    let db_arc = state.db.clone();
+    wrap_cmd("get_auth_prompt_seen", async move {
+        let seen = tokio::task::spawn_blocking(move || {
+            let db = db_arc.lock().unwrap_or_else(|p| p.into_inner());
+            db.get_user_meta("auth_prompt_seen")
+        })
+        .await
+        .map_err(|e| format!("DB task failed: {e}"))??;
+        Ok(seen.is_some())
+    })
+    .await
 }
 
 #[cfg(test)]
