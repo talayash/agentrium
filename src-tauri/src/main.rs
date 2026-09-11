@@ -78,6 +78,19 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        // Single-instance MUST be registered BEFORE the deep-link plugin so it
+        // intercepts second launches first. With its `deep-link` feature on,
+        // any agentrium:// URL in the second process's argv is forwarded into
+        // this instance's on_open_url handler automatically - we don't
+        // manually re-parse argv here.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            // A second Agentrium tried to launch. Bring our main window to the
+            // foreground so the user sees the sign-in complete.
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_deep_link::init())
         .setup(|app| {
             let db = database::Database::new()?;

@@ -16,6 +16,7 @@ tauri-plugin-clipboard-manager = "2"
 notify-rust = "4"
 tauri-plugin-updater = "2"
 tauri-plugin-deep-link = "2"
+tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
 base64 = "0.22"
 rand = "0.8"
 urlencoding = "2"
