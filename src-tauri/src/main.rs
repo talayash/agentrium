@@ -43,6 +43,10 @@ pub struct AppState {
     pub lsp: Arc<Mutex<lsp::LspManager>>,
     /// OS credential store. `Arc<dyn ...>` so tests can swap in `MemoryStore`.
     pub secrets: Arc<dyn credentials::SecretStore>,
+    /// Sync engine handle; `None` when the user is guest / signed out.
+    /// Wrapped in tokio::sync::Mutex because IPC commands hold it across
+    /// `.await` when calling into the engine.
+    pub sync_handle: Arc<Mutex<Option<crate::sync::SyncHandle>>>,
 }
 
 fn main() {
@@ -135,6 +139,7 @@ fn main() {
                 otel_agg,
                 lsp: Arc::new(Mutex::new(lsp_manager)),
                 secrets: Arc::new(credentials::KeyringStore),
+                sync_handle: Arc::new(Mutex::new(None)),
             });
 
             // Pending OAuth flows (state -> PKCE verifier). Separate from

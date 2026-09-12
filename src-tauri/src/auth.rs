@@ -206,6 +206,14 @@ pub fn handle_deep_link(app: &tauri::AppHandle, url: &str) {
         return;
     }
 
+    // Start the sync engine now that credentials are in place.
+    let app_state = app.state::<AppState>();
+    let engine = crate::sync::start_engine(app.clone(), app_state.db.clone(), token.clone());
+    let sync_handle = app_state.sync_handle.clone();
+    tauri::async_runtime::spawn(async move {
+        *sync_handle.lock().await = Some(engine);
+    });
+
     // Emit access token to the frontend. authStore fetches user via /api/me.
     let payload = AuthTokensReceivedPayload { access_token: token, state };
     if let Err(e) = app.emit("auth-tokens-received", payload) {
@@ -248,6 +256,10 @@ pub async fn fetch_current_user(access_token: String) -> Result<AuthUser, String
 #[command]
 pub async fn logout(state: tauri::State<'_, AppState>) -> Result<(), String> {
     let db_arc = state.db.clone();
+    // Stop the sync engine first so no more push/pull happens after logout.
+    if let Some(handle) = state.sync_handle.lock().await.take() {
+        handle.shutdown();
+    }
     wrap_cmd("logout", async move {
         credentials::clear_refresh_token()?;
         tokio::task::spawn_blocking(move || {
@@ -343,10 +355,22 @@ pub async fn refresh_access_token() -> Result<Option<String>, String> {
 /// there's nothing stored, or when the broker rejects the token — in the
 /// latter case we also clear the stale token so we don't retry next boot.
 #[command]
-pub async fn rehydrate_auth() -> Result<Option<RehydrateResult>, String> {
+pub async fn rehydrate_auth(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<Option<RehydrateResult>, String> {
     wrap_cmd("rehydrate_auth", async move {
         match refresh_access_token().await? {
-            Some(access_token) => Ok(Some(RehydrateResult { access_token })),
+            Some(access_token) => {
+                // Start the sync engine now that we have credentials.
+                let handle = crate::sync::start_engine(
+                    app.clone(),
+                    state.db.clone(),
+                    access_token.clone(),
+                );
+                *state.sync_handle.lock().await = Some(handle);
+                Ok(Some(RehydrateResult { access_token }))
+            }
             None => Ok(None),
         }
     })
