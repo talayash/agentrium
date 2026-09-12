@@ -121,6 +121,17 @@ impl Database {
                 value TEXT
             );
 
+            CREATE TABLE IF NOT EXISTS sync_queue (
+                table_name TEXT NOT NULL,
+                row_key TEXT NOT NULL,
+                enqueued_at TEXT NOT NULL,
+                attempts INTEGER NOT NULL DEFAULT 0,
+                last_attempt_at TEXT,
+                last_error TEXT,
+                PRIMARY KEY (table_name, row_key)
+            );
+            CREATE INDEX IF NOT EXISTS idx_sync_queue_enqueued_at ON sync_queue(enqueued_at);
+
             CREATE TABLE IF NOT EXISTS changelists (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 repo_path TEXT NOT NULL,
