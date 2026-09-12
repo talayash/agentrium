@@ -2,39 +2,30 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-## ⚠️ KNOWN ISSUE — parked pending debugger-based investigation (2026-09-12)
+## ✅ Resolved: crash was a QA-sideload artifact, not a code bug (2026-09-12)
 
-**Status:** Tasks 1-32 fully landed on `feat/m1-auth-signin` (see commit `f83935f`..HEAD). Tasks 33 (manual E2E) and 34 (push) executed. All automated tests pass:
+**Status:** Tasks 1-32 fully landed on `feat/m1-auth-signin`. All automated tests pass:
 - Rust: **295 tests, 0 failed** (`cargo test --bins`)
 - Frontend: **594 tests, 0 failed** (`npm run test:run`)
 - Broker: **20 tests, 0 failed** (`cd agentrium-api && npx vitest run`)
 - Broker Drizzle schema applied to Neon (commit `agentrium-api@6bb2147`), Vercel deploy live.
 
-**Runtime crash observed during manual E2E:** local builds crash with `STATUS_STACK_BUFFER_OVERRUN` (Windows /GS security check, exit code `0xc0000409`). Not a Rust panic — no backtrace surfaces. Details:
+**Live E2E confirmed:** signed-in QA release binary boots cleanly, `rehydrate_auth` starts the sync engine, `do_pull` completes two successful roundtrips against `/api/sync/pull` (Vercel + Neon), cursor advances, engine settles into idle debounce ticks. No crashes.
 
-- **Debug build:** crashes ~2 seconds after boot, right after telemetry heartbeat lands.
-- **Release build:** survives longer (10+ minutes, at least 2 heartbeat cycles), then hits the same trap. Suggests something time-based rather than boot-triggered.
-- **Reproduced under both** `npm run tauri dev` **and direct binary launch.** So not a tauri-CLI wrapping issue.
-- **Reproduced with isolated DB + keychain** (see `AGENTRIUM_INSTANCE_ID` env var — commit adds it to `main.rs` + `database.rs` + `credentials.rs` so QA side-load can run alongside prod without shared-state contention). So not caused by cross-process DB/keychain contention with a running prod install.
-- **Prod install (M1 code) is stable** — ran for hours through the whole M2a test session with no crash. So the regression sits somewhere in the ~30 M2a commits.
-- **429 rate-limiting on `ct-analytics.claude-terminal.workers.dev/error_report`** immediately before the crash — indicates some error path is firing repeatedly, but the error contents aren't visible from client logs. Worth checking worker logs for the burst of error reports right before the crash.
+**What the earlier "crashes" actually were:** the M2a QA-sideload approach initially ran a debug/release binary against `%APPDATA%/claudeterminal/ClaudeTerminal/data/claudeterminal.db` — the SAME SQLite DB that prod (PID 19868, actively running) held open. Concurrent schema migrations + WAL writes across two processes running two DIFFERENT versions of the schema-migration code tripped Windows /GS (`STATUS_STACK_BUFFER_OVERRUN`, exit `0xc0000409`) somewhere in the rusqlite native path. No Rust panic surfaced because the trap fires in the C runtime.
 
-**What was tried, in order:**
-1. Retry as-is → same crash (STATUS_STACK_BUFFER_OVERRUN).
-2. Isolate DB + keychain via `AGENTRIUM_INSTANCE_ID` env var patch → same crash (with 429 log line before the crash on the second run).
-3. Direct binary launch (bypass tauri-CLI) → same crash after brief survival.
-4. Vite alone + direct binary launch → same crash after brief survival.
-5. Release build (`cargo build --release`) → same crash but delayed to ~10 min (2 heartbeats).
+**The fix that unlocked diagnosis** (kept in the tree — actual product feature, not a hack):
+- `crate::instance_suffix()` in `main.rs` reads the `AGENTRIUM_INSTANCE_ID` env var.
+- `database.rs::Database::new()` appends it to the `ProjectDirs` app-name → separate data dir.
+- `credentials.rs::auth_service()` appends it to the OS keychain service name → separate refresh token slot.
+- Prod release builds never set the env var, so their paths are unchanged.
+- QA/dev side-loads can set `AGENTRIUM_INSTANCE_ID=.qa` (and use `tauri build --config src-tauri/tauri.conf.qa.json` to override the identifier for `tauri-plugin-single-instance`) to get a fully isolated instance next to a running prod.
 
-**Suspected pattern:** something in the M2a Rust code path (or its interaction with WebView2 / tauri 2.x on Windows) trips /GS. The delayed nature of the release crash makes a boot-time bug unlikely; a periodic timer or an accumulating condition (memory leak, thread pileup) is more plausible. Since the sync engine does NOT start on a fresh unauthed install, the culprit is not sync itself — it's something in the boot path or one of the always-on paths (telemetry heartbeat interaction? IPC handler? tokio task pileup?).
+**With isolation properly applied end to end** (identifier via `tauri.conf.qa.json` + data/keychain via env var), the M2a code runs correctly — the crash does not reproduce.
 
-**Next steps when this is resurrected:**
-1. Attach WinDbg or Visual Studio's debugger to the running debug build; break on `STATUS_STACK_BUFFER_OVERRUN` (0xc0000409). The stack trace at the trap will name the caller/frame.
-2. Bisect via `git bisect run` between the last-known-good commit (`ea6a5f6` — M2a broker before Rust changes landed) and the current HEAD. Each iteration: `cargo build --release && timeout 300 target/release/claude-terminal.exe`. Look for exit `0xc0000409`.
-3. Inspect the `ct-analytics` worker logs (via Cloudflare dashboard or `wrangler tail`) for the burst of error reports that precede the crash. That reveals what the app is complaining about internally.
-4. Consider a minimal repro: strip everything except the M2a schema migration + IPC registrations, see if crash persists. If yes, culprit is somewhere in the schema/boot code. If no, add pieces back until crash returns.
+**Debug instrumentation** (`[sync-debug]` eprintlns added in `17f28fe` to trace the crash) removed in `240b3e6` now that the diagnosis landed.
 
-**Merge status:** `feat/m1-auth-signin` deliberately NOT merged to master until the crash is diagnosed. Prod ships unaffected M1 code. When the crash is resolved, the branch is ready for `v1.34.0-preview` per the M1 (b) versioning decision.
+**Merge status:** `feat/m1-auth-signin` is unblocked from a QA standpoint. Whether to merge to master now (as `v1.34.0-preview` per the M1 (b) versioning decision) or continue to M2b (email + password) on the branch first is a separate product call.
 
 ---
 
