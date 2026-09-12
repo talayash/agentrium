@@ -1311,6 +1311,115 @@ impl Database {
         }
     }
 
+    /// Return the `updated_at` timestamp for a syncable row, or `None` if
+    /// the row is missing. Used by the pull-apply path to run the LWW check
+    /// before invoking `upsert_pulled_row`.
+    pub fn get_local_updated_at(&self, table: &str, row_key: &str) -> Result<Option<String>, String> {
+        let where_col = if table == "workspaces" { "sync_id" } else { "id" };
+        let sql = format!("SELECT updated_at FROM {table} WHERE {where_col} = ?1");
+        self.conn
+            .query_row(&sql, params![row_key], |r| r.get::<_, String>(0))
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(other.to_string()),
+            })
+    }
+
+    /// Insert or overwrite a syncable row from a pulled JSON payload. Callers
+    /// are expected to have already resolved LWW via `get_local_updated_at`
+    /// and `incoming_wins`. Written rows are marked `synced`.
+    pub fn upsert_pulled_row(&self, table: &str, row: &serde_json::Value) -> Result<(), String> {
+        let get_str = |k: &str| row.get(k).and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let get_opt_str = |k: &str| row.get(k).and_then(|v| v.as_str()).map(String::from);
+        let get_bool = |k: &str| row.get(k).and_then(|v| v.as_bool()).unwrap_or(false);
+        let get_i64 = |k: &str| row.get(k).and_then(|v| v.as_i64()).unwrap_or(1);
+        let ua = row
+            .get("updatedAt")
+            .and_then(|v| v.as_str())
+            .or_else(|| row.get("updated_at").and_then(|v| v.as_str()))
+            .unwrap_or("")
+            .to_string();
+        match table {
+            "profiles" => {
+                let claude_args = row.get("claudeArgs").map(|v| v.to_string()).unwrap_or_else(|| "[]".into());
+                let env_vars = row.get("envVars").map(|v| v.to_string()).unwrap_or_else(|| "{}".into());
+                let agent_args_json = row.get("agentArgsJson").map(|v| v.to_string());
+                self.conn.execute(
+                    "INSERT OR REPLACE INTO profiles
+                       (id, name, description, working_directory, claude_args, env_vars,
+                        is_default, agent, agent_args_json, updated_at, deleted_at,
+                        client_version, sync_state)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                    params![
+                        get_str("id"), get_str("name"), get_opt_str("description"),
+                        get_opt_str("workingDirectory"), claude_args, env_vars,
+                        if get_bool("isDefault") { 1 } else { 0 }, get_str("agent"), agent_args_json,
+                        ua, get_opt_str("deletedAt"), get_i64("clientVersion"),
+                        SyncState::Synced.as_sql_str(),
+                    ],
+                ).map_err(|e| e.to_string())?;
+            }
+            "custom_agents" => {
+                let default_args = row.get("defaultArgs").map(|v| v.to_string()).unwrap_or_else(|| "[]".into());
+                let required_env = row.get("requiredEnv").map(|v| v.to_string()).unwrap_or_else(|| "[]".into());
+                let bindings = row.get("bindings").map(|v| v.to_string()).unwrap_or_else(|| "[]".into());
+                self.conn.execute(
+                    "INSERT OR REPLACE INTO custom_agents
+                       (id, name, binary, default_args, resume_flag, color, required_env,
+                        bindings, install_url, install_hint, created_at, updated_at, deleted_at,
+                        client_version, sync_state)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,
+                             COALESCE((SELECT created_at FROM custom_agents WHERE id = ?1), ?11),
+                             ?11, ?12, ?13, ?14)",
+                    params![
+                        get_str("id"), get_str("name"), get_str("binary"),
+                        default_args, get_opt_str("resumeFlag"), get_str("color"),
+                        required_env, bindings, get_opt_str("installUrl"),
+                        get_opt_str("installHint"), ua, get_opt_str("deletedAt"),
+                        get_i64("clientVersion"), SyncState::Synced.as_sql_str(),
+                    ],
+                ).map_err(|e| e.to_string())?;
+            }
+            "workspaces" => {
+                let terminals = row.get("terminals").map(|v| v.to_string()).unwrap_or_else(|| "[]".into());
+                let created_at = get_opt_str("createdAt").unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
+                let existing: Option<i64> = self.conn
+                    .query_row(
+                        "SELECT id FROM workspaces WHERE sync_id = ?1",
+                        params![get_str("id")],
+                        |r| r.get(0),
+                    )
+                    .ok();
+                if existing.is_some() {
+                    self.conn.execute(
+                        "UPDATE workspaces SET name = ?1, terminals = ?2, updated_at = ?3,
+                                deleted_at = ?4, client_version = ?5, sync_state = ?6
+                         WHERE sync_id = ?7",
+                        params![
+                            get_str("name"), terminals, ua, get_opt_str("deletedAt"),
+                            get_i64("clientVersion"), SyncState::Synced.as_sql_str(),
+                            get_str("id"),
+                        ],
+                    ).map_err(|e| e.to_string())?;
+                } else {
+                    self.conn.execute(
+                        "INSERT INTO workspaces (sync_id, name, terminals, created_at, updated_at,
+                                                 deleted_at, client_version, sync_state)
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                        params![
+                            get_str("id"), get_str("name"), terminals, created_at, ua,
+                            get_opt_str("deletedAt"), get_i64("clientVersion"),
+                            SyncState::Synced.as_sql_str(),
+                        ],
+                    ).map_err(|e| e.to_string())?;
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
     /// Read a `user_meta` value. Returns `Ok(None)` for both a missing row and
     /// a row with a SQL NULL value, which is what auth callers want ("not set"
     /// vs "explicitly cleared" are the same signal here).
@@ -2176,5 +2285,46 @@ mod tests {
         assert_eq!(v.get("updatedAt").and_then(|x| x.as_str()), Some("2026-06-01T00:00:00Z"));
         assert!(v.get("deletedAt").unwrap().is_null());
         assert_eq!(v.get("claudeArgs").unwrap().as_array().unwrap()[0].as_str(), Some("--foo"));
+    }
+
+    #[test]
+    fn get_local_updated_at_returns_none_for_missing() {
+        let db = Database::new_in_memory().unwrap();
+        assert!(db.get_local_updated_at("profiles", "missing").unwrap().is_none());
+    }
+
+    #[test]
+    fn upsert_pulled_row_inserts_and_updates_profile() {
+        let db = Database::new_in_memory().unwrap();
+        let row = serde_json::json!({
+            "id": "p1", "name": "Beta", "description": null,
+            "workingDirectory": "/tmp", "claudeArgs": ["--x"], "envVars": {},
+            "isDefault": false, "agent": "claude", "agentArgsJson": null,
+            "updatedAt": "2026-06-01T00:00:00Z", "deletedAt": null, "clientVersion": 1,
+        });
+        db.upsert_pulled_row("profiles", &row).unwrap();
+        assert_eq!(db.get_local_updated_at("profiles", "p1").unwrap().as_deref(), Some("2026-06-01T00:00:00Z"));
+
+        // Second upsert with a newer timestamp overwrites.
+        let row2 = serde_json::json!({
+            "id": "p1", "name": "Beta v2", "workingDirectory": "/tmp",
+            "claudeArgs": [], "envVars": {}, "isDefault": false, "agent": "claude",
+            "updatedAt": "2026-12-01T00:00:00Z", "clientVersion": 2,
+        });
+        db.upsert_pulled_row("profiles", &row2).unwrap();
+        let name: String = db.conn.query_row("SELECT name FROM profiles WHERE id = 'p1'", [], |r| r.get(0)).unwrap();
+        assert_eq!(name, "Beta v2");
+    }
+
+    #[test]
+    fn upsert_pulled_row_inserts_workspace_by_sync_id() {
+        let db = Database::new_in_memory().unwrap();
+        let row = serde_json::json!({
+            "id": "w-uuid-1", "name": "main", "terminals": [],
+            "createdAt": "2026-06-01T00:00:00Z", "updatedAt": "2026-06-01T00:00:00Z",
+            "deletedAt": null, "clientVersion": 1,
+        });
+        db.upsert_pulled_row("workspaces", &row).unwrap();
+        assert_eq!(db.get_local_updated_at("workspaces", "w-uuid-1").unwrap().as_deref(), Some("2026-06-01T00:00:00Z"));
     }
 }
