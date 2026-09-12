@@ -4,6 +4,38 @@ use rusqlite::{params, Connection};
 use directories::ProjectDirs;
 use serde::{Serialize, Deserialize};
 
+/// Sync state of a syncable row. Serialized to SQLite as one of three
+/// lowercase strings; conversion is centralized here so writers can't
+/// produce invalid values by typo.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SyncState {
+    LocalOnly,
+    Pending,
+    Synced,
+}
+
+impl SyncState {
+    pub fn as_sql_str(self) -> &'static str {
+        match self {
+            SyncState::LocalOnly => "local_only",
+            SyncState::Pending => "pending",
+            SyncState::Synced => "synced",
+        }
+    }
+}
+
+impl std::str::FromStr for SyncState {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "local_only" => Ok(SyncState::LocalOnly),
+            "pending" => Ok(SyncState::Pending),
+            "synced" => Ok(SyncState::Synced),
+            other => Err(format!("invalid sync_state: {other}")),
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SessionHistoryEntry {
     pub id: i64,
@@ -1622,5 +1654,15 @@ mod tests {
         assert_eq!(db.get_user_meta("auth_prompt_seen").unwrap().as_deref(), Some("1"));
         db.delete_user_meta("auth_prompt_seen").unwrap();
         assert!(db.get_user_meta("auth_prompt_seen").unwrap().is_none());
+    }
+
+    #[test]
+    fn sync_state_roundtrips_sql_string() {
+        use std::str::FromStr;
+        for s in [SyncState::LocalOnly, SyncState::Pending, SyncState::Synced] {
+            assert_eq!(SyncState::from_str(s.as_sql_str()), Ok(s));
+        }
+        assert!(SyncState::from_str("pendinng").is_err());
+        assert!(SyncState::from_str("").is_err());
     }
 }
