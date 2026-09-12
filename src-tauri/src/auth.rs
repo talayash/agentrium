@@ -89,6 +89,14 @@ pub struct AuthUser {
 const API_BASE: &str = "https://agentrium-api.vercel.app";
 const CALLBACK_URL: &str = "agentrium://auth-return";
 
+/// Providers the broker accepts. Must stay in sync with the zod enum in
+/// `agentrium-api/src/app/api/auth/desktop/start/route.ts`.
+const SUPPORTED_PROVIDERS: &[&str] = &["google", "github"];
+
+fn is_supported_provider(provider: &str) -> bool {
+    SUPPORTED_PROVIDERS.contains(&provider)
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct StartOAuthLoginResult {
     pub opened_url: String,
@@ -107,11 +115,12 @@ pub async fn start_oauth_login(
     // Clone once so the async move only captures owned data.
     let pending = pending.inner().clone();
     wrap_cmd("start_oauth_login", async move {
-        if provider != "google" {
+        // Mirror the broker's zod enum. Email + password is deferred to M2.
+        if !is_supported_provider(&provider) {
             // Wrong provider is a caller-side bug/config choice, not a
             // runtime failure - skip telemetry.
             return Err(error_reporter::user_err(format!(
-                "provider not supported in M1: {provider}"
+                "unsupported OAuth provider: {provider}"
             )));
         }
 
@@ -374,5 +383,14 @@ mod tests {
             created_at: Instant::now() - Duration::from_secs(300),
         });
         assert!(map.take("old").is_none());
+    }
+
+    #[test]
+    fn supported_providers_accepts_google_and_github_only() {
+        assert!(is_supported_provider("google"));
+        assert!(is_supported_provider("github"));
+        assert!(!is_supported_provider("apple"));
+        assert!(!is_supported_provider("Google")); // case-sensitive
+        assert!(!is_supported_provider(""));
     }
 }

@@ -9,25 +9,28 @@ interface LoginModalProps {
   onClose: () => void;
 }
 
+type OAuthProvider = 'google' | 'github';
+
 /**
- * First-launch sign-in prompt. Offers Google OAuth (M1) or "continue as guest".
+ * First-launch sign-in prompt. Offers Google or GitHub OAuth (M1), or
+ * "continue as guest". Email + password is deferred to M2.
  *
- * The Google button doesn't close the modal itself: it kicks off the OAuth
- * flow in the system browser and stays in "Opening browser…" state. When the
- * deep-link handler fires `auth-tokens-received`, `subscribeToAuthEvents`
- * (see `lib/auth.ts`) transitions authStore to `authed` and App.tsx unmounts
- * this modal. Guest, by contrast, is a synchronous local choice - we mark the
+ * OAuth buttons don't close the modal themselves: they kick off the flow in
+ * the system browser and stay in "Opening browser…" state. When the deep-link
+ * handler fires `auth-tokens-received`, `subscribeToAuthEvents` (see
+ * `lib/auth.ts`) transitions authStore to `authed` and App.tsx unmounts this
+ * modal. Guest, by contrast, is a synchronous local choice - we mark the
  * prompt seen so we don't nag on next launch, flip the store, and close.
  */
 export function LoginModal({ onClose }: LoginModalProps) {
-  const [busy, setBusy] = useState<'google' | null>(null);
+  const [busy, setBusy] = useState<OAuthProvider | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const handleGoogle = async () => {
-    setBusy('google');
+  const handleOAuth = async (provider: OAuthProvider) => {
+    setBusy(provider);
     setError(null);
     try {
-      await startOAuthLogin('google');
+      await startOAuthLogin(provider);
       // Modal stays open until auth-tokens-received fires and authStore
       // transitions to 'authed'; App.tsx watches the store and unmounts us.
     } catch (err) {
@@ -66,12 +69,23 @@ export function LoginModal({ onClose }: LoginModalProps) {
         <Button
           variant="primary"
           size="md"
-          onClick={handleGoogle}
+          onClick={() => handleOAuth('google')}
           loading={busy === 'google'}
           disabled={busy !== null}
           className="w-full"
         >
           {busy === 'google' ? 'Opening browser…' : 'Sign in with Google'}
+        </Button>
+
+        <Button
+          variant="secondary"
+          size="md"
+          onClick={() => handleOAuth('github')}
+          loading={busy === 'github'}
+          disabled={busy !== null}
+          className="w-full"
+        >
+          {busy === 'github' ? 'Opening browser…' : 'Sign in with GitHub'}
         </Button>
 
         {error && (

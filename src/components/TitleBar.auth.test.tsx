@@ -48,6 +48,15 @@ describe('title bar auth interactions', () => {
     expect(startDragging).not.toHaveBeenCalled();
   });
 
+  it('starts a GitHub OAuth flow from the login modal', async () => {
+    const user = userEvent.setup();
+    render(<TitleBar />);
+    await user.click(screen.getByRole('button', { name: 'Sign in' }));
+    await user.click(screen.getByRole('button', { name: 'Sign in with GitHub' }));
+    expect(startOAuthLogin).toHaveBeenCalledWith('github');
+    expect(startDragging).not.toHaveBeenCalled();
+  });
+
   it('allows closing via the close icon and backdrop without starting a drag', async () => {
     const user = userEvent.setup();
     render(<TitleBar />);

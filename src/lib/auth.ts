@@ -19,9 +19,9 @@ import { reportInvokeFailure } from './errorReporter';
  * the flow completes when the OS deep-links `agentrium://auth-return?...` back
  * to us, which emits `auth-tokens-received` (see subscribeToAuthEvents).
  *
- * Only 'google' is supported in M1.
+ * Email + password is deferred to M2 (spec §6.2).
  */
-export async function startOAuthLogin(provider: 'google'): Promise<void> {
+export async function startOAuthLogin(provider: 'google' | 'github'): Promise<void> {
   await invoke<{ opened_url: string }>('start_oauth_login', { provider });
 }
 
