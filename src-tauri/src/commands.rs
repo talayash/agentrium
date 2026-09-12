@@ -787,7 +787,14 @@ pub async fn save_profile(
     profile: ConfigProfile,
 ) -> Result<(), String> {
     wrap_cmd("save_profile", async move {
-        db_op(&state.db, move |db| db.save_profile(&profile)).await
+        db_op(&state.db, move |db| {
+            let profile_id = profile.id.clone();
+            db.save_profile(&profile)?;
+            // Enqueue for sync under the same DB lock so a crash between
+            // save and enqueue cannot leave a "written but never synced" row.
+            db.touch_sync_row("profiles", &profile_id)
+        })
+        .await
     })
     .await
 }
@@ -803,7 +810,10 @@ pub async fn get_profiles(state: State<'_, AppState>) -> Result<Vec<ConfigProfil
 #[command]
 pub async fn delete_profile(state: State<'_, AppState>, id: String) -> Result<(), String> {
     wrap_cmd("delete_profile", async move {
-        db_op(&state.db, move |db| db.delete_profile(&id)).await
+        // Soft-delete: mark tombstone + enqueue instead of physical DELETE, so
+        // the pusher can propagate the removal to other devices. The row stays
+        // in the table with `deleted_at` set; user-facing reads filter it out.
+        db_op(&state.db, move |db| db.tombstone_sync_row("profiles", &id)).await
     })
     .await
 }
@@ -998,7 +1008,12 @@ pub async fn save_custom_agent(
         agent.name = agent.name.trim().to_string();
         agent.binary = agent.binary.trim().to_string();
         let to_save = agent.clone();
-        db_op(&state.db, move |db| db.save_custom_agent(&to_save)).await?;
+        db_op(&state.db, move |db| {
+            let id = to_save.id.clone();
+            db.save_custom_agent(&to_save)?;
+            db.touch_sync_row("custom_agents", &id)
+        })
+        .await?;
         Ok(agent)
     })
     .await
@@ -1007,7 +1022,8 @@ pub async fn save_custom_agent(
 #[command]
 pub async fn delete_custom_agent(state: State<'_, AppState>, id: String) -> Result<(), String> {
     wrap_cmd("delete_custom_agent", async move {
-        db_op(&state.db, move |db| db.delete_custom_agent(&id)).await
+        // Soft-delete: see delete_profile for rationale.
+        db_op(&state.db, move |db| db.tombstone_sync_row("custom_agents", &id)).await
     })
     .await
 }
@@ -1971,7 +1987,25 @@ pub async fn delete_workspace(
     name: String,
 ) -> Result<(), String> {
     wrap_cmd("delete_workspace", async move {
-        db_op(&state.db, move |db| db.delete_workspace(&name)).await
+        // Soft-delete via sync_id (the sync-facing key for workspaces). The
+        // existing user-facing guard against `__`-prefixed names lives in
+        // db.delete_workspace; keep it here since the caller only knows the
+        // display name.
+        db_op(&state.db, move |db| {
+            if name.starts_with("__") {
+                return Err("Cannot delete internal workspaces".to_string());
+            }
+            let sync_id: String = db
+                .conn()
+                .query_row(
+                    "SELECT sync_id FROM workspaces WHERE name = ?1 AND deleted_at IS NULL",
+                    rusqlite::params![name],
+                    |row| row.get(0),
+                )
+                .map_err(|e| e.to_string())?;
+            db.tombstone_sync_row("workspaces", &sync_id)
+        })
+        .await
     })
     .await
 }
@@ -1983,7 +2017,19 @@ pub async fn save_workspace(
     terminals: Vec<crate::terminal::TerminalConfig>,
 ) -> Result<(), String> {
     wrap_cmd("save_workspace", async move {
-        db_op(&state.db, move |db| db.save_workspace(&name, &terminals)).await
+        db_op(&state.db, move |db| {
+            let sync_id = db.save_workspace(&name, &terminals)?;
+            // `__`-prefixed names (currently just `__last_session__`) are
+            // ephemeral local snapshots. Save them, but never enqueue them
+            // for sync - otherwise every terminal-set change would flood
+            // the queue and every other device would clobber its own
+            // running terminals on pull.
+            if !name.starts_with("__") {
+                db.touch_sync_row("workspaces", &sync_id)?;
+            }
+            Ok(())
+        })
+        .await
     })
     .await
 }

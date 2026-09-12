@@ -417,7 +417,7 @@ impl Database {
 
     pub fn get_profiles(&self) -> Result<Vec<ConfigProfile>, String> {
         let mut stmt = self.conn
-            .prepare("SELECT id, name, description, working_directory, claude_args, env_vars, is_default, preview_json, agent, agent_args_json, credential_bindings_json FROM profiles")
+            .prepare("SELECT id, name, description, working_directory, claude_args, env_vars, is_default, preview_json, agent, agent_args_json, credential_bindings_json FROM profiles WHERE deleted_at IS NULL")
             .map_err(|e| e.to_string())?;
 
         let profiles = stmt.query_map([], |row| {
@@ -565,14 +565,17 @@ impl Database {
         "id, name, binary, default_args, resume_flag, color, required_env, bindings, install_url, install_hint, created_at, updated_at";
 
     pub fn list_custom_agents(&self) -> Result<Vec<crate::custom_agents::CustomAgent>, String> {
-        let sql = format!("SELECT {} FROM custom_agents ORDER BY created_at ASC, name ASC", Self::CUSTOM_AGENT_COLUMNS);
+        let sql = format!(
+            "SELECT {} FROM custom_agents WHERE deleted_at IS NULL ORDER BY created_at ASC, name ASC",
+            Self::CUSTOM_AGENT_COLUMNS,
+        );
         let mut stmt = self.conn.prepare(&sql).map_err(|e| e.to_string())?;
         let rows = stmt.query_map([], Self::row_to_custom_agent).map_err(|e| e.to_string())?;
         rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
     }
 
     pub fn get_custom_agent(&self, id: &str) -> Result<Option<crate::custom_agents::CustomAgent>, String> {
-        let sql = format!("SELECT {} FROM custom_agents WHERE id = ?1", Self::CUSTOM_AGENT_COLUMNS);
+        let sql = format!("SELECT {} FROM custom_agents WHERE id = ?1 AND deleted_at IS NULL", Self::CUSTOM_AGENT_COLUMNS);
         let mut stmt = self.conn.prepare(&sql).map_err(|e| e.to_string())?;
         let mut rows = stmt.query_map(params![id], Self::row_to_custom_agent).map_err(|e| e.to_string())?;
         match rows.next() {
@@ -764,22 +767,49 @@ impl Database {
         Ok(())
     }
 
-    pub fn save_workspace(&self, name: &str, terminals: &[TerminalConfig]) -> Result<(), String> {
+    /// Upsert a workspace by name and return its sync-facing key (`sync_id`).
+    ///
+    /// On first save for a given name, a fresh UUID `sync_id` is stamped along
+    /// with `updated_at = now()`. On repeat saves, the existing row's `sync_id`
+    /// is preserved (previously `INSERT OR REPLACE` deleted+reinserted, which
+    /// rotated `sync_id` on every save and broke cross-device merges).
+    ///
+    /// The returned `sync_id` is what callers pass to `touch_sync_row`. For
+    /// `__`-prefixed internal keys (e.g. `__last_session__`) the sync_id is
+    /// still returned, but the IPC layer must skip enqueueing them - they
+    /// snapshot ephemeral local state and would spam every device otherwise.
+    pub fn save_workspace(&self, name: &str, terminals: &[TerminalConfig]) -> Result<String, String> {
         // Allow internal keys like "__last_session__" but validate user-facing names
         if !name.starts_with("__") && (name.is_empty() || name.len() > 255) {
             return Err("Workspace name must be 1-255 characters".to_string());
         }
         let terminals_json = serde_json::to_string(terminals).map_err(|e| e.to_string())?;
+        let now = chrono::Utc::now().to_rfc3339();
+        let new_sync_id = uuid::Uuid::new_v4().to_string();
+        // ON CONFLICT(name) DO UPDATE preserves the existing `sync_id`
+        // (unlike INSERT OR REPLACE, which deletes the row and would let the
+        // new UUID clobber the stable identity).
         self.conn.execute(
-            "INSERT OR REPLACE INTO workspaces (name, terminals, created_at) VALUES (?1, ?2, ?3)",
-            params![name, terminals_json, chrono::Utc::now().to_rfc3339()],
+            "INSERT INTO workspaces (name, terminals, created_at, sync_id, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(name) DO UPDATE SET
+                terminals = excluded.terminals,
+                updated_at = excluded.updated_at",
+            params![name, terminals_json, now, new_sync_id, now],
         ).map_err(|e| e.to_string())?;
-        Ok(())
+        // Read back the row's actual sync_id (which is `new_sync_id` for a
+        // fresh insert or the pre-existing one for an update).
+        let sync_id: String = self.conn.query_row(
+            "SELECT sync_id FROM workspaces WHERE name = ?1",
+            params![name],
+            |row| row.get(0),
+        ).map_err(|e| e.to_string())?;
+        Ok(sync_id)
     }
 
     pub fn get_workspaces(&self) -> Result<Vec<WorkspaceInfo>, String> {
         let mut stmt = self.conn
-            .prepare("SELECT name, terminals, created_at FROM workspaces WHERE name != '__last_session__' ORDER BY created_at DESC")
+            .prepare("SELECT name, terminals, created_at FROM workspaces WHERE name != '__last_session__' AND deleted_at IS NULL ORDER BY created_at DESC")
             .map_err(|e| e.to_string())?;
 
         let workspaces = stmt.query_map([], |row| {
@@ -806,7 +836,11 @@ impl Database {
 
     pub fn load_workspace(&self, name: &str) -> Result<Vec<TerminalConfig>, String> {
         let terminals_json: String = self.conn
-            .query_row("SELECT terminals FROM workspaces WHERE name = ?1", params![name], |row| row.get(0))
+            .query_row(
+                "SELECT terminals FROM workspaces WHERE name = ?1 AND deleted_at IS NULL",
+                params![name],
+                |row| row.get(0),
+            )
             .map_err(|e| e.to_string())?;
 
         serde_json::from_str(&terminals_json).map_err(|e| e.to_string())
@@ -822,7 +856,9 @@ impl Database {
         }
         let mut sorted = terminals.to_vec();
         sorted.sort_by_key(|t| t.created_at);
-        self.save_workspace(Self::LAST_SESSION_KEY, &sorted)
+        // Discard the sync_id: `__last_session__` is an ephemeral snapshot that
+        // must never sync (see save_workspace docstring).
+        self.save_workspace(Self::LAST_SESSION_KEY, &sorted).map(|_| ())
     }
 
     pub fn load_last_session(&self) -> Result<Option<Vec<TerminalConfig>>, String> {
@@ -835,7 +871,7 @@ impl Database {
         let row: Option<String> = self
             .conn
             .query_row(
-                "SELECT terminals FROM workspaces WHERE name = ?1",
+                "SELECT terminals FROM workspaces WHERE name = ?1 AND deleted_at IS NULL",
                 params![Self::LAST_SESSION_KEY],
                 |row| row.get(0),
             )
@@ -1976,5 +2012,55 @@ mod tests {
             |r| r.get(0),
         ).unwrap();
         assert_eq!(sync_state, "pending", "tombstone push must still be enqueued");
+    }
+
+    #[test]
+    fn tombstoned_profile_is_excluded_from_get_profiles() {
+        let db = Database::new_in_memory().unwrap();
+        db.conn.execute(
+            "INSERT INTO profiles (id, name, working_directory, claude_args, env_vars, updated_at)
+             VALUES ('live', 'Live', '/tmp', '[]', '{}', '2026-01-01T00:00:00Z'),
+                    ('gone', 'Gone', '/tmp', '[]', '{}', '2026-01-01T00:00:00Z')",
+            [],
+        ).unwrap();
+        db.tombstone_sync_row("profiles", "gone").unwrap();
+
+        let all = db.get_profiles().unwrap();
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].id, "live");
+    }
+
+    #[test]
+    fn tombstoned_custom_agent_is_excluded_from_list_and_get() {
+        let db = Database::new_in_memory().unwrap();
+        db.save_custom_agent(&sample_custom_agent("live")).unwrap();
+        db.save_custom_agent(&sample_custom_agent("gone")).unwrap();
+        db.tombstone_sync_row("custom_agents", "gone").unwrap();
+
+        let listed = db.list_custom_agents().unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].id, "live");
+
+        assert!(db.get_custom_agent("gone").unwrap().is_none(),
+            "get_custom_agent must not resurrect tombstoned rows");
+        assert!(db.get_custom_agent("live").unwrap().is_some());
+    }
+
+    #[test]
+    fn tombstoned_workspace_is_excluded_from_get_and_load() {
+        let db = Database::new_in_memory().unwrap();
+        db.save_workspace("live", &[make_terminal("t-live", 0)]).unwrap();
+        let gone_sync_id = db
+            .save_workspace("gone", &[make_terminal("t-gone", 0)])
+            .unwrap();
+        db.tombstone_sync_row("workspaces", &gone_sync_id).unwrap();
+
+        let listed = db.get_workspaces().unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].name, "live");
+
+        assert!(db.load_workspace("gone").is_err(),
+            "load_workspace must treat a tombstoned name as absent");
+        assert!(db.load_workspace("live").is_ok());
     }
 }
