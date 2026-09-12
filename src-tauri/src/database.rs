@@ -204,6 +204,13 @@ impl Database {
             // Nullable JSON so a pre-migration row reads as NULL, which the
             // loader treats as an empty list.
             "credential_bindings_json TEXT",
+            // M2a sync columns. `updated_at` is the LWW key; ISO-8601 UTC.
+            // `deleted_at` NULL means live, non-NULL means tombstone.
+            // `sync_state` is one of 'local_only' | 'pending' | 'synced'.
+            "updated_at TEXT",
+            "deleted_at TEXT",
+            "client_version INTEGER NOT NULL DEFAULT 1",
+            "sync_state TEXT NOT NULL DEFAULT 'local_only'",
         ] {
             let sql = format!("ALTER TABLE profiles ADD COLUMN {}", column);
             if let Err(e) = conn.execute(&sql, []) {
@@ -212,6 +219,14 @@ impl Database {
                 }
             }
         }
+        // Backfill updated_at for pre-migration rows. Any row still on NULL
+        // was written before sync existed, so use `now()` — the first push
+        // will look like a fresh authoring event, which is correct.
+        conn.execute(
+            "UPDATE profiles SET updated_at = ?1 WHERE updated_at IS NULL",
+            params![chrono::Utc::now().to_rfc3339()],
+        )
+        .map_err(|e| e.to_string())?;
         // Antigravity replaced Gemini as the fourth agent slot. Any row
         // whose `agent` column still says 'gemini' (written by an older
         // build) is promoted in place so users don't lose their profile.
