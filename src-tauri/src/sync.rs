@@ -93,6 +93,29 @@ async fn run_engine(
     }
 }
 
+pub(crate) async fn emit_status(
+    app: &tauri::AppHandle,
+    db: &Arc<Mutex<Database>>,
+    status: SyncStatus,
+    last_error: Option<String>,
+) {
+    use tauri::Emitter;
+    let (queue_depth, last_pulled_at) = {
+        let db_guard = db.lock().await;
+        (
+            db_guard.sync_queue_depth().unwrap_or(0),
+            db_guard.get_last_pull_cursor().unwrap_or(None),
+        )
+    };
+    let payload = SyncStatusPayload {
+        status,
+        queue_depth,
+        last_pulled_at,
+        last_error,
+    };
+    let _ = app.emit("sync-status-changed", payload);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
