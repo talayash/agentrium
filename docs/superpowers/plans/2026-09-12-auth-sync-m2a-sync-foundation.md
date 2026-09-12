@@ -87,7 +87,7 @@
 **Files:**
 - Modify: `src-tauri/src/database.rs` (around the profiles migration loop at line ~196)
 
-- [ ] **Step 1: Extend the profiles ALTER TABLE loop**
+- [x] **Step 1: Extend the profiles ALTER TABLE loop**
 
 The existing pattern is a loop over `ALTER TABLE profiles ADD COLUMN <col>`, swallowing "duplicate column name" errors. Add the sync columns to that same loop so they idempotently apply to legacy DBs and no-op on fresh installs (fresh `CREATE TABLE` doesn't include them either — that's fine because the ALTER runs on every boot).
 
@@ -119,7 +119,7 @@ for column in [
 
 Note `id TEXT PRIMARY KEY` already exists on `profiles`, so no id column added here.
 
-- [ ] **Step 2: Add the backfill loop for existing rows**
+- [x] **Step 2: Add the backfill loop for existing rows**
 
 Immediately after the `ALTER TABLE profiles` loop, add:
 ```rust
@@ -133,12 +133,14 @@ conn.execute(
 .map_err(|e| e.to_string())?;
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src-tauri/src/database.rs
 git commit -m "feat(sync): add sync columns + backfill for profiles"
 ```
+
+**Landed as `91a2ce3`.** Code quality reviewer noted a follow-up suggestion for Tasks 5/7: consider adding a `CHECK (sync_state IN ('local_only','pending','synced'))` constraint or a Rust enum with `as_sql_str()` to prevent stringly-typed drift. Not blocking here.
 
 ---
 
@@ -147,7 +149,7 @@ git commit -m "feat(sync): add sync columns + backfill for profiles"
 **Files:**
 - Modify: `src-tauri/src/database.rs`
 
-- [ ] **Step 1: Add a new ALTER TABLE migration loop for custom_agents**
+- [x] **Step 1: Add a new ALTER TABLE migration loop for custom_agents** (landed `9a644bd`)
 
 `custom_agents` already has `updated_at TEXT NOT NULL` — do not re-add it. Add the sync-specific ones alongside the existing profiles loop:
 
@@ -169,7 +171,7 @@ for column in [
 
 No backfill needed — `updated_at` is already NOT NULL on this table.
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit** (landed `9a644bd`)
 
 ```bash
 git add src-tauri/src/database.rs
@@ -185,7 +187,7 @@ git commit -m "feat(sync): add sync columns for custom_agents"
 
 Context: `workspaces` currently uses `id INTEGER PRIMARY KEY AUTOINCREMENT`. Sync needs a stable TEXT UUID that cross-device rows can share. We can't `ALTER` the primary key on SQLite, so we introduce a separate `sync_id TEXT UNIQUE` column, backfill it, and use `sync_id` as the network-facing key. Local INTEGER id keeps FK references (there aren't any) and stays stable.
 
-- [ ] **Step 1: Add a workspaces ALTER TABLE migration loop**
+- [x] **Step 1: Add a workspaces ALTER TABLE migration loop** (landed `cf606f4`)
 
 ```rust
 // M2a: workspaces sync columns. Keep local INTEGER id intact; introduce
@@ -206,7 +208,7 @@ for column in [
 }
 ```
 
-- [ ] **Step 2: Backfill sync_id and updated_at for pre-migration rows**
+- [x] **Step 2: Backfill sync_id and updated_at for pre-migration rows** (landed `cf606f4`)
 
 ```rust
 // Pre-migration workspaces get a fresh UUID sync_id and now() timestamp.
@@ -234,7 +236,7 @@ conn.execute(
 .map_err(|e| e.to_string())?;
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit** (landed `cf606f4`)
 
 ```bash
 git add src-tauri/src/database.rs
@@ -248,7 +250,7 @@ git commit -m "feat(sync): add sync columns + TEXT sync_id for workspaces"
 **Files:**
 - Modify: `src-tauri/src/database.rs` (inside the `init_schema` `execute_batch` block)
 
-- [ ] **Step 1: Add the sync_queue table to `init_schema`**
+- [x] **Step 1: Add the sync_queue table to `init_schema`** (landed `04e3665`)
 
 Add to the `CREATE TABLE IF NOT EXISTS` block (before the trailing indexes):
 
@@ -265,12 +267,17 @@ CREATE TABLE IF NOT EXISTS sync_queue (
 CREATE INDEX IF NOT EXISTS idx_sync_queue_enqueued_at ON sync_queue(enqueued_at);
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit** (landed `04e3665`)
 
 ```bash
 git add src-tauri/src/database.rs
 git commit -m "feat(sync): add sync_queue outbox table"
 ```
+
+**Follow-ups flagged by code quality review of the 2-4 bundle (bake into subsequent tasks):**
+- Task 5 or 7: add a Rust `SyncState` enum with `as_sql_str()` / `FromStr` so writers can't produce invalid strings like `'pendinng'`. Same argument applies to `AgentKind` on profiles (already precedent for stringly-typed).
+- Task 8: `save_workspace` currently doesn't set `sync_id` / `updated_at` / `sync_state`, so every REPLACE produces NULL rows that are invisible to LWW. **Fix in Task 8** by having the writer stamp these fields. Also filter `WHERE name NOT LIKE '\_\_%' ESCAPE '\\'` (or equivalent) so ephemeral `__last_session__` rows never enqueue.
+- Task 8 acceptance criterion: after every writer update, assert `SELECT COUNT(*) FROM <table> WHERE updated_at IS NULL = 0`.
 
 ---
 
@@ -279,7 +286,9 @@ git commit -m "feat(sync): add sync_queue outbox table"
 **Files:**
 - Modify: `src-tauri/src/database.rs`
 
-- [ ] **Step 1: Add the `SyncQueueRow` struct**
+**Status: LANDED.** Bundle: `SyncState` enum precursor (`6203ae8`) → sync_queue helpers (`a3b4a8e`) → user_meta wrappers (`d9e0664`, Task 6) → touch/tombstone/mark_synced (`c923f14`, Task 7) → tombstone test coverage (`2ed261e`). 44/44 tests pass. Deferred to Task 8: enum-ify the `table: &str` parameter into a `SyncTable` compile-time allowlist if the spread of call sites justifies it (Minor per code review).
+
+- [x] **Step 1: Add the `SyncQueueRow` struct** (bundle landed `a3b4a8e`; `SyncState` enum precursor at `6203ae8`)
 
 Near the top of `database.rs`, alongside other model structs:
 
