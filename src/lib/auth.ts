@@ -25,6 +25,32 @@ export async function startOAuthLogin(provider: 'google' | 'github'): Promise<vo
   await invoke<{ opened_url: string }>('start_oauth_login', { provider });
 }
 
+/**
+ * Register a new email+password account. On success the deep-link-equivalent
+ * event fires from Rust and the store hydrates automatically. Throws with a
+ * short error code on failure — LoginModal maps to user-friendly text.
+ * Codes: 'email_taken' (409), 'invalid_password' (weak), or a generic string.
+ */
+export async function signupCredentials(
+  email: string,
+  password: string,
+  name?: string,
+): Promise<void> {
+  await invoke('signup_credentials', { email, password, name });
+}
+
+/**
+ * Sign in with email + password. Same hydration path as OAuth. Throws with
+ * 'invalid_credentials' on wrong email/password (constant response — no user
+ * enumeration).
+ */
+export async function signinCredentials(
+  email: string,
+  password: string,
+): Promise<void> {
+  await invoke('signin_credentials', { email, password });
+}
+
 /** Record that we've shown the "sign in to sync" prompt to this user. */
 export async function markAuthPromptSeen(): Promise<void> {
   await invoke('mark_auth_prompt_seen');
