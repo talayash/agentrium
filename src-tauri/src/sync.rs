@@ -10,6 +10,15 @@ use serde::Serialize;
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
 
+/// Compare two ISO-8601 timestamps and return whether `incoming` should win.
+/// LWW: incoming wins iff strictly newer than local. Tie goes to local.
+/// This is the client-side counterpart to the server's `>=` skip check —
+/// the server treats equal timestamps as "older loses"; the client is
+/// permissive and keeps its local copy on ties.
+pub fn incoming_wins(local_updated_at: &str, incoming_updated_at: &str) -> bool {
+    incoming_updated_at > local_updated_at
+}
+
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum SyncStatus {
@@ -85,4 +94,21 @@ async fn run_engine(
 }
 
 #[cfg(test)]
-mod tests {}
+mod tests {
+    use super::*;
+
+    #[test]
+    fn incoming_wins_when_strictly_newer() {
+        assert!(incoming_wins("2026-01-01T00:00:00Z", "2026-06-01T00:00:00Z"));
+    }
+
+    #[test]
+    fn incoming_loses_when_older() {
+        assert!(!incoming_wins("2026-06-01T00:00:00Z", "2026-01-01T00:00:00Z"));
+    }
+
+    #[test]
+    fn tie_goes_to_local() {
+        assert!(!incoming_wins("2026-06-01T00:00:00Z", "2026-06-01T00:00:00Z"));
+    }
+}
