@@ -12,6 +12,12 @@ vi.mock('../lib/auth', () => ({
   markAuthPromptSeen: vi.fn().mockResolvedValue(undefined),
   logout: vi.fn().mockResolvedValue(undefined),
 }));
+vi.mock('../lib/sync', () => ({
+  setSyncEnabled: vi.fn().mockResolvedValue(undefined),
+  syncNow: vi.fn(),
+  subscribeToSyncEvents: vi.fn().mockResolvedValue(() => {}),
+  getSyncEnabled: vi.fn().mockResolvedValue(true),
+}));
 vi.mock('../lib/errorReporter', () => ({ reportInvokeFailure: vi.fn() }));
 vi.mock('./UpdatePill', () => ({ UpdatePill: () => null }));
 vi.mock('./titlebar/SessionWidget', () => ({ SessionWidget: () => null }));
@@ -24,10 +30,19 @@ vi.mock('../store/terminalStore', () => {
 import { TitleBar } from './TitleBar';
 import { useAuthStore } from '../store/authStore';
 import { startOAuthLogin, markAuthPromptSeen, logout } from '../lib/auth';
+import { setSyncEnabled } from '../lib/sync';
+import { useSyncStore } from '../store/syncStore';
 
 beforeEach(() => {
   vi.clearAllMocks();
   useAuthStore.getState().setGuest();
+  useSyncStore.setState({
+    status: 'idle',
+    enabled: true,
+    queueDepth: 0,
+    lastPulledAt: null,
+    lastError: null,
+  } as any);
 });
 afterEach(cleanup);
 
@@ -98,5 +113,34 @@ describe('title bar auth interactions', () => {
     await user.click(screen.getByRole('menuitem', { name: 'Sign out' }));
     expect(logout).toHaveBeenCalledTimes(1);
     expect(startDragging).not.toHaveBeenCalled();
+  });
+
+  it('toggling Sync off in the account dropdown calls setSyncEnabled(false)', async () => {
+    useAuthStore.getState().setAuthed(
+      { id: 'u1', email: 'test@example.com', name: 'Test User', image: null },
+      'jwt',
+    );
+    // Sync starts enabled by default.
+    useSyncStore.setState({ enabled: true } as any);
+
+    const user = userEvent.setup();
+    render(<TitleBar />);
+    await user.click(screen.getByRole('button', { name: 'Account - Test User' }));
+    await user.click(screen.getByRole('switch', { name: 'Sync on' }));
+    expect(setSyncEnabled).toHaveBeenCalledWith(false);
+  });
+
+  it('toggling Sync on in the account dropdown calls setSyncEnabled(true)', async () => {
+    useAuthStore.getState().setAuthed(
+      { id: 'u1', email: 'test@example.com', name: 'Test User', image: null },
+      'jwt',
+    );
+    useSyncStore.setState({ enabled: false } as any);
+
+    const user = userEvent.setup();
+    render(<TitleBar />);
+    await user.click(screen.getByRole('button', { name: 'Account - Test User' }));
+    await user.click(screen.getByRole('switch', { name: 'Sync off' }));
+    expect(setSyncEnabled).toHaveBeenCalledWith(true);
   });
 });

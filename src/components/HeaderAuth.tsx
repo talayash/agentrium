@@ -4,6 +4,8 @@ import { useAuthStore } from '../store/authStore';
 import { logout } from '../lib/auth';
 import { LoginModal } from './LoginModal';
 import { reportInvokeFailure } from '../lib/errorReporter';
+import { useSyncStore } from '../store/syncStore';
+import { setSyncEnabled } from '../lib/sync';
 
 /**
  * Titlebar auth widget - guest sees a "Sign in" pill; authed users see a chip
@@ -145,6 +147,10 @@ export function HeaderAuth() {
                 </div>
               )}
             </div>
+            <div className="px-3 py-2 border-b border-seam flex items-center justify-between">
+              <span className="text-[12px] text-text-secondary">Sync</span>
+              <SyncToggle />
+            </div>
             <button
               type="button"
               role="menuitem"
@@ -169,4 +175,39 @@ function initials(s: string): string {
   if (parts.length === 0) return '?';
   if (parts.length === 1) return (parts[0][0] ?? '?').toUpperCase();
   return ((parts[0][0] ?? '') + (parts[1][0] ?? '')).toUpperCase();
+}
+
+function SyncToggle() {
+  const enabled = useSyncStore((s) => s.enabled);
+  const [busy, setBusy] = useState(false);
+
+  const handleToggle = async () => {
+    setBusy(true);
+    try {
+      await setSyncEnabled(!enabled);
+    } catch {
+      // setSyncEnabled already reverted the UI + reported to telemetry.
+    }
+    setBusy(false);
+  };
+
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={enabled}
+      aria-label={`Sync ${enabled ? 'on' : 'off'}`}
+      onClick={handleToggle}
+      disabled={busy}
+      className={`relative w-8 h-4 rounded-full transition-colors ${
+        enabled ? 'bg-accent-primary' : 'bg-elevation-1 ring-1 ring-inset ring-seam'
+      } disabled:opacity-50`}
+    >
+      <span
+        className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-transform ${
+          enabled ? 'translate-x-4' : 'translate-x-0.5'
+        }`}
+      />
+    </button>
+  );
 }
