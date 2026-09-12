@@ -106,10 +106,9 @@ export function Modal({
     if (closeOn === 'doubleClick' && e.target === e.currentTarget) onClose();
   };
 
-  // Portal into document.body so no ancestor `transform` / `filter` /
-  // `will-change` in the render tree (TitleBar's framer-motion drag region,
-  // popovers, etc.) can capture our `position: fixed` scrim. Without this,
-  // modals triggered from inside TitleBar get clipped by the titlebar's height.
+  // Escape ancestor transforms so the fixed scrim covers the viewport.
+  // Portal events still bubble through React ancestors, including TitleBar.
+  const portalTarget = document.getElementById('root') ?? document.body;
   return createPortal(
     <motion.div
       {...overlayMotion}
@@ -123,9 +122,7 @@ export function Modal({
         role="dialog"
         aria-modal="true"
         tabIndex={-1}
-        // Stop bubbling so clicks inside the panel never reach the scrim handler.
-        onClick={(e) => e.stopPropagation()}
-        onDoubleClick={(e) => e.stopPropagation()}
+        // The scrim's target check keeps clicks inside the panel from closing it.
         className={`material-sheet rounded-xl overflow-hidden ${panelClassName}`}
       >
         {showHeader && (
@@ -146,6 +143,6 @@ export function Modal({
         {children}
       </motion.div>
     </motion.div>,
-    document.body,
+    portalTarget,
   );
 }

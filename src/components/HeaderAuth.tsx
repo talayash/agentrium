@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { LogOut } from 'lucide-react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useAuthStore } from '../store/authStore';
 import { logout } from '../lib/auth';
 import { LoginModal } from './LoginModal';
@@ -17,17 +17,29 @@ import { reportInvokeFailure } from '../lib/errorReporter';
  * covers that state so we don't flash a stale chip during rehydrate_auth.
  */
 export function HeaderAuth() {
+  // All hooks MUST be declared before any conditional return — React tracks
+  // hook order by call index, so a mode transition from 'unknown' → 'authed'
+  // would blow up (Rendered more hooks than during the previous render).
   const mode = useAuthStore((s) => s.mode);
   const user = useAuthStore((s) => s.user);
   const [showLogin, setShowLogin] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [popPos, setPopPos] = useState<{ top: number; right: number } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const popRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
-  // Close on outside click + Escape - same pattern as SessionWidget.
+  // Close on outside click + Escape. Because the popover is portalled out of
+  // the trigger's DOM subtree, `menuRef.contains(target)` is no longer
+  // sufficient — we also check `popRef` to keep clicks inside the popover
+  // (like the Sign out button) from triggering a close-before-click race.
   useEffect(() => {
     if (!menuOpen) return;
     const onDown = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      const insideTrigger = menuRef.current?.contains(target);
+      const insidePopover = popRef.current?.contains(target);
+      if (!insideTrigger && !insidePopover) {
         setMenuOpen(false);
       }
     };
@@ -40,6 +52,18 @@ export function HeaderAuth() {
       document.removeEventListener('mousedown', onDown);
       document.removeEventListener('keydown', onKey);
     };
+  }, [menuOpen]);
+
+  // When the menu opens, measure the chip's position so the portalled popover
+  // can align to it. `useLayoutEffect` avoids a first-frame position flash.
+  useLayoutEffect(() => {
+    if (!menuOpen) return;
+    const rect = triggerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setPopPos({
+      top: Math.round(rect.bottom + 4),
+      right: Math.round(window.innerWidth - rect.right),
+    });
   }, [menuOpen]);
 
   if (mode === 'unknown') return null;
@@ -75,6 +99,7 @@ export function HeaderAuth() {
   return (
     <div className="relative no-drag" ref={menuRef}>
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setMenuOpen((v) => !v)}
         aria-haspopup="menu"
@@ -101,32 +126,36 @@ export function HeaderAuth() {
         </span>
       </button>
 
-      {menuOpen && (
-        <div
-          role="menu"
-          className="absolute right-0 top-full mt-1 z-50 w-[240px] material-popover rounded-lg overflow-hidden"
-        >
-          <div className="px-3 py-2 border-b border-seam">
-            <div className="text-[12px] font-medium text-text-primary truncate">
-              {user?.name ?? '(no name)'}
-            </div>
-            {user?.email && (
-              <div className="text-[11px] text-text-tertiary truncate">
-                {user.email}
-              </div>
-            )}
-          </div>
-          <button
-            type="button"
-            role="menuitem"
-            onClick={handleSignOut}
-            className="w-full flex items-center gap-2 px-3 py-2 text-left text-[12px] text-text-secondary hover:text-text-primary hover:bg-fill-hover transition-colors"
+      {menuOpen && popPos !== null &&
+        createPortal(
+          <div
+            ref={popRef}
+            role="menu"
+            // Escape TitleBar's transforms while retaining React event handling.
+            className="no-drag fixed w-[240px] material-popover rounded-lg overflow-hidden"
+            style={{ top: popPos.top, right: popPos.right, zIndex: 1000 }}
           >
-            <LogOut size={12} strokeWidth={1.75} className="text-text-tertiary" />
-            Sign out
-          </button>
-        </div>
-      )}
+            <div className="px-3 py-2 border-b border-seam">
+              <div className="text-[12px] font-medium text-text-primary truncate">
+                {user?.name ?? '(no name)'}
+              </div>
+              {user?.email && (
+                <div className="text-[11px] text-text-tertiary truncate">
+                  {user.email}
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={handleSignOut}
+              className="w-full px-3 py-2 text-left text-[12px] text-text-secondary hover:text-text-primary hover:bg-fill-hover transition-colors"
+            >
+              Sign out
+            </button>
+          </div>,
+          document.getElementById('root') ?? document.body,
+        )}
     </div>
   );
 }
