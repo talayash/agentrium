@@ -1109,6 +1109,78 @@ impl Database {
             .map_err(|e| e.to_string())
     }
 
+    /// Mark a syncable row as needing push. Idempotent: calling twice on the
+    /// same row before the pusher drains it just bumps updated_at again.
+    ///
+    /// Table names are the local SQLite table (profiles/custom_agents/workspaces).
+    /// row_key is the sync-facing key: `id` for profiles/custom_agents, `sync_id`
+    /// for workspaces.
+    pub fn touch_sync_row(&self, table: &str, row_key: &str) -> Result<(), String> {
+        let now = chrono::Utc::now().to_rfc3339();
+        let tx = self.conn.unchecked_transaction().map_err(|e| e.to_string())?;
+        let where_col = if table == "workspaces" { "sync_id" } else { "id" };
+        let sql = format!(
+            "UPDATE {table} SET updated_at = ?1, sync_state = ?2 WHERE {where_col} = ?3"
+        );
+        tx.execute(&sql, params![now, SyncState::Pending.as_sql_str(), row_key])
+            .map_err(|e| e.to_string())?;
+        tx.execute(
+            "INSERT OR REPLACE INTO sync_queue (table_name, row_key, enqueued_at, attempts, last_error)
+             VALUES (?1, ?2, ?3, 0, NULL)",
+            params![table, row_key, now],
+        )
+        .map_err(|e| e.to_string())?;
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// Mark a syncable row as soft-deleted and enqueue the tombstone.
+    pub fn tombstone_sync_row(&self, table: &str, row_key: &str) -> Result<(), String> {
+        let now = chrono::Utc::now().to_rfc3339();
+        let tx = self.conn.unchecked_transaction().map_err(|e| e.to_string())?;
+        let where_col = if table == "workspaces" { "sync_id" } else { "id" };
+        let sql = format!(
+            "UPDATE {table} SET updated_at = ?1, deleted_at = ?1, sync_state = ?2 WHERE {where_col} = ?3"
+        );
+        tx.execute(&sql, params![now, SyncState::Pending.as_sql_str(), row_key])
+            .map_err(|e| e.to_string())?;
+        tx.execute(
+            "INSERT OR REPLACE INTO sync_queue (table_name, row_key, enqueued_at, attempts, last_error)
+             VALUES (?1, ?2, ?3, 0, NULL)",
+            params![table, row_key, now],
+        )
+        .map_err(|e| e.to_string())?;
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// After a successful push, flip the row to `synced` if updated_at still
+    /// matches what was pushed (protects against a mutation racing the push).
+    pub fn mark_row_synced_if_unchanged(
+        &self,
+        table: &str,
+        row_key: &str,
+        pushed_updated_at: &str,
+    ) -> Result<(), String> {
+        let where_col = if table == "workspaces" { "sync_id" } else { "id" };
+        let sql = format!(
+            "UPDATE {table} SET sync_state = ?1
+             WHERE {where_col} = ?2 AND updated_at = ?3 AND sync_state = ?4"
+        );
+        self.conn
+            .execute(
+                &sql,
+                params![
+                    SyncState::Synced.as_sql_str(),
+                    row_key,
+                    pushed_updated_at,
+                    SyncState::Pending.as_sql_str(),
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
     /// Read a `user_meta` value. Returns `Ok(None)` for both a missing row and
     /// a row with a SQL NULL value, which is what auth callers want ("not set"
     /// vs "explicitly cleared" are the same signal here).
@@ -1806,5 +1878,57 @@ mod tests {
         assert!(!db.get_sync_enabled().unwrap());
         db.set_sync_enabled(true).unwrap();
         assert!(db.get_sync_enabled().unwrap());
+    }
+
+    #[test]
+    fn touch_sync_row_enqueues_and_bumps_updated_at() {
+        let db = Database::new_in_memory().unwrap();
+        // Seed a profile row directly (bypassing save_profile so we control state).
+        db.conn.execute(
+            "INSERT INTO profiles (id, name, working_directory, claude_args, env_vars, updated_at, sync_state)
+             VALUES ('p1', 'Test', '/tmp', '[]', '{}', '2020-01-01T00:00:00Z', 'synced')",
+            [],
+        ).unwrap();
+
+        db.touch_sync_row("profiles", "p1").unwrap();
+
+        let (updated_at, sync_state): (String, String) = db.conn.query_row(
+            "SELECT updated_at, sync_state FROM profiles WHERE id = 'p1'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        ).unwrap();
+        assert!(updated_at > "2020-01-01T00:00:00Z".to_string());
+        assert_eq!(sync_state, "pending");
+
+        assert_eq!(db.sync_queue_depth().unwrap(), 1);
+    }
+
+    #[test]
+    fn mark_row_synced_if_unchanged_is_race_safe() {
+        let db = Database::new_in_memory().unwrap();
+        db.conn.execute(
+            "INSERT INTO profiles (id, name, working_directory, claude_args, env_vars, updated_at, sync_state)
+             VALUES ('p1', 'Test', '/tmp', '[]', '{}', '2026-01-01T00:00:00Z', 'pending')",
+            [],
+        ).unwrap();
+
+        // Successful push: nothing has changed since the pushed timestamp -> flip to synced.
+        db.mark_row_synced_if_unchanged("profiles", "p1", "2026-01-01T00:00:00Z").unwrap();
+        let s: String = db.conn.query_row(
+            "SELECT sync_state FROM profiles WHERE id = 'p1'", [], |r| r.get(0),
+        ).unwrap();
+        assert_eq!(s, "synced");
+
+        // Now the user edits the row while a stale push completes.
+        db.conn.execute(
+            "UPDATE profiles SET updated_at = '2026-06-01T00:00:00Z', sync_state = 'pending' WHERE id = 'p1'",
+            [],
+        ).unwrap();
+        // Stale push tries to flip it — must NOT clobber pending state.
+        db.mark_row_synced_if_unchanged("profiles", "p1", "2026-01-01T00:00:00Z").unwrap();
+        let s: String = db.conn.query_row(
+            "SELECT sync_state FROM profiles WHERE id = 'p1'", [], |r| r.get(0),
+        ).unwrap();
+        assert_eq!(s, "pending"); // still pending; the newer edit is not yet pushed
     }
 }
