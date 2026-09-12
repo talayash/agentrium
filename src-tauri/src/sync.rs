@@ -87,7 +87,6 @@ async fn run_engine(
     access_token: String,
     mut rx: mpsc::Receiver<SyncCommand>,
 ) {
-    eprintln!("[sync-debug] run_engine entered");
     let mut enabled = {
         let db_arc = db.clone();
         tokio::task::spawn_blocking(move || {
@@ -100,7 +99,6 @@ async fn run_engine(
         .await
         .unwrap_or(true)
     };
-    eprintln!("[sync-debug] run_engine: sync_enabled={enabled}");
     let mut client = sync_client::SyncClient::new(access_token);
     let mut debounce_tick = tokio::time::interval(std::time::Duration::from_millis(1_000));
     let mut pull_tick = tokio::time::interval(std::time::Duration::from_millis(PULL_INTERVAL_MS));
@@ -109,7 +107,6 @@ async fn run_engine(
     if enabled {
         emit_status(&app, &db, SyncStatus::Idle, None).await;
         do_pull(&app, &db, &mut client).await;
-        eprintln!("[sync-debug] run_engine: initial pull done");
     } else {
         emit_status(&app, &db, SyncStatus::Paused, None).await;
     }
@@ -118,14 +115,12 @@ async fn run_engine(
         tokio::select! {
             cmd = rx.recv() => match cmd {
                 Some(SyncCommand::SyncNow) => {
-                    eprintln!("[sync-debug] cmd: SyncNow");
                     if enabled {
                         do_push(&app, &db, &mut client).await;
                         do_pull(&app, &db, &mut client).await;
                     }
                 }
                 Some(SyncCommand::SetEnabled(e)) => {
-                    eprintln!("[sync-debug] cmd: SetEnabled({e})");
                     enabled = e;
                     let db_arc = db.clone();
                     let _ = tokio::task::spawn_blocking(move || {
@@ -144,13 +139,9 @@ async fn run_engine(
                     }
                 }
                 Some(SyncCommand::UpdateToken(t)) => {
-                    eprintln!("[sync-debug] cmd: UpdateToken");
                     client.set_access_token(t);
                 }
-                Some(SyncCommand::Shutdown) | None => {
-                    eprintln!("[sync-debug] cmd: Shutdown");
-                    break;
-                }
+                Some(SyncCommand::Shutdown) | None => break,
             },
             _ = debounce_tick.tick() => {
                 if !enabled { continue; }
@@ -164,7 +155,6 @@ async fn run_engine(
                 })
                 .await
                 .unwrap_or(0);
-                eprintln!("[sync-debug] tick: debounce (depth={depth})");
                 if depth > 0 && dirty_since.is_none() {
                     dirty_since = Some(tokio::time::Instant::now());
                 }
@@ -176,7 +166,6 @@ async fn run_engine(
                 }
             },
             _ = pull_tick.tick() => {
-                eprintln!("[sync-debug] tick: pull_tick (5min)");
                 if enabled {
                     do_pull(&app, &db, &mut client).await;
                 }
@@ -190,7 +179,6 @@ async fn do_push(
     db: &Arc<std::sync::Mutex<Database>>,
     client: &mut sync_client::SyncClient,
 ) {
-    eprintln!("[sync-debug] do_push: entry");
     emit_status(app, db, SyncStatus::Syncing, None).await;
 
     // Snapshot queue + resolve row JSON, all under one blocking-lock pass.
@@ -231,9 +219,6 @@ async fn do_push(
             return;
         }
     };
-    eprintln!("[sync-debug] do_push: queue depth={}, profiles={}, custom_agents={}, workspaces={}",
-        queue.len(), profiles.len(), custom_agents.len(), workspaces.len(),
-    );
 
     if queue.is_empty() {
         emit_status(app, db, SyncStatus::Idle, None).await;
@@ -258,14 +243,8 @@ async fn do_push(
         },
     };
 
-    eprintln!("[sync-debug] do_push: calling client.push");
     match client.push(req).await {
         Ok(resp) => {
-            eprintln!("[sync-debug] do_push: got response, accepted counts=P{} CA{} W{}",
-                resp.accepted.get("profiles").map(|v| v.len()).unwrap_or(0),
-                resp.accepted.get("custom_agents").map(|v| v.len()).unwrap_or(0),
-                resp.accepted.get("workspaces").map(|v| v.len()).unwrap_or(0),
-            );
             let accepted = resp.accepted.clone();
             let db_arc = db.clone();
             let profiles_c = profiles.clone();
@@ -296,11 +275,9 @@ async fn do_push(
                 let _ = db_guard.delete_sync_queue_entries(&drained);
             })
             .await;
-            eprintln!("[sync-debug] do_push: mark_synced + drain done");
             emit_status(app, db, SyncStatus::Idle, None).await;
         }
         Err(e) => {
-            eprintln!("[sync-debug] do_push: FAILED: {e}");
             let msg = format!("{e}");
             crate::error_reporter::report_bg("sync_push", msg.clone());
             emit_status(app, db, SyncStatus::Error, Some(msg)).await;
@@ -313,7 +290,6 @@ async fn do_pull(
     db: &Arc<std::sync::Mutex<Database>>,
     client: &mut sync_client::SyncClient,
 ) {
-    eprintln!("[sync-debug] do_pull: entry");
     let db_arc = db.clone();
     let since = tokio::task::spawn_blocking(move || {
         db_arc
@@ -324,43 +300,29 @@ async fn do_pull(
     })
     .await
     .unwrap_or(None);
-    eprintln!("[sync-debug] do_pull: since={since:?}");
 
     let req = sync_client::PullRequest { since, tables: None };
     emit_status(app, db, SyncStatus::Syncing, None).await;
 
-    eprintln!("[sync-debug] do_pull: calling client.pull");
     match client.pull(req).await {
         Ok(resp) => {
-            eprintln!("[sync-debug] do_pull: got response server_time={}, truncated={}, profiles={}, custom_agents={}, workspaces={}",
-                resp.server_time,
-                resp.truncated,
-                resp.profiles.as_ref().map(|v| v.len()).unwrap_or(0),
-                resp.custom_agents.as_ref().map(|v| v.len()).unwrap_or(0),
-                resp.workspaces.as_ref().map(|v| v.len()).unwrap_or(0),
-            );
             let server_time = resp.server_time.clone();
             let truncated = resp.truncated;
             let db_arc = db.clone();
-            eprintln!("[sync-debug] do_pull: about to apply rows");
             let _ = tokio::task::spawn_blocking(move || {
                 let db_guard = db_arc.lock().unwrap_or_else(|p| p.into_inner());
                 apply_pulled_rows(&db_guard, "profiles", &resp.profiles);
                 apply_pulled_rows(&db_guard, "custom_agents", &resp.custom_agents);
                 apply_pulled_rows(&db_guard, "workspaces", &resp.workspaces);
-                eprintln!("[sync-debug] do_pull: apply_pulled_rows done, updating cursor");
                 let _ = db_guard.set_last_pull_cursor(&server_time);
             })
             .await;
             emit_status(app, db, SyncStatus::Idle, None).await;
-            eprintln!("[sync-debug] do_pull: emitted Idle status");
             if truncated {
-                eprintln!("[sync-debug] do_pull: truncated=true, recursing");
                 Box::pin(do_pull(app, db, client)).await;
             }
         }
         Err(e) => {
-            eprintln!("[sync-debug] do_pull: FAILED: {e}");
             let msg = format!("{e}");
             crate::error_reporter::report_bg("sync_pull", msg.clone());
             emit_status(app, db, SyncStatus::Error, Some(msg)).await;
@@ -369,11 +331,9 @@ async fn do_pull(
 }
 
 fn apply_pulled_rows(db: &Database, table: &str, rows: &Option<Vec<serde_json::Value>>) {
-    eprintln!("[sync-debug] apply_pulled_rows: table={}, rows={}", table, rows.as_ref().map(|v| v.len()).unwrap_or(0));
     let Some(rows) = rows else { return };
     for row in rows {
         let Some(id) = row.get("id").and_then(|v| v.as_str()) else { continue };
-        eprintln!("[sync-debug]   applying {}/{}", table, id);
         let Some(incoming_updated_at) = row
             .get("updatedAt")
             .and_then(|v| v.as_str())
@@ -389,7 +349,6 @@ fn apply_pulled_rows(db: &Database, table: &str, rows: &Option<Vec<serde_json::V
         if !wins {
             continue;
         }
-        eprintln!("[sync-debug]   calling upsert_pulled_row for {}/{}", table, id);
         if let Err(e) = db.upsert_pulled_row(table, row) {
             crate::error_reporter::report_bg(
                 "sync_pull_apply",
