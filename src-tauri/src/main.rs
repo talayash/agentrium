@@ -22,6 +22,7 @@ mod session_provider;
 mod feedback;
 mod auth;
 mod sync_client;
+mod sync;
 
 use tauri::Manager;
 use std::sync::Arc;
