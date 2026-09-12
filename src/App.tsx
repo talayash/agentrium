@@ -159,7 +159,14 @@ function App() {
   // and the boot-time refresh flow: if we can rehydrate a session from the
   // keychain, we skip the popup entirely.
   const authMode = useAuthStore((s) => s.mode);
+  const authUserId = useAuthStore((s) => s.user?.id);
   const [showLoginModal, setShowLoginModal] = useState(false);
+  useEffect(() => {
+    if (authUserId) {
+      // Sign-in may swap the account's local custom-agent working set.
+      useAgentRegistryStore.getState().refresh().catch(() => {});
+    }
+  }, [authUserId]);
   const { notify } = useNotification();
 
   // Detached-window close ("ask each time") state.

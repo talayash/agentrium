@@ -232,6 +232,7 @@ describe('title bar auth interactions', () => {
     // header pill is always enabled. So exactly one enabled + one disabled.
     const enabled = submits.filter((b) => !b.disabled);
     const disabled = submits.filter((b) => b.disabled);
+    expect(enabled).toHaveLength(1);
     expect(disabled.length).toBeGreaterThanOrEqual(1);
     // Confirm the disabled one is inside a form (i.e. is the form submit).
     const formSubmit = disabled.find((b) => b.closest('form') !== null);

@@ -201,41 +201,40 @@ pub fn handle_deep_link(app: &tauri::AppHandle, url: &str) {
         return;
     }
 
-    if let Err(e) = credentials::store_refresh_token(&refresh) {
-        eprintln!("[auth] failed to store refresh token: {e}");
-        let _ = app.emit("auth-error", &format!("keychain error: {e}"));
-        return;
-    }
-
-    // Start the sync engine now that credentials are in place.
-    let app_state = app.state::<AppState>();
-    let engine = crate::sync::start_engine(app.clone(), app_state.db.clone(), token.clone());
-    let sync_handle = app_state.sync_handle.clone();
+    let app = app.clone();
     tauri::async_runtime::spawn(async move {
-        *sync_handle.lock().await = Some(engine);
-    });
-
-    // Run guest→account migration synchronously (touches DB but not the
-    // network). If any rows moved, emit a one-shot event so the FE can toast.
-    {
-        let db_arc = app_state.db.clone();
-        let db_guard = db_arc.lock().unwrap_or_else(|p| p.into_inner());
-        match run_guest_migration(&db_guard) {
-            Ok(counts) if counts.total() > 0 => {
-                let _ = app.emit("guest-migration-completed", counts);
-            }
-            Ok(_) => {}
-            Err(e) => {
-                crate::error_reporter::report_bg("guest_migration", e);
-            }
+        if let Err(error) = complete_signin(&app, token, Some(refresh), Some(state)).await {
+            let _ = app.emit("auth-error", error);
         }
-    }
+    });
+}
 
-    // Emit access token to the frontend. authStore fetches user via /api/me.
-    let payload = AuthTokensReceivedPayload { access_token: token, state };
-    if let Err(e) = app.emit("auth-tokens-received", payload) {
-        eprintln!("[auth] failed to emit event: {e}");
+async fn complete_signin(
+    app: &tauri::AppHandle,
+    token: String,
+    refresh: Option<String>,
+    event_state: Option<String>,
+) -> Result<(), String> {
+    let app_state = app.state::<AppState>();
+    let mut engine = app_state.sync_handle.lock().await;
+    // Identify the account from the authenticated server response before any
+    // local rows can be pushed with this token.
+    let user = fetch_current_user(token.clone()).await?;
+    if let Some(previous) = engine.take() { previous.shutdown().await; }
+    let db = app_state.db.clone();
+    let counts = tokio::task::spawn_blocking(move || {
+        let db = db.lock().unwrap_or_else(|p| p.into_inner());
+        db.activate_sync_account(&user.id)?;
+        run_guest_migration(&db)
+    }).await.map_err(|e| e.to_string())??;
+    if let Some(refresh) = refresh { credentials::store_refresh_token(&refresh)?; }
+    *engine = Some(crate::sync::start_engine(app.clone(), app_state.db.clone(), token.clone()));
+    if counts.total() > 0 { let _ = app.emit("guest-migration-completed", counts); }
+    if let Some(state) = event_state {
+        app.emit("auth-tokens-received", AuthTokensReceivedPayload { access_token: token, state })
+            .map_err(|e| e.to_string())?;
     }
+    Ok(())
 }
 
 /// Response shape from the broker's credentials-based auth endpoints
@@ -251,21 +250,11 @@ struct CredentialsAuthResponse {
 /// Store the refresh token in the OS keychain and emit auth-tokens-received
 /// so the frontend hydrates identically to the OAuth deep-link path.
 /// Called by both signup_credentials and signin_credentials on success.
-fn complete_credentials_auth(
+async fn complete_credentials_auth(
     app: &tauri::AppHandle,
     tokens: CredentialsAuthResponse,
 ) -> Result<(), String> {
-    credentials::store_refresh_token(&tokens.refresh_token)?;
-    let payload = AuthTokensReceivedPayload {
-        access_token: tokens.access_token,
-        // Credentials flow has no PKCE state — pass an empty string.
-        // The frontend's auth-tokens-received listener doesn't require it
-        // (state matching is only meaningful for the OAuth deep-link path
-        // where CSRF via URL query is a concern).
-        state: String::new(),
-    };
-    app.emit("auth-tokens-received", payload)
-        .map_err(|e| format!("emit failed: {e}"))
+    complete_signin(app, tokens.access_token, Some(tokens.refresh_token), Some(String::new())).await
 }
 
 #[derive(Debug, Serialize)]
@@ -316,7 +305,7 @@ pub async fn signup_credentials(
         }
 
         let tokens: CredentialsAuthResponse = resp.json().await.map_err(|e| format!("decode: {e}"))?;
-        complete_credentials_auth(&app, tokens)
+        complete_credentials_auth(&app, tokens).await
     })
     .await
 }
@@ -358,7 +347,7 @@ pub async fn signin_credentials(
         }
 
         let tokens: CredentialsAuthResponse = resp.json().await.map_err(|e| format!("decode: {e}"))?;
-        complete_credentials_auth(&app, tokens)
+        complete_credentials_auth(&app, tokens).await
     })
     .await
 }
@@ -373,6 +362,7 @@ pub async fn fetch_current_user(access_token: String) -> Result<AuthUser, String
     wrap_cmd("fetch_current_user", async move {
         let resp = reqwest::Client::new()
             .get(format!("{API_BASE}/api/me"))
+            .timeout(Duration::from_secs(30))
             .bearer_auth(&access_token)
             .send()
             .await
@@ -399,9 +389,8 @@ pub async fn fetch_current_user(access_token: String) -> Result<AuthUser, String
 pub async fn logout(state: tauri::State<'_, AppState>) -> Result<(), String> {
     let db_arc = state.db.clone();
     // Stop the sync engine first so no more push/pull happens after logout.
-    if let Some(handle) = state.sync_handle.lock().await.take() {
-        handle.shutdown();
-    }
+    let mut engine = state.sync_handle.lock().await;
+    if let Some(handle) = engine.take() { handle.shutdown().await; }
     wrap_cmd("logout", async move {
         credentials::clear_refresh_token()?;
         tokio::task::spawn_blocking(move || {
@@ -453,6 +442,14 @@ pub struct RehydrateResult {
     pub access_token: String,
 }
 
+fn refresh_status_rejects_token(status: reqwest::StatusCode) -> Result<bool, String> {
+    match status.as_u16() {
+        200..=299 => Ok(false),
+        401 | 403 => Ok(true),
+        _ => Err(format!("Token refresh temporarily failed ({status})")),
+    }
+}
+
 /// Exchange the OS-keychain-stored refresh token for a new access token
 /// (rotating the refresh in the process). Returns the new access token on
 /// success. Returns `Ok(None)` if no refresh token is stored or the broker
@@ -469,12 +466,13 @@ pub async fn refresh_access_token() -> Result<Option<String>, String> {
     let client = reqwest::Client::new();
     let resp = client
         .post(format!("{API_BASE}/api/auth/refresh"))
+        .timeout(Duration::from_secs(30))
         .json(&serde_json::json!({ "refresh_token": refresh }))
         .send()
         .await
         .map_err(|e| format!("network: {e}"))?;
 
-    if !resp.status().is_success() {
+    if refresh_status_rejects_token(resp.status())? {
         let _ = credentials::clear_refresh_token();
         return Ok(None);
     }
@@ -499,18 +497,12 @@ pub async fn refresh_access_token() -> Result<Option<String>, String> {
 #[command]
 pub async fn rehydrate_auth(
     app: tauri::AppHandle,
-    state: tauri::State<'_, AppState>,
+    _state: tauri::State<'_, AppState>,
 ) -> Result<Option<RehydrateResult>, String> {
     wrap_cmd("rehydrate_auth", async move {
         match refresh_access_token().await? {
             Some(access_token) => {
-                // Start the sync engine now that we have credentials.
-                let handle = crate::sync::start_engine(
-                    app.clone(),
-                    state.db.clone(),
-                    access_token.clone(),
-                );
-                *state.sync_handle.lock().await = Some(handle);
+                complete_signin(&app, access_token.clone(), None, None).await?;
                 Ok(Some(RehydrateResult { access_token }))
             }
             None => Ok(None),
@@ -540,13 +532,18 @@ impl GuestMigrationCounts {
 pub fn run_guest_migration(db: &database::Database) -> Result<GuestMigrationCounts, String> {
     let now = chrono::Utc::now().to_rfc3339();
     let tx = db.conn().unchecked_transaction().map_err(|e| e.to_string())?;
+    // Remove internal entries accidentally enqueued by older builds.
+    tx.execute("DELETE FROM sync_queue WHERE table_name = 'workspaces' AND row_key IN
+        (SELECT sync_id FROM workspaces WHERE substr(name, 1, 2) = '__')", [])
+        .map_err(|e| e.to_string())?;
     let mut counts = GuestMigrationCounts::default();
     for (table, key_col) in [
         ("profiles", "id"),
         ("custom_agents", "id"),
         ("workspaces", "sync_id"),
     ] {
-        let sql_ids = format!("SELECT {key_col} FROM {table} WHERE sync_state = 'local_only'");
+        let filter = if table == "workspaces" { " AND substr(name, 1, 2) != '__'" } else { "" };
+        let sql_ids = format!("SELECT {key_col} FROM {table} WHERE sync_state = 'local_only'{filter}");
         let ids: Vec<String> = tx
             .prepare(&sql_ids)
             .map_err(|e| e.to_string())?
@@ -581,6 +578,30 @@ pub fn run_guest_migration(db: &database::Database) -> Result<GuestMigrationCoun
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn transient_refresh_errors_do_not_reject_saved_token() {
+        assert_eq!(refresh_status_rejects_token(reqwest::StatusCode::OK).unwrap(), false);
+        for status in [401, 403] {
+            assert!(refresh_status_rejects_token(reqwest::StatusCode::from_u16(status).unwrap()).unwrap());
+        }
+        for status in [400, 408, 429, 500, 502, 503, 504] {
+            assert!(refresh_status_rejects_token(reqwest::StatusCode::from_u16(status).unwrap()).is_err());
+        }
+    }
+
+    #[test]
+    fn guest_migration_excludes_and_unqueues_internal_workspaces() {
+        let db = database::Database::new_in_memory().unwrap();
+        let internal = db.save_workspace("__last_session__", &[]).unwrap();
+        db.enqueue_sync("workspaces", &internal).unwrap();
+        db.save_workspace("user workspace", &[]).unwrap();
+        let counts = run_guest_migration(&db).unwrap();
+        assert_eq!(counts.workspaces, 1);
+        assert_eq!(db.sync_queue_depth().unwrap(), 1);
+        assert_ne!(db.peek_sync_queue(10).unwrap()[0].row_key, internal);
+        assert!(db.load_workspace("__last_session__").is_ok());
+    }
 
     #[test]
     fn state_is_43_chars_and_unique() {

@@ -785,6 +785,7 @@ impl Database {
              VALUES (?1, ?2, ?3, ?4, ?5)
              ON CONFLICT(name) DO UPDATE SET
                 terminals = excluded.terminals,
+                deleted_at = NULL,
                 updated_at = excluded.updated_at",
             params![name, terminals_json, now, new_sync_id, now],
         ).map_err(|e| e.to_string())?;
@@ -1109,6 +1110,15 @@ impl Database {
         Ok(())
     }
 
+    /// A push may finish after the user has re-enqueued the same row.
+    pub fn acknowledge_sync_entry(&self, entry: &SyncQueueRow) -> Result<(), String> {
+        self.conn.execute(
+            "DELETE FROM sync_queue WHERE table_name = ?1 AND row_key = ?2 AND enqueued_at = ?3",
+            params![entry.table_name, entry.row_key, entry.enqueued_at],
+        ).map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
     pub fn record_sync_attempt(&self, table: &str, row_key: &str, error: Option<&str>) -> Result<(), String> {
         let now = chrono::Utc::now().to_rfc3339();
         self.conn.execute(
@@ -1334,6 +1344,24 @@ impl Database {
     /// are expected to have already resolved LWW via `get_local_updated_at`
     /// and `incoming_wins`. Written rows are marked `synced`.
     pub fn upsert_pulled_row(&self, table: &str, row: &serde_json::Value) -> Result<(), String> {
+        let mut row = row.clone();
+        if table == "workspaces" {
+            let name = row.get("name").and_then(|v| v.as_str()).ok_or("Missing workspace name")?.to_string();
+            if name.starts_with("__") { return Ok(()); }
+            let id = row.get("id").and_then(|v| v.as_str()).ok_or("Missing workspace id")?;
+            let mut candidate = name.clone();
+            let mut suffix = 0;
+            loop {
+                let occupied: bool = self.conn.query_row(
+                    "SELECT EXISTS(SELECT 1 FROM workspaces WHERE name = ?1 AND sync_id != ?2)",
+                    params![candidate, id], |r| r.get(0),
+                ).map_err(|e| e.to_string())?;
+                if !occupied { break; }
+                suffix += 1;
+                candidate = format!("{} (synced {})", name.chars().take(220).collect::<String>(), suffix);
+            }
+            row["name"] = serde_json::Value::String(candidate);
+        }
         let get_str = |k: &str| row.get(k).and_then(|v| v.as_str()).unwrap_or("").to_string();
         let get_opt_str = |k: &str| row.get(k).and_then(|v| v.as_str()).map(String::from);
         let get_bool = |k: &str| row.get(k).and_then(|v| v.as_bool()).unwrap_or(false);
@@ -1424,6 +1452,65 @@ impl Database {
         Ok(())
     }
 
+    /// Swap the syncable working set only after the previous engine has stopped.
+    /// Snapshots preserve pending edits for return visits; internal session state
+    /// stays local. An unowned guest working set is adopted on first sign-in.
+    pub fn activate_sync_account(&self, account: &str) -> Result<(), String> {
+        let tx = self.conn.unchecked_transaction().map_err(|e| e.to_string())?;
+        let previous = self.get_user_meta("sync_account_id")?;
+        if previous.as_deref() == Some(account) { return Ok(()); }
+        let tables = ["profiles", "custom_agents", "workspaces", "sync_queue"];
+        if let Some(previous) = previous {
+            let mut snapshot = serde_json::Map::new();
+            for table in tables {
+                let columns = self.sync_snapshot_columns(table)?;
+                let fields = columns.iter().map(|c| format!("'{c}', \"{c}\"")).collect::<Vec<_>>().join(",");
+                let filter = if table == "workspaces" { " WHERE substr(name, 1, 2) != '__'" } else { "" };
+                let mut stmt = self.conn.prepare(&format!("SELECT json_object({fields}) FROM {table}{filter}"))
+                    .map_err(|e| e.to_string())?;
+                let rows = stmt.query_map([], |r| r.get::<_, String>(0)).map_err(|e| e.to_string())?
+                    .map(|r| r.map_err(|e| e.to_string()).and_then(|s| serde_json::from_str(&s).map_err(|e| e.to_string())))
+                    .collect::<Result<Vec<serde_json::Value>, String>>()?;
+                snapshot.insert(table.into(), serde_json::Value::Array(rows));
+            }
+            snapshot.insert("cursor".into(), serde_json::json!(self.get_last_pull_cursor()?));
+            self.set_user_meta(&format!("sync_snapshot:{previous}"), Some(&serde_json::Value::Object(snapshot).to_string()))?;
+            for table in tables {
+                let filter = if table == "workspaces" { " WHERE substr(name, 1, 2) != '__'" } else { "" };
+                self.conn.execute(&format!("DELETE FROM {table}{filter}"), []).map_err(|e| e.to_string())?;
+            }
+            self.delete_user_meta("last_pull_cursor")?;
+            if let Some(saved) = self.get_user_meta(&format!("sync_snapshot:{account}"))? {
+                let snapshot: serde_json::Value = serde_json::from_str(&saved).map_err(|e| e.to_string())?;
+                for table in tables {
+                    let columns = self.sync_snapshot_columns(table)?;
+                    let names = columns.iter().map(|c| format!("\"{c}\"")).collect::<Vec<_>>().join(",");
+                    let values = columns.iter().map(|c| format!("json_extract(?1, '$.{c}')")).collect::<Vec<_>>().join(",");
+                    let rows = snapshot[table].as_array().ok_or("Invalid account snapshot")?;
+                    for row in rows {
+                        self.conn.execute(&format!("INSERT INTO {table} ({names}) VALUES ({values})"), [row.to_string()])
+                            .map_err(|e| e.to_string())?;
+                    }
+                }
+                if let Some(cursor) = snapshot["cursor"].as_str() { self.set_last_pull_cursor(cursor)?; }
+            }
+        } else {
+            // Older builds had a global cursor with no owner. Never carry that
+            // cursor into a newly identified account.
+            self.delete_user_meta("last_pull_cursor")?;
+        }
+        self.set_user_meta("sync_account_id", Some(account))?;
+        tx.commit().map_err(|e| e.to_string())
+    }
+
+    fn sync_snapshot_columns(&self, table: &str) -> Result<Vec<String>, String> {
+        let mut stmt = self.conn.prepare(&format!("PRAGMA table_info({table})")).map_err(|e| e.to_string())?;
+        let columns = stmt.query_map([], |r| r.get::<_, String>(1)).map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
+        // The integer workspace id is device-local; the sync UUID is stable.
+        Ok(columns.into_iter().filter(|c| table != "workspaces" || c != "id").collect())
+    }
+
     /// Read a `user_meta` value. Returns `Ok(None)` for both a missing row and
     /// a row with a SQL NULL value, which is what auth callers want ("not set"
     /// vs "explicitly cleared" are the same signal here).
@@ -1480,6 +1567,85 @@ impl Database {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn stale_push_ack_preserves_requeued_edit_and_delete() {
+        let db = super::Database::new_in_memory().unwrap();
+        let id = db.save_workspace("race", &[]).unwrap();
+        db.touch_sync_row("workspaces", &id).unwrap();
+        let old = db.peek_sync_queue(1).unwrap().remove(0);
+        db.conn.execute("UPDATE sync_queue SET enqueued_at = 'new-edit'", []).unwrap();
+        db.acknowledge_sync_entry(&old).unwrap();
+        assert_eq!(db.sync_queue_depth().unwrap(), 1);
+        let edited = db.peek_sync_queue(1).unwrap().remove(0);
+        db.tombstone_sync_row("workspaces", &id).unwrap();
+        db.acknowledge_sync_entry(&edited).unwrap();
+        assert_eq!(db.sync_queue_depth().unwrap(), 1);
+        let latest = db.peek_sync_queue(1).unwrap().remove(0);
+        db.acknowledge_sync_entry(&latest).unwrap();
+        assert_eq!(db.sync_queue_depth().unwrap(), 0);
+    }
+
+    #[test]
+    fn saving_deleted_workspace_restores_same_identity() {
+        let db = super::Database::new_in_memory().unwrap();
+        let id = db.save_workspace("restore", &[]).unwrap();
+        db.tombstone_sync_row("workspaces", &id).unwrap();
+        assert!(db.load_workspace("restore").is_err());
+        assert_eq!(db.save_workspace("restore", &[]).unwrap(), id);
+        db.touch_sync_row("workspaces", &id).unwrap();
+        assert!(db.load_workspace("restore").is_ok());
+        assert!(db.read_syncable_row_json("workspaces", &id).unwrap().unwrap()["deletedAt"].is_null());
+    }
+
+    #[test]
+    fn account_switch_preserves_each_queue_cursor_and_working_set() {
+        let db = super::Database::new_in_memory().unwrap();
+        db.conn.execute("INSERT INTO profiles (id, name, working_directory, claude_args, env_vars, updated_at)
+            VALUES ('profile-A', 'A', '/project', '[\"--verbose\"]', '{\"MODE\":\"test\"}', '2026-09-12T00:00:00Z')", []).unwrap();
+        let internal = db.save_workspace("__last_session__", &[]).unwrap();
+        let a = db.save_workspace("shared name", &[]).unwrap();
+        db.touch_sync_row("workspaces", &a).unwrap();
+        db.activate_sync_account("A").unwrap();
+        db.set_last_pull_cursor("cursor-A").unwrap();
+        db.activate_sync_account("B").unwrap();
+        assert!(db.read_syncable_row_json("profiles", "profile-A").unwrap().is_none());
+        assert!(db.get_workspaces().unwrap().is_empty());
+        assert_eq!(db.sync_queue_depth().unwrap(), 0);
+        assert_eq!(db.get_last_pull_cursor().unwrap(), None);
+        assert!(db.load_workspace("__last_session__").is_ok());
+        let b = db.save_workspace("shared name", &[]).unwrap();
+        db.touch_sync_row("workspaces", &b).unwrap();
+        db.set_last_pull_cursor("cursor-B").unwrap();
+        db.activate_sync_account("A").unwrap();
+        let profile = db.read_syncable_row_json("profiles", "profile-A").unwrap().unwrap();
+        assert_eq!(profile["claudeArgs"], serde_json::json!(["--verbose"]));
+        assert_eq!(profile["envVars"], serde_json::json!({"MODE": "test"}));
+        assert_eq!(db.get_last_pull_cursor().unwrap().as_deref(), Some("cursor-A"));
+        assert_eq!(db.peek_sync_queue(10).unwrap()[0].row_key, a);
+        assert!(db.read_syncable_row_json("workspaces", &b).unwrap().is_none());
+        assert!(db.read_syncable_row_json("workspaces", &internal).unwrap().is_some());
+        db.activate_sync_account("A").unwrap();
+        assert_eq!(db.sync_queue_depth().unwrap(), 1);
+        db.activate_sync_account("B").unwrap();
+        assert_eq!(db.get_last_pull_cursor().unwrap().as_deref(), Some("cursor-B"));
+        assert_eq!(db.peek_sync_queue(10).unwrap()[0].row_key, b);
+    }
+
+    #[test]
+    fn failed_account_restore_leaves_current_account_intact() {
+        let db = super::Database::new_in_memory().unwrap();
+        let id = db.save_workspace("keep", &[]).unwrap();
+        db.touch_sync_row("workspaces", &id).unwrap();
+        db.activate_sync_account("A").unwrap();
+        db.set_last_pull_cursor("cursor-A").unwrap();
+        db.set_user_meta("sync_snapshot:B", Some("invalid JSON")).unwrap();
+        assert!(db.activate_sync_account("B").is_err());
+        assert_eq!(db.get_user_meta("sync_account_id").unwrap().as_deref(), Some("A"));
+        assert_eq!(db.get_last_pull_cursor().unwrap().as_deref(), Some("cursor-A"));
+        assert!(db.load_workspace("keep").is_ok());
+        assert_eq!(db.peek_sync_queue(10).unwrap()[0].row_key, id);
+    }
+
     use super::*;
     use crate::config::PreviewProfile;
     use crate::terminal::{TerminalConfig, TerminalStatus};

@@ -54,6 +54,7 @@ pub enum SyncCommand {
 
 pub struct SyncHandle {
     tx: mpsc::Sender<SyncCommand>,
+    task: tauri::async_runtime::JoinHandle<()>,
 }
 
 impl SyncHandle {
@@ -66,8 +67,9 @@ impl SyncHandle {
     pub fn update_token(&self, token: String) {
         let _ = self.tx.try_send(SyncCommand::UpdateToken(token));
     }
-    pub fn shutdown(&self) {
-        let _ = self.tx.try_send(SyncCommand::Shutdown);
+    pub async fn shutdown(self) {
+        let _ = self.tx.send(SyncCommand::Shutdown).await;
+        let _ = self.task.await;
     }
 }
 
@@ -87,8 +89,8 @@ where
     let (tx, rx) = mpsc::channel::<SyncCommand>(16);
     // OAuth callbacks run on the native event thread, outside Tokio's context.
     // Tauri's runtime also supports callers that have no current runtime.
-    tauri::async_runtime::spawn(run(rx));
-    SyncHandle { tx }
+    let task = tauri::async_runtime::spawn(run(rx));
+    SyncHandle { tx, task }
 }
 
 async fn run_engine(
@@ -256,13 +258,15 @@ async fn do_push(
     match client.push(req).await {
         Ok(resp) => {
             let accepted = resp.accepted.clone();
+            let skipped = resp.skipped;
             let db_arc = db.clone();
             let profiles_c = profiles.clone();
             let custom_agents_c = custom_agents.clone();
             let workspaces_c = workspaces.clone();
             let queue_c = queue.clone();
-            let _ = tokio::task::spawn_blocking(move || {
+            let acknowledged = tokio::task::spawn_blocking(move || -> Result<(), String> {
                 let db_guard = db_arc.lock().unwrap_or_else(|p| p.into_inner());
+                let tx = db_guard.conn().unchecked_transaction().map_err(|e| e.to_string())?;
                 for (table, ids) in &accepted {
                     let source: &[(String, serde_json::Value)] = match table.as_str() {
                         "profiles" => &profiles_c,
@@ -273,18 +277,24 @@ async fn do_push(
                     for id in ids {
                         if let Some((_, v)) = source.iter().find(|(k, _)| k == id) {
                             if let Some(ts) = v.get("updatedAt").and_then(|s| s.as_str()) {
-                                let _ = db_guard.mark_row_synced_if_unchanged(table, id, ts);
+                                db_guard.mark_row_synced_if_unchanged(table, id, ts)?;
                             }
                         }
                     }
                 }
-                let drained: Vec<(String, String)> = queue_c
-                    .iter()
-                    .map(|r| (r.table_name.clone(), r.row_key.clone()))
-                    .collect();
-                let _ = db_guard.delete_sync_queue_entries(&drained);
+                for entry in &queue_c {
+                    let confirmed = [&accepted, &skipped].iter().any(|rows| {
+                        rows.get(&entry.table_name).is_some_and(|ids| ids.contains(&entry.row_key))
+                    });
+                    if confirmed { db_guard.acknowledge_sync_entry(entry)?; }
+                }
+                tx.commit().map_err(|e| e.to_string())
             })
             .await;
+            if let Err(error) = acknowledged.map_err(|e| e.to_string()).and_then(|r| r) {
+                emit_status(app, db, SyncStatus::Error, Some(error)).await;
+                return;
+            }
             emit_status(app, db, SyncStatus::Idle, None).await;
         }
         Err(e) => {
@@ -316,17 +326,17 @@ async fn do_pull(
 
     match client.pull(req).await {
         Ok(resp) => {
-            let server_time = resp.server_time.clone();
             let truncated = resp.truncated;
             let db_arc = db.clone();
-            let _ = tokio::task::spawn_blocking(move || {
+            let applied = tokio::task::spawn_blocking(move || {
                 let db_guard = db_arc.lock().unwrap_or_else(|p| p.into_inner());
-                apply_pulled_rows(&db_guard, "profiles", &resp.profiles);
-                apply_pulled_rows(&db_guard, "custom_agents", &resp.custom_agents);
-                apply_pulled_rows(&db_guard, "workspaces", &resp.workspaces);
-                let _ = db_guard.set_last_pull_cursor(&server_time);
+                apply_pull_page(&db_guard, &resp)
             })
             .await;
+            if let Err(error) = applied.map_err(|e| e.to_string()).and_then(|r| r) {
+                emit_status(app, db, SyncStatus::Error, Some(error)).await;
+                return;
+            }
             emit_status(app, db, SyncStatus::Idle, None).await;
             if truncated {
                 Box::pin(do_pull(app, db, client)).await;
@@ -340,18 +350,25 @@ async fn do_pull(
     }
 }
 
-fn apply_pulled_rows(db: &Database, table: &str, rows: &Option<Vec<serde_json::Value>>) {
-    let Some(rows) = rows else { return };
+fn apply_pull_page(db: &Database, resp: &sync_client::PullResponse) -> Result<(), String> {
+    let tx = db.conn().unchecked_transaction().map_err(|e| e.to_string())?;
+    apply_pulled_rows(db, "profiles", &resp.profiles)?;
+    apply_pulled_rows(db, "custom_agents", &resp.custom_agents)?;
+    apply_pulled_rows(db, "workspaces", &resp.workspaces)?;
+    db.set_last_pull_cursor(&resp.server_time)?;
+    tx.commit().map_err(|e| e.to_string())
+}
+
+fn apply_pulled_rows(db: &Database, table: &str, rows: &Option<Vec<serde_json::Value>>) -> Result<(), String> {
+    let Some(rows) = rows else { return Ok(()) };
     for row in rows {
-        let Some(id) = row.get("id").and_then(|v| v.as_str()) else { continue };
-        let Some(incoming_updated_at) = row
+        let id = row.get("id").and_then(|v| v.as_str()).ok_or("Missing sync row id")?;
+        let incoming_updated_at = row
             .get("updatedAt")
             .and_then(|v| v.as_str())
             .or_else(|| row.get("updated_at").and_then(|v| v.as_str()))
-        else {
-            continue;
-        };
-        let local_updated_at = db.get_local_updated_at(table, id).unwrap_or(None);
+            .ok_or("Missing sync row timestamp")?;
+        let local_updated_at = db.get_local_updated_at(table, id)?;
         let wins = match &local_updated_at {
             Some(local) => incoming_wins(local, incoming_updated_at),
             None => true,
@@ -359,13 +376,9 @@ fn apply_pulled_rows(db: &Database, table: &str, rows: &Option<Vec<serde_json::V
         if !wins {
             continue;
         }
-        if let Err(e) = db.upsert_pulled_row(table, row) {
-            crate::error_reporter::report_bg(
-                "sync_pull_apply",
-                format!("{table}/{id}: {e}"),
-            );
-        }
+        db.upsert_pulled_row(table, row).map_err(|e| format!("{table}/{id}: {e}"))?;
     }
+    Ok(())
 }
 
 pub(crate) async fn emit_status(
@@ -399,6 +412,46 @@ mod tests {
     use super::*;
 
     #[test]
+    fn failed_pull_rolls_back_rows_and_keeps_cursor_for_retry() {
+        let db = Database::new_in_memory().unwrap();
+        db.set_last_pull_cursor("before").unwrap();
+        let mut page = sync_client::PullResponse {
+            profiles: None, custom_agents: None,
+            workspaces: Some(vec![serde_json::json!({
+                "id": "remote", "name": "Remote", "terminals": [],
+                "updatedAt": "2026-09-12T00:00:00Z", "createdAt": "2026-09-12T00:00:00Z"
+            }), serde_json::json!({"id": "invalid"})]),
+            server_time: "after".into(), truncated: false,
+        };
+        assert!(apply_pull_page(&db, &page).is_err());
+        assert_eq!(db.get_last_pull_cursor().unwrap().as_deref(), Some("before"));
+        assert!(db.get_workspaces().unwrap().is_empty());
+        page.workspaces.as_mut().unwrap().pop();
+        apply_pull_page(&db, &page).unwrap();
+        assert_eq!(db.get_workspaces().unwrap().len(), 1);
+        assert_eq!(db.get_last_pull_cursor().unwrap().as_deref(), Some("after"));
+    }
+
+    #[test]
+    fn same_name_remote_workspace_is_preserved_under_distinct_name() {
+        let db = Database::new_in_memory().unwrap();
+        let local = db.save_workspace("Shared", &[]).unwrap();
+        let page = sync_client::PullResponse {
+            profiles: None, custom_agents: None,
+            workspaces: Some(vec![serde_json::json!({
+                "id": "remote", "name": "Shared", "terminals": [],
+                "updatedAt": "2026-09-12T00:00:00Z", "createdAt": "2026-09-12T00:00:00Z"
+            })]), server_time: "after".into(), truncated: false,
+        };
+        apply_pull_page(&db, &page).unwrap();
+        assert_eq!(db.get_workspaces().unwrap().len(), 2);
+        assert_eq!(db.read_syncable_row_json("workspaces", &local).unwrap().unwrap()["name"], "Shared");
+        assert_eq!(db.read_syncable_row_json("workspaces", "remote").unwrap().unwrap()["name"], "Shared (synced 1)");
+        apply_pull_page(&db, &page).unwrap();
+        assert_eq!(db.get_workspaces().unwrap().len(), 2);
+    }
+
+    #[test]
     fn engine_starts_and_stops_outside_tokio_runtime() {
         std::thread::spawn(|| {
             assert!(tokio::runtime::Handle::try_current().is_err());
@@ -409,7 +462,7 @@ mod tests {
                 assert!(matches!(rx.recv().await, Some(SyncCommand::Shutdown)));
                 completed_tx.send(()).unwrap();
             });
-            handle.shutdown();
+            tauri::async_runtime::block_on(handle.shutdown());
             completed_rx
                 .recv_timeout(std::time::Duration::from_secs(5))
                 .expect("engine should run and receive shutdown from a native callback thread");

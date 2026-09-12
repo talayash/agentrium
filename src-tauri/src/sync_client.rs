@@ -82,6 +82,7 @@ impl SyncClient {
         let resp = self
             .http
             .post(&url)
+            .timeout(std::time::Duration::from_secs(30))
             .bearer_auth(&self.access_token)
             .json(body)
             .send()
@@ -98,6 +99,7 @@ impl SyncClient {
             let retry = self
                 .http
                 .post(&url)
+                .timeout(std::time::Duration::from_secs(30))
                 .bearer_auth(&self.access_token)
                 .json(body)
                 .send()
