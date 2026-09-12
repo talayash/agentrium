@@ -69,6 +69,16 @@ pub struct WorkspaceInfo {
     pub created_at: String,
 }
 
+#[derive(Debug, Clone)]
+pub struct SyncQueueRow {
+    pub table_name: String,
+    pub row_key: String,
+    pub enqueued_at: String,
+    pub attempts: i64,
+    pub last_attempt_at: Option<String>,
+    pub last_error: Option<String>,
+}
+
 pub struct Database {
     conn: Connection,
 }
@@ -1029,6 +1039,76 @@ impl Database {
         }
     }
 
+    pub fn enqueue_sync(&self, table: &str, row_key: &str) -> Result<(), String> {
+        let now = chrono::Utc::now().to_rfc3339();
+        // INSERT OR REPLACE resets attempts to 0 so a re-enqueue after a
+        // rewrite doesn't inherit the previous attempt's backoff state.
+        self.conn.execute(
+            "INSERT OR REPLACE INTO sync_queue (table_name, row_key, enqueued_at, attempts, last_error)
+             VALUES (?1, ?2, ?3, 0, NULL)",
+            params![table, row_key, now],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn peek_sync_queue(&self, limit: usize) -> Result<Vec<SyncQueueRow>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT table_name, row_key, enqueued_at, attempts, last_attempt_at, last_error
+                 FROM sync_queue ORDER BY enqueued_at LIMIT ?1",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params![limit as i64], |r| {
+                Ok(SyncQueueRow {
+                    table_name: r.get(0)?,
+                    row_key: r.get(1)?,
+                    enqueued_at: r.get(2)?,
+                    attempts: r.get(3)?,
+                    last_attempt_at: r.get(4)?,
+                    last_error: r.get(5)?,
+                })
+            })
+            .map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?;
+        Ok(rows)
+    }
+
+    pub fn delete_sync_queue_entries(&self, entries: &[(String, String)]) -> Result<(), String> {
+        let tx = self.conn.unchecked_transaction().map_err(|e| e.to_string())?;
+        {
+            let mut stmt = tx
+                .prepare("DELETE FROM sync_queue WHERE table_name = ?1 AND row_key = ?2")
+                .map_err(|e| e.to_string())?;
+            for (t, k) in entries {
+                stmt.execute(params![t, k]).map_err(|e| e.to_string())?;
+            }
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn record_sync_attempt(&self, table: &str, row_key: &str, error: Option<&str>) -> Result<(), String> {
+        let now = chrono::Utc::now().to_rfc3339();
+        self.conn.execute(
+            "UPDATE sync_queue
+             SET attempts = attempts + 1, last_attempt_at = ?1, last_error = ?2
+             WHERE table_name = ?3 AND row_key = ?4",
+            params![now, error, table, row_key],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn sync_queue_depth(&self) -> Result<i64, String> {
+        self.conn
+            .query_row("SELECT COUNT(*) FROM sync_queue", [], |r| r.get::<_, i64>(0))
+            .map_err(|e| e.to_string())
+    }
+
     /// Read a `user_meta` value. Returns `Ok(None)` for both a missing row and
     /// a row with a SQL NULL value, which is what auth callers want ("not set"
     /// vs "explicitly cleared" are the same signal here).
@@ -1664,5 +1744,40 @@ mod tests {
         }
         assert!(SyncState::from_str("pendinng").is_err());
         assert!(SyncState::from_str("").is_err());
+    }
+
+    #[test]
+    fn sync_queue_enqueue_and_drain_cycle() {
+        let db = Database::new_in_memory().unwrap();
+        db.enqueue_sync("profiles", "p1").unwrap();
+        db.enqueue_sync("profiles", "p2").unwrap();
+        db.enqueue_sync("workspaces", "w1").unwrap();
+
+        let rows = db.peek_sync_queue(100).unwrap();
+        assert_eq!(rows.len(), 3);
+        assert_eq!(db.sync_queue_depth().unwrap(), 3);
+
+        db.delete_sync_queue_entries(&[
+            ("profiles".into(), "p1".into()),
+            ("workspaces".into(), "w1".into()),
+        ])
+        .unwrap();
+        assert_eq!(db.sync_queue_depth().unwrap(), 1);
+
+        let remaining = db.peek_sync_queue(100).unwrap();
+        assert_eq!(remaining[0].row_key, "p2");
+    }
+
+    #[test]
+    fn record_sync_attempt_increments_and_stores_error() {
+        let db = Database::new_in_memory().unwrap();
+        db.enqueue_sync("profiles", "p1").unwrap();
+        db.record_sync_attempt("profiles", "p1", Some("boom")).unwrap();
+        db.record_sync_attempt("profiles", "p1", None).unwrap();
+        let rows = db.peek_sync_queue(10).unwrap();
+        assert_eq!(rows[0].attempts, 2);
+        assert!(rows[0].last_attempt_at.is_some());
+        // Second recorded attempt cleared the error message.
+        assert!(rows[0].last_error.is_none());
     }
 }
