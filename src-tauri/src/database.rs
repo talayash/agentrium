@@ -253,6 +253,49 @@ impl Database {
                 }
             }
         }
+        // M2a: workspaces sync columns. Keep local INTEGER id intact; introduce a
+        // separate TEXT UUID sync_id used as the cross-device stable key. The
+        // unique index is created AFTER backfill (below) so pre-migration NULL
+        // values don't collide with each other.
+        for column in [
+            "sync_id TEXT",
+            "updated_at TEXT",
+            "deleted_at TEXT",
+            "client_version INTEGER NOT NULL DEFAULT 1",
+            "sync_state TEXT NOT NULL DEFAULT 'local_only'",
+        ] {
+            let sql = format!("ALTER TABLE workspaces ADD COLUMN {}", column);
+            if let Err(e) = conn.execute(&sql, []) {
+                if !e.to_string().contains("duplicate column name") {
+                    return Err(e.to_string());
+                }
+            }
+        }
+
+        // Pre-migration workspaces get a fresh UUID sync_id and now() timestamp.
+        // Collect ids first (short-lived borrow), then update in a loop.
+        let workspace_ids: Vec<i64> = conn
+            .prepare("SELECT id FROM workspaces WHERE sync_id IS NULL")
+            .map_err(|e| e.to_string())?
+            .query_map([], |row| row.get::<_, i64>(0))
+            .map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?;
+        let now = chrono::Utc::now().to_rfc3339();
+        for id in workspace_ids {
+            let uuid = uuid::Uuid::new_v4().to_string();
+            conn.execute(
+                "UPDATE workspaces SET sync_id = ?1, updated_at = ?2 WHERE id = ?3",
+                params![uuid, now, id],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        // Enforce uniqueness now that all rows have a sync_id.
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_workspaces_sync_id ON workspaces(sync_id)",
+            [],
+        )
+        .map_err(|e| e.to_string())?;
         Ok(())
     }
 
