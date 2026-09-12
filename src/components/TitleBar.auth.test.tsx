@@ -11,6 +11,8 @@ vi.mock('../lib/auth', () => ({
   startOAuthLogin: vi.fn().mockResolvedValue(undefined),
   markAuthPromptSeen: vi.fn().mockResolvedValue(undefined),
   logout: vi.fn().mockResolvedValue(undefined),
+  signupCredentials: vi.fn().mockResolvedValue(undefined),
+  signinCredentials: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock('../lib/sync', () => ({
   setSyncEnabled: vi.fn().mockResolvedValue(undefined),
@@ -29,7 +31,7 @@ vi.mock('../store/terminalStore', () => {
 
 import { TitleBar } from './TitleBar';
 import { useAuthStore } from '../store/authStore';
-import { startOAuthLogin, markAuthPromptSeen, logout } from '../lib/auth';
+import { startOAuthLogin, markAuthPromptSeen, logout, signupCredentials, signinCredentials } from '../lib/auth';
 import { setSyncEnabled } from '../lib/sync';
 import { useSyncStore } from '../store/syncStore';
 
@@ -142,5 +144,97 @@ describe('title bar auth interactions', () => {
     await user.click(screen.getByRole('button', { name: 'Account - Test User' }));
     await user.click(screen.getByRole('switch', { name: 'Sync off' }));
     expect(setSyncEnabled).toHaveBeenCalledWith(true);
+  });
+
+  it('opens the email+password form under the "Or use email + password" link', async () => {
+    const user = userEvent.setup();
+    render(<TitleBar />);
+    await user.click(screen.getByRole('button', { name: 'Sign in' }));
+    await user.click(screen.getByRole('button', { name: 'Or use email + password' }));
+    // Form is now visible
+    expect(screen.getByLabelText(/^Email$/i)).toBeTruthy();
+    expect(screen.getByLabelText(/^Password$/i)).toBeTruthy();
+  });
+
+  it('signs in with email + password', async () => {
+    const user = userEvent.setup();
+    render(<TitleBar />);
+    await user.click(screen.getByRole('button', { name: 'Sign in' }));
+    await user.click(screen.getByRole('button', { name: 'Or use email + password' }));
+    await user.type(screen.getByLabelText(/^Email$/i), 'me@example.com');
+    await user.type(screen.getByLabelText(/^Password$/i), 'password123');
+    // Two "Sign in" buttons exist: the header pill (outside any form) and the
+    // form's submit button (inside a <form>). Pick the one inside the form.
+    const submits = screen.getAllByRole('button', { name: 'Sign in' }) as HTMLButtonElement[];
+    const submit = submits.find((b) => b.closest('form') !== null);
+    if (!submit) throw new Error('no form Sign in button');
+    await user.click(submit);
+    expect(signinCredentials).toHaveBeenCalledWith('me@example.com', 'password123');
+    expect(startDragging).not.toHaveBeenCalled();
+  });
+
+  it('creates an account when toggled to sign-up mode', async () => {
+    const user = userEvent.setup();
+    render(<TitleBar />);
+    await user.click(screen.getByRole('button', { name: 'Sign in' }));
+    await user.click(screen.getByRole('button', { name: 'Or use email + password' }));
+    await user.click(screen.getByRole('button', { name: /Don't have an account\? Create one/i }));
+    // Now in signup mode: name field appears, submit button says "Create account"
+    expect(screen.getByLabelText(/name/i)).toBeTruthy();
+    await user.type(screen.getByLabelText(/^Email$/i), 'new@example.com');
+    await user.type(screen.getByLabelText(/^Password$/i), 'password123');
+    await user.type(screen.getByLabelText(/name/i), 'New User');
+    await user.click(screen.getByRole('button', { name: 'Create account' }));
+    expect(signupCredentials).toHaveBeenCalledWith('new@example.com', 'password123', 'New User');
+  });
+
+  it('shows "Sign in instead" message on duplicate email', async () => {
+    (signupCredentials as any).mockRejectedValueOnce(new Error('email_taken'));
+    const user = userEvent.setup();
+    render(<TitleBar />);
+    await user.click(screen.getByRole('button', { name: 'Sign in' }));
+    await user.click(screen.getByRole('button', { name: 'Or use email + password' }));
+    await user.click(screen.getByRole('button', { name: /Create one/i }));
+    await user.type(screen.getByLabelText(/^Email$/i), 'taken@example.com');
+    await user.type(screen.getByLabelText(/^Password$/i), 'password123');
+    await user.click(screen.getByRole('button', { name: 'Create account' }));
+    await screen.findByRole('alert');
+    expect(screen.getByRole('alert').textContent).toMatch(/already registered/i);
+  });
+
+  it('shows "Wrong email or password" on invalid credentials', async () => {
+    (signinCredentials as any).mockRejectedValueOnce(new Error('invalid_credentials'));
+    const user = userEvent.setup();
+    render(<TitleBar />);
+    await user.click(screen.getByRole('button', { name: 'Sign in' }));
+    await user.click(screen.getByRole('button', { name: 'Or use email + password' }));
+    await user.type(screen.getByLabelText(/^Email$/i), 'wrong@example.com');
+    await user.type(screen.getByLabelText(/^Password$/i), 'wrongpassword');
+    const submits = screen.getAllByRole('button', { name: 'Sign in' }) as HTMLButtonElement[];
+    const submit = submits.find((b) => b.closest('form') !== null);
+    if (!submit) throw new Error('no form Sign in button');
+    await user.click(submit);
+    await screen.findByRole('alert');
+    expect(screen.getByRole('alert').textContent).toMatch(/wrong email or password/i);
+  });
+
+  it('submit button is disabled when password is shorter than 8 chars', async () => {
+    const user = userEvent.setup();
+    render(<TitleBar />);
+    await user.click(screen.getByRole('button', { name: 'Sign in' }));
+    await user.click(screen.getByRole('button', { name: 'Or use email + password' }));
+    await user.type(screen.getByLabelText(/^Email$/i), 'me@example.com');
+    await user.type(screen.getByLabelText(/^Password$/i), 'short');
+    // The form's submit exists but should be disabled. The header pill (the
+    // other "Sign in" button) is NOT disabled - filter by the form's context.
+    const submits = screen.getAllByRole('button', { name: 'Sign in' }) as HTMLButtonElement[];
+    // With a short password, no submit should be enabled from the FORM;
+    // header pill is always enabled. So exactly one enabled + one disabled.
+    const enabled = submits.filter((b) => !b.disabled);
+    const disabled = submits.filter((b) => b.disabled);
+    expect(disabled.length).toBeGreaterThanOrEqual(1);
+    // Confirm the disabled one is inside a form (i.e. is the form submit).
+    const formSubmit = disabled.find((b) => b.closest('form') !== null);
+    expect(formSubmit).toBeTruthy();
   });
 });
