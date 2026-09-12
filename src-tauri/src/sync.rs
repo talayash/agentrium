@@ -76,8 +76,18 @@ pub fn start_engine(
     db: Arc<std::sync::Mutex<Database>>,
     access_token: String,
 ) -> SyncHandle {
+    spawn_engine(move |rx| run_engine(app, db, access_token, rx))
+}
+
+fn spawn_engine<F, Fut>(run: F) -> SyncHandle
+where
+    F: FnOnce(mpsc::Receiver<SyncCommand>) -> Fut,
+    Fut: std::future::Future<Output = ()> + Send + 'static,
+{
     let (tx, rx) = mpsc::channel::<SyncCommand>(16);
-    tokio::spawn(run_engine(app, db, access_token, rx));
+    // OAuth callbacks run on the native event thread, outside Tokio's context.
+    // Tauri's runtime also supports callers that have no current runtime.
+    tauri::async_runtime::spawn(run(rx));
     SyncHandle { tx }
 }
 
@@ -387,6 +397,26 @@ pub(crate) async fn emit_status(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn engine_starts_and_stops_outside_tokio_runtime() {
+        std::thread::spawn(|| {
+            assert!(tokio::runtime::Handle::try_current().is_err());
+            let (completed_tx, completed_rx) = std::sync::mpsc::channel();
+            let handle = spawn_engine(move |mut rx| async move {
+                // Exercise runtime services as well as command delivery.
+                tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+                assert!(matches!(rx.recv().await, Some(SyncCommand::Shutdown)));
+                completed_tx.send(()).unwrap();
+            });
+            handle.shutdown();
+            completed_rx
+                .recv_timeout(std::time::Duration::from_secs(5))
+                .expect("engine should run and receive shutdown from a native callback thread");
+        })
+        .join()
+        .unwrap();
+    }
 
     #[test]
     fn incoming_wins_when_strictly_newer() {
