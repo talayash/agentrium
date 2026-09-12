@@ -299,6 +299,45 @@ pub struct RehydrateResult {
     pub access_token: String,
 }
 
+/// Exchange the OS-keychain-stored refresh token for a new access token
+/// (rotating the refresh in the process). Returns the new access token on
+/// success. Returns `Ok(None)` if no refresh token is stored or the broker
+/// rejects it (in which case the stale token is cleared from the keychain).
+///
+/// Shared by `rehydrate_auth` (boot path) and the sync engine's 401 retry
+/// (background path).
+pub async fn refresh_access_token() -> Result<Option<String>, String> {
+    let refresh = match credentials::read_refresh_token()? {
+        Some(v) => v,
+        None => return Ok(None),
+    };
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("{API_BASE}/api/auth/refresh"))
+        .json(&serde_json::json!({ "refresh_token": refresh }))
+        .send()
+        .await
+        .map_err(|e| format!("network: {e}"))?;
+
+    if !resp.status().is_success() {
+        let _ = credentials::clear_refresh_token();
+        return Ok(None);
+    }
+
+    #[derive(Deserialize)]
+    struct RefreshResponse {
+        access_token: String,
+        refresh_token: String,
+    }
+    let body: RefreshResponse = resp.json().await.map_err(|e| format!("decode: {e}"))?;
+
+    // Rotate the stored refresh token.
+    credentials::store_refresh_token(&body.refresh_token)?;
+
+    Ok(Some(body.access_token))
+}
+
 /// Boot-time refresh flow: swap the keychain refresh token for a fresh access
 /// token (rotating the refresh token as a side-effect). Returns `None` when
 /// there's nothing stored, or when the broker rejects the token — in the
@@ -306,36 +345,10 @@ pub struct RehydrateResult {
 #[command]
 pub async fn rehydrate_auth() -> Result<Option<RehydrateResult>, String> {
     wrap_cmd("rehydrate_auth", async move {
-        let refresh = match credentials::read_refresh_token()? {
-            Some(v) => v,
-            None => return Ok(None),
-        };
-
-        let client = reqwest::Client::new();
-        let resp = client
-            .post(format!("{API_BASE}/api/auth/refresh"))
-            .json(&serde_json::json!({ "refresh_token": refresh }))
-            .send()
-            .await
-            .map_err(|e| format!("network: {e}"))?;
-
-        if !resp.status().is_success() {
-            // Refresh token no longer valid; clear it so we don't try again next boot.
-            let _ = credentials::clear_refresh_token();
-            return Ok(None);
+        match refresh_access_token().await? {
+            Some(access_token) => Ok(Some(RehydrateResult { access_token })),
+            None => Ok(None),
         }
-
-        #[derive(Deserialize)]
-        struct RefreshResponse {
-            access_token: String,
-            refresh_token: String,
-        }
-        let body: RefreshResponse = resp.json().await.map_err(|e| format!("decode: {e}"))?;
-
-        // Store the rotated refresh token.
-        credentials::store_refresh_token(&body.refresh_token)?;
-
-        Ok(Some(RehydrateResult { access_token: body.access_token }))
     })
     .await
 }
