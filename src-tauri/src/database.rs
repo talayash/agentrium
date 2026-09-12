@@ -1904,6 +1904,29 @@ mod tests {
     }
 
     #[test]
+    fn tombstone_sync_row_soft_deletes_and_enqueues() {
+        let db = Database::new_in_memory().unwrap();
+        db.conn.execute(
+            "INSERT INTO profiles (id, name, working_directory, claude_args, env_vars, updated_at, sync_state)
+             VALUES ('p1', 'Doomed', '/tmp', '[]', '{}', '2020-01-01T00:00:00Z', 'synced')",
+            [],
+        ).unwrap();
+
+        db.tombstone_sync_row("profiles", "p1").unwrap();
+
+        let (updated_at, deleted_at, sync_state): (String, Option<String>, String) = db.conn.query_row(
+            "SELECT updated_at, deleted_at, sync_state FROM profiles WHERE id = 'p1'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        ).unwrap();
+        assert!(updated_at > "2020-01-01T00:00:00Z".to_string());
+        // Same timestamp is bound to both slots — verify the tombstone marker was set.
+        assert_eq!(deleted_at.as_deref(), Some(updated_at.as_str()));
+        assert_eq!(sync_state, "pending");
+        assert_eq!(db.sync_queue_depth().unwrap(), 1);
+    }
+
+    #[test]
     fn mark_row_synced_if_unchanged_is_race_safe() {
         let db = Database::new_in_memory().unwrap();
         db.conn.execute(
@@ -1930,5 +1953,28 @@ mod tests {
             "SELECT sync_state FROM profiles WHERE id = 'p1'", [], |r| r.get(0),
         ).unwrap();
         assert_eq!(s, "pending"); // still pending; the newer edit is not yet pushed
+    }
+
+    #[test]
+    fn mark_row_synced_if_unchanged_stays_pending_when_tombstoned_during_push() {
+        let db = Database::new_in_memory().unwrap();
+        db.conn.execute(
+            "INSERT INTO profiles (id, name, working_directory, claude_args, env_vars, updated_at, sync_state)
+             VALUES ('p1', 'Test', '/tmp', '[]', '{}', '2026-01-01T00:00:00Z', 'pending')",
+            [],
+        ).unwrap();
+
+        // User deletes the profile while a push of the earlier update is in-flight.
+        db.tombstone_sync_row("profiles", "p1").unwrap();
+
+        // The stale push tries to flip the row -> must NOT clobber the pending tombstone.
+        db.mark_row_synced_if_unchanged("profiles", "p1", "2026-01-01T00:00:00Z").unwrap();
+
+        let sync_state: String = db.conn.query_row(
+            "SELECT sync_state FROM profiles WHERE id = 'p1'",
+            [],
+            |r| r.get(0),
+        ).unwrap();
+        assert_eq!(sync_state, "pending", "tombstone push must still be enqueued");
     }
 }
