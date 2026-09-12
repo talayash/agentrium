@@ -20,6 +20,7 @@ use url::Url;
 
 use crate::commands::wrap_cmd;
 use crate::credentials;
+use crate::database;
 use crate::error_reporter;
 use crate::AppState;
 
@@ -214,6 +215,22 @@ pub fn handle_deep_link(app: &tauri::AppHandle, url: &str) {
         *sync_handle.lock().await = Some(engine);
     });
 
+    // Run guest→account migration synchronously (touches DB but not the
+    // network). If any rows moved, emit a one-shot event so the FE can toast.
+    {
+        let db_arc = app_state.db.clone();
+        let db_guard = db_arc.lock().unwrap_or_else(|p| p.into_inner());
+        match run_guest_migration(&db_guard) {
+            Ok(counts) if counts.total() > 0 => {
+                let _ = app.emit("guest-migration-completed", counts);
+            }
+            Ok(_) => {}
+            Err(e) => {
+                crate::error_reporter::report_bg("guest_migration", e);
+            }
+        }
+    }
+
     // Emit access token to the frontend. authStore fetches user via /api/me.
     let payload = AuthTokensReceivedPayload { access_token: token, state };
     if let Err(e) = app.emit("auth-tokens-received", payload) {
@@ -377,6 +394,65 @@ pub async fn rehydrate_auth(
     .await
 }
 
+#[derive(Debug, Default, serde::Serialize, Clone)]
+pub struct GuestMigrationCounts {
+    pub profiles: usize,
+    pub custom_agents: usize,
+    pub workspaces: usize,
+}
+
+impl GuestMigrationCounts {
+    pub fn total(&self) -> usize {
+        self.profiles + self.custom_agents + self.workspaces
+    }
+}
+
+/// Enqueues every locally-authored row (sync_state='local_only') for push and
+/// flips it to 'synced'. Runs in one transaction. Returns per-table counts.
+///
+/// Called from `handle_deep_link` when a successful login lands, so the
+/// account picks up whatever the user created as a guest.
+pub fn run_guest_migration(db: &database::Database) -> Result<GuestMigrationCounts, String> {
+    let now = chrono::Utc::now().to_rfc3339();
+    let tx = db.conn().unchecked_transaction().map_err(|e| e.to_string())?;
+    let mut counts = GuestMigrationCounts::default();
+    for (table, key_col) in [
+        ("profiles", "id"),
+        ("custom_agents", "id"),
+        ("workspaces", "sync_id"),
+    ] {
+        let sql_ids = format!("SELECT {key_col} FROM {table} WHERE sync_state = 'local_only'");
+        let ids: Vec<String> = tx
+            .prepare(&sql_ids)
+            .map_err(|e| e.to_string())?
+            .query_map([], |r| r.get::<_, String>(0))
+            .map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?;
+        for id in &ids {
+            let update = format!(
+                "UPDATE {table} SET updated_at = ?1, sync_state = 'synced' WHERE {key_col} = ?2"
+            );
+            tx.execute(&update, rusqlite::params![now, id])
+                .map_err(|e| e.to_string())?;
+            tx.execute(
+                "INSERT OR REPLACE INTO sync_queue (table_name, row_key, enqueued_at, attempts, last_error)
+                 VALUES (?1, ?2, ?3, 0, NULL)",
+                rusqlite::params![table, id, now],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        match table {
+            "profiles" => counts.profiles = ids.len(),
+            "custom_agents" => counts.custom_agents = ids.len(),
+            "workspaces" => counts.workspaces = ids.len(),
+            _ => {}
+        }
+    }
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(counts)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -429,5 +505,37 @@ mod tests {
         assert!(!is_supported_provider("apple"));
         assert!(!is_supported_provider("Google")); // case-sensitive
         assert!(!is_supported_provider(""));
+    }
+
+    #[test]
+    fn run_guest_migration_enqueues_local_only_rows() {
+        let db = crate::database::Database::new_in_memory().unwrap();
+        db.conn().execute(
+            "INSERT INTO profiles (id, name, working_directory, claude_args, env_vars, updated_at, sync_state)
+             VALUES ('p1', 'a', '/tmp', '[]', '{}', '2026-01-01T00:00:00Z', 'local_only'),
+                    ('p2', 'b', '/tmp', '[]', '{}', '2026-01-01T00:00:00Z', 'synced')",
+            [],
+        ).unwrap();
+        db.conn().execute(
+            "INSERT INTO workspaces (sync_id, name, terminals, created_at, updated_at, sync_state)
+             VALUES ('w1', 'main', '[]', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', 'local_only')",
+            [],
+        ).unwrap();
+
+        let counts = run_guest_migration(&db).unwrap();
+        assert_eq!(counts.profiles, 1);
+        assert_eq!(counts.workspaces, 1);
+        assert_eq!(counts.custom_agents, 0);
+        assert_eq!(counts.total(), 2);
+        assert_eq!(db.sync_queue_depth().unwrap(), 2);
+
+        let synced_profiles: i64 = db.conn().query_row(
+            "SELECT COUNT(*) FROM profiles WHERE sync_state = 'synced'", [], |r| r.get(0),
+        ).unwrap();
+        assert_eq!(synced_profiles, 2);
+
+        // Running again is a no-op (idempotent).
+        let counts2 = run_guest_migration(&db).unwrap();
+        assert_eq!(counts2.total(), 0);
     }
 }
