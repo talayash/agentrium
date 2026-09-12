@@ -238,6 +238,131 @@ pub fn handle_deep_link(app: &tauri::AppHandle, url: &str) {
     }
 }
 
+/// Response shape from the broker's credentials-based auth endpoints
+/// (`/api/auth/desktop/signup` and `.../signin-credentials`).
+#[derive(Debug, Deserialize)]
+struct CredentialsAuthResponse {
+    access_token: String,
+    refresh_token: String,
+    // `user` is echoed back but the frontend fetches it fresh via
+    // fetch_current_user, so we ignore it here.
+}
+
+/// Store the refresh token in the OS keychain and emit auth-tokens-received
+/// so the frontend hydrates identically to the OAuth deep-link path.
+/// Called by both signup_credentials and signin_credentials on success.
+fn complete_credentials_auth(
+    app: &tauri::AppHandle,
+    tokens: CredentialsAuthResponse,
+) -> Result<(), String> {
+    credentials::store_refresh_token(&tokens.refresh_token)?;
+    let payload = AuthTokensReceivedPayload {
+        access_token: tokens.access_token,
+        // Credentials flow has no PKCE state — pass an empty string.
+        // The frontend's auth-tokens-received listener doesn't require it
+        // (state matching is only meaningful for the OAuth deep-link path
+        // where CSRF via URL query is a concern).
+        state: String::new(),
+    };
+    app.emit("auth-tokens-received", payload)
+        .map_err(|e| format!("emit failed: {e}"))
+}
+
+#[derive(Debug, Serialize)]
+struct SignupRequest<'a> {
+    email: &'a str,
+    password: &'a str,
+    name: Option<&'a str>,
+}
+
+/// Register a new email+password account with the broker. On success, stores
+/// the refresh token + emits `auth-tokens-received` so the frontend hydrates
+/// exactly like the OAuth path. Errors are propagated as user_err (not
+/// telemetry-worthy caller-side mistakes).
+#[command]
+pub async fn signup_credentials(
+    app: tauri::AppHandle,
+    email: String,
+    password: String,
+    name: Option<String>,
+) -> Result<(), String> {
+    wrap_cmd("signup_credentials", async move {
+        let client = reqwest::Client::new();
+        let resp = client
+            .post(format!("{API_BASE}/api/auth/desktop/signup"))
+            .json(&SignupRequest {
+                email: &email,
+                password: &password,
+                name: name.as_deref(),
+            })
+            .send()
+            .await
+            .map_err(|e| format!("network: {e}"))?;
+
+        let status = resp.status();
+        if !status.is_success() {
+            let body: serde_json::Value = resp.json().await.unwrap_or_default();
+            let error_code = body.get("error").and_then(|v| v.as_str()).unwrap_or("unknown");
+            let message = body.get("message").and_then(|v| v.as_str()).map(String::from);
+            // 409 = duplicate email is the ONE case the UI explicitly handles
+            // ("Sign in instead?"). Everything else is generic.
+            let user_msg = match (status.as_u16(), error_code) {
+                (409, _) => "email_taken".to_string(),
+                (400, "invalid_password") => message.unwrap_or_else(|| "Invalid password".into()),
+                (400, _) => "Invalid signup details".into(),
+                _ => format!("Signup failed ({status})"),
+            };
+            return Err(error_reporter::user_err(user_msg));
+        }
+
+        let tokens: CredentialsAuthResponse = resp.json().await.map_err(|e| format!("decode: {e}"))?;
+        complete_credentials_auth(&app, tokens)
+    })
+    .await
+}
+
+#[derive(Debug, Serialize)]
+struct SigninCredentialsRequest<'a> {
+    email: &'a str,
+    password: &'a str,
+}
+
+/// Sign in with email + password. On success, stores the refresh token +
+/// emits `auth-tokens-received`.
+#[command]
+pub async fn signin_credentials(
+    app: tauri::AppHandle,
+    email: String,
+    password: String,
+) -> Result<(), String> {
+    wrap_cmd("signin_credentials", async move {
+        let client = reqwest::Client::new();
+        let resp = client
+            .post(format!("{API_BASE}/api/auth/desktop/signin-credentials"))
+            .json(&SigninCredentialsRequest {
+                email: &email,
+                password: &password,
+            })
+            .send()
+            .await
+            .map_err(|e| format!("network: {e}"))?;
+
+        let status = resp.status();
+        if !status.is_success() {
+            let user_msg = match status.as_u16() {
+                401 => "invalid_credentials".to_string(),
+                400 => "Invalid sign-in details".to_string(),
+                _ => format!("Sign-in failed ({status})"),
+            };
+            return Err(error_reporter::user_err(user_msg));
+        }
+
+        let tokens: CredentialsAuthResponse = resp.json().await.map_err(|e| format!("decode: {e}"))?;
+        complete_credentials_auth(&app, tokens)
+    })
+    .await
+}
+
 /// Fetch the currently-signed-in user from the broker `/api/me`, using the
 /// short-lived access token the frontend obtained via `auth-tokens-received`.
 /// The frontend calls this after every access-token refresh; refresh itself is

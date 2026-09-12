@@ -330,6 +330,8 @@ fn main() {
             commands::lsp_restart_server,
             commands::lsp_server_log,
             auth::start_oauth_login,
+            auth::signup_credentials,
+            auth::signin_credentials,
             auth::fetch_current_user,
             auth::logout,
             auth::mark_auth_prompt_seen,
