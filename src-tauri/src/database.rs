@@ -239,6 +239,20 @@ impl Database {
             [],
         )
         .map_err(|e| e.to_string())?;
+        // M2a: custom_agents sync columns. `updated_at` and `id` already exist
+        // on this table, so only the tombstone + version + state columns are new.
+        for column in [
+            "deleted_at TEXT",
+            "client_version INTEGER NOT NULL DEFAULT 1",
+            "sync_state TEXT NOT NULL DEFAULT 'local_only'",
+        ] {
+            let sql = format!("ALTER TABLE custom_agents ADD COLUMN {}", column);
+            if let Err(e) = conn.execute(&sql, []) {
+                if !e.to_string().contains("duplicate column name") {
+                    return Err(e.to_string());
+                }
+            }
+        }
         Ok(())
     }
 
