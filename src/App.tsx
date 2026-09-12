@@ -53,6 +53,8 @@ import { usePreviewStore } from './store/previewStore';
 import { toast } from './store/toastStore';
 import { detectUrl } from './lib/preview/detector';
 import { getAuthPromptSeen, subscribeToAuthEvents, fetchCurrentUser } from './lib/auth';
+import { getSyncEnabled, subscribeToSyncEvents } from './lib/sync';
+import { useSyncStore } from './store/syncStore';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { usePreventWebviewReload } from './hooks/usePreventWebviewReload';
 import { InputContextMenu } from './components/InputContextMenu';
@@ -320,6 +322,28 @@ function App() {
     return () => {
       cancelled = true;
       unlisten?.();
+    };
+  }, [isDetached]);
+
+  // Sync engine boots itself on the Rust side (post-auth), but the FE store
+  // needs to know its enabled state + subscribe to status events. Guests get
+  // zero events; the subscription is cheap for them.
+  useEffect(() => {
+    if (isDetached) return;
+    let unlistenSync: (() => void) | undefined;
+    (async () => {
+      // Fetch initial sync-enabled state. Silently ignore pre-auth failures
+      // (no user_meta yet — defaults are correct).
+      try {
+        const enabled = await getSyncEnabled();
+        useSyncStore.getState().setEnabled(enabled);
+      } catch {
+        /* pre-auth, defaults OK */
+      }
+      unlistenSync = await subscribeToSyncEvents();
+    })();
+    return () => {
+      unlistenSync?.();
     };
   }, [isDetached]);
 
