@@ -209,10 +209,12 @@ pub fn handle_deep_link(app: &tauri::AppHandle, url: &str) {
 
     // Start the sync engine now that credentials are in place.
     let app_state = app.state::<AppState>();
+    eprintln!("[sync-debug] handle_deep_link: starting sync engine post-login");
     let engine = crate::sync::start_engine(app.clone(), app_state.db.clone(), token.clone());
     let sync_handle = app_state.sync_handle.clone();
     tauri::async_runtime::spawn(async move {
         *sync_handle.lock().await = Some(engine);
+        eprintln!("[sync-debug] handle_deep_link: engine handle stored");
     });
 
     // Run guest→account migration synchronously (touches DB but not the
@@ -220,8 +222,10 @@ pub fn handle_deep_link(app: &tauri::AppHandle, url: &str) {
     {
         let db_arc = app_state.db.clone();
         let db_guard = db_arc.lock().unwrap_or_else(|p| p.into_inner());
+        eprintln!("[sync-debug] handle_deep_link: running guest migration");
         match run_guest_migration(&db_guard) {
             Ok(counts) if counts.total() > 0 => {
+                eprintln!("[sync-debug] handle_deep_link: guest migration seeded {} rows", counts.total());
                 let _ = app.emit("guest-migration-completed", counts);
             }
             Ok(_) => {}
@@ -379,16 +383,21 @@ pub async fn rehydrate_auth(
     wrap_cmd("rehydrate_auth", async move {
         match refresh_access_token().await? {
             Some(access_token) => {
+                eprintln!("[sync-debug] rehydrate_auth: token acquired, starting engine");
                 // Start the sync engine now that we have credentials.
                 let handle = crate::sync::start_engine(
                     app.clone(),
                     state.db.clone(),
                     access_token.clone(),
                 );
+                eprintln!("[sync-debug] rehydrate_auth: engine started");
                 *state.sync_handle.lock().await = Some(handle);
                 Ok(Some(RehydrateResult { access_token }))
             }
-            None => Ok(None),
+            None => {
+                eprintln!("[sync-debug] rehydrate_auth: no refresh token, engine NOT started");
+                Ok(None)
+            }
         }
     })
     .await

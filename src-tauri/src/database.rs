@@ -1334,6 +1334,7 @@ impl Database {
     /// are expected to have already resolved LWW via `get_local_updated_at`
     /// and `incoming_wins`. Written rows are marked `synced`.
     pub fn upsert_pulled_row(&self, table: &str, row: &serde_json::Value) -> Result<(), String> {
+        eprintln!("[sync-debug] upsert_pulled_row: table={}", table);
         let get_str = |k: &str| row.get(k).and_then(|v| v.as_str()).unwrap_or("").to_string();
         let get_opt_str = |k: &str| row.get(k).and_then(|v| v.as_str()).map(String::from);
         let get_bool = |k: &str| row.get(k).and_then(|v| v.as_bool()).unwrap_or(false);
@@ -1349,6 +1350,7 @@ impl Database {
                 let claude_args = row.get("claudeArgs").map(|v| v.to_string()).unwrap_or_else(|| "[]".into());
                 let env_vars = row.get("envVars").map(|v| v.to_string()).unwrap_or_else(|| "{}".into());
                 let agent_args_json = row.get("agentArgsJson").map(|v| v.to_string());
+                eprintln!("[sync-debug] upsert_pulled_row: executing SQL for profiles");
                 self.conn.execute(
                     "INSERT OR REPLACE INTO profiles
                        (id, name, description, working_directory, claude_args, env_vars,
@@ -1368,6 +1370,7 @@ impl Database {
                 let default_args = row.get("defaultArgs").map(|v| v.to_string()).unwrap_or_else(|| "[]".into());
                 let required_env = row.get("requiredEnv").map(|v| v.to_string()).unwrap_or_else(|| "[]".into());
                 let bindings = row.get("bindings").map(|v| v.to_string()).unwrap_or_else(|| "[]".into());
+                eprintln!("[sync-debug] upsert_pulled_row: executing SQL for custom_agents");
                 self.conn.execute(
                     "INSERT OR REPLACE INTO custom_agents
                        (id, name, binary, default_args, resume_flag, color, required_env,
@@ -1395,6 +1398,7 @@ impl Database {
                         |r| r.get(0),
                     )
                     .ok();
+                eprintln!("[sync-debug] upsert_pulled_row: executing SQL for workspaces");
                 if existing.is_some() {
                     self.conn.execute(
                         "UPDATE workspaces SET name = ?1, terminals = ?2, updated_at = ?3,
@@ -1421,6 +1425,7 @@ impl Database {
             }
             _ => {}
         }
+        eprintln!("[sync-debug] upsert_pulled_row: done table={}", table);
         Ok(())
     }
 

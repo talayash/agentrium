@@ -78,6 +78,7 @@ impl SyncClient {
         path: &str,
         body: &Req,
     ) -> Result<Resp, SyncError> {
+        eprintln!("[sync-debug] sync_client: POST {path}");
         let url = format!("{API_BASE}{path}");
         let resp = self
             .http
@@ -87,7 +88,9 @@ impl SyncClient {
             .send()
             .await
             .map_err(SyncError::Network)?;
+        eprintln!("[sync-debug] sync_client: POST {path} got status={}", resp.status());
         if resp.status() == StatusCode::UNAUTHORIZED {
+            eprintln!("[sync-debug] sync_client: 401, refreshing token");
             // One-shot refresh, then retry. Force-logout on second 401 is
             // handled by the sync engine layer, not here.
             let new_token = auth::refresh_access_token()
@@ -103,6 +106,7 @@ impl SyncClient {
                 .send()
                 .await
                 .map_err(SyncError::Network)?;
+            eprintln!("[sync-debug] sync_client: retry status={}", retry.status());
             return self.decode(retry).await;
         }
         self.decode(resp).await
@@ -113,6 +117,7 @@ impl SyncClient {
         resp: reqwest::Response,
     ) -> Result<Resp, SyncError> {
         let status = resp.status();
+        eprintln!("[sync-debug] sync_client: decoding response (status={})", status);
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
             return Err(SyncError::Server(status.as_u16(), text));
