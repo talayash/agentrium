@@ -74,4 +74,20 @@ describe('title bar auth interactions', () => {
     expect(logout).toHaveBeenCalledTimes(1);
     expect(startDragging).not.toHaveBeenCalled();
   });
+
+  // Regression: the account menu is portalled out of TitleBar's DOM subtree
+  // so its clicks miss TitleBar's onMouseDown drag handler (which uses DOM
+  // `contains()`). Losing that portal would silently reintroduce the bug
+  // where "Sign out" mousedown started a native window drag instead.
+  it('mouse-clicks on the portalled Sign out item reach handleSignOut without dragging', async () => {
+    useAuthStore.getState().setAuthed(
+      { id: 'u1', email: 'test@example.com', name: 'Test User', image: null }, 'jwt',
+    );
+    const user = userEvent.setup();
+    render(<TitleBar />);
+    await user.click(screen.getByRole('button', { name: 'Account - Test User' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Sign out' }));
+    expect(logout).toHaveBeenCalledTimes(1);
+    expect(startDragging).not.toHaveBeenCalled();
+  });
 });
