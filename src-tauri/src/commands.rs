@@ -1988,9 +1988,11 @@ pub async fn delete_workspace(
 ) -> Result<(), String> {
     wrap_cmd("delete_workspace", async move {
         // Soft-delete via sync_id (the sync-facing key for workspaces). The
-        // existing user-facing guard against `__`-prefixed names lives in
-        // db.delete_workspace; keep it here since the caller only knows the
-        // display name.
+        // `__`-prefix guard is defense-in-depth: the workspaces UI never
+        // surfaces `__last_session__` as a deletable entry, but removing this
+        // check would let a future caller wipe the ephemeral last-session
+        // snapshot. `tombstone_sync_row` itself is intentionally key-agnostic;
+        // name-policy enforcement belongs at this IPC boundary.
         db_op(&state.db, move |db| {
             if name.starts_with("__") {
                 return Err("Cannot delete internal workspaces".to_string());

@@ -584,13 +584,6 @@ impl Database {
         }
     }
 
-    pub fn delete_custom_agent(&self, id: &str) -> Result<(), String> {
-        self.conn
-            .execute("DELETE FROM custom_agents WHERE id = ?1", params![id])
-            .map_err(|e| e.to_string())?;
-        Ok(())
-    }
-
     const CREDENTIAL_COLUMNS: &'static str =
         "id, label, provider, env_name, endpoint_env, has_key, has_endpoint, masked_tail, created_at, last_used_at";
 
@@ -761,12 +754,6 @@ impl Database {
         }
     }
 
-    pub fn delete_profile(&self, id: &str) -> Result<(), String> {
-        self.conn.execute("DELETE FROM profiles WHERE id = ?1", params![id])
-            .map_err(|e| e.to_string())?;
-        Ok(())
-    }
-
     /// Upsert a workspace by name and return its sync-facing key (`sync_id`).
     ///
     /// On first save for a given name, a fresh UUID `sync_id` is stamped along
@@ -823,15 +810,6 @@ impl Database {
         }).map_err(|e| e.to_string())?;
 
         workspaces.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
-    }
-
-    pub fn delete_workspace(&self, name: &str) -> Result<(), String> {
-        if name.starts_with("__") {
-            return Err("Cannot delete internal workspaces".to_string());
-        }
-        self.conn.execute("DELETE FROM workspaces WHERE name = ?1", params![name])
-            .map_err(|e| e.to_string())?;
-        Ok(())
     }
 
     pub fn load_workspace(&self, name: &str) -> Result<Vec<TerminalConfig>, String> {
@@ -1387,17 +1365,10 @@ mod tests {
         assert!(db.save_profile(&p).is_err());
     }
 
-    #[test]
-    fn delete_profile_removes_only_the_target() {
-        let db = Database::new_in_memory().unwrap();
-        db.save_profile(&make_profile("p1", "a")).unwrap();
-        db.save_profile(&make_profile("p2", "b")).unwrap();
-        db.delete_profile("p1").unwrap();
-
-        let loaded = db.get_profiles().unwrap();
-        assert_eq!(loaded.len(), 1);
-        assert_eq!(loaded[0].id, "p2");
-    }
+    // "delete removes only the target" is covered by
+    // `tombstoned_profile_is_excluded_from_get_profiles` below (seeds 2 rows,
+    // tombstones one, asserts the sibling remains). Physical DELETE on profiles
+    // is intentionally not exposed: it would bypass sync tombstoning.
 
     #[test]
     fn workspace_round_trip() {
@@ -1421,13 +1392,11 @@ mod tests {
         assert!(db.save_workspace("__internal__", &[make_terminal("t", 0)]).is_ok());
     }
 
-    #[test]
-    fn delete_workspace_refuses_internal_keys() {
-        let db = Database::new_in_memory().unwrap();
-        db.save_workspace("__last_session__", &[make_terminal("t", 0)])
-            .unwrap();
-        assert!(db.delete_workspace("__last_session__").is_err());
-    }
+    // The __-prefix guard against deleting internal workspaces (e.g.
+    // `__last_session__`) now lives only in the IPC handler
+    // `commands::delete_workspace`. `tombstone_sync_row` itself is intentionally
+    // key-agnostic - the writer/IPC layer is the right place to enforce
+    // user-facing name policy.
 
     #[test]
     fn get_workspaces_hides_internal_last_session_entry() {
@@ -1701,15 +1670,15 @@ mod tests {
     }
 
     #[test]
-    fn custom_agent_save_replaces_and_delete_removes() {
+    fn custom_agent_save_replaces_existing() {
         let db = Database::new_in_memory().unwrap();
         let mut a = sample_custom_agent("a1");
         db.save_custom_agent(&a).unwrap();
         a.name = "OpenCode v2".into();
         db.save_custom_agent(&a).unwrap();
         assert_eq!(db.list_custom_agents().unwrap()[0].name, "OpenCode v2");
-        db.delete_custom_agent("a1").unwrap();
-        assert!(db.list_custom_agents().unwrap().is_empty());
+        // Deletion semantics are covered by
+        // `tombstoned_custom_agent_is_excluded_from_list_and_get`.
     }
 
     #[test]
