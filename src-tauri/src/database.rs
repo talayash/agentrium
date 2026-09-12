@@ -1195,6 +1195,122 @@ impl Database {
         Ok(())
     }
 
+    /// Read a syncable row as a `serde_json::Value` shaped for the sync-push
+    /// JSON schema. Keys are camelCase to match the broker's zod schemas at
+    /// `agentrium-api/src/app/api/sync/push/route.ts` — mismatched keys would
+    /// silently drop rows on the server side.
+    ///
+    /// `row_key` is the sync-facing key: `id` for profiles/custom_agents,
+    /// `sync_id` for workspaces.
+    pub fn read_syncable_row_json(
+        &self,
+        table: &str,
+        row_key: &str,
+    ) -> Result<Option<serde_json::Value>, String> {
+        use serde_json::json;
+        match table {
+            "profiles" => {
+                let mut stmt = self
+                    .conn
+                    .prepare(
+                        "SELECT id, name, description, working_directory, claude_args, env_vars,
+                                is_default, preview_json, agent, agent_args_json,
+                                credential_bindings_json, updated_at, deleted_at, client_version
+                         FROM profiles WHERE id = ?1",
+                    )
+                    .map_err(|e| e.to_string())?;
+                let row = stmt.query_row(params![row_key], |r| {
+                    let claude_args_json: String = r.get(4)?;
+                    let env_vars_json: String = r.get(5)?;
+                    let agent_args_json: Option<String> = r.get(9)?;
+                    Ok(json!({
+                        "id": r.get::<_, String>(0)?,
+                        "name": r.get::<_, String>(1)?,
+                        "description": r.get::<_, Option<String>>(2)?,
+                        "workingDirectory": r.get::<_, Option<String>>(3)?,
+                        "claudeArgs": serde_json::from_str::<serde_json::Value>(&claude_args_json).unwrap_or(json!([])),
+                        "envVars": serde_json::from_str::<serde_json::Value>(&env_vars_json).unwrap_or(json!({})),
+                        "isDefault": r.get::<_, i32>(6)? != 0,
+                        "agent": r.get::<_, String>(8)?,
+                        "agentArgsJson": agent_args_json.and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok()),
+                        "updatedAt": r.get::<_, String>(11)?,
+                        "deletedAt": r.get::<_, Option<String>>(12)?,
+                        "clientVersion": r.get::<_, i64>(13)?,
+                    }))
+                });
+                match row {
+                    Ok(v) => Ok(Some(v)),
+                    Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+                    Err(e) => Err(e.to_string()),
+                }
+            }
+            "custom_agents" => {
+                let mut stmt = self
+                    .conn
+                    .prepare(
+                        "SELECT id, name, binary, default_args, resume_flag, color, required_env,
+                                bindings, install_url, install_hint, updated_at, deleted_at,
+                                client_version
+                         FROM custom_agents WHERE id = ?1",
+                    )
+                    .map_err(|e| e.to_string())?;
+                let row = stmt.query_row(params![row_key], |r| {
+                    let default_args_json: String = r.get(3)?;
+                    let required_env_json: String = r.get(6)?;
+                    let bindings_json: String = r.get(7)?;
+                    Ok(json!({
+                        "id": r.get::<_, String>(0)?,
+                        "name": r.get::<_, String>(1)?,
+                        "binary": r.get::<_, String>(2)?,
+                        "defaultArgs": serde_json::from_str::<serde_json::Value>(&default_args_json).unwrap_or(json!([])),
+                        "resumeFlag": r.get::<_, Option<String>>(4)?,
+                        "color": r.get::<_, String>(5)?,
+                        "requiredEnv": serde_json::from_str::<serde_json::Value>(&required_env_json).unwrap_or(json!([])),
+                        "bindings": serde_json::from_str::<serde_json::Value>(&bindings_json).unwrap_or(json!([])),
+                        "installUrl": r.get::<_, Option<String>>(8)?,
+                        "installHint": r.get::<_, Option<String>>(9)?,
+                        "updatedAt": r.get::<_, String>(10)?,
+                        "deletedAt": r.get::<_, Option<String>>(11)?,
+                        "clientVersion": r.get::<_, i64>(12)?,
+                    }))
+                });
+                match row {
+                    Ok(v) => Ok(Some(v)),
+                    Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+                    Err(e) => Err(e.to_string()),
+                }
+            }
+            "workspaces" => {
+                let mut stmt = self
+                    .conn
+                    .prepare(
+                        "SELECT sync_id, name, terminals, created_at, updated_at, deleted_at,
+                                client_version
+                         FROM workspaces WHERE sync_id = ?1",
+                    )
+                    .map_err(|e| e.to_string())?;
+                let row = stmt.query_row(params![row_key], |r| {
+                    let terminals_json: String = r.get(2)?;
+                    Ok(json!({
+                        "id": r.get::<_, String>(0)?,
+                        "name": r.get::<_, String>(1)?,
+                        "terminals": serde_json::from_str::<serde_json::Value>(&terminals_json).unwrap_or(json!([])),
+                        "createdAt": r.get::<_, String>(3)?,
+                        "updatedAt": r.get::<_, String>(4)?,
+                        "deletedAt": r.get::<_, Option<String>>(5)?,
+                        "clientVersion": r.get::<_, i64>(6)?,
+                    }))
+                });
+                match row {
+                    Ok(v) => Ok(Some(v)),
+                    Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+                    Err(e) => Err(e.to_string()),
+                }
+            }
+            _ => Ok(None),
+        }
+    }
+
     /// Read a `user_meta` value. Returns `Ok(None)` for both a missing row and
     /// a row with a SQL NULL value, which is what auth callers want ("not set"
     /// vs "explicitly cleared" are the same signal here).
@@ -2031,5 +2147,34 @@ mod tests {
         assert!(db.load_workspace("gone").is_err(),
             "load_workspace must treat a tombstoned name as absent");
         assert!(db.load_workspace("live").is_ok());
+    }
+
+    #[test]
+    fn read_syncable_row_json_returns_none_for_missing_row() {
+        let db = Database::new_in_memory().unwrap();
+        let v = db.read_syncable_row_json("profiles", "nonexistent").unwrap();
+        assert!(v.is_none());
+    }
+
+    #[test]
+    fn read_syncable_row_json_shapes_a_profile_correctly() {
+        let db = Database::new_in_memory().unwrap();
+        db.conn.execute(
+            "INSERT INTO profiles (id, name, description, working_directory, claude_args, env_vars,
+                                   is_default, agent, updated_at, client_version, sync_state)
+             VALUES ('p1', 'Alpha', 'desc', '/tmp', '[\"--foo\"]', '{\"K\":\"V\"}',
+                     1, 'claude', '2026-06-01T00:00:00Z', 3, 'pending')",
+            [],
+        ).unwrap();
+
+        let v = db.read_syncable_row_json("profiles", "p1").unwrap().unwrap();
+        assert_eq!(v.get("id").and_then(|x| x.as_str()), Some("p1"));
+        assert_eq!(v.get("name").and_then(|x| x.as_str()), Some("Alpha"));
+        assert_eq!(v.get("workingDirectory").and_then(|x| x.as_str()), Some("/tmp"));
+        assert_eq!(v.get("isDefault").and_then(|x| x.as_bool()), Some(true));
+        assert_eq!(v.get("clientVersion").and_then(|x| x.as_i64()), Some(3));
+        assert_eq!(v.get("updatedAt").and_then(|x| x.as_str()), Some("2026-06-01T00:00:00Z"));
+        assert!(v.get("deletedAt").unwrap().is_null());
+        assert_eq!(v.get("claudeArgs").unwrap().as_array().unwrap()[0].as_str(), Some("--foo"));
     }
 }
