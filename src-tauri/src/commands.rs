@@ -5783,6 +5783,45 @@ pub async fn lsp_server_log(
     .await
 }
 
+#[tauri::command]
+pub async fn get_sync_enabled(state: tauri::State<'_, AppState>) -> Result<bool, String> {
+    let db = state.db.clone();
+    tokio::task::spawn_blocking(move || {
+        let db = db.lock().unwrap_or_else(|p| p.into_inner());
+        db.get_sync_enabled()
+    })
+    .await
+    .map_err(|e| format!("DB task failed: {e}"))?
+}
+
+#[tauri::command]
+pub async fn set_sync_enabled(
+    enabled: bool,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    // Persist immediately so a next-boot reads the correct default even
+    // before the engine picks up the SetEnabled message.
+    let db = state.db.clone();
+    tokio::task::spawn_blocking(move || {
+        let d = db.lock().unwrap_or_else(|p| p.into_inner());
+        d.set_sync_enabled(enabled)
+    })
+    .await
+    .map_err(|e| format!("DB task failed: {e}"))??;
+    if let Some(handle) = state.sync_handle.lock().await.as_ref() {
+        handle.set_enabled(enabled);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn sync_now(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    if let Some(handle) = state.sync_handle.lock().await.as_ref() {
+        handle.sync_now();
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod version_extraction_tests {
     use super::{extract_version_line, first_path_line, has_semver_like};
