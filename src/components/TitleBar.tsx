@@ -20,6 +20,7 @@ import { toast } from '../store/toastStore';
 import { UpdatePill } from './UpdatePill';
 import { SessionWidget } from './titlebar/SessionWidget';
 import { HeaderAuth } from './HeaderAuth';
+import { SyncStatusChip } from './SyncStatusChip';
 import { Tooltip } from './ui/Tooltip';
 import { ThemeToggle } from './ui/ThemeToggle';
 import { ListRow } from './ui/ListRow';
@@ -330,6 +331,8 @@ export function TitleBar() {
           <div className="w-px h-4 bg-seam-strong mx-1" />
 
           <ThemeToggle />
+
+          <SyncStatusChip />
 
           <HeaderAuth />
         </div>
