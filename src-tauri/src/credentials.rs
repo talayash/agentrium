@@ -338,17 +338,26 @@ mod tests {
 
 // ---- Auth refresh token storage ---------------------------------------------
 
-const AUTH_SERVICE: &str = "com.claudeterminal.agentrium.auth";
+const AUTH_SERVICE_BASE: &str = "com.claudeterminal.agentrium.auth";
 const REFRESH_TOKEN_KEY: &str = "refresh_token";
 
+/// Service name used for the auth refresh token in the OS keychain.
+/// Suffixed by `crate::instance_suffix()` so a side-loaded QA build
+/// (`AGENTRIUM_INSTANCE_ID` set) doesn't collide with prod's entry.
+fn auth_service() -> String {
+    format!("{AUTH_SERVICE_BASE}{}", crate::instance_suffix())
+}
+
 pub fn store_refresh_token(token: &str) -> Result<(), String> {
-    let entry = keyring::Entry::new(AUTH_SERVICE, REFRESH_TOKEN_KEY)
+    let svc = auth_service();
+    let entry = keyring::Entry::new(&svc, REFRESH_TOKEN_KEY)
         .map_err(|e| format!("keyring entry: {e}"))?;
     entry.set_password(token).map_err(|e| format!("keyring set: {e}"))
 }
 
 pub fn read_refresh_token() -> Result<Option<String>, String> {
-    let entry = keyring::Entry::new(AUTH_SERVICE, REFRESH_TOKEN_KEY)
+    let svc = auth_service();
+    let entry = keyring::Entry::new(&svc, REFRESH_TOKEN_KEY)
         .map_err(|e| format!("keyring entry: {e}"))?;
     match entry.get_password() {
         Ok(v) => Ok(Some(v)),
@@ -358,7 +367,8 @@ pub fn read_refresh_token() -> Result<Option<String>, String> {
 }
 
 pub fn clear_refresh_token() -> Result<(), String> {
-    let entry = keyring::Entry::new(AUTH_SERVICE, REFRESH_TOKEN_KEY)
+    let svc = auth_service();
+    let entry = keyring::Entry::new(&svc, REFRESH_TOKEN_KEY)
         .map_err(|e| format!("keyring entry: {e}"))?;
     match entry.delete_credential() {
         Ok(()) => Ok(()),

@@ -85,7 +85,11 @@ pub struct Database {
 
 impl Database {
     pub fn new() -> Result<Self, String> {
-        let data_dir = ProjectDirs::from("com", "claudeterminal", "ClaudeTerminal")
+        // App name is suffixed when running a side-loaded QA build so the
+        // dev instance gets its own DB, isolated from any prod install.
+        // See `crate::instance_suffix` for the convention.
+        let app_name = format!("ClaudeTerminal{}", crate::instance_suffix());
+        let data_dir = ProjectDirs::from("com", "claudeterminal", &app_name)
             .ok_or("Failed to get project directories")?
             .data_dir()
             .to_path_buf();

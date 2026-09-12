@@ -28,6 +28,18 @@ use tauri::Manager;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+/// Suffix appended to the SQLite data-dir name and OS keychain service
+/// name when the `AGENTRIUM_INSTANCE_ID` env var is set. Enables running a
+/// side-loaded QA dev instance alongside a prod install without sharing
+/// state (DB path, keychain refresh token). Prod release builds never set
+/// the env var, so their paths stay unchanged.
+///
+/// Example: `AGENTRIUM_INSTANCE_ID=.qa` → data dir `ClaudeTerminal.qa`,
+/// keychain service `com.claudeterminal.agentrium.auth.qa`.
+pub fn instance_suffix() -> String {
+    std::env::var("AGENTRIUM_INSTANCE_ID").unwrap_or_default()
+}
+
 pub struct AppState {
     pub terminals: Arc<Mutex<terminal::TerminalManager>>,
     /// Database uses `std::sync::Mutex`, NOT `tokio::sync::Mutex`, so callers
