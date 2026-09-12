@@ -1144,6 +1144,23 @@ impl Database {
             .map_err(|e| e.to_string())?;
         Ok(())
     }
+
+    pub fn get_sync_enabled(&self) -> Result<bool, String> {
+        // Default ON — sync is the reason a user signed in, so opt-out not opt-in.
+        Ok(self.get_user_meta("sync_enabled")?.as_deref() != Some("0"))
+    }
+
+    pub fn set_sync_enabled(&self, enabled: bool) -> Result<(), String> {
+        self.set_user_meta("sync_enabled", Some(if enabled { "1" } else { "0" }))
+    }
+
+    pub fn get_last_pull_cursor(&self) -> Result<Option<String>, String> {
+        self.get_user_meta("last_pull_cursor")
+    }
+
+    pub fn set_last_pull_cursor(&self, cursor: &str) -> Result<(), String> {
+        self.set_user_meta("last_pull_cursor", Some(cursor))
+    }
 }
 
 #[cfg(test)]
@@ -1779,5 +1796,15 @@ mod tests {
         assert!(rows[0].last_attempt_at.is_some());
         // Second recorded attempt cleared the error message.
         assert!(rows[0].last_error.is_none());
+    }
+
+    #[test]
+    fn sync_enabled_defaults_to_true_when_unset() {
+        let db = Database::new_in_memory().unwrap();
+        assert!(db.get_sync_enabled().unwrap());
+        db.set_sync_enabled(false).unwrap();
+        assert!(!db.get_sync_enabled().unwrap());
+        db.set_sync_enabled(true).unwrap();
+        assert!(db.get_sync_enabled().unwrap());
     }
 }
