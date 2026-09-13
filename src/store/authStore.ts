@@ -13,9 +13,17 @@ type AuthState = {
   mode: AuthMode;
   user: AuthUser | null;
   accessToken: string | null; // in-memory only, never persisted
+  /**
+   * Last failure reported by the Rust side of a sign-in that completed
+   * outside a component (OAuth deep-link callback, token exchange). The
+   * LoginModal watches this to stop its spinner and show the message.
+   * Cleared on any successful auth transition.
+   */
+  authError: string | null;
   setGuest: () => void;
   setAuthed: (user: AuthUser, accessToken: string) => void;
   setUnknown: () => void;
+  setAuthError: (message: string | null) => void;
   clear: () => void;
 };
 
@@ -33,8 +41,10 @@ export const useAuthStore = create<AuthState>((set) => ({
   mode: 'unknown',
   user: null,
   accessToken: null,
+  authError: null,
   setGuest: () => set({ mode: 'guest', user: null, accessToken: null }),
-  setAuthed: (user, accessToken) => set({ mode: 'authed', user, accessToken }),
+  setAuthed: (user, accessToken) => set({ mode: 'authed', user, accessToken, authError: null }),
   setUnknown: () => set({ mode: 'unknown', user: null, accessToken: null }),
+  setAuthError: (message) => set({ authError: message }),
   clear: () => set({ mode: 'guest', user: null, accessToken: null }),
 }));

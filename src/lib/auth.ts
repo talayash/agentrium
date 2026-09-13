@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { useAuthStore, type AuthUser } from '../store/authStore';
+import { toast } from '../store/toastStore';
 import { reportInvokeFailure } from './errorReporter';
 
 /**
@@ -93,16 +94,22 @@ export async function fetchCurrentUser(accessToken: string): Promise<AuthUser> {
 }
 
 /**
- * Attach the auth-tokens-received listener. Call once on app boot (Task 26).
- * Returns an unlisten function.
+ * Attach the auth event listeners. Call once on app boot (Task 26).
+ * Returns an unlisten function covering both subscriptions.
  *
- * When the deep-link handler emits fresh tokens, we exchange the access token
- * for the user profile and hydrate authStore. Failures here are reported via
- * errorReporter because there's no user-facing invoke site to catch them -
- * the OAuth flow completes in the browser, not in a component's try/catch.
+ * `auth-tokens-received`: the deep-link handler (or the email+password IPC
+ * path) finished a sign-in. Exchange the access token for the user profile
+ * and hydrate authStore. Failures here are reported via errorReporter
+ * because there's no user-facing invoke site to catch them - the OAuth flow
+ * completes in the browser, not in a component's try/catch.
+ *
+ * `auth-error`: the Rust side could not finish a sign-in that was started
+ * from the LoginModal (bad callback, expired state, token exchange rejected).
+ * Without this listener the modal would spin on "Opening browser…" forever,
+ * which is exactly what happened when the broker's callback contract changed.
  */
 export async function subscribeToAuthEvents(): Promise<UnlistenFn> {
-  return await listen<{ access_token: string; state: string }>(
+  const unlistenTokens = await listen<{ access_token: string; state: string }>(
     'auth-tokens-received',
     async (event) => {
       const { access_token } = event.payload;
@@ -117,4 +124,15 @@ export async function subscribeToAuthEvents(): Promise<UnlistenFn> {
       }
     },
   );
+  const unlistenError = await listen<string>('auth-error', (event) => {
+    const message = typeof event.payload === 'string' ? event.payload : String(event.payload);
+    useAuthStore.getState().setAuthError(message);
+    // Rust already reported this to telemetry (report_bg); here we only
+    // make it visible.
+    toast.error('Sign-in failed', message);
+  });
+  return () => {
+    unlistenTokens();
+    unlistenError();
+  };
 }

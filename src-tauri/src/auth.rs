@@ -4,8 +4,16 @@
 //! 1. Frontend invokes `start_oauth_login`.
 //! 2. We generate state + PKCE verifier/challenge, store in `PendingMap`.
 //! 3. Open browser to https://agentrium-api.vercel.app/api/auth/desktop/start?...
-//! 4. Backend redirects through Google, then to agentrium://auth-return?token=...&state=...
-//! 5. Deep-link handler validates state, stores refresh token in keychain, emits auth-changed.
+//! 4. Broker runs the provider login, then returns the browser to
+//!    agentrium://auth-return?code=...&state=...  (one-time code, 60 s TTL;
+//!    tokens never travel in the URL).
+//! 5. Deep-link handler validates state, POSTs code + code_verifier + state to
+//!    /api/auth/desktop/token, stores the refresh token in the keychain, and
+//!    emits auth-tokens-received. Any failure emits auth-error.
+//!
+//! CONTRACT: the callback shape and the token endpoint are documented in
+//! agentrium-api/README.md ("Desktop sign-in flow"). Change both repos
+//! together; `parse_auth_return` / `exchange_code` tests below pin this side.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -106,8 +114,8 @@ pub struct StartOAuthLoginResult {
 /// Kick off an OAuth sign-in: generate state + PKCE, record them in the
 /// pending map, and launch the system browser at the Vercel broker URL. The
 /// browser redirects through the identity provider back to
-/// `agentrium://auth-return?token=...&state=...`, which the deep-link handler
-/// (Task 20) validates against the pending map.
+/// `agentrium://auth-return?code=...&state=...`, which the deep-link handler
+/// validates against the pending map before exchanging the code for tokens.
 #[command]
 pub async fn start_oauth_login(
     provider: String,
@@ -158,52 +166,127 @@ pub struct AuthTokensReceivedPayload {
     pub state: String,
 }
 
-/// Called by the deep-link plugin when the OS routes `agentrium://` URLs to us.
-///
-/// Only handles `agentrium://auth-return?token=...&refresh=...&state=...`.
-/// Other paths are ignored (M2/M3 will add `import/<id>` etc.).
-pub fn handle_deep_link(app: &tauri::AppHandle, url: &str) {
-    let parsed = match Url::parse(url) {
-        Ok(u) => u,
-        Err(e) => {
-            eprintln!("[auth] bad deep-link URL {url}: {e}");
-            return;
-        }
-    };
+/// Parsed `agentrium://auth-return` callback (broker contract: `code` + `state`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AuthReturn {
+    pub code: String,
+    pub state: String,
+}
+
+/// Classify a deep link. `Ok(None)` = not an auth-return URL (someone else's).
+/// `Ok(Some)` = well-formed callback. `Err` = it *is* an auth-return but does
+/// not match the broker contract (e.g. the legacy `token=` shape) - callers
+/// must surface that, never ignore it.
+pub fn parse_auth_return(url: &str) -> Result<Option<AuthReturn>, String> {
+    let parsed = Url::parse(url).map_err(|e| format!("bad deep-link URL: {e}"))?;
 
     // Some OSes route the path segment as host, some as path. Handle both.
     let is_auth_return = parsed.host_str() == Some("auth-return")
         || parsed.path() == "/auth-return";
     if !is_auth_return {
-        return; // not for us
+        return Ok(None);
     }
 
-    let mut token = None;
-    let mut refresh = None;
+    let mut code = None;
     let mut state = None;
+    let mut seen = Vec::new();
     for (k, v) in parsed.query_pairs() {
+        seen.push(k.to_string());
         match k.as_ref() {
-            "token" => token = Some(v.to_string()),
-            "refresh" => refresh = Some(v.to_string()),
+            "code" => code = Some(v.to_string()),
             "state" => state = Some(v.to_string()),
             _ => {}
         }
     }
+    match (code, state) {
+        (Some(code), Some(state)) if !code.is_empty() && !state.is_empty() => {
+            Ok(Some(AuthReturn { code, state }))
+        }
+        (code, state) => {
+            let mut missing = Vec::new();
+            if code.is_none() { missing.push("code"); }
+            if state.is_none() { missing.push("state"); }
+            Err(format!(
+                "sign-in callback is missing {} (got: {}); the desktop app and the auth broker disagree on the callback contract",
+                missing.join(" and "),
+                if seen.is_empty() { "no params".to_string() } else { seen.join(", ") },
+            ))
+        }
+    }
+}
 
-    let (Some(token), Some(refresh), Some(state)) = (token, refresh, state) else {
-        eprintln!("[auth] missing token/refresh/state in deep-link URL");
-        return;
+#[derive(Debug, Deserialize)]
+pub struct TokenExchangeResponse {
+    pub access_token: String,
+    pub refresh_token: String,
+}
+
+/// PKCE token exchange (broker: `POST /api/auth/desktop/token`). A wrong
+/// verifier burns the one-time code server-side, so this is called exactly
+/// once per callback.
+pub async fn exchange_code(
+    base_url: &str,
+    code: &str,
+    code_verifier: &str,
+    state: &str,
+) -> Result<TokenExchangeResponse, String> {
+    let resp = reqwest::Client::new()
+        .post(format!("{base_url}/api/auth/desktop/token"))
+        .json(&serde_json::json!({
+            "code": code,
+            "code_verifier": code_verifier,
+            "state": state,
+        }))
+        .send()
+        .await
+        .map_err(|e| format!("token exchange request failed: {e}"))?;
+
+    let status = resp.status();
+    let body = resp.text().await.unwrap_or_default();
+    if !status.is_success() {
+        let code = serde_json::from_str::<serde_json::Value>(&body)
+            .ok()
+            .and_then(|v| v.get("error").and_then(|e| e.as_str()).map(str::to_owned))
+            .unwrap_or_else(|| body.chars().take(120).collect());
+        return Err(format!("token exchange rejected ({status}): {code}"));
+    }
+    serde_json::from_str(&body).map_err(|e| format!("token exchange returned an unexpected body: {e}"))
+}
+
+/// Called by the deep-link plugin when the OS routes `agentrium://` URLs to us.
+///
+/// Handles `agentrium://auth-return?code=...&state=...`. Other paths are
+/// ignored (M3 will add `import/<id>` etc.). Every failure on an auth-return
+/// URL is emitted as `auth-error` so the LoginModal can stop spinning and tell
+/// the user, and reported to telemetry because it means a real broken flow.
+pub fn handle_deep_link(app: &tauri::AppHandle, url: &str) {
+    let fail = |msg: String| {
+        eprintln!("[auth] {msg}");
+        error_reporter::report_bg("auth_deep_link", msg.clone());
+        let _ = app.emit("auth-error", msg);
+    };
+
+    let ret = match parse_auth_return(url) {
+        Ok(Some(ret)) => ret,
+        Ok(None) => return, // not for us
+        Err(e) => return fail(e),
     };
 
     let pending = app.state::<Arc<PendingMap>>();
-    if pending.take(&state).is_none() {
-        eprintln!("[auth] unknown or expired state; ignoring deep-link");
-        return;
-    }
+    let Some(flow) = pending.take(&ret.state) else {
+        return fail("sign-in callback arrived for an unknown or expired attempt; please try again".into());
+    };
 
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
-        if let Err(error) = complete_signin(&app, token, Some(refresh), Some(state)).await {
+        let result = async {
+            let tokens = exchange_code(API_BASE, &ret.code, &flow.code_verifier, &ret.state).await?;
+            complete_signin(&app, tokens.access_token, Some(tokens.refresh_token), Some(ret.state)).await
+        }
+        .await;
+        if let Err(error) = result {
+            eprintln!("[auth] {error}");
+            error_reporter::report_bg("auth_deep_link", error.clone());
             let _ = app.emit("auth-error", error);
         }
     });
@@ -601,6 +684,113 @@ mod tests {
         assert_eq!(db.sync_queue_depth().unwrap(), 1);
         assert_ne!(db.peek_sync_queue(10).unwrap()[0].row_key, internal);
         assert!(db.load_workspace("__last_session__").is_ok());
+    }
+
+    // ---- Desktop <-> broker callback contract (agentrium-api README,
+    // "Desktop sign-in flow"). The broker returns the browser to
+    // `agentrium://auth-return?code=…&state=…`; tokens never travel in the URL.
+    // If the broker changes this shape, these tests are the desktop-side alarm.
+
+    #[test]
+    fn auth_return_parses_the_documented_code_and_state_shape() {
+        let got = parse_auth_return("agentrium://auth-return?code=abc123&state=st-1").unwrap().unwrap();
+        assert_eq!(got.code, "abc123");
+        assert_eq!(got.state, "st-1");
+    }
+
+    #[test]
+    fn auth_return_accepts_path_form_used_by_some_platforms() {
+        let got = parse_auth_return("agentrium:///auth-return?state=st-2&code=zzz").unwrap().unwrap();
+        assert_eq!(got.code, "zzz");
+        assert_eq!(got.state, "st-2");
+    }
+
+    #[test]
+    fn non_auth_return_deep_links_are_not_ours() {
+        assert!(parse_auth_return("agentrium://import/abc?code=1&state=2").unwrap().is_none());
+    }
+
+    #[test]
+    fn legacy_token_callback_is_a_loud_contract_mismatch_not_a_silent_ignore() {
+        // The pre-PKCE broker put tokens in the URL. A callback in that shape
+        // means the two repos disagree; surface it instead of hanging the modal.
+        let err = parse_auth_return("agentrium://auth-return?token=t&refresh=r&state=s").unwrap_err();
+        assert!(err.contains("code"), "error should name the missing param: {err}");
+    }
+
+    #[test]
+    fn auth_return_without_state_is_an_error() {
+        assert!(parse_auth_return("agentrium://auth-return?code=abc").is_err());
+    }
+
+    #[test]
+    fn auth_return_with_malformed_url_is_an_error() {
+        assert!(parse_auth_return("not a url").is_err());
+    }
+
+    /// Minimal one-shot HTTP server: captures the first request and replies
+    /// with a canned body. Keeps the exchange test free of a mock-HTTP dep.
+    fn one_shot_http_server(status_line: &'static str, body: &'static str) -> (String, std::sync::mpsc::Receiver<String>) {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let (tx, rx) = std::sync::mpsc::channel::<String>();
+        std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buf = vec![0u8; 16 * 1024];
+            let mut got = Vec::new();
+            loop {
+                let n = stream.read(&mut buf).unwrap();
+                got.extend_from_slice(&buf[..n]);
+                let text = String::from_utf8_lossy(&got).to_string();
+                if let Some(idx) = text.find("\r\n\r\n") {
+                    let len: usize = text[..idx]
+                        .lines()
+                        .find_map(|l| l.to_ascii_lowercase().strip_prefix("content-length:").map(|v| v.trim().parse().unwrap()))
+                        .unwrap_or(0);
+                    if got.len() >= idx + 4 + len { break; }
+                }
+                if n == 0 { break; }
+            }
+            tx.send(String::from_utf8_lossy(&got).to_string()).unwrap();
+            let resp = format!(
+                "{status_line}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            stream.write_all(resp.as_bytes()).unwrap();
+        });
+        (format!("http://{addr}"), rx)
+    }
+
+    #[test]
+    fn exchange_code_posts_the_documented_body_and_reads_tokens() {
+        let (base, rx) = one_shot_http_server(
+            "HTTP/1.1 200 OK",
+            r#"{"access_token":"AT","refresh_token":"RT","user":{"id":"u1","email":"e@x","name":null,"image":null}}"#,
+        );
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let tokens = rt
+            .block_on(exchange_code(&base, "the-code", "the-verifier-43chars-xxxxxxxxxxxxxxxxxxxxxxxxx", "the-state"))
+            .unwrap();
+        assert_eq!(tokens.access_token, "AT");
+        assert_eq!(tokens.refresh_token, "RT");
+
+        let req = rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert!(req.starts_with("POST /api/auth/desktop/token HTTP/1.1"), "unexpected request line: {req}");
+        let body_start = req.find("\r\n\r\n").unwrap() + 4;
+        let body: serde_json::Value = serde_json::from_str(&req[body_start..]).unwrap();
+        assert_eq!(body["code"], "the-code");
+        assert_eq!(body["code_verifier"], "the-verifier-43chars-xxxxxxxxxxxxxxxxxxxxxxxxx");
+        assert_eq!(body["state"], "the-state");
+        assert_eq!(body.as_object().unwrap().len(), 3, "exactly the three documented fields");
+    }
+
+    #[test]
+    fn exchange_code_surfaces_the_broker_error_code() {
+        let (base, _rx) = one_shot_http_server("HTTP/1.1 400 Bad Request", r#"{"error":"invalid_grant"}"#);
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let err = rt.block_on(exchange_code(&base, "c", "v", "s")).unwrap_err();
+        assert!(err.contains("invalid_grant"), "error should carry the broker code: {err}");
     }
 
     #[test]

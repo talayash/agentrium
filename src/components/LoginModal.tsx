@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { Modal } from './ui/Modal';
 import {
@@ -18,6 +18,13 @@ type OAuthProvider = 'google' | 'github';
 type FormMode = 'signin' | 'signup';
 
 /**
+ * How long "Opening browser…" may spin before we give the buttons back.
+ * Matches PENDING_TTL in auth.rs: after this the Rust side has forgotten the
+ * state anyway, so the flow cannot complete and the user must retry.
+ */
+const OAUTH_PENDING_TIMEOUT_MS = 3 * 60 * 1000;
+
+/**
  * First-launch sign-in prompt. Offers Google + GitHub OAuth (M1), inline
  * email + password (M2b), or "continue as guest".
  *
@@ -30,6 +37,7 @@ type FormMode = 'signin' | 'signup';
  */
 export function LoginModal({ onClose }: LoginModalProps) {
   const [oauthBusy, setOauthBusy] = useState<OAuthProvider | null>(null);
+  const authError = useAuthStore((s) => s.authError);
   const [formOpen, setFormOpen] = useState(false);
   const [formMode, setFormMode] = useState<FormMode>('signin');
   const [email, setEmail] = useState('');
@@ -40,9 +48,29 @@ export function LoginModal({ onClose }: LoginModalProps) {
 
   const anyBusy = oauthBusy !== null || formBusy;
 
+  // The OAuth flow finishes outside this component (browser -> deep link ->
+  // Rust). If Rust reports a failure, stop spinning and show it.
+  useEffect(() => {
+    if (authError === null) return;
+    setOauthBusy(null);
+    setError(authError);
+  }, [authError]);
+
+  // Safety net: if the deep link never arrives (browser closed, contract
+  // mismatch nobody reported, …), don't leave the user staring at a spinner.
+  useEffect(() => {
+    if (oauthBusy === null) return;
+    const timer = setTimeout(() => {
+      setOauthBusy(null);
+      setError('Sign-in timed out waiting for the browser. Please try again.');
+    }, OAUTH_PENDING_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [oauthBusy]);
+
   const handleOAuth = async (provider: OAuthProvider) => {
     setOauthBusy(provider);
     setError(null);
+    useAuthStore.getState().setAuthError(null);
     try {
       await startOAuthLogin(provider);
     } catch (err) {
