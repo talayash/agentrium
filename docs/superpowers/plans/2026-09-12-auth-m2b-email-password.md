@@ -77,7 +77,7 @@
 **Files:**
 - Modify: `agentrium-api/db/schema.ts`
 
-- [ ] **Step 1: Extend the users table**
+- [x] **Step 1: Extend the users table**
 
 In `agentrium-api/db/schema.ts`, change the `users` table definition to include a nullable `password_hash` column. Put it below `image` for readability. Full new definition:
 
@@ -96,7 +96,7 @@ export const users = pgTable('users', {
 
 Auth.js's DrizzleAdapter reads the users table by property name for the standard fields; adding an unknown column is safe (adapter ignores it).
 
-- [ ] **Step 2: Verify typecheck**
+- [x] **Step 2: Verify typecheck**
 
 ```
 cd C:/Users/talay/agentrium-api
@@ -105,7 +105,7 @@ npx tsc --noEmit
 
 Must exit 0.
 
-- [ ] **Step 3: Generate the migration**
+- [x] **Step 3: Generate the migration**
 
 ```
 cd C:/Users/talay/agentrium-api
@@ -117,7 +117,7 @@ Should produce a new file under `db/migrations/` like `0002_<random>.sql` contai
 ALTER TABLE "users" ADD COLUMN "password_hash" text;
 ```
 
-- [ ] **Step 4: Commit (do NOT push migration to Neon yet)**
+- [x] **Step 4: Commit (do NOT push migration to Neon yet)**
 
 ```bash
 git add db/schema.ts db/migrations/
@@ -135,7 +135,7 @@ Applying to Neon is deferred until Task 6 lands (all schema + endpoints ready).
 - Create: `agentrium-api/src/lib/password.ts`
 - Create: `agentrium-api/src/lib/password.test.ts`
 
-- [ ] **Step 1: Install `@node-rs/argon2`**
+- [x] **Step 1: Install `@node-rs/argon2`**
 
 ```
 cd C:/Users/talay/agentrium-api
@@ -144,7 +144,7 @@ npm install @node-rs/argon2
 
 Verify `package.json` shows `"@node-rs/argon2": "^X.Y.Z"` in `dependencies`.
 
-- [ ] **Step 2: Create the password helper module**
+- [x] **Step 2: Create the password helper module**
 
 Write `agentrium-api/src/lib/password.ts`:
 
@@ -201,7 +201,7 @@ export async function verifyPassword(hash: string, plaintext: string): Promise<b
 }
 ```
 
-- [ ] **Step 3: Add tests**
+- [x] **Step 3: Add tests**
 
 Write `agentrium-api/src/lib/password.test.ts`:
 
@@ -257,7 +257,7 @@ describe('hashPassword + verifyPassword', () => {
 });
 ```
 
-- [ ] **Step 4: Run + commit**
+- [x] **Step 4: Run + commit**
 
 ```
 cd C:/Users/talay/agentrium-api
@@ -280,7 +280,7 @@ git commit -m "feat(auth): argon2id password hash + verify helpers"
 - Create: `agentrium-api/src/app/api/auth/desktop/signup/route.ts`
 - Create: `agentrium-api/src/app/api/auth/desktop/signup/route.test.ts`
 
-- [ ] **Step 1: Write the route**
+- [x] **Step 1: Write the route**
 
 Path from route → `../../../../../lib/` is the standard depth. Copy the same relative path pattern used by `/api/auth/desktop/finish/route.ts`.
 
@@ -359,7 +359,7 @@ export async function POST(req: NextRequest) {
 }
 ```
 
-- [ ] **Step 2: Write the contract tests**
+- [x] **Step 2: Write the contract tests**
 
 Write `agentrium-api/src/app/api/auth/desktop/signup/route.test.ts`:
 
@@ -458,7 +458,7 @@ describe('POST /api/auth/desktop/signup', () => {
 });
 ```
 
-- [ ] **Step 3: Run + commit**
+- [x] **Step 3: Run + commit**
 
 ```
 cd C:/Users/talay/agentrium-api
@@ -481,7 +481,7 @@ git commit -m "feat(auth): POST /api/auth/desktop/signup with argon2id + duplica
 - Create: `agentrium-api/src/app/api/auth/desktop/signin-credentials/route.ts`
 - Create: `agentrium-api/src/app/api/auth/desktop/signin-credentials/route.test.ts`
 
-- [ ] **Step 1: Write the route**
+- [x] **Step 1: Write the route**
 
 Write `agentrium-api/src/app/api/auth/desktop/signin-credentials/route.ts`:
 
@@ -541,7 +541,7 @@ export async function POST(req: NextRequest) {
 }
 ```
 
-- [ ] **Step 2: Write the contract tests**
+- [x] **Step 2: Write the contract tests**
 
 Write `agentrium-api/src/app/api/auth/desktop/signin-credentials/route.test.ts`:
 
@@ -636,7 +636,7 @@ describe('POST /api/auth/desktop/signin-credentials', () => {
 });
 ```
 
-- [ ] **Step 3: Run + commit**
+- [x] **Step 3: Run + commit**
 
 ```
 cd C:/Users/talay/agentrium-api
@@ -658,7 +658,7 @@ git commit -m "feat(auth): POST /api/auth/desktop/signin-credentials (constant-t
 **Files:**
 - No new files. Verify the whole broker.
 
-- [ ] **Step 1: Full suite green**
+- [x] **Step 1: Full suite green**
 
 ```
 cd C:/Users/talay/agentrium-api
@@ -667,7 +667,7 @@ npx vitest run
 
 Total count should be 20 (from M2a) + 5 (Task 2 password) + 5 (Task 3 signup) + 6 (Task 4 signin) = **36 tests**.
 
-- [ ] **Step 2: Apply the schema migration to Neon**
+- [x] **Step 2: Apply the schema migration to Neon**
 
 Task 1 generated a migration file; push it now:
 
@@ -678,7 +678,7 @@ yes | npx dotenv -e .env.local -- npx drizzle-kit push
 
 Should apply `ALTER TABLE "users" ADD COLUMN "password_hash" text;` — verify the output says `[✓] Changes applied`.
 
-- [ ] **Step 3: Verify the column exists on Neon**
+- [x] **Step 3: Verify the column exists on Neon**
 
 ```
 cd C:/Users/talay/agentrium-api
@@ -687,7 +687,7 @@ npx dotenv -e .env.local -- node -e "const postgres=require('postgres');const sq
 
 Expected output includes `- password_hash`.
 
-- [ ] **Step 4: Commit the applied migration + push broker to origin**
+- [x] **Step 4: Commit the applied migration + push broker to origin**
 
 The migration file was already committed in Task 1. Now push:
 
@@ -712,7 +712,7 @@ Expected: `400` (invalid body — proves the endpoint exists and validated). If 
 - Modify: `src-tauri/src/auth.rs`
 - Modify: `src-tauri/src/main.rs`
 
-- [ ] **Step 1: Add shared post-signin helper**
+- [x] **Step 1: Add shared post-signin helper**
 
 The two commands do the same thing post-broker-response (store refresh in keychain, emit event). Extract a helper. Add to `src-tauri/src/auth.rs`:
 
@@ -748,7 +748,7 @@ fn complete_credentials_auth(
 }
 ```
 
-- [ ] **Step 2: Add the `signup_credentials` command**
+- [x] **Step 2: Add the `signup_credentials` command**
 
 ```rust
 #[derive(Debug, Serialize)]
@@ -805,7 +805,7 @@ pub async fn signup_credentials(
 }
 ```
 
-- [ ] **Step 3: Add the `signin_credentials` command**
+- [x] **Step 3: Add the `signin_credentials` command**
 
 ```rust
 #[derive(Debug, Serialize)]
@@ -851,7 +851,7 @@ pub async fn signin_credentials(
 }
 ```
 
-- [ ] **Step 4: Register both commands in `main.rs`**
+- [x] **Step 4: Register both commands in `main.rs`**
 
 Grep `.invoke_handler` to find the handler list. Add near the other `auth::` entries:
 
@@ -860,7 +860,7 @@ auth::signup_credentials,
 auth::signin_credentials,
 ```
 
-- [ ] **Step 5: Verify + commit**
+- [x] **Step 5: Verify + commit**
 
 ```
 cargo check --manifest-path src-tauri/Cargo.toml
@@ -881,7 +881,7 @@ git commit -m "feat(auth): signup_credentials + signin_credentials IPC commands"
 **Files:**
 - Modify: `src/lib/auth.ts`
 
-- [ ] **Step 1: Add wrappers**
+- [x] **Step 1: Add wrappers**
 
 Append to `src/lib/auth.ts` (near the existing `startOAuthLogin` wrapper):
 
@@ -915,7 +915,7 @@ export async function signinCredentials(
 
 Note: no `reportInvokeFailure` at this layer — LoginModal's error handling is user-facing and doesn't need telemetry on validation errors. The Rust side uses `error_reporter::user_err` so the broker's 400/401/409 responses don't hit telemetry.
 
-- [ ] **Step 2: Verify + commit**
+- [x] **Step 2: Verify + commit**
 
 ```
 cd C:/Users/talay/agentrium
@@ -936,7 +936,7 @@ git commit -m "feat(auth): signupCredentials + signinCredentials FE wrappers"
 **Files:**
 - Modify: `src/components/LoginModal.tsx`
 
-- [ ] **Step 1: Rewrite LoginModal with the toggle + form**
+- [x] **Step 1: Rewrite LoginModal with the toggle + form**
 
 Full new content of `src/components/LoginModal.tsx`:
 
@@ -1219,7 +1219,7 @@ function GitHubMark() {
 }
 ```
 
-- [ ] **Step 2: Verify typecheck + build**
+- [x] **Step 2: Verify typecheck + build**
 
 ```
 cd C:/Users/talay/agentrium
@@ -1228,7 +1228,7 @@ npx tsc --noEmit
 
 Must exit 0.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/components/LoginModal.tsx
@@ -1242,7 +1242,7 @@ git commit -m "feat(auth): email + password form in LoginModal with mode toggle"
 **Files:**
 - Modify: `src/components/TitleBar.auth.test.tsx`
 
-- [ ] **Step 1: Extend mocks + add form-flow tests**
+- [x] **Step 1: Extend mocks + add form-flow tests**
 
 Extend `vi.mock('../lib/auth', ...)` at the top of the file to include the two new wrappers:
 
@@ -1352,7 +1352,7 @@ it('submit button is disabled when password is shorter than 8 chars', async () =
 
 Note: some previous tests in this file query `getByRole('button', { name: 'Sign in' })` and expect to find the header pill. After M2b, that name is ambiguous — both the header pill AND the form's submit button use "Sign in". If any existing test breaks because of this, disambiguate by scoping (e.g. `within(screen.getByRole('dialog')).getByRole('button', { name: 'Sign in' })` for the form submit) or by using `name: /^Sign in$/i` with a specific parent. Adjust existing tests only if they now fail.
 
-- [ ] **Step 2: Run tests + commit**
+- [x] **Step 2: Run tests + commit**
 
 ```
 cd C:/Users/talay/agentrium
@@ -1373,7 +1373,7 @@ git commit -m "test(auth): email + password form interactions (signup, signin, e
 **Files:**
 - No new files.
 
-- [ ] **Step 1: Frontend full suite**
+- [x] **Step 1: Frontend full suite**
 
 ```
 cd C:/Users/talay/agentrium
@@ -1382,7 +1382,7 @@ npm run test:run
 
 Should be 594 (from M2a) + 6 (Task 9) = **~600 tests**. All must pass.
 
-- [ ] **Step 2: Rust full suite**
+- [x] **Step 2: Rust full suite**
 
 ```
 cd C:/Users/talay/agentrium
@@ -1391,7 +1391,7 @@ cargo test --manifest-path src-tauri/Cargo.toml --bins
 
 Should still be 295 tests. All must pass.
 
-- [ ] **Step 3: Broker full suite**
+- [x] **Step 3: Broker full suite**
 
 ```
 cd C:/Users/talay/agentrium-api
@@ -1400,7 +1400,7 @@ npx vitest run
 
 Should be **36 tests** (per Task 5). All must pass.
 
-- [ ] **Step 4: TypeScript typecheck (both projects)**
+- [x] **Step 4: TypeScript typecheck (both projects)**
 
 ```
 cd C:/Users/talay/agentrium && npx tsc --noEmit
@@ -1412,6 +1412,12 @@ Both must exit 0.
 ---
 
 ## Task 11: Manual E2E verification
+
+> **Status 2026-09-13:** Server-side behaviour verified against the live broker
+> with a throwaway account (created + deleted in Neon): signup 200 with tokens,
+> duplicate email 409 `email_taken`, short password 400, signin 200 (same user
+> id), wrong password and unknown email both 401 `invalid_credentials`, stored
+> hash is argon2id. The in-app UI steps below still need a human on a QA build.
 
 No code change. Prerequisites: prod (PID 19868) closed, or QA side-load ready (see M2a plan's `AGENTRIUM_INSTANCE_ID` env-var + `tauri build --config src-tauri/tauri.conf.qa.json` approach).
 
@@ -1461,7 +1467,7 @@ Report to the plan owner: which steps passed, any surprises.
 
 ## Task 12: Push branch
 
-- [ ] **Step 1: Push agentrium branch**
+- [x] **Step 1: Push agentrium branch**
 
 ```
 cd C:/Users/talay/agentrium
@@ -1474,13 +1480,13 @@ Broker was already pushed in Task 5.
 
 ## Self-review checklist (fill in before executing)
 
-- [ ] **Spec §6.2 (email+password flow)** — Tasks 2 (hash), 3 (signup), 4 (signin), 6 (Rust IPC), 8 (LoginModal form)
-- [ ] **Spec §6.2 (minimum 8 chars)** — Task 2 `validatePassword` + Task 8 client-side `minLength` on input + disabled submit button
-- [ ] **Spec §6.2 (constant-time no-user-enumeration on signin)** — Task 4 (same 401 for missing user + wrong password + null hash)
-- [ ] **Spec §6.2 ("Sign in instead?" on duplicate signup)** — Task 3 (409 email_taken) + Task 8 (`userMessageFor` maps it to a friendly message)
-- [ ] **Spec §6.2 (no email verification)** — deliberately not implemented, documented in Scope
-- [ ] **Spec §6.2 (server issues same JWT + refresh pair)** — Tasks 3, 4 both use `signAccessToken` + `generateRefreshToken` + insert into `refreshTokens`
-- [ ] **Spec §6.2 (frontend stores tokens exactly as OAuth path)** — Task 6 `complete_credentials_auth` calls same `store_refresh_token` + emits same `auth-tokens-received` event
+- [x] **Spec §6.2 (email+password flow)** — Tasks 2 (hash), 3 (signup), 4 (signin), 6 (Rust IPC), 8 (LoginModal form)
+- [x] **Spec §6.2 (minimum 8 chars)** — Task 2 `validatePassword` + Task 8 client-side `minLength` on input + disabled submit button
+- [x] **Spec §6.2 (constant-time no-user-enumeration on signin)** — Task 4 (same 401 for missing user + wrong password + null hash)
+- [x] **Spec §6.2 ("Sign in instead?" on duplicate signup)** — Task 3 (409 email_taken) + Task 8 (`userMessageFor` maps it to a friendly message)
+- [x] **Spec §6.2 (no email verification)** — deliberately not implemented, documented in Scope
+- [x] **Spec §6.2 (server issues same JWT + refresh pair)** — Tasks 3, 4 both use `signAccessToken` + `generateRefreshToken` + insert into `refreshTokens`
+- [x] **Spec §6.2 (frontend stores tokens exactly as OAuth path)** — Task 6 `complete_credentials_auth` calls same `store_refresh_token` + emits same `auth-tokens-received` event
 
 **Follow-ups flagged in Scope (not in this plan):**
 - Rate limiting on `/signup` and `/signin-credentials`
