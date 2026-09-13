@@ -1452,9 +1452,21 @@ impl Database {
         Ok(())
     }
 
-    /// Swap the syncable working set only after the previous engine has stopped.
-    /// Snapshots preserve pending edits for return visits; internal session state
-    /// stays local. An unowned guest working set is adopted on first sign-in.
+    /// Make `account` the owner of the syncable working set. Call only after
+    /// the previous sync engine has stopped.
+    ///
+    /// - First sign-in on this device (no owner yet): the guest working set is
+    ///   adopted as-is; a stale global pull cursor from older builds is dropped.
+    /// - Switching to an account this device has already seen: the current set
+    ///   (rows, queue, cursor) is parked in the previous owner's snapshot and the
+    ///   target account's snapshot is restored.
+    /// - Switching to an account new to this device: the current set is parked
+    ///   for the previous owner too, but the live rows stay and are re-flagged
+    ///   `local_only` so `run_guest_migration` pushes them under the new
+    ///   account ("what is on the PC follows the user"). Tombstones, the old
+    ///   queue and the old cursor are not inherited.
+    ///
+    /// Internal `__`-prefixed workspaces stay local in every case.
     pub fn activate_sync_account(&self, account: &str) -> Result<(), String> {
         let tx = self.conn.unchecked_transaction().map_err(|e| e.to_string())?;
         let previous = self.get_user_meta("sync_account_id")?;
@@ -1475,12 +1487,12 @@ impl Database {
             }
             snapshot.insert("cursor".into(), serde_json::json!(self.get_last_pull_cursor()?));
             self.set_user_meta(&format!("sync_snapshot:{previous}"), Some(&serde_json::Value::Object(snapshot).to_string()))?;
-            for table in tables {
-                let filter = if table == "workspaces" { " WHERE substr(name, 1, 2) != '__'" } else { "" };
-                self.conn.execute(&format!("DELETE FROM {table}{filter}"), []).map_err(|e| e.to_string())?;
-            }
             self.delete_user_meta("last_pull_cursor")?;
             if let Some(saved) = self.get_user_meta(&format!("sync_snapshot:{account}"))? {
+                for table in tables {
+                    let filter = if table == "workspaces" { " WHERE substr(name, 1, 2) != '__'" } else { "" };
+                    self.conn.execute(&format!("DELETE FROM {table}{filter}"), []).map_err(|e| e.to_string())?;
+                }
                 let snapshot: serde_json::Value = serde_json::from_str(&saved).map_err(|e| e.to_string())?;
                 for table in tables {
                     let columns = self.sync_snapshot_columns(table)?;
@@ -1493,6 +1505,21 @@ impl Database {
                     }
                 }
                 if let Some(cursor) = snapshot["cursor"].as_str() { self.set_last_pull_cursor(cursor)?; }
+            } else {
+                // Account is new to this device: inherit the live working set.
+                // The previous owner's queue is parked in its snapshot; the new
+                // account gets a fresh queue built by run_guest_migration.
+                self.conn.execute("DELETE FROM sync_queue", []).map_err(|e| e.to_string())?;
+                for table in ["profiles", "custom_agents", "workspaces"] {
+                    let filter = if table == "workspaces" { " AND substr(name, 1, 2) != '__'" } else { "" };
+                    self.conn.execute(
+                        &format!("DELETE FROM {table} WHERE deleted_at IS NOT NULL{filter}"), [],
+                    ).map_err(|e| e.to_string())?;
+                    self.conn.execute(
+                        &format!("UPDATE {table} SET sync_state = ?1 WHERE deleted_at IS NULL{filter}"),
+                        [SyncState::LocalOnly.as_sql_str()],
+                    ).map_err(|e| e.to_string())?;
+                }
             }
         } else {
             // Older builds had a global cursor with no owner. Never carry that
@@ -1608,12 +1635,14 @@ mod tests {
         db.activate_sync_account("A").unwrap();
         db.set_last_pull_cursor("cursor-A").unwrap();
         db.activate_sync_account("B").unwrap();
-        assert!(db.read_syncable_row_json("profiles", "profile-A").unwrap().is_none());
-        assert!(db.get_workspaces().unwrap().is_empty());
+        // B has never been seen on this device: it inherits the working set
+        // (re-flagged local_only for push) but not A's queue or cursor.
+        assert!(db.read_syncable_row_json("profiles", "profile-A").unwrap().is_some());
+        assert_eq!(db.get_workspaces().unwrap().len(), 1);
         assert_eq!(db.sync_queue_depth().unwrap(), 0);
         assert_eq!(db.get_last_pull_cursor().unwrap(), None);
         assert!(db.load_workspace("__last_session__").is_ok());
-        let b = db.save_workspace("shared name", &[]).unwrap();
+        let b = db.save_workspace("b only", &[]).unwrap();
         db.touch_sync_row("workspaces", &b).unwrap();
         db.set_last_pull_cursor("cursor-B").unwrap();
         db.activate_sync_account("A").unwrap();
@@ -1629,6 +1658,53 @@ mod tests {
         db.activate_sync_account("B").unwrap();
         assert_eq!(db.get_last_pull_cursor().unwrap().as_deref(), Some("cursor-B"));
         assert_eq!(db.peek_sync_queue(10).unwrap()[0].row_key, b);
+    }
+
+    #[test]
+    fn switching_to_an_account_new_to_this_device_inherits_the_working_set() {
+        let db = super::Database::new_in_memory().unwrap();
+        db.conn.execute("INSERT INTO profiles (id, name, working_directory, claude_args, env_vars, updated_at, sync_state)
+            VALUES ('live', 'Live', '/p', '[]', '{}', '2026-09-12T00:00:00Z', 'synced'),
+                   ('gone', 'Gone', '/p', '[]', '{}', '2026-09-12T00:00:00Z', 'synced')", []).unwrap();
+        db.tombstone_sync_row("profiles", "gone").unwrap();
+        db.save_workspace("__last_session__", &[]).unwrap();
+        let ws = db.save_workspace("daily", &[]).unwrap();
+        db.touch_sync_row("workspaces", &ws).unwrap();
+        db.activate_sync_account("A").unwrap();
+        db.set_last_pull_cursor("cursor-A").unwrap();
+        let queued_under_a = db.sync_queue_depth().unwrap();
+        assert!(queued_under_a >= 2);
+
+        db.activate_sync_account("B").unwrap();
+        // Live rows carry over and become local_only so run_guest_migration
+        // enqueues them for push under B. Tombstones are not inherited.
+        assert_eq!(db.get_profiles().unwrap().len(), 1);
+        let state: String = db.conn.query_row(
+            "SELECT sync_state FROM profiles WHERE id = 'live'", [], |r| r.get(0)).unwrap();
+        assert_eq!(state, "local_only");
+        assert!(db.read_syncable_row_json("profiles", "gone").unwrap().is_none());
+        assert!(db.load_workspace("daily").is_ok());
+        assert!(db.load_workspace("__last_session__").is_ok());
+        let ws_state: String = db.conn.query_row(
+            "SELECT sync_state FROM workspaces WHERE sync_id = ?1", [&ws], |r| r.get(0)).unwrap();
+        assert_eq!(ws_state, "local_only");
+        // A's queue and cursor are parked in A's snapshot, not carried into B.
+        assert_eq!(db.sync_queue_depth().unwrap(), 0);
+        assert_eq!(db.get_last_pull_cursor().unwrap(), None);
+
+        // Returning to A restores A exactly, tombstone and queue included.
+        db.activate_sync_account("A").unwrap();
+        assert!(db.read_syncable_row_json("profiles", "gone").unwrap().is_some());
+        let state_a: String = db.conn.query_row(
+            "SELECT sync_state FROM profiles WHERE id = 'live'", [], |r| r.get(0)).unwrap();
+        assert_eq!(state_a, "synced");
+        assert_eq!(db.sync_queue_depth().unwrap(), queued_under_a);
+        assert_eq!(db.get_last_pull_cursor().unwrap().as_deref(), Some("cursor-A"));
+
+        // B now has its own snapshot, so a second visit restores rather than re-inherits.
+        db.activate_sync_account("B").unwrap();
+        assert!(db.read_syncable_row_json("profiles", "gone").unwrap().is_none());
+        assert_eq!(db.get_profiles().unwrap().len(), 1);
     }
 
     #[test]

@@ -1478,6 +1478,28 @@ Broker was already pushed in Task 5.
 
 ---
 
+## Post-QA design change (2026-09-13): a new account inherits what is on the PC
+
+QA of Task 11 (Google auto-rehydrate → sign out → register email account) surfaced a
+product decision: the M2a account-switch logic parked the previous account's rows in
+a snapshot and started the new account empty, which reads as data loss to a user
+who simply created a second account on the same machine. Decision (user): **an account
+that this device has never seen inherits the current working set.**
+
+- `Database::activate_sync_account` — new-to-device account keeps live rows, re-flags
+  them `local_only` so `run_guest_migration` pushes them under the new account, and
+  drops tombstones, the old queue and the old cursor. Known accounts still swap
+  snapshots. Doc comment on the fn spells out all three cases.
+- Broker: sync tables moved from a global `id` PK to a composite `(user_id, id)` PK
+  (`0003_wet_guardian.sql`, applied to Neon). Required because inherited rows keep
+  their ids and were already pushed under the previous account; the old
+  `ON CONFLICT (id)` upsert would have re-assigned the row to the new user (also a
+  cross-account overwrite hole for any authenticated push). Push route now targets
+  `[userId, id]`. Verified live: two accounts pushing the same id each pull their own copy.
+- Tests: `switching_to_an_account_new_to_this_device_inherits_the_working_set`,
+  updated `account_switch_preserves_each_queue_cursor_and_working_set`,
+  `first_sign_in_adopts_existing_guest_rows`, push-route composite-target test.
+
 ## Self-review checklist (fill in before executing)
 
 - [x] **Spec §6.2 (email+password flow)** — Tasks 2 (hash), 3 (signup), 4 (signin), 6 (Rust IPC), 8 (LoginModal form)
