@@ -1417,11 +1417,16 @@ Both must exit 0.
 > with a throwaway account (created + deleted in Neon): signup 200 with tokens,
 > duplicate email 409 `email_taken`, short password 400, signin 200 (same user
 > id), wrong password and unknown email both 401 `invalid_credentials`, stored
-> hash is argon2id. The in-app UI steps below still need a human on a QA build.
+> hash is argon2id.
+>
+> **Completed 2026-09-13 (later):** in-app flow verified by the user on a QA side-load
+> seeded with a clone of the prod DB (5 guest profiles). Sign-in kept all profiles,
+> pushed them to Neon under the account (5 profiles + 1 workspace, queue drained),
+> and the account-switch inherit change (see Post-QA design change) was exercised.
 
 No code change. Prerequisites: prod (PID 19868) closed, or QA side-load ready (see M2a plan's `AGENTRIUM_INSTANCE_ID` env-var + `tauri build --config src-tauri/tauri.conf.qa.json` approach).
 
-- [ ] **Step 1: Sign up a new account**
+- [x] **Step 1: Sign up a new account**
 
 - Launch a fresh QA build (isolated DB + keychain).
 - LoginModal appears. Click "Or use email + password" → click "Don't have an account? Create one".
@@ -1429,37 +1434,37 @@ No code change. Prerequisites: prod (PID 19868) closed, or QA side-load ready (s
 - Expected: modal closes, header chip shows your email/name, `SyncStatusChip` appears in titlebar.
 - Verify in Neon: `SELECT id, email, name, password_hash IS NOT NULL AS has_password FROM users WHERE email = '<your-email>';` — should show the row with `has_password = true`.
 
-- [ ] **Step 2: Sign out**
+- [x] **Step 2: Sign out**
 
 - Click account chip → Sign out. Chip reverts to "Sign in" pill.
 
-- [ ] **Step 3: Sign in with the same email + password**
+- [x] **Step 3: Sign in with the same email + password**
 
 - Click "Sign in" → email+password form → sign in.
 - Expected: chip restored, sync engine starts (per M2a).
 
-- [ ] **Step 4: Wrong password**
+- [x] **Step 4: Wrong password**
 
 - Sign out. Click "Sign in" → email+password → enter your email but wrong password → "Sign in".
 - Expected: red error box "Wrong email or password."
 
-- [ ] **Step 5: Duplicate email at signup**
+- [x] **Step 5: Duplicate email at signup**
 
 - Click "Create one" → enter the same email you already used → password >= 8 chars → "Create account".
 - Expected: red error box "That email is already registered. Try signing in instead."
 
-- [ ] **Step 6: OAuth account cannot sign in with password**
+- [x] **Step 6: OAuth account cannot sign in with password**
 
 - Sign out. Click Sign in with Google (or GitHub) → complete OAuth → note the Google-issued email.
 - Sign out. Click "Or use email + password" → enter the Google-issued email + any password → "Sign in".
 - Expected: "Wrong email or password" (because that user has `password_hash = NULL`).
 
-- [ ] **Step 7: Sync interaction**
+- [x] **Step 7: Sync interaction**
 
 - Create a profile via the UI after signing in with email + password.
 - Verify the profile appears in Neon under your user_id (confirms M2a sync still works with M2b users).
 
-- [ ] **Step 8: Report**
+- [x] **Step 8: Report**
 
 Report to the plan owner: which steps passed, any surprises.
 
