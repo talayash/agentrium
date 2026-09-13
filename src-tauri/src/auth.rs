@@ -215,6 +215,28 @@ pub fn parse_auth_return(url: &str) -> Result<Option<AuthReturn>, String> {
     }
 }
 
+/// Optional device descriptor sent with every token-issuing request
+/// (broker README, "Desktop sign-in flow"). Additive on the wire: an older
+/// broker ignores it. Stored server-side on the refresh token so the admin
+/// dashboard can show app version / OS per account.
+#[derive(Serialize, Debug, Clone)]
+pub struct ClientInfo {
+    pub app_version: &'static str,
+    pub os: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub installation_id: Option<String>,
+}
+
+impl ClientInfo {
+    pub fn current() -> Self {
+        Self {
+            app_version: env!("CARGO_PKG_VERSION"),
+            os: std::env::consts::OS,
+            installation_id: error_reporter::installation_id(),
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub struct TokenExchangeResponse {
     pub access_token: String,
@@ -229,6 +251,7 @@ pub async fn exchange_code(
     code: &str,
     code_verifier: &str,
     state: &str,
+    client: &ClientInfo,
 ) -> Result<TokenExchangeResponse, String> {
     let resp = reqwest::Client::new()
         .post(format!("{base_url}/api/auth/desktop/token"))
@@ -236,6 +259,7 @@ pub async fn exchange_code(
             "code": code,
             "code_verifier": code_verifier,
             "state": state,
+            "client": client,
         }))
         .send()
         .await
@@ -280,7 +304,7 @@ pub fn handle_deep_link(app: &tauri::AppHandle, url: &str) {
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
         let result = async {
-            let tokens = exchange_code(API_BASE, &ret.code, &flow.code_verifier, &ret.state).await?;
+            let tokens = exchange_code(API_BASE, &ret.code, &flow.code_verifier, &ret.state, &ClientInfo::current()).await?;
             complete_signin(&app, tokens.access_token, Some(tokens.refresh_token), Some(ret.state)).await
         }
         .await;
@@ -345,6 +369,7 @@ struct SignupRequest<'a> {
     email: &'a str,
     password: &'a str,
     name: Option<&'a str>,
+    client: ClientInfo,
 }
 
 /// Register a new email+password account with the broker. On success, stores
@@ -366,6 +391,7 @@ pub async fn signup_credentials(
                 email: &email,
                 password: &password,
                 name: name.as_deref(),
+                client: ClientInfo::current(),
             })
             .send()
             .await
@@ -397,6 +423,7 @@ pub async fn signup_credentials(
 struct SigninCredentialsRequest<'a> {
     email: &'a str,
     password: &'a str,
+    client: ClientInfo,
 }
 
 /// Sign in with email + password. On success, stores the refresh token +
@@ -414,6 +441,7 @@ pub async fn signin_credentials(
             .json(&SigninCredentialsRequest {
                 email: &email,
                 password: &password,
+                client: ClientInfo::current(),
             })
             .send()
             .await
@@ -550,7 +578,7 @@ pub async fn refresh_access_token() -> Result<Option<String>, String> {
     let resp = client
         .post(format!("{API_BASE}/api/auth/refresh"))
         .timeout(Duration::from_secs(30))
-        .json(&serde_json::json!({ "refresh_token": refresh }))
+        .json(&serde_json::json!({ "refresh_token": refresh, "client": ClientInfo::current() }))
         .send()
         .await
         .map_err(|e| format!("network: {e}"))?;
@@ -769,8 +797,9 @@ mod tests {
             r#"{"access_token":"AT","refresh_token":"RT","user":{"id":"u1","email":"e@x","name":null,"image":null}}"#,
         );
         let rt = tokio::runtime::Runtime::new().unwrap();
+        let client = ClientInfo { app_version: env!("CARGO_PKG_VERSION"), os: std::env::consts::OS, installation_id: Some("inst-test".into()) };
         let tokens = rt
-            .block_on(exchange_code(&base, "the-code", "the-verifier-43chars-xxxxxxxxxxxxxxxxxxxxxxxxx", "the-state"))
+            .block_on(exchange_code(&base, "the-code", "the-verifier-43chars-xxxxxxxxxxxxxxxxxxxxxxxxx", "the-state", &client))
             .unwrap();
         assert_eq!(tokens.access_token, "AT");
         assert_eq!(tokens.refresh_token, "RT");
@@ -782,15 +811,25 @@ mod tests {
         assert_eq!(body["code"], "the-code");
         assert_eq!(body["code_verifier"], "the-verifier-43chars-xxxxxxxxxxxxxxxxxxxxxxxxx");
         assert_eq!(body["state"], "the-state");
-        assert_eq!(body.as_object().unwrap().len(), 3, "exactly the three documented fields");
+        assert_eq!(body["client"]["app_version"], env!("CARGO_PKG_VERSION"));
+        assert_eq!(body["client"]["os"], std::env::consts::OS);
+        assert_eq!(body["client"]["installation_id"], "inst-test");
+        assert_eq!(body.as_object().unwrap().len(), 4, "code, code_verifier, state, client");
     }
 
     #[test]
     fn exchange_code_surfaces_the_broker_error_code() {
         let (base, _rx) = one_shot_http_server("HTTP/1.1 400 Bad Request", r#"{"error":"invalid_grant"}"#);
         let rt = tokio::runtime::Runtime::new().unwrap();
-        let err = rt.block_on(exchange_code(&base, "c", "v", "s")).unwrap_err();
+        let err = rt.block_on(exchange_code(&base, "c", "v", "s", &ClientInfo::current())).unwrap_err();
         assert!(err.contains("invalid_grant"), "error should carry the broker code: {err}");
+    }
+
+    #[test]
+    fn client_info_omits_a_missing_installation_id() {
+        let c = ClientInfo { app_version: "1.0.0", os: "windows", installation_id: None };
+        let v = serde_json::to_value(&c).unwrap();
+        assert_eq!(v, serde_json::json!({ "app_version": "1.0.0", "os": "windows" }));
     }
 
     #[test]
