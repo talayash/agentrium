@@ -7,9 +7,11 @@
 
 export const LOGIN_LIMIT = 10;
 export const LOGIN_WINDOW_SECONDS = 15 * 60;
-const MATCH_MAX_IDS = 5000;
-const MATCH_ID_MAX_LEN = 128;
-const D1_CHUNK = 100;
+export const MATCH_MAX_IDS = 5000;
+export const MATCH_ID_MAX_LEN = 128;
+// D1 caps bound parameters at 100 per statement; each query binds `date` plus
+// one placeholder per id (1 + 99 = 100), so the chunk size must stay at 99.
+const D1_CHUNK = 99;
 const KV_PARALLEL = 50;
 
 interface LoginWindow { count: number; reset: number } // reset = epoch ms
@@ -18,6 +20,11 @@ export type LoginAttemptResult =
   | { allowed: true; remaining: number }
   | { allowed: false; retry_after_seconds: number };
 
+// Read-modify-write over a single KV key: concurrent requests for the same
+// ipHash can race (both read the same count, both increment), so a burst of
+// simultaneous attempts can over-admit by a few beyond LOGIN_LIMIT. This is
+// accepted as a soft limit, not a redesign target - the primary defence
+// against brute-forcing the admin login is a long, high-entropy password.
 export async function checkLoginAttempt(kv: KVNamespace, ipHash: string, now = Date.now()): Promise<LoginAttemptResult> {
   const key = `rl:admin_login:${ipHash}`;
   const raw = await kv.get(key);

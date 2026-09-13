@@ -11,18 +11,23 @@ function fakeKv(initial: Record<string, string> = {}) {
 }
 
 function fakeDb(dauIds: Set<string>) {
-  return {
-    prepare: (sqlText: string) => ({
-      bind: (...args: unknown[]) => ({
-        first: async () => {
-          const ids = args.slice(1) as string[]; // args[0] is the date
-          const n = ids.filter((id) => dauIds.has(id)).length;
-          return { n };
-        },
-      }),
-    }),
+  let prepareCalls = 0;
+  const db = {
+    prepare: (sqlText: string) => {
+      prepareCalls += 1;
+      return {
+        bind: (...args: unknown[]) => ({
+          first: async () => {
+            const ids = args.slice(1) as string[]; // args[0] is the date
+            const n = ids.filter((id) => dauIds.has(id)).length;
+            return { n };
+          },
+        }),
+      };
+    },
     _sql: null as unknown,
   } as unknown as D1Database;
+  return { db, get prepareCalls() { return prepareCalls; } };
 }
 
 describe('checkLoginAttempt', () => {
@@ -71,19 +76,21 @@ describe('parseMatchBody', () => {
 describe('matchInstallations', () => {
   it('counts ids present in daily_dau and in live: keys', async () => {
     const kv = fakeKv({ 'live:a': '1', 'live:c': '1' });
-    const db = fakeDb(new Set(['a', 'b']));
+    const { db } = fakeDb(new Set(['a', 'b']));
     const r = await matchInstallations(db, kv, ['a', 'b', 'c', 'd'], '2026-09-13');
     expect(r).toEqual({ active_today: 2, active_now: 2 });
   });
-  it('handles more than one chunk of 100', async () => {
+  it('chunks D1 queries to stay within the 100 bound-parameter limit (99 ids + date)', async () => {
     const ids = Array.from({ length: 250 }, (_, i) => `i${i}`);
-    const db = fakeDb(new Set(ids));
-    const r = await matchInstallations(db, fakeKv(), ids, '2026-09-13');
+    const fake = fakeDb(new Set(ids));
+    const r = await matchInstallations(fake.db, fakeKv(), ids, '2026-09-13');
     expect(r.active_today).toBe(250);
     expect(r.active_now).toBe(0);
+    expect(fake.prepareCalls).toBe(Math.ceil(250 / 99));
   });
   it('returns zeros for an empty list without touching storage', async () => {
-    const r = await matchInstallations(fakeDb(new Set()), fakeKv(), [], '2026-09-13');
+    const { db } = fakeDb(new Set());
+    const r = await matchInstallations(db, fakeKv(), [], '2026-09-13');
     expect(r).toEqual({ active_today: 0, active_now: 0 });
   });
 });
