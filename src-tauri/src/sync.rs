@@ -13,6 +13,85 @@ use tokio::sync::mpsc;
 const PUSH_BATCH_ROW_CAP: usize = 500;
 const DEBOUNCE_MS: u64 = 5_000;
 const PULL_INTERVAL_MS: u64 = 5 * 60 * 1_000;
+/// Spec §7.4: after a transient push failure wait `min(30 * 2^attempts, 3600)`
+/// seconds (±20% jitter) before the next automatic push. `attempts` is the
+/// count *before* the failed one, so the first retry lands ~30s later.
+const BACKOFF_BASE_SECS: u64 = 30;
+const BACKOFF_MAX_SECS: u64 = 3_600;
+const BACKOFF_JITTER: f64 = 0.20;
+
+pub fn backoff_secs(attempts: i64) -> u64 {
+    // 2^7 already saturates the cap; clamping keeps the shift well-defined.
+    let exp = attempts.clamp(0, 16) as u32;
+    BACKOFF_BASE_SECS.saturating_mul(1u64 << exp).min(BACKOFF_MAX_SECS)
+}
+
+/// Apply ±`BACKOFF_JITTER` to `secs`. `unit` is a uniform sample in [0, 1]
+/// supplied by the caller so the math stays deterministic under test.
+pub fn jittered(secs: u64, unit: f64) -> std::time::Duration {
+    let factor = 1.0 + BACKOFF_JITTER * (2.0 * unit.clamp(0.0, 1.0) - 1.0);
+    std::time::Duration::from_secs((secs as f64 * factor).round() as u64)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PushFailure {
+    /// 4xx other than 401: the server rejected the payload itself. Retrying
+    /// the same rows can never succeed, so they are dropped (spec §7.4).
+    Poison,
+    /// 5xx, network, refresh, decode, or a 401 that survived the one-shot
+    /// refresh: worth retrying later with backoff.
+    Transient,
+}
+
+pub fn classify_push_failure(err: &sync_client::SyncError) -> PushFailure {
+    match err {
+        sync_client::SyncError::Server(code, _) if (400..500).contains(code) && *code != 401 => {
+            PushFailure::Poison
+        }
+        _ => PushFailure::Transient,
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PushFailureAction {
+    /// Poison rows removed from the queue; count of dropped entries.
+    Dropped(usize),
+    /// Attempt recorded on every batched row; hold automatic pushes this long.
+    RetryAfter(std::time::Duration),
+}
+
+/// Book-keep a failed push against the snapshotted `queue` rows.
+/// `jitter_unit` is a uniform sample in [0, 1] (see `jittered`).
+fn handle_push_failure(
+    db: &Database,
+    queue: &[crate::database::SyncQueueRow],
+    err: &sync_client::SyncError,
+    jitter_unit: f64,
+) -> Result<PushFailureAction, String> {
+    match classify_push_failure(err) {
+        PushFailure::Poison => {
+            // Match on enqueued_at so a row the user edited after the
+            // snapshot keeps its fresh entry and gets its own attempt.
+            for entry in queue {
+                db.acknowledge_sync_entry(entry)?;
+            }
+            crate::error_reporter::report_bg(
+                "sync_push_4xx",
+                format!("dropped {} queued row(s): {err}", queue.len()),
+            );
+            Ok(PushFailureAction::Dropped(queue.len()))
+        }
+        PushFailure::Transient => {
+            let msg = err.to_string();
+            let mut most_attempts: i64 = 0;
+            for entry in queue {
+                most_attempts = most_attempts.max(entry.attempts);
+                db.record_sync_attempt(&entry.table_name, &entry.row_key, Some(&msg))?;
+            }
+            Ok(PushFailureAction::RetryAfter(jittered(backoff_secs(most_attempts), jitter_unit)))
+        }
+    }
+}
 
 /// Compare two ISO-8601 timestamps and return whether `incoming` should win.
 /// LWW: incoming wins iff strictly newer than local. Tie goes to local.
@@ -115,6 +194,9 @@ async fn run_engine(
     let mut debounce_tick = tokio::time::interval(std::time::Duration::from_millis(1_000));
     let mut pull_tick = tokio::time::interval(std::time::Duration::from_millis(PULL_INTERVAL_MS));
     let mut dirty_since: Option<tokio::time::Instant> = None;
+    // Set after a transient push failure; automatic pushes wait it out.
+    // User-initiated actions (Sync now, re-enable) clear it.
+    let mut backoff_until: Option<tokio::time::Instant> = None;
 
     if enabled {
         emit_status(&app, &db, SyncStatus::Idle, None).await;
@@ -128,7 +210,7 @@ async fn run_engine(
             cmd = rx.recv() => match cmd {
                 Some(SyncCommand::SyncNow) => {
                     if enabled {
-                        do_push(&app, &db, &mut client).await;
+                        backoff_until = do_push(&app, &db, &mut client).await.next_backoff();
                         do_pull(&app, &db, &mut client).await;
                     }
                 }
@@ -144,7 +226,7 @@ async fn run_engine(
                     .await;
                     if e {
                         emit_status(&app, &db, SyncStatus::Idle, None).await;
-                        do_push(&app, &db, &mut client).await;
+                        backoff_until = do_push(&app, &db, &mut client).await.next_backoff();
                         do_pull(&app, &db, &mut client).await;
                     } else {
                         emit_status(&app, &db, SyncStatus::Paused, None).await;
@@ -170,9 +252,10 @@ async fn run_engine(
                 if depth > 0 && dirty_since.is_none() {
                     dirty_since = Some(tokio::time::Instant::now());
                 }
+                let backing_off = backoff_until.is_some_and(|t| tokio::time::Instant::now() < t);
                 if let Some(since) = dirty_since {
-                    if since.elapsed() >= std::time::Duration::from_millis(DEBOUNCE_MS) {
-                        do_push(&app, &db, &mut client).await;
+                    if !backing_off && since.elapsed() >= std::time::Duration::from_millis(DEBOUNCE_MS) {
+                        backoff_until = do_push(&app, &db, &mut client).await.next_backoff();
                         dirty_since = None;
                     }
                 }
@@ -186,11 +269,28 @@ async fn run_engine(
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PushOutcome {
+    /// Nothing to do, or the batch was acknowledged (fully or partially).
+    Done,
+    /// Transient failure: hold automatic pushes until this instant.
+    BackOffUntil(tokio::time::Instant),
+}
+
+impl PushOutcome {
+    fn next_backoff(self) -> Option<tokio::time::Instant> {
+        match self {
+            PushOutcome::Done => None,
+            PushOutcome::BackOffUntil(t) => Some(t),
+        }
+    }
+}
+
 async fn do_push(
     app: &tauri::AppHandle,
     db: &Arc<std::sync::Mutex<Database>>,
     client: &mut sync_client::SyncClient,
-) {
+) -> PushOutcome {
     emit_status(app, db, SyncStatus::Syncing, None).await;
 
     // Snapshot queue + resolve row JSON, all under one blocking-lock pass.
@@ -228,13 +328,13 @@ async fn do_push(
         Ok(v) => v,
         Err(e) => {
             emit_status(app, db, SyncStatus::Error, Some(format!("snapshot: {e}"))).await;
-            return;
+            return PushOutcome::Done;
         }
     };
 
     if queue.is_empty() {
         emit_status(app, db, SyncStatus::Idle, None).await;
-        return;
+        return PushOutcome::Done;
     }
 
     let req = sync_client::PushRequest {
@@ -293,14 +393,46 @@ async fn do_push(
             .await;
             if let Err(error) = acknowledged.map_err(|e| e.to_string()).and_then(|r| r) {
                 emit_status(app, db, SyncStatus::Error, Some(error)).await;
-                return;
+                return PushOutcome::Done;
             }
             emit_status(app, db, SyncStatus::Idle, None).await;
+            PushOutcome::Done
         }
         Err(e) => {
-            let msg = format!("{e}");
-            crate::error_reporter::report_bg("sync_push", msg.clone());
-            emit_status(app, db, SyncStatus::Error, Some(msg)).await;
+            let jitter_unit: f64 = rand::Rng::gen(&mut rand::thread_rng());
+            let db_arc = db.clone();
+            let queue_c = queue.clone();
+            let handled = tokio::task::spawn_blocking(move || {
+                let db_guard = db_arc.lock().unwrap_or_else(|p| p.into_inner());
+                handle_push_failure(&db_guard, &queue_c, &e, jitter_unit).map(|a| (a, e.to_string()))
+            })
+            .await
+            .map_err(|e| e.to_string())
+            .and_then(|r| r);
+
+            match handled {
+                Ok((PushFailureAction::Dropped(n), msg)) => {
+                    // Already reported as sync_push_4xx inside handle_push_failure.
+                    let plural = if n == 1 { "" } else { "s" };
+                    let detail = format!("{n} change{plural} rejected by server and dropped: {msg}");
+                    emit_status(app, db, SyncStatus::Error, Some(detail)).await;
+                    PushOutcome::Done
+                }
+                Ok((PushFailureAction::RetryAfter(delay), msg)) => {
+                    crate::error_reporter::report_bg("sync_push", msg.clone());
+                    let detail = format!("{msg} (retrying in {}s)", delay.as_secs());
+                    emit_status(app, db, SyncStatus::Error, Some(detail)).await;
+                    PushOutcome::BackOffUntil(tokio::time::Instant::now() + delay)
+                }
+                Err(book_keeping) => {
+                    crate::error_reporter::report_bg("sync_push", book_keeping.clone());
+                    emit_status(app, db, SyncStatus::Error, Some(book_keeping)).await;
+                    // Don't hammer the server while local book-keeping is broken.
+                    PushOutcome::BackOffUntil(
+                        tokio::time::Instant::now() + std::time::Duration::from_secs(BACKOFF_BASE_SECS),
+                    )
+                }
+            }
         }
     }
 }
@@ -469,6 +601,99 @@ mod tests {
         })
         .join()
         .unwrap();
+    }
+
+    // ---- Spec §7.4: exponential backoff on 5xx / network failures ----
+
+    #[test]
+    fn backoff_doubles_from_30s_and_caps_at_one_hour() {
+        assert_eq!(backoff_secs(0), 30);
+        assert_eq!(backoff_secs(1), 60);
+        assert_eq!(backoff_secs(2), 120);
+        assert_eq!(backoff_secs(6), 1_920);
+        assert_eq!(backoff_secs(7), 3_600);
+        assert_eq!(backoff_secs(100), 3_600, "huge attempt counts must not overflow");
+    }
+
+    #[test]
+    fn jitter_spreads_delay_by_plus_minus_twenty_percent() {
+        assert_eq!(jittered(30, 0.5), std::time::Duration::from_secs(30));
+        assert_eq!(jittered(30, 0.0), std::time::Duration::from_secs(24));
+        assert_eq!(jittered(30, 1.0), std::time::Duration::from_secs(36));
+    }
+
+    #[test]
+    fn four_xx_other_than_401_is_poison_everything_else_is_transient() {
+        use sync_client::SyncError;
+        assert!(matches!(classify_push_failure(&SyncError::Server(400, String::new())), PushFailure::Poison));
+        assert!(matches!(classify_push_failure(&SyncError::Server(422, String::new())), PushFailure::Poison));
+        assert!(matches!(classify_push_failure(&SyncError::Server(401, String::new())), PushFailure::Transient));
+        assert!(matches!(classify_push_failure(&SyncError::Server(500, String::new())), PushFailure::Transient));
+        assert!(matches!(classify_push_failure(&SyncError::Server(503, String::new())), PushFailure::Transient));
+        assert!(matches!(classify_push_failure(&SyncError::Refresh("x".into())), PushFailure::Transient));
+    }
+
+    #[test]
+    fn poison_response_drops_the_snapshotted_queue_rows() {
+        let db = Database::new_in_memory().unwrap();
+        db.enqueue_sync("profiles", "p1").unwrap();
+        db.enqueue_sync("workspaces", "w1").unwrap();
+        let queue = db.peek_sync_queue(10).unwrap();
+
+        let action = handle_push_failure(&db, &queue, &sync_client::SyncError::Server(422, "bad row".into()), 0.5).unwrap();
+
+        assert!(matches!(action, PushFailureAction::Dropped(2)));
+        assert_eq!(db.sync_queue_depth().unwrap(), 0);
+    }
+
+    #[test]
+    fn poison_drop_spares_a_row_re_enqueued_after_the_snapshot() {
+        let db = Database::new_in_memory().unwrap();
+        db.enqueue_sync("profiles", "p1").unwrap();
+        let queue = db.peek_sync_queue(10).unwrap();
+        // User edits the row again while the push is in flight: fresh enqueued_at.
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        db.enqueue_sync("profiles", "p1").unwrap();
+
+        handle_push_failure(&db, &queue, &sync_client::SyncError::Server(422, String::new()), 0.5).unwrap();
+
+        assert_eq!(db.sync_queue_depth().unwrap(), 1, "the newer edit must get its own push attempt");
+    }
+
+    #[test]
+    fn transient_failure_records_attempt_and_backs_off_exponentially() {
+        let db = Database::new_in_memory().unwrap();
+        db.enqueue_sync("profiles", "p1").unwrap();
+        let err = sync_client::SyncError::Server(503, "unavailable".into());
+
+        let queue = db.peek_sync_queue(10).unwrap();
+        let first = handle_push_failure(&db, &queue, &err, 0.5).unwrap();
+        assert!(matches!(first, PushFailureAction::RetryAfter(d) if d == std::time::Duration::from_secs(30)));
+
+        let row = &db.peek_sync_queue(10).unwrap()[0];
+        assert_eq!(row.attempts, 1);
+        assert_eq!(row.last_error.as_deref(), Some("server 503: unavailable"));
+        assert_eq!(db.sync_queue_depth().unwrap(), 1, "transient failures keep the row queued");
+
+        let queue = db.peek_sync_queue(10).unwrap();
+        let second = handle_push_failure(&db, &queue, &err, 0.5).unwrap();
+        assert!(matches!(second, PushFailureAction::RetryAfter(d) if d == std::time::Duration::from_secs(60)));
+    }
+
+    #[test]
+    fn transient_backoff_uses_the_most_retried_row_in_the_batch() {
+        let db = Database::new_in_memory().unwrap();
+        db.enqueue_sync("profiles", "stale").unwrap();
+        db.record_sync_attempt("profiles", "stale", Some("x")).unwrap();
+        db.record_sync_attempt("profiles", "stale", Some("x")).unwrap();
+        db.record_sync_attempt("profiles", "stale", Some("x")).unwrap();
+        db.enqueue_sync("profiles", "fresh").unwrap();
+        let queue = db.peek_sync_queue(10).unwrap();
+
+        let action = handle_push_failure(&db, &queue, &sync_client::SyncError::Server(500, String::new()), 0.5).unwrap();
+
+        // "stale" had 3 attempts before this one -> 30 * 2^3 = 240s.
+        assert!(matches!(action, PushFailureAction::RetryAfter(d) if d == std::time::Duration::from_secs(240)));
     }
 
     #[test]
