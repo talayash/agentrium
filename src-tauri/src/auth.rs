@@ -684,4 +684,38 @@ mod tests {
         let counts2 = run_guest_migration(&db).unwrap();
         assert_eq!(counts2.total(), 0);
     }
+
+    /// Upgrade path for an existing install: profiles/workspaces created as a
+    /// guest (no `sync_account_id`) must survive the very first sign-in and be
+    /// enqueued for push. This is the exact sequence `complete_signin` runs.
+    /// A stale global pull cursor left by an older build must be dropped so
+    /// the first pull for the new account is a full one.
+    #[test]
+    fn first_sign_in_adopts_existing_guest_rows() {
+        let db = crate::database::Database::new_in_memory().unwrap();
+        db.conn().execute(
+            "INSERT INTO profiles (id, name, working_directory, claude_args, env_vars, updated_at, sync_state)
+             VALUES ('p1', 'Agentrium', '/home/me/agentrium', '[]', '{}', '2026-09-12T09:00:00Z', 'local_only'),
+                    ('p2', 'Creditly', '/home/me/creditly', '[]', '{}', '2026-09-12T09:00:00Z', 'local_only')",
+            [],
+        ).unwrap();
+        let ws = db.save_workspace("daily", &[]).unwrap();
+        db.set_last_pull_cursor("2026-09-12T19:53:52.636Z").unwrap();
+        assert_eq!(db.get_user_meta("sync_account_id").unwrap(), None);
+
+        db.activate_sync_account("new-account").unwrap();
+        let counts = run_guest_migration(&db).unwrap();
+
+        let names: Vec<String> = db.get_profiles().unwrap().into_iter().map(|p| p.name).collect();
+        assert_eq!(names.len(), 2, "guest profiles must still be visible after first sign-in");
+        assert!(names.contains(&"Agentrium".to_string()) && names.contains(&"Creditly".to_string()));
+        assert!(db.load_workspace("daily").is_ok());
+        assert_eq!(counts.profiles, 2);
+        assert_eq!(counts.workspaces, 1);
+        assert_eq!(db.sync_queue_depth().unwrap(), 3);
+        let queued: Vec<String> = db.peek_sync_queue(10).unwrap().into_iter().map(|e| e.row_key).collect();
+        assert!(queued.contains(&"p1".to_string()) && queued.contains(&"p2".to_string()) && queued.contains(&ws));
+        assert_eq!(db.get_last_pull_cursor().unwrap(), None, "stale global cursor must not leak into the account");
+        assert_eq!(db.get_user_meta("sync_account_id").unwrap().as_deref(), Some("new-account"));
+    }
 }
