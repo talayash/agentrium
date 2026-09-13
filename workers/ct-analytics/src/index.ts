@@ -22,6 +22,8 @@
  *   POST /stats/match            count given installation ids active today / now (token)
  */
 
+import { constantTimeEqual } from './admin';
+
 interface Env {
   KV_BINDING: KVNamespace;
   DB: D1Database;
@@ -94,7 +96,7 @@ const FEEDBACK_RATE_LIMIT_MAX = 5;
 function requireToken(request: Request, expected: string | undefined): Response | null {
   if (!expected) return json({ error: 'server_misconfigured' }, 500);
   const provided = request.headers.get('x-ct-token');
-  if (provided !== expected) return json({ error: 'unauthorized' }, 401);
+  if (provided === null || !constantTimeEqual(provided, expected)) return json({ error: 'unauthorized' }, 401);
   return null;
 }
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { checkLoginAttempt, parseMatchBody, matchInstallations, LOGIN_LIMIT, LOGIN_WINDOW_SECONDS } from './admin';
+import { checkLoginAttempt, parseMatchBody, matchInstallations, constantTimeEqual, LOGIN_LIMIT, LOGIN_WINDOW_SECONDS } from './admin';
 
 function fakeKv(initial: Record<string, string> = {}) {
   const store = new Map(Object.entries(initial));
@@ -92,5 +92,20 @@ describe('matchInstallations', () => {
     const { db } = fakeDb(new Set());
     const r = await matchInstallations(db, fakeKv(), [], '2026-09-13');
     expect(r).toEqual({ active_today: 0, active_now: 0 });
+  });
+});
+
+describe('constantTimeEqual', () => {
+  it('returns true for equal strings', () => {
+    expect(constantTimeEqual('secret-token', 'secret-token')).toBe(true);
+  });
+  it('returns false for different strings of the same length', () => {
+    expect(constantTimeEqual('secret-token', 'secret-tokeN')).toBe(false);
+  });
+  it('returns false for different lengths', () => {
+    expect(constantTimeEqual('short', 'a-much-longer-string')).toBe(false);
+  });
+  it('returns false comparing empty vs non-empty', () => {
+    expect(constantTimeEqual('', 'x')).toBe(false);
   });
 });

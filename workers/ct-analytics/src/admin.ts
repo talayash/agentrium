@@ -57,6 +57,17 @@ export function parseMatchBody(body: unknown): string[] | null {
   return [...out];
 }
 
+/** Constant-time string equality (no early exit on length or first mismatch). */
+export function constantTimeEqual(a: string, b: string): boolean {
+  const enc = new TextEncoder();
+  const ab = enc.encode(a);
+  const bb = enc.encode(b);
+  const other = ab.length === bb.length ? bb : ab;
+  let diff = ab.length === bb.length ? 0 : 1;
+  for (let i = 0; i < ab.length; i++) diff |= ab[i] ^ other[i];
+  return diff === 0;
+}
+
 export async function matchInstallations(
   db: D1Database,
   kv: KVNamespace,
