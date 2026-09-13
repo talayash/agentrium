@@ -5,11 +5,13 @@ import { logout } from '../lib/auth';
 import { LoginModal } from './LoginModal';
 import { reportInvokeFailure } from '../lib/errorReporter';
 import { useSyncStore } from '../store/syncStore';
-import { setSyncEnabled } from '../lib/sync';
+import { setSyncEnabled, syncNow } from '../lib/sync';
+import { Toggle } from './ui/Toggle';
 
 /**
  * Titlebar auth widget - guest sees a "Sign in" pill; authed users see a chip
- * with avatar/initials + name, clicking opens a dropdown with "Sign out".
+ * with avatar (or initials when no picture exists / it fails to load) + name;
+ * clicking opens a dropdown with "Sign out".
  *
  * Rendered in TitleBar.tsx (Task 27). Follows the SessionWidget popover
  * pattern for consistency: `material-popover` surface, outside-click +
@@ -24,6 +26,7 @@ export function HeaderAuth() {
   // would blow up (Rendered more hooks than during the previous render).
   const mode = useAuthStore((s) => s.mode);
   const user = useAuthStore((s) => s.user);
+  const syncEnabled = useSyncStore((s) => s.enabled);
   const [showLogin, setShowLogin] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [popPos, setPopPos] = useState<{ top: number; right: number } | null>(null);
@@ -89,6 +92,13 @@ export function HeaderAuth() {
   const label = user?.name ?? user?.email ?? 'Signed in';
   const chipInitials = initials(label);
 
+  // Spec §7.3: explicit "Sync now" bypasses the debounce (and any backoff).
+  // Fire-and-forget: syncNow() reports its own invoke failures.
+  const handleSyncNow = () => {
+    setMenuOpen(false);
+    void syncNow();
+  };
+
   const handleSignOut = async () => {
     setMenuOpen(false);
     try {
@@ -111,18 +121,7 @@ export function HeaderAuth() {
           menuOpen ? 'bg-fill-active' : 'hover:bg-fill-hover'
         }`}
       >
-        {user?.image ? (
-          <img
-            src={user.image}
-            alt=""
-            className="w-5 h-5 rounded-full object-cover"
-            draggable={false}
-          />
-        ) : (
-          <span className="w-5 h-5 rounded-full bg-accent-primary text-white text-[10px] font-semibold flex items-center justify-center">
-            {chipInitials}
-          </span>
-        )}
+        <Avatar image={user?.image ?? null} initials={chipInitials} />
         <span className="text-[12px] font-medium text-text-primary truncate max-w-[140px]">
           {label}
         </span>
@@ -154,6 +153,15 @@ export function HeaderAuth() {
             <button
               type="button"
               role="menuitem"
+              onClick={handleSyncNow}
+              disabled={!syncEnabled}
+              className="w-full px-3 py-2 border-b border-seam text-left text-[12px] text-text-secondary hover:text-text-primary hover:bg-fill-hover transition-colors disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-text-secondary"
+            >
+              Sync now
+            </button>
+            <button
+              type="button"
+              role="menuitem"
               onClick={handleSignOut}
               className="w-full px-3 py-2 text-left text-[12px] text-text-secondary hover:text-text-primary hover:bg-fill-hover transition-colors"
             >
@@ -167,8 +175,45 @@ export function HeaderAuth() {
 }
 
 /**
+ * 20px round avatar. Renders the provider image (GitHub etc.) when one is
+ * present AND loads; otherwise the user's initials on the accent color.
+ *
+ * Email+password accounts have no provider picture - the broker forwards
+ * whatever the auth DB holds, which can be null, a blank string, or a stale
+ * URL that 404s. A bare <img> would then paint the browser's broken-image
+ * glyph in the titlebar, so we treat blank as missing and swap to initials on
+ * `onError`. The failure flag is keyed on the URL: if the user later gets a
+ * real avatar (e.g. links GitHub), the new URL gets a fresh load attempt.
+ */
+function Avatar({ image, initials }: { image: string | null; initials: string }) {
+  const src = image?.trim() || null;
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  const showImage = src !== null && failedSrc !== src;
+
+  if (showImage) {
+    return (
+      <img
+        src={src}
+        alt=""
+        className="w-5 h-5 rounded-full object-cover"
+        draggable={false}
+        onError={() => setFailedSrc(src)}
+      />
+    );
+  }
+  return (
+    <span
+      aria-hidden="true"
+      className="w-5 h-5 rounded-full bg-accent-primary text-white text-[10px] font-semibold flex items-center justify-center"
+    >
+      {initials}
+    </span>
+  );
+}
+
+/**
  * "Tal Ayash" -> "TA"; "tal@example.com" -> "T"; empty -> "?".
- * Purely a visual fallback for when `user.image` is null.
+ * Purely a visual fallback for when the avatar image is missing or broken.
  */
 function initials(s: string): string {
   const parts = s.trim().split(/\s+/).filter(Boolean);
@@ -192,22 +237,12 @@ function SyncToggle() {
   };
 
   return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={enabled}
-      aria-label={`Sync ${enabled ? 'on' : 'off'}`}
-      onClick={handleToggle}
+    <Toggle
+      size="sm"
+      checked={enabled}
+      onChange={handleToggle}
       disabled={busy}
-      className={`relative w-8 h-4 rounded-full transition-colors ${
-        enabled ? 'bg-accent-primary' : 'bg-elevation-1 ring-1 ring-inset ring-seam'
-      } disabled:opacity-50`}
-    >
-      <span
-        className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-transform ${
-          enabled ? 'translate-x-4' : 'translate-x-0.5'
-        }`}
-      />
-    </button>
+      ariaLabel={`Sync ${enabled ? 'on' : 'off'}`}
+    />
   );
 }
