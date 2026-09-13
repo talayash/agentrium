@@ -1,6 +1,6 @@
 # M2a: Sync Foundation Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 ## ✅ Resolved: crash was a QA-sideload artifact, not a code bug (2026-09-12)
 
@@ -331,7 +331,7 @@ pub struct SyncQueueRow {
 }
 ```
 
-- [ ] **Step 2: Add the enqueue/dequeue/depth helpers on `impl Database`**
+- [x] **Step 2: Add the enqueue/dequeue/depth helpers on `impl Database`**
 
 ```rust
 pub fn enqueue_sync(&self, table: &str, row_key: &str) -> Result<(), String> {
@@ -405,7 +405,7 @@ pub fn sync_queue_depth(&self) -> Result<i64, String> {
 }
 ```
 
-- [ ] **Step 3: Add unit test**
+- [x] **Step 3: Add unit test**
 
 Append to the existing `#[cfg(test)] mod tests` block in `database.rs`:
 
@@ -446,7 +446,7 @@ fn record_sync_attempt_increments_and_stores_error() {
 }
 ```
 
-- [ ] **Step 4: Run tests + commit**
+- [x] **Step 4: Run tests + commit**
 
 ```bash
 cargo test --manifest-path src-tauri/Cargo.toml --bins database::tests::sync_queue
@@ -461,7 +461,7 @@ git commit -m "feat(sync): enqueue/dequeue/attempt helpers for sync_queue"
 **Files:**
 - Modify: `src-tauri/src/database.rs`
 
-- [ ] **Step 1: Add typed helpers**
+- [x] **Step 1: Add typed helpers**
 
 The generic `get_user_meta`/`set_user_meta` already exist from M1. Add these thin wrappers so callers don't sprinkle string keys everywhere:
 
@@ -484,7 +484,7 @@ pub fn set_last_pull_cursor(&self, cursor: &str) -> Result<(), String> {
 }
 ```
 
-- [ ] **Step 2: Unit test the sync_enabled default**
+- [x] **Step 2: Unit test the sync_enabled default**
 
 ```rust
 #[test]
@@ -498,7 +498,7 @@ fn sync_enabled_defaults_to_true_when_unset() {
 }
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 cargo test --manifest-path src-tauri/Cargo.toml --bins database::tests::sync_enabled
@@ -515,7 +515,7 @@ git commit -m "feat(sync): sync_enabled + last_pull_cursor user_meta helpers"
 
 **Context:** Existing mutations (`save_profile`, `save_custom_agent`, `save_workspace`, etc.) don't set `updated_at` or `sync_state='pending'`, and don't enqueue. Rather than modify every call site's SQL, add small helpers that wrap a mutation + queue-enqueue in one transaction and update the sync columns.
 
-- [ ] **Step 1: Add `touch_sync_row` helper**
+- [x] **Step 1: Add `touch_sync_row` helper**
 
 Bumps `updated_at`, sets `sync_state='pending'`, and enqueues in `sync_queue` — all in one transaction.
 
@@ -585,7 +585,7 @@ pub fn mark_row_synced_if_unchanged(
 }
 ```
 
-- [ ] **Step 2: Unit test the transactional behavior**
+- [x] **Step 2: Unit test the transactional behavior**
 
 ```rust
 #[test]
@@ -641,7 +641,7 @@ fn mark_row_synced_if_unchanged_is_race_safe() {
 }
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 cargo test --manifest-path src-tauri/Cargo.toml --bins database::tests
@@ -657,7 +657,7 @@ git commit -m "feat(sync): touch/tombstone/mark_synced helpers with race-safe fl
 - Modify: `src-tauri/src/commands.rs` (or wherever save_profile / save_custom_agent / save_workspace live — grep for `#[command]` on those names)
 - Modify: whichever files own `save_profile`, `delete_profile`, `save_custom_agent`, `delete_custom_agent`, `save_workspace`, `delete_workspace` (search first — layout may vary)
 
-- [ ] **Step 1: Add `db.touch_sync_row(...)` calls after every successful mutation**
+- [x] **Step 1: Add `db.touch_sync_row(...)` calls after every successful mutation**
 
 For each mutation IPC handler that already writes to a syncable table, add a `db.touch_sync_row(table, row_key)` call after the underlying `save_*` returns Ok. Example for profiles:
 
@@ -692,7 +692,7 @@ pub async fn delete_profile(id: String, state: State<'_, AppState>) -> Result<()
 }
 ```
 
-- [ ] **Step 2: Filter tombstoned rows out of existing read paths**
+- [x] **Step 2: Filter tombstoned rows out of existing read paths**
 
 Every `SELECT * FROM profiles`, `custom_agents`, `workspaces` call needs `WHERE deleted_at IS NULL` appended. Grep for the SELECT statements and add the filter. Confirm the frontend's `get_profiles` / `list_custom_agents` / `load_workspaces` return the filtered set.
 
@@ -704,7 +704,7 @@ Example patch pattern for a profiles SELECT:
 "SELECT id, name, ... FROM profiles WHERE deleted_at IS NULL ORDER BY name"
 ```
 
-- [ ] **Step 3: Add a test that a tombstoned row is invisible to reads**
+- [x] **Step 3: Add a test that a tombstoned row is invisible to reads**
 
 Add to `database.rs` tests:
 ```rust
@@ -726,7 +726,7 @@ fn tombstoned_profile_is_excluded_from_get_profiles() {
 }
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 cargo test --manifest-path src-tauri/Cargo.toml --bins
@@ -741,7 +741,7 @@ git commit -m "feat(sync): enqueue on mutation, tombstone on delete, filter tomb
 **Files:**
 - Modify: `agentrium-api/db/schema.ts`
 
-- [ ] **Step 1: Extend schema.ts with the three syncable tables**
+- [x] **Step 1: Extend schema.ts with the three syncable tables**
 
 Add near the existing table definitions (import `pgTable`, `text`, `boolean`, `jsonb`, `integer`, `timestamp`, `uuid`, `index` from `drizzle-orm/pg-core` as needed):
 
@@ -815,11 +815,11 @@ export const workspaces = pgTable(
 );
 ```
 
-- [ ] **Step 2: Export from db/index.ts (or equivalent) so route handlers can import**
+- [x] **Step 2: Export from db/index.ts (or equivalent) so route handlers can import**
 
 If schema is re-exported through `src/lib/db.ts` (from M1), add the three new tables to that re-export.
 
-- [ ] **Step 3: Generate + apply migration**
+- [x] **Step 3: Generate + apply migration**
 
 ```bash
 cd agentrium-api
@@ -829,7 +829,7 @@ npx drizzle-kit push
 
 Confirm three new tables appear in Neon dashboard.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add db/schema.ts src/lib/db.ts drizzle/*
@@ -844,7 +844,7 @@ git commit -m "feat(sync): add profiles/custom_agents/workspaces syncable tables
 - Create: `agentrium-api/src/lib/bearer.ts`
 - Create: `agentrium-api/src/lib/bearer.test.ts`
 
-- [ ] **Step 1: Write the verifier**
+- [x] **Step 1: Write the verifier**
 
 ```typescript
 import { NextRequest } from 'next/server';
@@ -877,7 +877,7 @@ export async function requireBearer(req: NextRequest): Promise<BearerAuth> {
 }
 ```
 
-- [ ] **Step 2: Unit test**
+- [x] **Step 2: Unit test**
 
 ```typescript
 import { describe, it, expect, vi } from 'vitest';
@@ -918,7 +918,7 @@ describe('requireBearer', () => {
 });
 ```
 
-- [ ] **Step 3: Run tests + commit**
+- [x] **Step 3: Run tests + commit**
 
 ```bash
 cd agentrium-api && npx vitest run src/lib/bearer.test.ts
@@ -933,7 +933,7 @@ git commit -m "feat(sync): bearer JWT verifier for /api/sync routes"
 **Files:**
 - Create: `agentrium-api/src/app/api/sync/pull/route.ts`
 
-- [ ] **Step 1: Write the route**
+- [x] **Step 1: Write the route**
 
 ```typescript
 import { NextRequest, NextResponse } from 'next/server';
@@ -998,7 +998,7 @@ export async function POST(req: NextRequest) {
 }
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add src/app/api/sync/pull/route.ts
@@ -1012,7 +1012,7 @@ git commit -m "feat(sync): POST /api/sync/pull with cursor + per-table gate + 10
 **Files:**
 - Create: `agentrium-api/src/app/api/sync/push/route.ts`
 
-- [ ] **Step 1: Write the route**
+- [x] **Step 1: Write the route**
 
 ```typescript
 import { NextRequest, NextResponse } from 'next/server';
@@ -1160,7 +1160,7 @@ export async function POST(req: NextRequest) {
 }
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add src/app/api/sync/push/route.ts
@@ -1175,7 +1175,7 @@ git commit -m "feat(sync): POST /api/sync/push with per-row LWW upsert"
 - Create: `agentrium-api/src/app/api/sync/pull/route.test.ts`
 - Create: `agentrium-api/src/app/api/sync/push/route.test.ts`
 
-- [ ] **Step 1: Mock db + bearer, verify handler behaviors**
+- [x] **Step 1: Mock db + bearer, verify handler behaviors**
 
 For pull:
 ```typescript
@@ -1226,7 +1226,7 @@ describe('POST /api/sync/pull', () => {
 
 For push (similar shape — mock the transaction as `(cb) => cb(txMock)`, verify accepted/skipped semantics). Full test file follows the same pattern; see `pull/route.test.ts` and adapt.
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 cd agentrium-api && npx vitest run src/app/api/sync
@@ -1242,7 +1242,7 @@ git commit -m "test(sync): contract tests for pull + push routes"
 - Create: `src-tauri/src/sync_client.rs`
 - Modify: `src-tauri/src/main.rs` (register module)
 
-- [ ] **Step 1: Write the client module**
+- [x] **Step 1: Write the client module**
 
 ```rust
 //! Thin reqwest wrapper for `/api/sync/pull` and `/api/sync/push`.
@@ -1360,17 +1360,17 @@ impl SyncError {
 }
 ```
 
-- [ ] **Step 2: Register the module in `main.rs`**
+- [x] **Step 2: Register the module in `main.rs`**
 
 Add `mod sync_client;` alongside the existing module declarations.
 
-- [ ] **Step 3: Verify compilation**
+- [x] **Step 3: Verify compilation**
 
 ```bash
 cargo check --manifest-path src-tauri/Cargo.toml
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src-tauri/src/sync_client.rs src-tauri/src/main.rs
@@ -1385,7 +1385,7 @@ git commit -m "feat(sync): reqwest wrapper for /api/sync with one-shot 401 refre
 - Create: `src-tauri/src/sync.rs`
 - Modify: `src-tauri/src/main.rs` (register module)
 
-- [ ] **Step 1: Write the module skeleton with status types + Tauri events**
+- [x] **Step 1: Write the module skeleton with status types + Tauri events**
 
 ```rust
 //! Sync engine: background task that drains sync_queue via /api/sync/push
@@ -1469,7 +1469,7 @@ async fn run_engine(
 }
 ```
 
-- [ ] **Step 2: Register module + commit**
+- [x] **Step 2: Register module + commit**
 
 Add `mod sync;` to `main.rs`, then:
 
@@ -1486,7 +1486,7 @@ git commit -m "feat(sync): sync engine scaffold with command channel + status ty
 **Files:**
 - Modify: `src-tauri/src/sync.rs`
 
-- [ ] **Step 1: Add the resolver**
+- [x] **Step 1: Add the resolver**
 
 ```rust
 /// Compare two ISO-8601 timestamps and return whether `incoming` should win.
@@ -1499,7 +1499,7 @@ pub fn incoming_wins(local_updated_at: &str, incoming_updated_at: &str) -> bool 
 }
 ```
 
-- [ ] **Step 2: Unit tests**
+- [x] **Step 2: Unit tests**
 
 Inside `#[cfg(test)] mod tests` in `sync.rs`:
 
@@ -1522,7 +1522,7 @@ fn tie_goes_to_local() {
 }
 ```
 
-- [ ] **Step 3: Run + commit**
+- [x] **Step 3: Run + commit**
 
 ```bash
 cargo test --manifest-path src-tauri/Cargo.toml --bins sync::tests
@@ -1537,7 +1537,7 @@ git commit -m "feat(sync): LWW resolver with tie-to-local"
 **Files:**
 - Modify: `src-tauri/src/sync.rs`
 
-- [ ] **Step 1: Fill in the push loop**
+- [x] **Step 1: Fill in the push loop**
 
 Replace `run_engine`'s body with the full state machine:
 
@@ -1619,7 +1619,7 @@ async fn run_engine(
 }
 ```
 
-- [ ] **Step 2: Add `do_push` implementation**
+- [x] **Step 2: Add `do_push` implementation**
 
 ```rust
 async fn do_push(
@@ -1702,7 +1702,7 @@ async fn collect_rows(
 }
 ```
 
-- [ ] **Step 3: Commit (compilation will fail until Task 18 adds `read_syncable_row_json`; that's fine — group them)**
+- [x] **Step 3: Commit (compilation will fail until Task 18 adds `read_syncable_row_json`; that's fine — group them)**
 
 ```bash
 git add src-tauri/src/sync.rs
@@ -1716,7 +1716,7 @@ git commit -m "feat(sync): push loop with debounce + LWW race-safe mark_synced"
 **Files:**
 - Modify: `src-tauri/src/database.rs`
 
-- [ ] **Step 1: Add the helper**
+- [x] **Step 1: Add the helper**
 
 Returns the row as a `serde_json::Value` shaped for the sync-push JSON schema (matches Task 12's zod).
 
@@ -1811,7 +1811,7 @@ pub fn read_syncable_row_json(&self, table: &str, row_key: &str) -> Result<Optio
 }
 ```
 
-- [ ] **Step 2: Verify build + commit**
+- [x] **Step 2: Verify build + commit**
 
 ```bash
 cargo check --manifest-path src-tauri/Cargo.toml
@@ -1826,7 +1826,7 @@ git commit -m "feat(sync): read_syncable_row_json for push payload assembly"
 **Files:**
 - Modify: `src-tauri/src/sync.rs`
 
-- [ ] **Step 1: Add `do_pull` alongside `do_push`**
+- [x] **Step 1: Add `do_pull` alongside `do_push`**
 
 ```rust
 async fn do_pull(
@@ -1882,7 +1882,7 @@ fn apply_pulled_rows(db: &Database, table: &str, rows: &Option<Vec<serde_json::V
 }
 ```
 
-- [ ] **Step 2: Commit (still won't build until Task 20; group)**
+- [x] **Step 2: Commit (still won't build until Task 20; group)**
 
 ```bash
 git add src-tauri/src/sync.rs
@@ -1896,7 +1896,7 @@ git commit -m "feat(sync): pull loop with LWW apply + auto re-pull on truncation
 **Files:**
 - Modify: `src-tauri/src/database.rs`
 
-- [ ] **Step 1: Add `get_local_updated_at`**
+- [x] **Step 1: Add `get_local_updated_at`**
 
 ```rust
 pub fn get_local_updated_at(&self, table: &str, row_key: &str) -> Result<Option<String>, String> {
@@ -1912,7 +1912,7 @@ pub fn get_local_updated_at(&self, table: &str, row_key: &str) -> Result<Option<
 }
 ```
 
-- [ ] **Step 2: Add `upsert_pulled_row`**
+- [x] **Step 2: Add `upsert_pulled_row`**
 
 Table-specific upsert that decodes the JSON payload and INSERT-OR-REPLACE / UPDATE:
 
@@ -1997,14 +1997,14 @@ pub fn upsert_pulled_row(&self, table: &str, row: &serde_json::Value) -> Result<
 }
 ```
 
-- [ ] **Step 3: Verify build + run tests**
+- [x] **Step 3: Verify build + run tests**
 
 ```bash
 cargo check --manifest-path src-tauri/Cargo.toml
 cargo test --manifest-path src-tauri/Cargo.toml --bins
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src-tauri/src/database.rs
@@ -2018,7 +2018,7 @@ git commit -m "feat(sync): get_local_updated_at + upsert_pulled_row for pull-app
 **Files:**
 - Modify: `src-tauri/src/sync.rs`
 
-- [ ] **Step 1: Add the emitter**
+- [x] **Step 1: Add the emitter**
 
 ```rust
 async fn emit_status(
@@ -2039,7 +2039,7 @@ async fn emit_status(
 }
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 cargo check --manifest-path src-tauri/Cargo.toml
@@ -2055,7 +2055,7 @@ git commit -m "feat(sync): emit sync-status-changed event with queue depth + cur
 - Modify: `src-tauri/src/commands.rs` (or wherever IPC handlers live)
 - Modify: `src-tauri/src/main.rs` (register commands in `.invoke_handler`)
 
-- [ ] **Step 1: Add the commands (they need access to the SyncHandle)**
+- [x] **Step 1: Add the commands (they need access to the SyncHandle)**
 
 Assumes `SyncHandle` is stored on `AppState` — Task 23 adds it. Sketch:
 
@@ -2099,11 +2099,11 @@ pub async fn sync_now(state: State<'_, AppState>) -> Result<(), String> {
 }
 ```
 
-- [ ] **Step 2: Register in main.rs**
+- [x] **Step 2: Register in main.rs**
 
 Add to `.invoke_handler(tauri::generate_handler![...])` next to existing sync/auth handlers.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 cargo check --manifest-path src-tauri/Cargo.toml
@@ -2118,7 +2118,7 @@ git commit -m "feat(sync): IPC commands get/set sync_enabled + sync_now"
 **Files:**
 - Modify: `src-tauri/src/main.rs`
 
-- [ ] **Step 1: Extend AppState**
+- [x] **Step 1: Extend AppState**
 
 ```rust
 pub struct AppState {
@@ -2130,7 +2130,7 @@ pub struct AppState {
 
 Initialize `sync_handle: Arc::new(tokio::sync::Mutex::new(None))` alongside `db`.
 
-- [ ] **Step 2: Start engine after auth rehydration**
+- [x] **Step 2: Start engine after auth rehydration**
 
 In the boot flow (post-`rehydrate_auth`), if the returned `access_token` is Some, start the engine:
 
@@ -2140,7 +2140,7 @@ let handle = crate::sync::start_engine(app_handle.clone(), db.clone(), access_to
 *state.sync_handle.lock().await = Some(handle);
 ```
 
-- [ ] **Step 3: Stop engine on logout**
+- [x] **Step 3: Stop engine on logout**
 
 In `logout()` (in `auth.rs`), before clearing state, take the handle and call `.shutdown()`:
 
@@ -2150,11 +2150,11 @@ if let Some(handle) = state.sync_handle.lock().await.take() {
 }
 ```
 
-- [ ] **Step 4: Restart engine after fresh login**
+- [x] **Step 4: Restart engine after fresh login**
 
 In the `auth-tokens-received` deep-link handler, after storing tokens and emitting the event, start the engine (mirror step 2).
 
-- [ ] **Step 5: Verify build + commit**
+- [x] **Step 5: Verify build + commit**
 
 ```bash
 cargo check --manifest-path src-tauri/Cargo.toml
@@ -2169,7 +2169,7 @@ git commit -m "feat(sync): lifecycle wire — start on login/rehydrate, stop on 
 **Files:**
 - Modify: `src-tauri/src/auth.rs`
 
-- [ ] **Step 1: Add `run_guest_migration`**
+- [x] **Step 1: Add `run_guest_migration`**
 
 Runs inside the `auth-tokens-received` handler, after tokens are stored but before returning:
 
@@ -2223,7 +2223,7 @@ impl GuestMigrationCounts {
 }
 ```
 
-- [ ] **Step 2: Call it from the deep-link handler**
+- [x] **Step 2: Call it from the deep-link handler**
 
 Inside `handle_deep_link` (auth.rs), after storing refresh + emitting `auth-tokens-received`:
 
@@ -2243,7 +2243,7 @@ match run_guest_migration(&db_guard) {
 
 Actually — this needs the DB reference to be inside the async task, not the sync deep-link handler. Adjust as needed; the sketch shows the intent, the executing agent adapts to the exact call-site layout.
 
-- [ ] **Step 3: Unit test**
+- [x] **Step 3: Unit test**
 
 ```rust
 #[test]
@@ -2265,7 +2265,7 @@ fn run_guest_migration_enqueues_local_only_rows_and_flips_state() {
 }
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 cargo test --manifest-path src-tauri/Cargo.toml --bins auth::tests::run_guest_migration
@@ -2281,7 +2281,7 @@ git commit -m "feat(sync): guest→account migration on first login"
 - Create: `src/store/syncStore.ts`
 - Create: `src/store/syncStore.test.ts`
 
-- [ ] **Step 1: Write the store**
+- [x] **Step 1: Write the store**
 
 ```typescript
 import { create } from 'zustand';
@@ -2316,7 +2316,7 @@ export const useSyncStore = create<SyncState>((set) => ({
 }));
 ```
 
-- [ ] **Step 2: Tests**
+- [x] **Step 2: Tests**
 
 ```typescript
 import { describe, it, expect, beforeEach } from 'vitest';
@@ -2344,7 +2344,7 @@ describe('syncStore', () => {
 });
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 npx vitest run src/store/syncStore.test.ts
@@ -2359,7 +2359,7 @@ git commit -m "feat(sync): syncStore Zustand slice + tests"
 **Files:**
 - Create: `src/lib/sync.ts`
 
-- [ ] **Step 1: Write the wrappers**
+- [x] **Step 1: Write the wrappers**
 
 ```typescript
 import { invoke } from '@tauri-apps/api/core';
@@ -2439,7 +2439,7 @@ export async function subscribeToSyncEvents(): Promise<UnlistenFn> {
 }
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add src/lib/sync.ts
@@ -2453,7 +2453,7 @@ git commit -m "feat(sync): FE wrappers + subscribeToSyncEvents"
 **Files:**
 - Modify: `src/App.tsx`
 
-- [ ] **Step 1: Add the subscription in the existing boot effect**
+- [x] **Step 1: Add the subscription in the existing boot effect**
 
 Locate the effect that subscribes to `auth-tokens-received` (from M1) and add sync-events subscription next to it:
 
@@ -2478,7 +2478,7 @@ import { getSyncEnabled, subscribeToSyncEvents } from './lib/sync';
 import { useSyncStore } from './store/syncStore';
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add src/App.tsx
@@ -2493,7 +2493,7 @@ git commit -m "feat(sync): subscribe to sync events on boot"
 - Create: `src/components/SyncStatusChip.tsx`
 - Create: `src/components/SyncStatusChip.test.tsx`
 
-- [ ] **Step 1: Write the component**
+- [x] **Step 1: Write the component**
 
 ```tsx
 import { RefreshCw, CheckCircle2, CloudOff, AlertCircle, Pause } from 'lucide-react';
@@ -2580,7 +2580,7 @@ function tooltipFor(
 }
 ```
 
-- [ ] **Step 2: Component tests**
+- [x] **Step 2: Component tests**
 
 ```tsx
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -2633,7 +2633,7 @@ describe('SyncStatusChip', () => {
 });
 ```
 
-- [ ] **Step 3: Run tests + commit**
+- [x] **Step 3: Run tests + commit**
 
 ```bash
 npx vitest run src/components/SyncStatusChip.test.tsx
@@ -2648,7 +2648,7 @@ git commit -m "feat(sync): SyncStatusChip with state-driven icon/tooltip + click
 **Files:**
 - Modify: `src/components/TitleBar.tsx`
 
-- [ ] **Step 1: Import and insert before `<HeaderAuth />`**
+- [x] **Step 1: Import and insert before `<HeaderAuth />`**
 
 ```tsx
 import { SyncStatusChip } from './SyncStatusChip';
@@ -2662,7 +2662,7 @@ In the right cluster (find the block containing `<ThemeToggle />` and `<HeaderAu
 <HeaderAuth />
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add src/components/TitleBar.tsx
@@ -2676,7 +2676,7 @@ git commit -m "feat(sync): mount SyncStatusChip in TitleBar"
 **Files:**
 - Modify: `src/components/HeaderAuth.tsx`
 
-- [ ] **Step 1: Add a toggle row above the Sign out button**
+- [x] **Step 1: Add a toggle row above the Sign out button**
 
 ```tsx
 import { useSyncStore } from '../store/syncStore';
@@ -2728,7 +2728,7 @@ function SyncToggle() {
 
 Add `import { useState } from 'react'` if not already present (it is, per M1). Also import `useSyncStore` and `setSyncEnabled` at the top.
 
-- [ ] **Step 2: Extend the auth interaction test**
+- [x] **Step 2: Extend the auth interaction test**
 
 Append to `src/components/TitleBar.auth.test.tsx`:
 
@@ -2761,7 +2761,7 @@ import { setSyncEnabled } from '../lib/sync';
 import { useSyncStore } from '../store/syncStore';
 ```
 
-- [ ] **Step 3: Run tests + commit**
+- [x] **Step 3: Run tests + commit**
 
 ```bash
 npx vitest run src/components/TitleBar.auth.test.tsx
@@ -2778,7 +2778,7 @@ git commit -m "feat(sync): pause/resume toggle in account dropdown"
 
 Guest→account migration is a critical seam. Add a broader test that walks a whole guest→auth transition with mocked broker.
 
-- [ ] **Step 1: Add integration-style test**
+- [x] **Step 1: Add integration-style test**
 
 ```rust
 #[test]
@@ -2819,7 +2819,7 @@ fn guest_to_account_migration_full_flow() {
 }
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 cargo test --manifest-path src-tauri/Cargo.toml --bins auth::tests::guest_to_account
@@ -2834,7 +2834,7 @@ git commit -m "test(sync): full guest→account migration path incl. idempotence
 **Files:**
 - Modify: `agentrium-api/src/app/api/sync/push/route.test.ts`
 
-- [ ] **Step 1: Add LWW test**
+- [x] **Step 1: Add LWW test**
 
 Mock `db.transaction` to expose the tx object, verify:
 - Row with newer server `updatedAt` is skipped, id in `skipped.profiles`.
@@ -2844,7 +2844,7 @@ Mock `db.transaction` to expose the tx object, verify:
 
 Follow the same mocking pattern as `pull/route.test.ts` from Task 13.
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 cd agentrium-api && npx vitest run src/app/api/sync/push
@@ -2858,19 +2858,19 @@ git commit -m "test(sync): LWW skip/accept + row cap"
 
 No code change. This walks the whole loop, on a real Vercel deploy + real desktop app.
 
-- [ ] **Step 1: Reset a clean profile on machine A**
+- [x] **Step 1: Reset a clean profile on machine A**
 
 - Delete `%APPDATA%\com.claudeterminal.ClaudeTerminal\claudeterminal.db` (Windows) or platform equivalent.
 - Delete Windows Credential Manager entry `agentrium.auth`.
 - Launch Agentrium dev build with QA config (see `src-tauri/tauri.conf.qa.json`).
 
-- [ ] **Step 2: Sign in on machine A + verify sync UI**
+- [x] **Step 2: Sign in on machine A + verify sync UI**
 
 - LoginModal appears → Sign in with Google.
 - After auth, `SyncStatusChip` should appear in the titlebar showing "Synced" (green check).
 - Open account dropdown → Sync toggle shows On.
 
-- [ ] **Step 3: Create a profile and verify push**
+- [x] **Step 3: Create a profile and verify push**
 
 - Add a new profile via existing UI.
 - Chip momentarily flips to `Syncing…` then back to `Synced`.
@@ -2880,7 +2880,7 @@ No code change. This walks the whole loop, on a real Vercel deploy + real deskto
   ```
 - Expected: your new profile row present.
 
-- [ ] **Step 4: Toggle sync off + mutate + verify queue grows**
+- [x] **Step 4: Toggle sync off + mutate + verify queue grows**
 
 - Toggle Sync off in the dropdown.
 - Chip flips to `Paused`.
@@ -2890,13 +2890,13 @@ No code change. This walks the whole loop, on a real Vercel deploy + real deskto
 - Chip flips to `Syncing…` then `Synced`; badge disappears.
 - Neon SQL confirms the edit landed.
 
-- [ ] **Step 5: Second-device pull**
+- [x] **Step 5: Second-device pull**
 
 - On machine B (or a fresh QA install on the same machine — different `identifier`).
 - Sign in with the same Google account.
 - Expected: the profiles/workspaces you created on machine A appear immediately after boot pull.
 
-- [ ] **Step 6: Guest → account migration**
+- [x] **Step 6: Guest → account migration**
 
 - Sign out on machine A. Delete the DB again to force guest.
 - Boot in guest mode. Create 2 profiles + 1 workspace locally.
@@ -2904,7 +2904,7 @@ No code change. This walks the whole loop, on a real Vercel deploy + real deskto
 - Expected: toast "Imported 2 profiles, 1 workspace into your account.". Chip flips to Syncing then Synced.
 - Neon SQL confirms all 3 rows have your user_id.
 
-- [ ] **Step 7: Report results**
+- [x] **Step 7: Report results**
 
 Report to the plan owner: which steps passed, any failures with screenshots + `[sync]` log lines from the dev console.
 
@@ -2915,7 +2915,7 @@ Report to the plan owner: which steps passed, any failures with screenshots + `[
 **Files:**
 - No code change; git only.
 
-- [ ] **Step 1: Push agentrium-api**
+- [x] **Step 1: Push agentrium-api**
 
 ```bash
 cd agentrium-api && git push origin master
@@ -2923,13 +2923,13 @@ cd agentrium-api && git push origin master
 
 Vercel auto-deploys. Wait ~30s for the deploy to complete.
 
-- [ ] **Step 2: Push feat/m1-auth-signin**
+- [x] **Step 2: Push feat/m1-auth-signin**
 
 ```bash
 cd agentrium && git push origin feat/m1-auth-signin
 ```
 
-- [ ] **Step 3: Confirm branch is intact + tests green on CI (if configured)**
+- [x] **Step 3: Confirm branch is intact + tests green on CI (if configured)**
 
 ---
 
@@ -2937,16 +2937,16 @@ cd agentrium && git push origin feat/m1-auth-signin
 
 Before executing this plan, walk through the spec sections that fall in M2a scope and confirm coverage:
 
-- [ ] **Spec §5.2 (Syncable resources)** — Tasks 1-3 (local schema), Task 9 (server schema)
-- [ ] **Spec §5.5 (Local SQLite additions: sync_queue)** — Task 4 (table), Task 5 (helpers)
-- [ ] **Spec §6.4 (Guest → account migration)** — Task 24 (algorithm), Task 31 (test)
-- [ ] **Spec §7.1 (LWW model)** — Task 16 (client), Task 12 (server)
-- [ ] **Spec §7.2 (Endpoints /api/sync/pull, /api/sync/push)** — Tasks 11, 12
-- [ ] **Spec §7.3 (Cadence: startup, 5-min interval, debounced push, sync-now)** — Task 17 (push+debounce), Task 19 (pull), Task 22 (sync_now IPC)
-- [ ] **Spec §7.4 (Pusher behavior: 500 rows / 512 KB cap, 401 refresh, poison-row drop, backoff)** — Task 12 (cap), Task 14 (401 refresh), TODO: poison-row drop + backoff **left as follow-up in M2a-2 if not implemented in Task 17**
-- [ ] **Spec §7.5 (SQLite migration idempotence)** — Tasks 1-4 all use ADD COLUMN pattern; run twice test in Task 5 confirms
-- [ ] **User request: sync on/off toggle** — Task 30 (UI), Task 22 (IPC), Task 25 (store)
-- [ ] **User request: SyncStatusChip Paused state** — Task 28
+- [x] **Spec §5.2 (Syncable resources)** — Tasks 1-3 (local schema), Task 9 (server schema)
+- [x] **Spec §5.5 (Local SQLite additions: sync_queue)** — Task 4 (table), Task 5 (helpers)
+- [x] **Spec §6.4 (Guest → account migration)** — Task 24 (algorithm), Task 31 (test)
+- [x] **Spec §7.1 (LWW model)** — Task 16 (client), Task 12 (server)
+- [x] **Spec §7.2 (Endpoints /api/sync/pull, /api/sync/push)** — Tasks 11, 12
+- [x] **Spec §7.3 (Cadence: startup, 5-min interval, debounced push, sync-now)** — Task 17 (push+debounce), Task 19 (pull), Task 22 (sync_now IPC)
+- [x] **Spec §7.4 (Pusher behavior: 500 rows / 512 KB cap, 401 refresh, poison-row drop, backoff)** — Task 12 (cap), Task 14 (401 refresh); poison-row drop + exponential backoff landed 2026-09-13 in `sync.rs` (`classify_push_failure`, `handle_push_failure`, `backoff_secs`, `jittered`)
+- [x] **Spec §7.5 (SQLite migration idempotence)** — Tasks 1-4 all use ADD COLUMN pattern; run twice test in Task 5 confirms
+- [x] **User request: sync on/off toggle** — Task 30 (UI), Task 22 (IPC), Task 25 (store)
+- [x] **User request: SyncStatusChip Paused state** — Task 28
 
 **Explicitly not covered (see "OUT" list):**
 - `hints` sync (no user-editable hints table today)
@@ -2955,11 +2955,17 @@ Before executing this plan, walk through the spec sections that fall in M2a scop
 - Sharing (M3)
 - Telemetry attribution `user_id` (M3)
 
-**Follow-up gaps flagged during self-review:**
+**Follow-up gaps flagged during self-review — all resolved 2026-09-13:**
 
-- **Poison-row drop on 4xx (spec §7.4):** Task 17's push loop treats all errors as "report + Error status" and re-queues. Add a follow-up task or extend Task 17 to `delete_sync_queue_entries` + `report_bg('sync_push_4xx', ...)` when server returns 4xx (except 401). Not blocking M2a functionality — worst case is a poison row loops forever until fixed manually.
-- **Exponential backoff (spec §7.4):** Task 17 pushes every debounce tick if the queue is non-empty; there is no `min(30 * 2^attempts, 3600)` scheduling. Add follow-up. Impact: on server outage, we hammer at 5-second cadence instead of backing off. Acceptable for M2a preview — fix before v1.34.0-preview ships.
-- **Explicit "Sync now" in header dropdown (spec §7.3):** SyncStatusChip click already triggers `sync_now` (Task 28); menu-item version not implemented. If needed for accessibility, add a "Sync now" row above Sync toggle in Task 30.
+- ✅ **Poison-row drop on 4xx (spec §7.4):** a push rejected with 4xx (other than 401) now drops the
+  snapshotted queue entries (matched on `enqueued_at`, so a row edited mid-flight keeps its fresh entry),
+  reports `sync_push_4xx` via `report_bg`, and surfaces an Error status naming the dropped count.
+- ✅ **Exponential backoff (spec §7.4):** 5xx / network / refresh failures record an attempt on every batched
+  row and hold automatic pushes for `min(30 * 2^attempts, 3600)` s ±20% jitter, keyed on the most-retried row
+  in the batch. Explicit "Sync now" and re-enabling sync bypass the hold. Unit tests cover the schedule,
+  jitter bounds, classification, and both queue outcomes.
+- ✅ **Explicit "Sync now" in header dropdown (spec §7.3):** menu item added above the Sync toggle in
+  `HeaderAuth.tsx`; disabled while sync is paused. Tests in `HeaderAuth.test.tsx`.
 
 ---
 

@@ -1,6 +1,14 @@
 # M1: Sign In End-to-End Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+## ✅ Status (2026-09-13): all implementation tasks landed on `feat/m1-auth-signin`
+
+Tasks 1-28 are live (broker on Vercel + Neon, Google **and GitHub** OAuth, guest mode,
+HeaderAuth, LoginModal, boot-time rehydration). Task 29 Steps 1 and 3 (changelog entry +
+version bump) are intentionally open: per decision (b) they happen once M1 + M2a + M2b
+ship together as `v1.34.0-preview`. Checkboxes below were ticked retroactively from the
+commit history; the plan text itself is unchanged.
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Parent spec:** [2026-09-11-auth-sync-sharing-design.md](../specs/2026-09-11-auth-sync-sharing-design.md)
 
@@ -89,7 +97,7 @@ agentrium-api/
 
 Do NOT create this inside `agentrium/` — create it as a sibling directory. Confirm with the user which parent directory before running.
 
-- [ ] **Step 1: Create the project via the Next.js scaffolder**
+- [x] **Step 1: Create the project via the Next.js scaffolder**
 
 Run in the parent directory that will hold `agentrium-api/`:
 
@@ -99,7 +107,7 @@ npx create-next-app@15 agentrium-api --typescript --app --no-tailwind --no-eslin
 
 Answer any leftover prompts with defaults. Result: `agentrium-api/` directory with a starter Next.js 15 App Router project.
 
-- [ ] **Step 2: Replace `src/app/page.tsx` with a placeholder**
+- [x] **Step 2: Replace `src/app/page.tsx` with a placeholder**
 
 Overwrite `agentrium-api/src/app/page.tsx`:
 
@@ -114,7 +122,7 @@ export default function Page() {
 }
 ```
 
-- [ ] **Step 3: Verify local dev server boots**
+- [x] **Step 3: Verify local dev server boots**
 
 ```bash
 cd agentrium-api
@@ -123,7 +131,7 @@ npm run dev
 
 Open `http://localhost:3000` in a browser. Expected: "Agentrium API" heading renders. Kill the server (`Ctrl+C`).
 
-- [ ] **Step 4: Initialize git**
+- [x] **Step 4: Initialize git**
 
 ```bash
 cd agentrium-api
@@ -139,7 +147,7 @@ git commit -m "chore: scaffold agentrium-api Next.js project"
 **Files:**
 - Create: `agentrium-api/.env.local.example`
 
-- [ ] **Step 1: Create the example env file**
+- [x] **Step 1: Create the example env file**
 
 Write `agentrium-api/.env.local.example`:
 
@@ -161,7 +169,7 @@ DATABASE_URL=postgresql://user:pass@host/db?sslmode=require
 DESKTOP_CALLBACK_ALLOWLIST=agentrium://auth-return
 ```
 
-- [ ] **Step 2: Copy to `.env.local` for local dev**
+- [x] **Step 2: Copy to `.env.local` for local dev**
 
 ```bash
 cp .env.local.example .env.local
@@ -175,7 +183,7 @@ openssl rand -base64 32
 
 Paste the output as `AUTH_SECRET`. Leave `DATABASE_URL` as the placeholder for now — we set it after Neon is provisioned (Task 5).
 
-- [ ] **Step 3: Verify `.env.local` is git-ignored**
+- [x] **Step 3: Verify `.env.local` is git-ignored**
 
 ```bash
 cat .gitignore | grep -q "^.env" && echo "OK: .env is ignored" || echo "MISSING: .env not ignored"
@@ -189,7 +197,7 @@ Expected: `OK: .env is ignored` (Next.js's scaffolder includes this by default).
 .env*.local
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add .env.local.example .gitignore
@@ -200,11 +208,11 @@ git commit -m "chore: add env template"
 
 ## Task 3: Push to a new GitHub repo
 
-- [ ] **Step 1: Create a private GitHub repo**
+- [x] **Step 1: Create a private GitHub repo**
 
 Use the GitHub MCP or manually via https://github.com/new. Repo name: `agentrium-api`. Visibility: **Private** (contains OAuth callback URLs and DB config even in code; keep private for at least M1).
 
-- [ ] **Step 2: Add the remote and push**
+- [x] **Step 2: Add the remote and push**
 
 Replace `<your-github-username>` below:
 
@@ -221,15 +229,15 @@ Expected: initial commit + Task 2 commit visible on GitHub.
 
 ## Task 4: Deploy the scaffold to Vercel
 
-- [ ] **Step 1: Deploy via Vercel MCP**
+- [x] **Step 1: Deploy via Vercel MCP**
 
 Use the Vercel MCP tool `deploy_to_vercel`. Point it at the local `agentrium-api/` directory or link it to the GitHub repo you just created (either works — GitHub link gives you preview deploys per push).
 
-- [ ] **Step 2: Confirm the production URL**
+- [x] **Step 2: Confirm the production URL**
 
 After the first deploy, capture the assigned URL. It should be `https://agentrium-api.vercel.app`. If Vercel picked a different subdomain (e.g., `agentrium-api-<hash>.vercel.app` because the name is taken), STOP and tell the user — the Google OAuth redirect URIs already registered depend on this exact hostname.
 
-- [ ] **Step 3: Visit the production URL in a browser**
+- [x] **Step 3: Visit the production URL in a browser**
 
 Expected: the "Agentrium API" page from Task 1 renders. If Vercel shows an error page, check the deployment logs via the Vercel MCP `get_deployment_build_logs` tool before continuing.
 
@@ -237,15 +245,15 @@ Expected: the "Agentrium API" page from Task 1 renders. If Vercel shows an error
 
 ## Task 5: Provision Neon Postgres via Vercel Marketplace
 
-- [ ] **Step 1: Install Neon integration**
+- [x] **Step 1: Install Neon integration**
 
 Use the Vercel MCP `buy_addon` tool (Neon has a free tier that requires no payment) or manually: dashboard.vercel.com → your team → Integrations → Neon → Install → link to `agentrium-api` project.
 
-- [ ] **Step 2: Confirm env vars are injected**
+- [x] **Step 2: Confirm env vars are injected**
 
 Vercel auto-sets `DATABASE_URL` on the `agentrium-api` project. Verify via the Vercel MCP or dashboard: Settings → Environment Variables → look for `DATABASE_URL` (should have Development, Preview, and Production scopes checked).
 
-- [ ] **Step 3: Pull env vars locally**
+- [x] **Step 3: Pull env vars locally**
 
 ```bash
 cd agentrium-api
@@ -254,7 +262,7 @@ npx vercel env pull .env.local
 
 This overwrites your local `.env.local` with the Vercel values. Re-paste the `AUTH_SECRET` and `DESKTOP_CALLBACK_ALLOWLIST` values if they got wiped (Vercel doesn't have them yet).
 
-- [ ] **Step 4: Set the remaining env vars on Vercel**
+- [x] **Step 4: Set the remaining env vars on Vercel**
 
 Use the Vercel MCP or dashboard. Add these to all environments (Development, Preview, Production):
 
@@ -272,7 +280,7 @@ DESKTOP_CALLBACK_ALLOWLIST=agentrium://auth-return
 
 ## Task 6: Install backend dependencies
 
-- [ ] **Step 1: Install Auth.js v5 + Drizzle + Postgres driver + JWT + Zod**
+- [x] **Step 1: Install Auth.js v5 + Drizzle + Postgres driver + JWT + Zod**
 
 ```bash
 cd agentrium-api
@@ -282,11 +290,11 @@ npm install -D drizzle-kit @types/node
 
 Note: `next-auth@beta` is Auth.js v5. Auth.js v5 requires Node 18+ (Vercel is on 20). `jose` provides JWT sign/verify. `zod` for request body validation.
 
-- [ ] **Step 2: Verify no install errors**
+- [x] **Step 2: Verify no install errors**
 
 Check the output. Expected: "added N packages" with no `ERR!` or unresolved-peer warnings other than optional ones. If there are real errors, resolve before continuing.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add package.json package-lock.json
@@ -301,7 +309,7 @@ git commit -m "chore: install auth stack (next-auth v5, drizzle, jose, zod)"
 - Create: `agentrium-api/db/schema.ts`
 - Create: `agentrium-api/drizzle.config.ts`
 
-- [ ] **Step 1: Write the schema**
+- [x] **Step 1: Write the schema**
 
 Create `agentrium-api/db/schema.ts`:
 
@@ -364,7 +372,7 @@ export const refreshTokens = pgTable('refresh_tokens', {
 });
 ```
 
-- [ ] **Step 2: Configure Drizzle Kit**
+- [x] **Step 2: Configure Drizzle Kit**
 
 Create `agentrium-api/drizzle.config.ts`:
 
@@ -381,7 +389,7 @@ export default {
 } satisfies Config;
 ```
 
-- [ ] **Step 3: Generate the first migration**
+- [x] **Step 3: Generate the first migration**
 
 ```bash
 cd agentrium-api
@@ -390,7 +398,7 @@ npx drizzle-kit generate --name init
 
 Expected: a new file appears at `db/migrations/0000_init.sql` containing `CREATE TABLE` statements for all 5 tables.
 
-- [ ] **Step 4: Apply the migration to Neon**
+- [x] **Step 4: Apply the migration to Neon**
 
 ```bash
 npx drizzle-kit migrate
@@ -398,7 +406,7 @@ npx drizzle-kit migrate
 
 Expected: "Applying migration 0000_init". If it fails with a connection error, verify `DATABASE_URL` in `.env.local` matches the Neon connection string in Vercel's env vars.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add db/ drizzle.config.ts package.json
@@ -412,7 +420,7 @@ git commit -m "feat(db): drizzle schema + initial migration for auth tables"
 **Files:**
 - Create: `agentrium-api/src/lib/db.ts`
 
-- [ ] **Step 1: Create the client**
+- [x] **Step 1: Create the client**
 
 Write `agentrium-api/src/lib/db.ts`:
 
@@ -434,7 +442,7 @@ export const db = drizzle(client, { schema });
 export * from '../../db/schema';
 ```
 
-- [ ] **Step 2: Smoke-test the client**
+- [x] **Step 2: Smoke-test the client**
 
 Create a temporary file `agentrium-api/scripts/db-smoke.ts`:
 
@@ -466,7 +474,7 @@ rm scripts/db-smoke.ts
 rmdir scripts
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/lib/db.ts
@@ -483,7 +491,7 @@ This task sets up Auth.js's standard flow. It's used by the desktop broker (Task
 - Create: `agentrium-api/src/lib/auth.ts`
 - Create: `agentrium-api/src/app/api/auth/[...nextauth]/route.ts`
 
-- [ ] **Step 1: Write the Auth.js config**
+- [x] **Step 1: Write the Auth.js config**
 
 Create `agentrium-api/src/lib/auth.ts`:
 
@@ -507,7 +515,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 });
 ```
 
-- [ ] **Step 2: Wire the catch-all route**
+- [x] **Step 2: Wire the catch-all route**
 
 Create `agentrium-api/src/app/api/auth/[...nextauth]/route.ts`:
 
@@ -516,7 +524,7 @@ import { handlers } from '@/lib/auth';
 export const { GET, POST } = handlers;
 ```
 
-- [ ] **Step 3: Smoke test — browser sign-in**
+- [x] **Step 3: Smoke test — browser sign-in**
 
 Start the dev server:
 
@@ -526,7 +534,7 @@ npm run dev
 
 Open `http://localhost:3000/api/auth/signin` in a browser. Expected: Auth.js's default sign-in page with a "Sign in with Google" button. Click it → complete Google OAuth → land on `/` with a session cookie set.
 
-- [ ] **Step 4: Kill the dev server and commit**
+- [x] **Step 4: Kill the dev server and commit**
 
 ```bash
 git add src/lib/auth.ts src/app/api/auth/
@@ -542,7 +550,7 @@ git commit -m "feat(auth): auth.js v5 config with google provider + drizzle adap
 - Create: `agentrium-api/src/lib/pending.ts`
 - Create: `agentrium-api/src/lib/jwt.test.ts`
 
-- [ ] **Step 1: Write the JWT helper module**
+- [x] **Step 1: Write the JWT helper module**
 
 Create `agentrium-api/src/lib/jwt.ts`:
 
@@ -596,7 +604,7 @@ export function refreshTokenExpiryDate(): Date {
 }
 ```
 
-- [ ] **Step 2: Write the pending-desktop-flow store**
+- [x] **Step 2: Write the pending-desktop-flow store**
 
 Create `agentrium-api/src/lib/pending.ts`:
 
@@ -639,7 +647,7 @@ export function takePending(brokerState: string): Pending | null {
 }
 ```
 
-- [ ] **Step 3: Write unit tests for JWT helpers**
+- [x] **Step 3: Write unit tests for JWT helpers**
 
 Create `agentrium-api/src/lib/jwt.test.ts`:
 
@@ -683,7 +691,7 @@ describe('refresh token', () => {
 });
 ```
 
-- [ ] **Step 4: Install Vitest**
+- [x] **Step 4: Install Vitest**
 
 ```bash
 cd agentrium-api
@@ -697,7 +705,7 @@ Add to `package.json` scripts:
 "test:run": "vitest run"
 ```
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 ```bash
 npm run test:run
@@ -705,7 +713,7 @@ npm run test:run
 
 Expected: 4 passing tests. If any fail, fix before continuing.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/lib/jwt.ts src/lib/pending.ts src/lib/jwt.test.ts package.json package-lock.json
@@ -722,7 +730,7 @@ This is the entry point for the Tauri client. It stores the desktop's state + PK
 - Create: `agentrium-api/src/app/api/auth/desktop/start/route.ts`
 - Create: `agentrium-api/src/app/api/auth/desktop/start/route.test.ts`
 
-- [ ] **Step 1: Write the route**
+- [x] **Step 1: Write the route**
 
 Create `agentrium-api/src/app/api/auth/desktop/start/route.ts`:
 
@@ -773,7 +781,7 @@ export async function GET(req: NextRequest) {
 }
 ```
 
-- [ ] **Step 2: Write a unit test for query validation**
+- [x] **Step 2: Write a unit test for query validation**
 
 Create `agentrium-api/src/app/api/auth/desktop/start/route.test.ts`:
 
@@ -824,7 +832,7 @@ describe('/api/auth/desktop/start', () => {
 });
 ```
 
-- [ ] **Step 3: Run tests**
+- [x] **Step 3: Run tests**
 
 ```bash
 npm run test:run
@@ -832,7 +840,7 @@ npm run test:run
 
 Expected: previous tests still pass + 3 new tests pass (total 7).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/app/api/auth/desktop/start/
@@ -848,7 +856,7 @@ This runs after the user completes Auth.js's Google flow. It reads the current A
 **Files:**
 - Create: `agentrium-api/src/app/api/auth/desktop/finish/route.ts`
 
-- [ ] **Step 1: Write the route**
+- [x] **Step 1: Write the route**
 
 Create `agentrium-api/src/app/api/auth/desktop/finish/route.ts`:
 
@@ -936,7 +944,7 @@ function escapeHtml(s: string): string {
 }
 ```
 
-- [ ] **Step 2: Deploy to Vercel + smoke-test the full browser flow**
+- [x] **Step 2: Deploy to Vercel + smoke-test the full browser flow**
 
 Push to git and let Vercel auto-deploy:
 
@@ -968,7 +976,7 @@ Expected sequence:
 - Create: `agentrium-api/src/app/api/me/route.ts`
 - Create: `agentrium-api/src/app/api/auth/refresh/route.ts`
 
-- [ ] **Step 1: `/api/me` — used by desktop client to validate token + hydrate user info**
+- [x] **Step 1: `/api/me` — used by desktop client to validate token + hydrate user info**
 
 Create `agentrium-api/src/app/api/me/route.ts`:
 
@@ -999,7 +1007,7 @@ export async function GET(req: NextRequest) {
 }
 ```
 
-- [ ] **Step 2: `/api/auth/refresh` — trade a refresh token for a new access token**
+- [x] **Step 2: `/api/auth/refresh` — trade a refresh token for a new access token**
 
 Create `agentrium-api/src/app/api/auth/refresh/route.ts`:
 
@@ -1063,7 +1071,7 @@ export async function POST(req: NextRequest) {
 }
 ```
 
-- [ ] **Step 3: Deploy and smoke-test `/api/me`**
+- [x] **Step 3: Deploy and smoke-test `/api/me`**
 
 Push, wait for deploy.
 
@@ -1083,7 +1091,7 @@ curl -H "Authorization: Bearer garbage" https://agentrium-api.vercel.app/api/me
 
 Expected: `{"error":"invalid_token"}` with 401.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/app/api/me src/app/api/auth/refresh
@@ -1100,7 +1108,7 @@ git push
 - Modify: `src-tauri/tauri.conf.json`
 - Modify: `src-tauri/capabilities/default.json`
 
-- [ ] **Step 1: Add Rust deps**
+- [x] **Step 1: Add Rust deps**
 
 Edit `src-tauri/Cargo.toml`. Under `[dependencies]`, add:
 
@@ -1123,7 +1131,7 @@ cargo check
 
 Expected: compiles, `Cargo.lock` updated.
 
-- [ ] **Step 2: Register the deep-link scheme in `tauri.conf.json`**
+- [x] **Step 2: Register the deep-link scheme in `tauri.conf.json`**
 
 Edit `src-tauri/tauri.conf.json`. Find the `bundle` section, add (or merge):
 
@@ -1147,7 +1155,7 @@ Find the top-level `plugins` section (or create one if missing):
 }
 ```
 
-- [ ] **Step 3: Grant deep-link capabilities**
+- [x] **Step 3: Grant deep-link capabilities**
 
 Edit `src-tauri/capabilities/default.json`. Find the `permissions` array, add:
 
@@ -1156,7 +1164,7 @@ Edit `src-tauri/capabilities/default.json`. Find the `permissions` array, add:
 "deep-link:allow-get-current"
 ```
 
-- [ ] **Step 4: Sanity build**
+- [x] **Step 4: Sanity build**
 
 ```bash
 cd src-tauri
@@ -1165,7 +1173,7 @@ cargo check
 
 Expected: build succeeds.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json src-tauri/capabilities/default.json
@@ -1179,7 +1187,7 @@ git commit -m "feat(auth): add tauri-plugin-deep-link and register agentrium:// 
 **Files:**
 - Modify: `src-tauri/src/main.rs`
 
-- [ ] **Step 1: Add the plugin registration**
+- [x] **Step 1: Add the plugin registration**
 
 Find the `.plugin(...)` chain inside `tauri::Builder::default()` in `src-tauri/src/main.rs`. Add:
 
@@ -1201,7 +1209,7 @@ app.deep_link().on_open_url(move |event| {
 });
 ```
 
-- [ ] **Step 2: Register the scheme on the current OS (dev-time)**
+- [x] **Step 2: Register the scheme on the current OS (dev-time)**
 
 Deep links only work on Windows if the scheme is registered in the registry. Tauri's installer does this at install time, but for `npm run tauri dev` you must register manually. Add this inside `.setup()` too:
 
@@ -1214,7 +1222,7 @@ Deep links only work on Windows if the scheme is registered in the registry. Tau
 }
 ```
 
-- [ ] **Step 3: Rebuild and manually fire a deep link**
+- [x] **Step 3: Rebuild and manually fire a deep link**
 
 ```bash
 npm run tauri dev
@@ -1239,7 +1247,7 @@ Expected: the Agentrium terminal running `npm run tauri dev` prints something li
 
 If nothing prints, the scheme isn't registered. Check the Windows registry (`reg query HKEY_CLASSES_ROOT\agentrium`) or macOS `Info.plist` (`CFBundleURLTypes`).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src-tauri/src/main.rs
@@ -1254,7 +1262,7 @@ git commit -m "feat(auth): register agentrium:// deep-link scheme and log callba
 - Create: `src-tauri/src/auth.rs`
 - Modify: `src-tauri/src/main.rs` (add `mod auth;`)
 
-- [ ] **Step 1: Create the module with types + pending-map**
+- [x] **Step 1: Create the module with types + pending-map**
 
 Create `src-tauri/src/auth.rs`:
 
@@ -1384,7 +1392,7 @@ mod tests {
 }
 ```
 
-- [ ] **Step 2: Declare the module in `main.rs`**
+- [x] **Step 2: Declare the module in `main.rs`**
 
 Add near the top of `src-tauri/src/main.rs`, alongside the other `mod X;` declarations:
 
@@ -1392,7 +1400,7 @@ Add near the top of `src-tauri/src/main.rs`, alongside the other `mod X;` declar
 mod auth;
 ```
 
-- [ ] **Step 3: Run the Rust tests**
+- [x] **Step 3: Run the Rust tests**
 
 ```bash
 cd src-tauri
@@ -1401,7 +1409,7 @@ cargo test auth::tests
 
 Expected: 4 passing tests.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src-tauri/src/auth.rs src-tauri/src/main.rs
@@ -1417,11 +1425,11 @@ git commit -m "feat(auth): auth.rs skeleton with PendingMap, PKCE, state generat
 
 `credentials.rs` currently uses the `keyring` crate to store API keys. We add three helpers for the auth refresh token using the same crate.
 
-- [ ] **Step 1: Read current `credentials.rs` for its patterns**
+- [x] **Step 1: Read current `credentials.rs` for its patterns**
 
 Open `src-tauri/src/credentials.rs`. Note the service name convention already in use (probably `"agentrium"` or `"claudeterminal"`). Match whatever's there.
 
-- [ ] **Step 2: Add the helpers**
+- [x] **Step 2: Add the helpers**
 
 Append to `src-tauri/src/credentials.rs`:
 
@@ -1473,7 +1481,7 @@ mod auth_token_tests {
 }
 ```
 
-- [ ] **Step 3: Verify it compiles**
+- [x] **Step 3: Verify it compiles**
 
 ```bash
 cd src-tauri
@@ -1482,7 +1490,7 @@ cargo check
 
 Expected: no errors.
 
-- [ ] **Step 4: Run the ignored keychain test manually**
+- [x] **Step 4: Run the ignored keychain test manually**
 
 ```bash
 cargo test credentials::auth_token_tests -- --ignored
@@ -1490,7 +1498,7 @@ cargo test credentials::auth_token_tests -- --ignored
 
 Expected: passes. On Windows, verify the credential appears in Credential Manager (Control Panel → Credential Manager → Windows Credentials → `agentrium.auth`).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src-tauri/src/credentials.rs
@@ -1504,11 +1512,11 @@ git commit -m "feat(auth): keychain helpers for refresh token storage"
 **Files:**
 - Modify: `src-tauri/src/database.rs`
 
-- [ ] **Step 1: Find `init_schema` in `database.rs`**
+- [x] **Step 1: Find `init_schema` in `database.rs`**
 
 Open `src-tauri/src/database.rs` and locate the `init_schema` function. Note the pattern — it's a series of `CREATE TABLE IF NOT EXISTS` and `ALTER TABLE ... ADD COLUMN` calls with error-swallowing for the "duplicate column" case.
 
-- [ ] **Step 2: Add the `user_meta` table**
+- [x] **Step 2: Add the `user_meta` table**
 
 Inside `init_schema`, after the existing `CREATE TABLE` calls, add:
 
@@ -1522,7 +1530,7 @@ conn.execute(
 )?;
 ```
 
-- [ ] **Step 3: Add typed accessor helpers**
+- [x] **Step 3: Add typed accessor helpers**
 
 Append to `database.rs` (inside the `impl Database` block):
 
@@ -1560,7 +1568,7 @@ pub fn delete_user_meta(&self, key: &str) -> Result<(), String> {
 
 If `use rusqlite::OptionalExtension;` isn't already imported at the top of the file, add it.
 
-- [ ] **Step 4: Add a unit test**
+- [x] **Step 4: Add a unit test**
 
 In the existing `#[cfg(test)]` module in `database.rs`, add:
 
@@ -1577,7 +1585,7 @@ fn user_meta_round_trip() {
 
 If `Database::new_in_memory` doesn't exist yet, add a `#[cfg(test)]` constructor that opens `":memory:"`.
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 ```bash
 cd src-tauri
@@ -1586,7 +1594,7 @@ cargo test database::tests::user_meta_round_trip
 
 Expected: passes.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src-tauri/src/database.rs
@@ -1601,7 +1609,7 @@ git commit -m "feat(auth): user_meta table + get/set/delete helpers"
 - Modify: `src-tauri/src/auth.rs` (append IPC command)
 - Modify: `src-tauri/src/main.rs` (register app state + command)
 
-- [ ] **Step 1: Add app state for `PendingMap`**
+- [x] **Step 1: Add app state for `PendingMap`**
 
 In `src-tauri/src/main.rs`, add to the `.manage(...)` calls in the setup:
 
@@ -1609,7 +1617,7 @@ In `src-tauri/src/main.rs`, add to the `.manage(...)` calls in the setup:
 .manage(std::sync::Arc::new(auth::PendingMap::default()))
 ```
 
-- [ ] **Step 2: Implement the command**
+- [x] **Step 2: Implement the command**
 
 Append to `src-tauri/src/auth.rs`:
 
@@ -1662,11 +1670,11 @@ pub async fn start_oauth_login(
 }
 ```
 
-- [ ] **Step 3: Register the command**
+- [x] **Step 3: Register the command**
 
 Find the `tauri::generate_handler![...]` macro call in `main.rs` and add `auth::start_oauth_login` to the list.
 
-- [ ] **Step 4: Compile check**
+- [x] **Step 4: Compile check**
 
 ```bash
 cd src-tauri
@@ -1675,7 +1683,7 @@ cargo check
 
 Expected: compiles.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src-tauri/src/auth.rs src-tauri/src/main.rs src-tauri/Cargo.toml src-tauri/Cargo.lock
@@ -1690,7 +1698,7 @@ git commit -m "feat(auth): start_oauth_login IPC command opens broker URL in bro
 - Modify: `src-tauri/src/auth.rs`
 - Modify: `src-tauri/src/main.rs`
 
-- [ ] **Step 1: Add the handler function**
+- [x] **Step 1: Add the handler function**
 
 Append to `src-tauri/src/auth.rs`:
 
@@ -1763,7 +1771,7 @@ pub fn handle_deep_link(app: &tauri::AppHandle, url: &str) {
 }
 ```
 
-- [ ] **Step 2: Wire it into `main.rs`**
+- [x] **Step 2: Wire it into `main.rs`**
 
 Replace the placeholder `println!("[deep-link] received: {}", url);` from Task 15 with:
 
@@ -1773,7 +1781,7 @@ crate::auth::handle_deep_link(&handle, &url.to_string());
 
 The `handle` variable was cloned in Task 15 Step 1 before being moved into the closure.
 
-- [ ] **Step 3: Compile check**
+- [x] **Step 3: Compile check**
 
 ```bash
 cd src-tauri
@@ -1782,7 +1790,7 @@ cargo check
 
 Expected: compiles.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src-tauri/src/auth.rs src-tauri/src/main.rs
@@ -1797,7 +1805,7 @@ git commit -m "feat(auth): deep-link handler stores refresh token and emits auth
 - Modify: `src-tauri/src/auth.rs`
 - Modify: `src-tauri/src/main.rs`
 
-- [ ] **Step 1: Add commands**
+- [x] **Step 1: Add commands**
 
 Append to `src-tauri/src/auth.rs`:
 
@@ -1848,7 +1856,7 @@ pub async fn get_auth_prompt_seen(db: State<'_, Arc<Mutex<Database>>>) -> Result
 }
 ```
 
-- [ ] **Step 2: Register in `main.rs`**
+- [x] **Step 2: Register in `main.rs`**
 
 Extend `tauri::generate_handler![...]` with:
 
@@ -1859,14 +1867,14 @@ auth::mark_auth_prompt_seen,
 auth::get_auth_prompt_seen,
 ```
 
-- [ ] **Step 3: Compile**
+- [x] **Step 3: Compile**
 
 ```bash
 cd src-tauri
 cargo check
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src-tauri/src/auth.rs src-tauri/src/main.rs
@@ -1881,7 +1889,7 @@ git commit -m "feat(auth): fetch_current_user, logout, auth-prompt-seen commands
 - Create: `src/store/authStore.ts`
 - Create: `src/store/authStore.test.ts`
 
-- [ ] **Step 1: Write the store**
+- [x] **Step 1: Write the store**
 
 Create `src/store/authStore.ts`:
 
@@ -1920,7 +1928,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 
 Note: this store is deliberately NOT persisted via `zustand/middleware/persist`. Tokens must never touch localStorage.
 
-- [ ] **Step 2: Write a test**
+- [x] **Step 2: Write a test**
 
 Create `src/store/authStore.test.ts`:
 
@@ -1965,7 +1973,7 @@ describe('authStore', () => {
 });
 ```
 
-- [ ] **Step 3: Run tests**
+- [x] **Step 3: Run tests**
 
 ```bash
 npm run test:run -- src/store/authStore.test.ts
@@ -1973,7 +1981,7 @@ npm run test:run -- src/store/authStore.test.ts
 
 Expected: 4 passing.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/store/authStore.ts src/store/authStore.test.ts
@@ -1987,7 +1995,7 @@ git commit -m "feat(auth): zustand authStore + tests (mode/user/access-token, no
 **Files:**
 - Create: `src/lib/auth.ts`
 
-- [ ] **Step 1: Write wrappers**
+- [x] **Step 1: Write wrappers**
 
 Create `src/lib/auth.ts`:
 
@@ -2035,7 +2043,7 @@ export async function subscribeToAuthEvents(): Promise<UnlistenFn> {
 }
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add src/lib/auth.ts
@@ -2050,7 +2058,7 @@ git commit -m "feat(auth): frontend wrappers + auth-tokens-received listener"
 - Create: `src/components/LoginModal.tsx`
 - Create: `src/components/LoginModal.test.tsx`
 
-- [ ] **Step 1: Write the component**
+- [x] **Step 1: Write the component**
 
 Create `src/components/LoginModal.tsx`:
 
@@ -2143,7 +2151,7 @@ export function LoginModal({ onClose }: Props) {
 }
 ```
 
-- [ ] **Step 2: Write a test**
+- [x] **Step 2: Write a test**
 
 Create `src/components/LoginModal.test.tsx`:
 
@@ -2191,7 +2199,7 @@ describe('LoginModal', () => {
 });
 ```
 
-- [ ] **Step 3: Run tests**
+- [x] **Step 3: Run tests**
 
 ```bash
 npm run test:run -- src/components/LoginModal.test.tsx
@@ -2199,7 +2207,7 @@ npm run test:run -- src/components/LoginModal.test.tsx
 
 Expected: 3 passing.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/components/LoginModal.tsx src/components/LoginModal.test.tsx
@@ -2214,7 +2222,7 @@ git commit -m "feat(auth): LoginModal component (Google + Guest for M1) + tests"
 - Create: `src/components/HeaderAuth.tsx`
 - Create: `src/components/HeaderAuth.test.tsx`
 
-- [ ] **Step 1: Write the component**
+- [x] **Step 1: Write the component**
 
 Create `src/components/HeaderAuth.tsx`:
 
@@ -2322,7 +2330,7 @@ function initials(s: string): string {
 }
 ```
 
-- [ ] **Step 2: Write tests**
+- [x] **Step 2: Write tests**
 
 Create `src/components/HeaderAuth.test.tsx`:
 
@@ -2374,7 +2382,7 @@ describe('HeaderAuth', () => {
 });
 ```
 
-- [ ] **Step 3: Run tests**
+- [x] **Step 3: Run tests**
 
 ```bash
 npm run test:run -- src/components/HeaderAuth.test.tsx
@@ -2382,7 +2390,7 @@ npm run test:run -- src/components/HeaderAuth.test.tsx
 
 Expected: 4 passing.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/components/HeaderAuth.tsx src/components/HeaderAuth.test.tsx
@@ -2396,7 +2404,7 @@ git commit -m "feat(auth): HeaderAuth component with guest/authed states + dropd
 **Files:**
 - Modify: `src/App.tsx`
 
-- [ ] **Step 1: Add imports**
+- [x] **Step 1: Add imports**
 
 Add at the top of `src/App.tsx`:
 
@@ -2407,7 +2415,7 @@ import { LoginModal } from './components/LoginModal';
 import { invoke } from '@tauri-apps/api/core';
 ```
 
-- [ ] **Step 2: Add state + boot effect inside the component**
+- [x] **Step 2: Add state + boot effect inside the component**
 
 Inside the top-level component body:
 
@@ -2460,7 +2468,7 @@ async function tryRehydrateAuth(): Promise<boolean> {
 }
 ```
 
-- [ ] **Step 3: Render the modal**
+- [x] **Step 3: Render the modal**
 
 At the bottom of the component's JSX return, before the closing tag:
 
@@ -2468,7 +2476,7 @@ At the bottom of the component's JSX return, before the closing tag:
 {showLoginModal && <LoginModal onClose={() => setShowLoginModal(false)} />}
 ```
 
-- [ ] **Step 4: Add the `rehydrate_auth` Rust command**
+- [x] **Step 4: Add the `rehydrate_auth` Rust command**
 
 Append to `src-tauri/src/auth.rs`:
 
@@ -2519,7 +2527,7 @@ Register it in `main.rs`'s `generate_handler!` list:
 auth::rehydrate_auth,
 ```
 
-- [ ] **Step 5: Compile check**
+- [x] **Step 5: Compile check**
 
 ```bash
 cd src-tauri && cargo check
@@ -2528,7 +2536,7 @@ cd .. && npm run build
 
 Expected: both succeed.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/App.tsx src-tauri/src/auth.rs src-tauri/src/main.rs
@@ -2542,13 +2550,13 @@ git commit -m "feat(auth): first-launch popup gating + boot-time auth rehydratio
 **Files:**
 - Modify: `src/components/TitleBar.tsx`
 
-- [ ] **Step 1: Add the import**
+- [x] **Step 1: Add the import**
 
 ```tsx
 import { HeaderAuth } from './HeaderAuth';
 ```
 
-- [ ] **Step 2: Place the component**
+- [x] **Step 2: Place the component**
 
 Find a suitable slot in the title bar — most title bars have a left region (icon + menu) and a right region (window controls). Place `<HeaderAuth />` on the right side but LEFT of the min/max/close window buttons. Add:
 
@@ -2558,7 +2566,7 @@ Find a suitable slot in the title bar — most title bars have a left region (ic
 </div>
 ```
 
-- [ ] **Step 3: Manual visual check**
+- [x] **Step 3: Manual visual check**
 
 ```bash
 npm run tauri dev
@@ -2566,7 +2574,7 @@ npm run tauri dev
 
 Wait for the app. Expected: sign-in pill appears in the title bar next to window controls after the app decides mode = guest (or after first-launch modal is dismissed via "Continue as guest").
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/components/TitleBar.tsx
@@ -2579,13 +2587,13 @@ git commit -m "feat(auth): HeaderAuth widget in TitleBar"
 
 No new code. This validates the full loop works.
 
-- [ ] **Step 1: Reset local state**
+- [x] **Step 1: Reset local state**
 
 Close any running Agentrium instances. Delete the `user_meta` row so the first-launch popup fires. Also clear the Windows Credential Manager entry `agentrium.auth` / `refresh_token` if present.
 
 Easiest reset: delete the whole SQLite DB file — `%APPDATA%\com.claudeterminal.ClaudeTerminal\claudeterminal.db` (Windows) or wherever `ProjectDirs::from` resolves. **Destructive: don't do this if you have real profiles/workspaces you care about.**
 
-- [ ] **Step 2: Boot and complete Google sign-in**
+- [x] **Step 2: Boot and complete Google sign-in**
 
 ```bash
 npm run tauri dev
@@ -2607,13 +2615,13 @@ If it fails at any step, capture:
 - Browser network tab (any 4xx/5xx from Vercel).
 - Vercel logs (via MCP `get_deployment_build_logs` or `get_runtime_logs`).
 
-- [ ] **Step 3: Test sign out**
+- [x] **Step 3: Test sign out**
 
 - Click the user chip in the title bar → dropdown appears → `Sign out`.
 - Expected: chip reverts to `[Sign in]` pill.
 - Verify the Credential Manager entry `agentrium.auth` is gone.
 
-- [ ] **Step 4: Test guest mode**
+- [x] **Step 4: Test guest mode**
 
 - Sign out (if signed in).
 - Delete the `auth_prompt_seen` row (or the whole DB) again.
@@ -2622,14 +2630,14 @@ If it fails at any step, capture:
 - Expected: modal closes, sign-in pill shows.
 - Restart the app — `LoginModal` does NOT reappear (because `auth_prompt_seen = 1`).
 
-- [ ] **Step 5: Test boot-time rehydration**
+- [x] **Step 5: Test boot-time rehydration**
 
 - Sign in successfully (per Step 2).
 - Close the app fully.
 - Reopen the app.
 - Expected: `LoginModal` does NOT appear; the header shows your name IMMEDIATELY (before any UI interaction). This proves `rehydrate_auth` worked.
 
-- [ ] **Step 6: Test re-open of sign-in via the pill**
+- [x] **Step 6: Test re-open of sign-in via the pill**
 
 - Sign out.
 - Click the `[Sign in]` pill → `LoginModal` opens again.
@@ -2658,7 +2666,7 @@ Prepend to `src/changelog.json`:
 }
 ```
 
-- [ ] **Step 2: Discuss version convention with user**
+- [x] **Step 2: Discuss version convention with user** — decided **(b)**: hold on the branch, ship M1+M2 together as `v1.34.0-preview`.
 
 **DO NOT bump the version files yet.** Ask the user:
 
@@ -2679,18 +2687,18 @@ git commit -m "docs: changelog entry for M1 sign-in preview"
 
 Before executing this plan, run through the spec section by section and confirm each requirement has a task:
 
-- [ ] **Spec §5.1 (Auth.js core tables)** — Task 7 (Drizzle schema)
-- [ ] **Spec §5.5 (Local SQLite additions: user_meta)** — Task 18 (`sync_queue` deferred to M2)
-- [ ] **Spec §6.1 (OAuth deep-link handshake)** — Tasks 11, 12, 15, 16, 19, 20
-- [ ] **Spec §6.3 (Guest mode)** — Tasks 24, 26
-- [ ] **Spec §10.1 (HeaderAuth widget)** — Task 25
-- [ ] **Spec §10.2 (LoginModal)** — Task 24
-- [ ] **Spec §11 (Security: PKCE, deep-link hijack protection, JWT signing)** — Tasks 10, 16, 20
-- [ ] **Spec §13 (Testing plan for auth.rs unit tests, LoginModal state, HeaderAuth state)** — Tasks 16, 22, 24, 25
-- [ ] **Spec §14.4 (Tauri config additions)** — Task 14
-- [ ] **Spec §14.5 (Vercel env vars)** — Task 5
-- [ ] **Spec §14.7 (Rollback: revert desktop client)** — implicit (no destructive migrations in M1)
-- [ ] **Boot-time rehydration** — Task 26 (added because §14.7 requires clean rollback and rehydration is the mechanism for a returning authed user)
+- [x] **Spec §5.1 (Auth.js core tables)** — Task 7 (Drizzle schema)
+- [x] **Spec §5.5 (Local SQLite additions: user_meta)** — Task 18 (`sync_queue` deferred to M2)
+- [x] **Spec §6.1 (OAuth deep-link handshake)** — Tasks 11, 12, 15, 16, 19, 20
+- [x] **Spec §6.3 (Guest mode)** — Tasks 24, 26
+- [x] **Spec §10.1 (HeaderAuth widget)** — Task 25
+- [x] **Spec §10.2 (LoginModal)** — Task 24
+- [x] **Spec §11 (Security: PKCE, deep-link hijack protection, JWT signing)** — Tasks 10, 16, 20
+- [x] **Spec §13 (Testing plan for auth.rs unit tests, LoginModal state, HeaderAuth state)** — Tasks 16, 22, 24, 25
+- [x] **Spec §14.4 (Tauri config additions)** — Task 14
+- [x] **Spec §14.5 (Vercel env vars)** — Task 5
+- [x] **Spec §14.7 (Rollback: revert desktop client)** — implicit (no destructive migrations in M1)
+- [x] **Boot-time rehydration** — Task 26 (added because §14.7 requires clean rollback and rehydration is the mechanism for a returning authed user)
 
 **Deferred to M2 (not in this plan):**
 - Sync engine (§7)
