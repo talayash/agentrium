@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Loader2, UserRound } from 'lucide-react';
 import { Modal } from './ui/Modal';
 import {
   startOAuthLogin,
@@ -244,12 +244,13 @@ export function LoginModal({ onClose }: LoginModalProps) {
         )}
       </div>
 
-      <div className="flex items-center justify-center px-4 h-11 border-t border-[var(--seam)] bg-elevation-3">
+      <div className="flex items-center justify-center px-4 h-12 border-t border-[var(--seam)] bg-elevation-3">
         <button
           type="button"
           onClick={handleGuest}
-          className="text-[12px] text-text-tertiary hover:text-text-secondary underline underline-offset-2 transition-colors"
+          className="inline-flex items-center gap-2 h-8 px-3.5 rounded-md bg-elevation-2 ring-1 ring-inset ring-seam text-[13px] font-semibold text-text-secondary hover:text-text-primary hover:bg-elevation-1 active:scale-[0.98] transition-[background-color,color,transform] duration-100"
         >
+          <UserRound size={15} aria-hidden="true" />
           Continue as guest
         </button>
       </div>

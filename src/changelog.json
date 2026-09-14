@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.34.0",
+    "date": "2026-09-14",
+    "features": [
+      { "title": "Sign in to Agentrium (optional)", "description": "Sign in with Google, GitHub or email to keep your profiles, custom agents and workspaces in sync across devices. Guest mode stays exactly as it is: no account needed." },
+      { "title": "We respect your privacy", "description": "Sign-in is optional, your terminal sessions never leave your machine, synced profile environment variables are encrypted at rest, and telemetry stays off when you turn it off." },
+      { "title": "Full sync is coming in the next versions", "description": "Session restore across devices and the rest of the sync surface arrive in upcoming releases; this version syncs profiles, custom agents and workspaces." },
+      { "title": "Confirmation dialogs fixed", "description": "Discarding changes, dropping stashes, deleting changelists and replacing sessions now wait for your answer in a native dialog." }
+    ]
+  },
+  {
     "version": "1.33.7",
     "date": "2026-09-10",
     "features": [
