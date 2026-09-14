@@ -4,6 +4,7 @@ import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
 import { toast } from '../store/toastStore';
 import { reportInvokeFailure } from '../lib/errorReporter';
+import { confirmAction } from '../lib/confirmDialog';
 import { TerminalView } from './TerminalView';
 import { TerminalGrid } from './TerminalGrid';
 import { SplitView } from './SplitView';
@@ -55,9 +56,12 @@ export function TerminalTabs() {
     setActiveFilePath(path);
   }, [setActiveFilePath]);
 
-  const requestCloseFile = (path: string) => {
+  const requestCloseFile = async (path: string) => {
     const tab = useAppStore.getState().openFiles.find(t => t.path === path);
-    if (tab && tab.content !== tab.original && !window.confirm(`Discard unsaved changes in ${fileBasename(path)}?`)) return;
+    if (tab && tab.content !== tab.original) {
+      const ok = await confirmAction(`Discard unsaved changes in ${fileBasename(path)}?`, { okLabel: 'Discard' });
+      if (!ok) return;
+    }
     closeFileTab(path);
   };
 

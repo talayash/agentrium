@@ -24,6 +24,8 @@
     "process:allow-restart",
     "store:default",
     "dialog:default",
+    "dialog:allow-confirm",
+    "dialog:allow-ask",
     "clipboard-manager:allow-write-text",
     "clipboard-manager:allow-read-text",
     "updater:default",

@@ -15,6 +15,7 @@ import { PanelHeader } from './ui/PanelHeader';
 import { ListRow } from './ui/ListRow';
 import { EmptyState } from './ui/EmptyState';
 import { listAgentSessions, type AgentSessionInfo } from '../lib/agentSessions';
+import { confirmAction } from '../lib/confirmDialog';
 import type { AgentKind } from '../lib/agents';
 
 const isMac = navigator.platform.toUpperCase().includes('MAC');
@@ -154,9 +155,10 @@ export function SessionsPanel() {
       : activeAgent === 'codex' ? 'Codex'
       : activeAgent === 'cursor' ? 'Cursor'
       : 'Antigravity';
-    const ok = window.confirm(
+    const ok = await confirmAction(
       `Replace the current ${agentLabel} in "${activeTerminal.config.nickname || activeTerminal.config.label}" with session ${session.id.slice(0, 8)}?\n\n` +
         `If the agent is mid-response, that work will be cancelled. The session you're leaving is saved on disk and resumable.`,
+      { title: 'Resume session', okLabel: 'Replace' },
     );
     if (!ok) return;
     // Snapshot the current terminal's user-facing config so the replacement
