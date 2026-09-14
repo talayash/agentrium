@@ -161,7 +161,7 @@ All require header `x-admin-token` equal to `ADMIN_API_TOKEN` (constant-time com
 }
 ```
 
-- `by_provider`: a user counts as `email` when `password_hash` is not null and has no `accounts` row; otherwise the provider of their earliest `accounts` row.
+- `by_provider`: a user counts as `email` when `password_hash` is not null and has no `accounts` row; otherwise the provider of one linked `accounts` row (alphabetical, since `accounts` has no timestamp; a user has at most one row per provider, so this only matters for multi-provider users).
 - `devices.active`: refresh tokens with `revoked_at IS NULL AND expires_at > now()`. `by_app_version` and `by_os` come from `client_info` on those rows; rows without `client_info` count under `"unknown"`.
 - `active_installation_ids`: distinct `client_info->>'installation_id'` over active devices. Consumed by the website proxy only, never by the browser.
 - `sync.*`: counts of rows with `deleted_at IS NULL`; `users_with_sync` counts distinct users with at least one such row.
