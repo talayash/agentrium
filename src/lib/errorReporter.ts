@@ -22,6 +22,11 @@ export function isCancellationError(reason: unknown): boolean {
 }
 
 export function reportError(kind: string, message: string, stack?: string): void {
+  // Dev builds (vite dev server) are the developer's own machine; their stacks
+  // point at localhost and only pollute the production error groups.
+  if (import.meta.env.DEV) {
+    return;
+  }
   if (NOISE_PATTERNS.some((re) => re.test(message))) {
     return;
   }

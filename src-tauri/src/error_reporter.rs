@@ -314,6 +314,12 @@ pub async fn report(
     if !is_enabled() {
         return;
     }
+    // Debug builds run only on the developer's machine (`npm run tauri dev`);
+    // their panics and command errors would otherwise land in the production
+    // error groups alongside real user reports.
+    if cfg!(debug_assertions) {
+        return;
+    }
     let state = match REPORTER.get() {
         Some(s) => s,
         None => {

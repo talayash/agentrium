@@ -188,7 +188,10 @@ pub async fn write_paste(
         let base = suggested_name.unwrap_or_else(|| {
             chrono::Local::now().format("paste-%Y-%m-%d-%H%M").to_string()
         });
+        // Every failure here is about the user's filesystem (the terminal's
+        // cwd vanished, permissions, an invalid name) rather than app logic.
         crate::pastes::write_paste(&cwd, &content, &base, &extension)
+            .map_err(error_reporter::user_err)
     })
     .await
 }
@@ -1362,7 +1365,27 @@ async fn fetch_latest_claude_version() -> Result<String, String> {
             Err(e) => last_err = Some(format!("Network error: {}", e)),
         }
     }
-    Err(last_err.unwrap_or_else(|| "Failed to fetch latest version from npm".to_string()))
+    // Reaching the npm registry depends on the user's network and on npm's
+    // availability; neither is a bug in this app.
+    Err(error_reporter::user_err(
+        last_err.unwrap_or_else(|| "Failed to fetch latest version from npm".to_string()),
+    ))
+}
+
+/// True when npm output describes a network failure (offline, DNS, reset,
+/// timeout, proxy) rather than a problem this app can do anything about.
+pub(crate) fn is_npm_network_error(output: &str) -> bool {
+    const MARKERS: [&str; 8] = [
+        "ECONNRESET",
+        "ENOTFOUND",
+        "ETIMEDOUT",
+        "ECONNREFUSED",
+        "EAI_AGAIN",
+        "ERR_SOCKET_TIMEOUT",
+        "npm error network",
+        "npm ERR! network",
+    ];
+    MARKERS.iter().any(|m| output.contains(m))
 }
 
 #[command]
@@ -1383,7 +1406,11 @@ pub async fn update_claude_code() -> Result<String, String> {
         } else {
             let stderr = String::from_utf8_lossy(&output.stderr);
             let stdout = String::from_utf8_lossy(&output.stdout);
-            Err(format!("{}{}", stderr, stdout))
+            let combined = format!("{}{}", stderr, stdout);
+            if is_npm_network_error(&combined) {
+                return Err(error_reporter::user_err(combined));
+            }
+            Err(combined)
         }
     })
     .await
@@ -1666,7 +1693,21 @@ pub async fn open_external_url(url: String) -> Result<(), String> {
         if parsed.scheme() != "https" && parsed.scheme() != "http" {
             return Err("Only HTTP and HTTPS URLs are allowed".to_string());
         }
-        open::that(parsed.as_str()).map_err(|e| e.to_string())
+        match open::that(parsed.as_str()) {
+            Ok(()) => Ok(()),
+            Err(first) => {
+                // The default launcher shells out to PowerShell on Windows, which
+                // some machines restrict. Explorer hands http(s) URLs to the default
+                // browser without a shell, so try it before giving up.
+                #[cfg(windows)]
+                if open::with(parsed.as_str(), "explorer").is_ok() {
+                    return Ok(());
+                }
+                // A machine that cannot launch its own browser is an environment
+                // problem, not an app defect.
+                Err(error_reporter::user_err(format!("Could not open the browser: {first}")))
+            }
+        }
     })
     .await
 }
@@ -2585,7 +2626,13 @@ async fn list_worktrees_internal(path: &str) -> Result<Vec<WorktreeInfo>, String
         .map_err(|e| format!("Failed to run git worktree list: {}", e))?;
 
     if !output.status.success() {
-        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        // A working directory that is not a git checkout is the user's setup,
+        // not a defect: keep it out of telemetry.
+        if stderr.contains("not a git repository") {
+            return Err(error_reporter::user_err(stderr));
+        }
+        return Err(stderr);
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -5932,6 +5979,17 @@ mod wrap_cmd_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn npm_network_failures_are_classified_as_environment_errors() {
+        let reset = "npm error code ECONNRESET\nnpm error syscall read\nnpm error network request to https://registry.npmjs.org/@anthropic-ai%2fclaude-code failed, reason: read ECONNRESET";
+        assert!(is_npm_network_error(reset));
+        assert!(is_npm_network_error("npm ERR! network getaddrinfo ENOTFOUND registry.npmjs.org"));
+        assert!(is_npm_network_error("npm error code ETIMEDOUT"));
+        // A genuine install failure must still reach telemetry.
+        assert!(!is_npm_network_error("npm error code EACCES\nnpm error syscall mkdir"));
+        assert!(!is_npm_network_error("npm error 404 Not Found - GET https://registry.npmjs.org/nope"));
+    }
 
     #[test]
     fn create_terminal_request_deserializes_without_agent_field() {
