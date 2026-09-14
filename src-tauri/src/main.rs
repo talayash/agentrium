@@ -289,6 +289,7 @@ fn main() {
             commands::write_claude_command,
             commands::delete_claude_command,
             commands::get_installation_id,
+            commands::set_telemetry_enabled,
             commands::send_telemetry_heartbeat,
             commands::get_team_tasks,
             commands::summarize_session,

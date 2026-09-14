@@ -313,6 +313,15 @@ function App() {
       unlisten = await subscribeToAuthEvents();
       if (cancelled) return;
 
+      // Push telemetry consent to Rust before the first refresh/rehydrate
+      // call, which fires here - well before send_telemetry_heartbeat (that
+      // one waits on the setup check). Awaited so the flag lands before
+      // rehydrate_auth; best-effort otherwise, since a failure here only
+      // means this one auth request omits the installation id, which
+      // send_telemetry_heartbeat corrects moments later.
+      await invoke('set_telemetry_enabled', { enabled: useAppStore.getState().telemetryEnabled }).catch(() => {});
+      if (cancelled) return;
+
       const rehydrated = await tryRehydrateAuth();
       if (cancelled) return;
       if (rehydrated) return; // already signed in - no modal needed

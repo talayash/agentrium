@@ -3778,6 +3778,21 @@ pub async fn get_installation_id(state: State<'_, AppState>) -> Result<String, S
     .await
 }
 
+/// Push the frontend's telemetry consent into `telemetry::TELEMETRY_ENABLED`
+/// as early as possible on boot, so `auth::ClientInfo::current()` has an
+/// up-to-date consent flag for the very first refresh/rehydrate call - which
+/// fires before `send_telemetry_heartbeat` (that one waits on the setup
+/// check). `send_telemetry_heartbeat` also sets this flag on every call, so
+/// this command only needs to win the race at startup.
+#[command]
+pub async fn set_telemetry_enabled(enabled: bool) -> Result<(), String> {
+    wrap_cmd("set_telemetry_enabled", async move {
+        crate::telemetry::set_enabled(enabled);
+        Ok(())
+    })
+    .await
+}
+
 #[command]
 pub async fn send_telemetry_heartbeat(
     state: State<'_, AppState>,
