@@ -37,7 +37,7 @@ Work in `C:/Users/talay/agentrium-api`. Run tests with `npx vitest run`, types w
 **Interfaces:**
 - Produces: `users.createdAt` Drizzle column (`timestamp with time zone`, not null, default now) used by A3, A4, A5.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `src/lib/adapter.test.ts`:
 
@@ -53,12 +53,12 @@ describe('users schema', () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/lib/adapter.test.ts`
 Expected: FAIL, `users.createdAt` is undefined.
 
-- [ ] **Step 3: Add the column to the schema**
+- [x] **Step 3: Add the column to the schema**
 
 In `db/schema.ts`, inside the `users` table object after `passwordHash`:
 
@@ -77,12 +77,12 @@ and extend the index callback:
   }),
 ```
 
-- [ ] **Step 4: Generate the migration**
+- [x] **Step 4: Generate the migration**
 
 Run: `npx dotenv -e .env.local -- npx drizzle-kit generate --name users_created_at`
 Expected: creates `db/migrations/0007_users_created_at.sql` with an `ALTER TABLE "users" ADD COLUMN "created_at" ...` and a `CREATE INDEX "users_created_at_idx" ...`, and updates `meta/_journal.json` + `meta/0007_snapshot.json`.
 
-- [ ] **Step 5: Add the backfill to the generated SQL**
+- [x] **Step 5: Add the backfill to the generated SQL**
 
 Insert between the `ALTER TABLE` and `CREATE INDEX` statements in `0007_users_created_at.sql`:
 
@@ -96,7 +96,7 @@ UPDATE "users" u SET "created_at" = COALESCE(
 
 The final file must be: ALTER TABLE, breakpoint, UPDATE, breakpoint, CREATE INDEX.
 
-- [ ] **Step 6: Run tests and types**
+- [x] **Step 6: Run tests and types**
 
 Run: `npx vitest run src/lib/adapter.test.ts && npx tsc --noEmit -p tsconfig.json`
 Expected: PASS, no type errors.
@@ -110,7 +110,7 @@ npx dotenv -e .env.local -- node -e "const p=require('postgres')(process.env.DAT
 ```
 Expected: a row with `n` equal to the user count and a non-null `min`.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add db/schema.ts db/migrations src/lib/adapter.test.ts
@@ -130,7 +130,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 **Interfaces:**
 - Produces: `clientInfoSchema` (zod, optional object) and type `ClientInfo = { app_version?: string; os?: string; installation_id?: string }`. Stored verbatim in `refresh_tokens.client_info`. Read by A3, A4, A5.
 
-- [ ] **Step 1: Write the failing schema test**
+- [x] **Step 1: Write the failing schema test**
 
 `src/lib/client-info.test.ts`:
 
@@ -158,12 +158,12 @@ describe('clientInfoSchema', () => {
 });
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `npx vitest run src/lib/client-info.test.ts`
 Expected: FAIL, module not found.
 
-- [ ] **Step 3: Implement the schema**
+- [x] **Step 3: Implement the schema**
 
 `src/lib/client-info.ts`:
 
@@ -188,12 +188,12 @@ export const clientInfoSchema = z
 export type ClientInfo = z.infer<typeof clientInfoSchema>;
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `npx vitest run src/lib/client-info.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Write the failing token route test**
+- [x] **Step 5: Write the failing token route test**
 
 In `src/app/api/auth/desktop/token/route.test.ts`, add inside the `describe`:
 
@@ -216,12 +216,12 @@ In `src/app/api/auth/desktop/token/route.test.ts`, add inside the `describe`:
   });
 ```
 
-- [ ] **Step 6: Run to verify it fails**
+- [x] **Step 6: Run to verify it fails**
 
 Run: `npx vitest run src/app/api/auth/desktop/token`
 Expected: FAIL on the first new test (`clientInfo` missing).
 
-- [ ] **Step 7: Wire `client` into the three sign-in routes**
+- [x] **Step 7: Wire `client` into the three sign-in routes**
 
 In `token/route.ts`:
 
@@ -249,7 +249,7 @@ and the insert:
 
 In `signin-credentials/route.ts` add `client: clientInfoSchema.optional(),` to `bodySchema` (import path `'../../../../../lib/client-info'`) and `clientInfo: parsed.data.client ?? null,` to the insert. Same two edits in `signup/route.ts`.
 
-- [ ] **Step 8: Write the failing refresh test**
+- [x] **Step 8: Write the failing refresh test**
 
 In `src/app/api/auth/refresh/route.test.ts`, find how the test doubles `db` (it mocks `update(...).set(...).where(...).returning()` and `insert(...).values(...)`). Add a test that (a) sends `client` and expects the inserted row to carry it, and (b) sends no `client` and expects the inserted row to carry the previous token's `client_info`. To make (b) possible, the mocked `returning()` for the claim must return `{ id, userId, clientInfo: { app_version: '1.33.6', os: 'macos', installation_id: 'inst-9' } }`.
 
@@ -269,12 +269,12 @@ In `src/app/api/auth/refresh/route.test.ts`, find how the test doubles `db` (it 
 
 Adapt `GOOD`, `req`, and `shared.inserted` to the names already used in that test file.
 
-- [ ] **Step 9: Run to verify it fails**
+- [x] **Step 9: Run to verify it fails**
 
 Run: `npx vitest run src/app/api/auth/refresh`
 Expected: FAIL on both new tests.
 
-- [ ] **Step 10: Implement inheritance in the refresh route**
+- [x] **Step 10: Implement inheritance in the refresh route**
 
 In `refresh/route.ts`:
 
@@ -306,12 +306,12 @@ and the insert of the rotated token:
   });
 ```
 
-- [ ] **Step 11: Run the whole suite and types**
+- [x] **Step 11: Run the whole suite and types**
 
 Run: `npx vitest run && npx tsc --noEmit -p tsconfig.json`
 Expected: all PASS.
 
-- [ ] **Step 12: Document the contract**
+- [x] **Step 12: Document the contract**
 
 In `README.md`, under "Desktop sign-in flow" after step 4, add:
 
@@ -321,7 +321,7 @@ All four token-issuing requests (`/desktop/token`, `/desktop/signup`, `/desktop/
 It is stored on the issued refresh token as `client_info`; a refresh without `client` inherits the previous token's value. Old clients that omit it keep working.
 ```
 
-- [ ] **Step 13: Commit**
+- [x] **Step 13: Commit**
 
 ```bash
 git add src/lib/client-info.ts src/lib/client-info.test.ts src/app/api/auth README.md
@@ -339,7 +339,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 **Interfaces:**
 - Produces: `requireAdminToken(req: Pick<NextRequest,'headers'>): { ok: true } | { ok: false; response: NextResponse }`. Used by A4, A5, A6.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 `src/lib/admin-auth.test.ts`:
 
@@ -378,12 +378,12 @@ describe('requireAdminToken', () => {
 });
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `npx vitest run src/lib/admin-auth.test.ts`
 Expected: FAIL, module not found.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `src/lib/admin-auth.ts`:
 
@@ -414,12 +414,12 @@ export function requireAdminToken(req: Pick<NextRequest, 'headers'>): AdminAuth 
 }
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `npx vitest run src/lib/admin-auth.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Document the env var**
+- [x] **Step 5: Document the env var**
 
 Append to `.env.local.example`:
 
@@ -431,7 +431,7 @@ ADMIN_API_TOKEN=paste-64-hex-chars
 
 Add a row to the README environment table: `| \`ADMIN_API_TOKEN\` | Shared secret for \`/api/admin/*\` (read-only account data for the website's \`/admin\` dashboard). |`
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/lib/admin-auth.ts src/lib/admin-auth.test.ts .env.local.example README.md
@@ -449,7 +449,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Produces: `getAdminSummary(): Promise<AdminSummary>` in `admin-queries.ts` and the route. Response shape is spec Section 6.3 (`users`, `signups_by_day`, `devices`, `sync`, `active_installation_ids`, `generated_at`).
 - Consumes: `requireAdminToken` (A3), `users.createdAt` (A1), `refreshTokens.clientInfo` (A2).
 
-- [ ] **Step 1: Write the failing route test**
+- [x] **Step 1: Write the failing route test**
 
 `src/app/api/admin/summary/route.test.ts` (mock the query module, test the route contract):
 
@@ -494,12 +494,12 @@ describe('GET /api/admin/summary', () => {
 });
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `npx vitest run src/app/api/admin/summary`
 Expected: FAIL, module not found.
 
-- [ ] **Step 3: Implement the queries**
+- [x] **Step 3: Implement the queries**
 
 `src/lib/admin-queries.ts`:
 
@@ -582,7 +582,7 @@ export async function getAdminSummary(): Promise<AdminSummary> {
 }
 ```
 
-- [ ] **Step 4: Implement the route**
+- [x] **Step 4: Implement the route**
 
 `src/app/api/admin/summary/route.ts`:
 
@@ -610,7 +610,7 @@ export async function GET(req: NextRequest) {
 }
 ```
 
-- [ ] **Step 5: Run tests and types**
+- [x] **Step 5: Run tests and types**
 
 Run: `npx vitest run src/app/api/admin/summary && npx tsc --noEmit -p tsconfig.json`
 Expected: PASS.
@@ -620,7 +620,7 @@ Expected: PASS.
 Run: `npx dotenv -e .env.local -- npx tsx -e "import('./src/lib/admin-queries').then(async m=>{console.log(JSON.stringify(await m.getAdminSummary(),null,1).slice(0,800));process.exit(0)})"`
 (if `tsx` is missing: `npm i -D tsx`). Expected: JSON with non-negative counts and 90 `signups_by_day` entries. Fix any SQL error before committing.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/lib/admin-queries.ts src/app/api/admin/summary
@@ -638,7 +638,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 **Interfaces:**
 - Produces: `encodeCursor({createdAt: string, id: string}): string`, `decodeCursor(s: string): {createdAt: string; id: string} | null`; `listAdminUsers(opts: {q: string; limit: number; cursor: {createdAt: string; id: string} | null}): Promise<{ total: number; items: AdminUserRow[]; next_cursor: string | null }>`; `AdminUserRow` fields per spec 6.3.
 
-- [ ] **Step 1: Write the failing cursor test**
+- [x] **Step 1: Write the failing cursor test**
 
 `src/lib/admin-cursor.test.ts`:
 
@@ -658,12 +658,12 @@ describe('admin cursor', () => {
 });
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `npx vitest run src/lib/admin-cursor.test.ts`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement the cursor**
+- [x] **Step 3: Implement the cursor**
 
 `src/lib/admin-cursor.ts`:
 
@@ -688,12 +688,12 @@ export function decodeCursor(s: string): UserCursor | null {
 }
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `npx vitest run src/lib/admin-cursor.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Write the failing route test**
+- [x] **Step 5: Write the failing route test**
 
 `src/app/api/admin/users/route.test.ts`:
 
@@ -740,12 +740,12 @@ describe('GET /api/admin/users', () => {
 });
 ```
 
-- [ ] **Step 6: Run to verify it fails**
+- [x] **Step 6: Run to verify it fails**
 
 Run: `npx vitest run src/app/api/admin/users`
 Expected: FAIL.
 
-- [ ] **Step 7: Add `listAdminUsers` to `admin-queries.ts`**
+- [x] **Step 7: Add `listAdminUsers` to `admin-queries.ts`**
 
 Append:
 
@@ -809,7 +809,7 @@ export async function listAdminUsers(opts: { q: string; limit: number; cursor: U
 }
 ```
 
-- [ ] **Step 8: Implement the route**
+- [x] **Step 8: Implement the route**
 
 `src/app/api/admin/users/route.ts`:
 
@@ -845,13 +845,13 @@ export async function GET(req: NextRequest) {
 }
 ```
 
-- [ ] **Step 9: Run tests, types, and a live smoke**
+- [x] **Step 9: Run tests, types, and a live smoke**
 
 Run: `npx vitest run src/app/api/admin src/lib && npx tsc --noEmit -p tsconfig.json`
 Then: `npx dotenv -e .env.local -- npx tsx -e "import('./src/lib/admin-queries').then(async m=>{const r=await m.listAdminUsers({q:'',limit:2,cursor:null});console.log(JSON.stringify(r,null,1));process.exit(0)})"`
 Expected: PASS; two items with every field present, `next_cursor` a string if more than two users exist.
 
-- [ ] **Step 10: Commit**
+- [x] **Step 10: Commit**
 
 ```bash
 git add src/lib/admin-queries.ts src/lib/admin-cursor.ts src/lib/admin-cursor.test.ts src/app/api/admin/users
@@ -869,7 +869,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 **Interfaces:**
 - Produces: `getAdminUserDetail(id: string): Promise<AdminUserDetail | null>` with shape per spec 6.3 (`user`, `accounts`, `devices`, `sync`).
 
-- [ ] **Step 1: Write the failing route test**
+- [x] **Step 1: Write the failing route test**
 
 `src/app/api/admin/users/[id]/route.test.ts`:
 
@@ -914,12 +914,12 @@ describe('GET /api/admin/users/[id]', () => {
 });
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `npx vitest run "src/app/api/admin/users/\[id\]"`
 Expected: FAIL.
 
-- [ ] **Step 3: Add `getAdminUserDetail` to `admin-queries.ts`**
+- [x] **Step 3: Add `getAdminUserDetail` to `admin-queries.ts`**
 
 Append:
 
@@ -965,7 +965,7 @@ export async function getAdminUserDetail(id: string): Promise<AdminUserDetail | 
 }
 ```
 
-- [ ] **Step 4: Implement the route**
+- [x] **Step 4: Implement the route**
 
 `src/app/api/admin/users/[id]/route.ts`:
 
@@ -998,7 +998,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
 }
 ```
 
-- [ ] **Step 5: Add a field-exclusion test on the live query**
+- [x] **Step 5: Add a field-exclusion test on the live query**
 
 Append to `src/lib/admin-auth.test.ts`? No: create `src/integration/admin.test.ts` guarded like `smoke.test.ts` (`RUN_INTEGRATION=1`):
 
@@ -1028,7 +1028,7 @@ Run: `npx vitest run && RUN_INTEGRATION=1 npx dotenv -e .env.local -- npx vitest
 (on PowerShell: `$env:RUN_INTEGRATION='1'; npx dotenv -e .env.local -- npx vitest run src/integration/admin.test.ts`)
 Expected: all PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/lib/admin-queries.ts "src/app/api/admin/users/[id]" src/integration/admin.test.ts
@@ -1075,7 +1075,7 @@ Work in `C:/Users/talay/agentrium/workers/ct-analytics`. Tests: `npx vitest run`
   - `matchInstallations(db: D1Database, kv: KVNamespace, ids: string[], date: string): Promise<{ active_today: number; active_now: number }>`.
 - Consumed by B2 (route wiring) and Part C proxies.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `src/admin.test.ts`:
 
@@ -1171,12 +1171,12 @@ describe('matchInstallations', () => {
 });
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `npx vitest run src/admin.test.ts`
 Expected: FAIL, module not found.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `src/admin.ts`:
 
@@ -1263,12 +1263,12 @@ export async function matchInstallations(
 }
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `npx vitest run src/admin.test.ts && npx tsc --noEmit`
 Expected: PASS, no type errors.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add workers/ct-analytics/src/admin.ts workers/ct-analytics/src/admin.test.ts
@@ -1287,7 +1287,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 **Interfaces:**
 - Produces: `POST /admin/login_attempt` `{ ip }` → `{ allowed, remaining }` | `{ allowed:false, retry_after_seconds }`; `POST /stats/match` `{ installation_ids }` → `{ active_today, active_now }`. Both require `x-ct-token`.
 
-- [ ] **Step 1: Add the handlers**
+- [x] **Step 1: Add the handlers**
 
 In `src/index.ts` add near the other handlers:
 
@@ -1322,7 +1322,7 @@ async function handleStatsMatch(request: Request, env: Env): Promise<Response> {
 }
 ```
 
-- [ ] **Step 2: Register the routes**
+- [x] **Step 2: Register the routes**
 
 Inside `fetch`, before the final `return json({ error: 'not_found' }, 404);`:
 
@@ -1346,7 +1346,7 @@ Add two lines to the header comment's route list:
  *   POST /stats/match            count given installation ids active today / now (token)
 ```
 
-- [ ] **Step 3: Type-check and test**
+- [x] **Step 3: Type-check and test**
 
 Run: `npx tsc --noEmit && npx vitest run`
 Expected: clean.
@@ -1360,7 +1360,7 @@ Invoke-RestMethod -Method Post -Uri https://ct-analytics.claude-terminal.workers
 ```
 Expected: `active_today 0 active_now 0`. Without the header: 401.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add workers/ct-analytics/src/index.ts
@@ -1393,7 +1393,7 @@ Clone first: `git clone https://github.com/talayash/claude-terminal-website.git 
   - `constantTimeEqual(a, b) → boolean` (strings)
   - `jsonResponse(body, status, extraHeaders = {})`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/admin-session.test.js`:
 
@@ -1457,13 +1457,13 @@ describe('requireAdminSession', () => {
 });
 ```
 
-- [ ] **Step 2: Widen the vitest include and run to verify failure**
+- [x] **Step 2: Widen the vitest include and run to verify failure**
 
 `vitest.config.js`: change `include` to `['tests/**/*.test.js', 'src/**/*.test.ts']`.
 Run: `npx vitest run tests/admin-session.test.js`
 Expected: FAIL, module not found.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `api/_lib/admin-session.js`:
 
@@ -1542,12 +1542,12 @@ export async function requireAdminSession(request) {
 }
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `npx vitest run tests/admin-session.test.js`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add api/_lib/admin-session.js tests/admin-session.test.js vitest.config.js
@@ -1565,7 +1565,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Consumes: C1 helpers; Worker `POST /admin/login_attempt` (B2).
 - Produces: `POST /api/admin-login {password}` → 204 + Set-Cookie | 401 | 429 (+`Retry-After`) | 503 `rate_limiter_unavailable` | 500; `GET /api/admin-session` → 204 | 401; `POST /api/admin-logout` → 204 + clearing Set-Cookie.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/admin-login.test.js`:
 
@@ -1640,12 +1640,12 @@ describe('GET /api/admin-session and POST /api/admin-logout', () => {
 });
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `npx vitest run tests/admin-login.test.js`
 Expected: FAIL, modules not found.
 
-- [ ] **Step 3: Implement the three endpoints**
+- [x] **Step 3: Implement the three endpoints**
 
 `api/admin-login.js`:
 
@@ -1734,12 +1734,12 @@ export default async function handler() {
 }
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `npx vitest run tests/admin-login.test.js`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add api/admin-login.js api/admin-session.js api/admin-logout.js tests/admin-login.test.js
@@ -1757,7 +1757,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 **Interfaces:**
 - Produces: `proxyWorker(request, { path, allowParams, method })` in `api/_lib/worker-proxy.js`: runs `requireAdminSession`, forwards to `https://ct-analytics.claude-terminal.workers.dev<path>` with `x-ct-token`, whitelisting query params and passing a POST body through. Every proxy file becomes a thin call.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/admin-proxies.test.js`:
 
@@ -1827,12 +1827,12 @@ describe('upstream failure', () => {
 });
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `npx vitest run tests/admin-proxies.test.js`
 Expected: FAIL (401 tests fail for the ungated proxies; errors-summary module missing).
 
-- [ ] **Step 3: Implement the shared proxy helper**
+- [x] **Step 3: Implement the shared proxy helper**
 
 `api/_lib/worker-proxy.js`:
 
@@ -1899,7 +1899,7 @@ export const intParam = (min, max, fallback) => (v) => {
 export const oneOf = (allowed) => (v) => (allowed.includes(v) ? v : null);
 ```
 
-- [ ] **Step 4: Rewrite the six proxy files**
+- [x] **Step 4: Rewrite the six proxy files**
 
 `api/stats.js`:
 ```js
@@ -1953,12 +1953,12 @@ export default (request) => proxyWorker(request, {
 });
 ```
 
-- [ ] **Step 5: Run to verify it passes**
+- [x] **Step 5: Run to verify it passes**
 
 Run: `npx vitest run tests/admin-proxies.test.js tests/admin-login.test.js tests/admin-session.test.js`
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add api tests/admin-proxies.test.js
@@ -1976,7 +1976,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Consumes: API routes from A4 to A6; Worker `POST /stats/match` (B2).
 - Produces: `GET /api/admin-summary` (merged body per spec 6.4, with `signed_in: {active_today, active_now} | null`, without `active_installation_ids`), `GET /api/admin-users?q&cursor&limit`, `GET /api/admin-user?id=<uuid>`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/admin-api-proxies.test.js`:
 
@@ -2044,12 +2044,12 @@ describe('admin-users and admin-user', () => {
 });
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `npx vitest run tests/admin-api-proxies.test.js`
 Expected: FAIL, modules not found.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `api/_lib/api-proxy.js`:
 
@@ -2159,12 +2159,12 @@ export default async function handler(request) {
 
 Note: `admin-user.js` validates the id before the session check, which is fine because a 400 leaks nothing; but to keep "401 first" behaviour uniform, swap the order if the reviewer prefers. The test does not depend on the order.
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `npx vitest run tests/admin-api-proxies.test.js`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add api/_lib/api-proxy.js api/admin-summary.js api/admin-users.js api/admin-user.js tests/admin-api-proxies.test.js
@@ -2184,7 +2184,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
   - `formatNumber(n: unknown): string`, `timeAgo(iso: string, now?: number): string`, `countryFlag(code: string): string`, `countryName(code: string): string`, `osIcon(os: string): string`, `osLabel(os: string): string`, `compareVersionDesc(a: string, b: string): number`, `escapeHtml(s: unknown): string`, `distinctCount(obj: unknown): number`, `initials(nameOrEmail: string): string`.
 - The bodies of `countryFlag`, `osIcon`, `osLabel`, `formatNumber`, `escapeHtml`, `distinctCount`, `compareVersionDesc` and the `COUNTRY_NAMES` table are moved out of `src/pages/stat.astro` unchanged; `timeAgo` is moved from `src/pages/inbox.astro` with a `now` parameter added for testability.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `src/lib/admin/tabs.test.ts`:
 
@@ -2256,12 +2256,12 @@ describe('format', () => {
 });
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `npx vitest run src/lib/admin`
 Expected: FAIL, modules not found.
 
-- [ ] **Step 3: Implement `tabs.ts`**
+- [x] **Step 3: Implement `tabs.ts`**
 
 ```ts
 export const TABS = ['overview', 'users', 'telemetry', 'errors', 'inbox'] as const;
@@ -2277,7 +2277,7 @@ export function tabHash(tab: Tab): string {
 }
 ```
 
-- [ ] **Step 4: Implement `format.ts`**
+- [x] **Step 4: Implement `format.ts`**
 
 Move the following from `src/pages/stat.astro` into `src/lib/admin/format.ts`, each with `export` added and TypeScript parameter types (`unknown`/`string`): `COUNTRY_NAMES`, `countryFlag`, `osIcon`, `osLabel`, `formatNumber`, `escapeHtml`, `distinctCount`, `compareVersionDesc`. Add:
 
@@ -2307,12 +2307,12 @@ export function initials(nameOrEmail: string): string {
 
 `osLabel` must also map `macos` to `macOS` (the API stores Rust's `std::env::consts::OS`, which is `macos`): add `|| key.includes('macos')` to the darwin branch. `escapeHtml` must escape `&`, `<`, `>`, `"`, `'` exactly as the test expects.
 
-- [ ] **Step 5: Run to verify it passes**
+- [x] **Step 5: Run to verify it passes**
 
 Run: `npx vitest run src/lib/admin`
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/lib/admin
@@ -2332,7 +2332,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
   - `session.ts`: `checkSession(): Promise<boolean>`, `login(password: string): Promise<{ok:true}|{ok:false; status:number; retryAfter:number|null}>`, `logout(): Promise<void>`.
   - `dom.ts`: `$(id: string): HTMLElement`, `el(tag: string, className?: string): HTMLElement`, `text(tag: string, className: string, str: string): HTMLElement`, `clear(node: Element): void` (moved from `inbox.astro`).
 
-- [ ] **Step 1: Create `charts.ts` by moving the renderers**
+- [x] **Step 1: Create `charts.ts` by moving the renderers**
 
 Move `SERIES_COLORS`, `renderLineArea`, `renderStackedArea`, `renderBar`, `renderDistribution`, `emptyState`, `errorState` from `src/pages/stat.astro` into `src/lib/admin/charts.ts`. Change every `$(svgId)` / `$(peakElId)` style lookup into a passed-in element and return the numbers the caller used to set labels (the `{max, from, to}` objects above). Replace `SERIES_COLORS` with the Midnight palette:
 
@@ -2365,7 +2365,7 @@ export function renderBars(svg: SVGElement, series: Array<{ date: string; value:
 }
 ```
 
-- [ ] **Step 2: Create `session.ts`**
+- [x] **Step 2: Create `session.ts`**
 
 ```ts
 export async function checkSession(): Promise<boolean> {
@@ -2395,7 +2395,7 @@ export async function logout(): Promise<void> {
 }
 ```
 
-- [ ] **Step 3: Create `dom.ts`**
+- [x] **Step 3: Create `dom.ts`**
 
 ```ts
 export const $ = (id: string): HTMLElement => {
@@ -2418,12 +2418,12 @@ export const clear = (node: Element): void => {
 };
 ```
 
-- [ ] **Step 4: Type-check**
+- [x] **Step 4: Type-check**
 
 Run: `npx astro check` (installs `@astrojs/check` on first run if prompted; accept) or `npx tsc --noEmit -p tsconfig.json`.
 Expected: no errors in `src/lib/admin/*`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/lib/admin
@@ -2442,7 +2442,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Each panel module exports `{ mount(root: HTMLElement): void; activate(): void; deactivate(): void }` and, for badges, `onBadge?: (n: number) => void` set by the page.
 - `poll.ts`: `createPoller(fn: () => Promise<void>, intervalMs: number): { start(): void; stop(): void; now(): void }` that runs `fn` immediately on `start`, every `intervalMs` while `document.visibilityState === 'visible'`, skips overlapping runs, and re-runs on `visibilitychange` to visible.
 
-- [ ] **Step 1: Implement `poll.ts`**
+- [x] **Step 1: Implement `poll.ts`**
 
 ```ts
 export function createPoller(fn: () => Promise<void>, intervalMs: number) {
@@ -2471,7 +2471,7 @@ export function createPoller(fn: () => Promise<void>, intervalMs: number) {
 }
 ```
 
-- [ ] **Step 2: Write `admin.astro`**
+- [x] **Step 2: Write `admin.astro`**
 
 ```astro
 ---
@@ -2630,7 +2630,7 @@ export function refresh(): void;
 
 Put `PanelCtx` in `src/lib/admin/panels/types.ts` and import it from every panel. `errors.ts` and `inbox.ts` additionally export `pollBadge(ctx: PanelCtx): void`.
 
-- [ ] **Step 3: Shared fetch helper for panels**
+- [x] **Step 3: Shared fetch helper for panels**
 
 Add to `src/lib/admin/session.ts`:
 
@@ -2644,7 +2644,7 @@ export async function getJson<T>(url: string, onUnauthorized: () => void): Promi
 }
 ```
 
-- [ ] **Step 4: Telemetry panel (moved from `/stat`)**
+- [x] **Step 4: Telemetry panel (moved from `/stat`)**
 
 `src/lib/admin/panels/telemetry.ts`: `mount` sets `root.innerHTML` to the inner markup of today's `stat.astro` `<main>` from the "Live now banner" comment down to and including the "Raw payload" `<details>` (drop the page header and the footer line). Keep every `id` as is. Then port the script logic from `stat.astro` (`fetchLiveAndToday`, `renderToday`, `renderLive`, `fetchHistory`, `setStatus`) into the module, replacing `$('chart-dau')`-style renderer calls with the C6 signatures, for example:
 
@@ -2657,7 +2657,7 @@ $('chart-dau-to').textContent = dauMeta.to;
 
 Wire two pollers: live+today at 15 000 ms, history at 300 000 ms. `activate()` starts both, `deactivate()` stops both, `refresh()` calls `now()` on both. `renderLive` also calls `ctx.setLive(formatNumber(data.active_now ?? 0))` and every successful fetch calls `ctx.setRefreshed(new Date().toLocaleTimeString())`. The status pill in the moved markup keeps working via `setStatus`.
 
-- [ ] **Step 5: Inbox panel (moved from `/inbox`)**
+- [x] **Step 5: Inbox panel (moved from `/inbox`)**
 
 `src/lib/admin/panels/inbox.ts`: `mount` sets `root.innerHTML` to the inner markup of today's `inbox.astro` `<main>` minus the page header block (keep the controls row, KPI grid, status pill, `#messages`, `#empty`). Port `buildCard`, `render`, `load`, `markRead` verbatim, importing `el`, `text`, `clear` from `../dom` and `timeAgo` from `../format`. After `load()` succeeds call `ctx.setBadge('inbox', data.unread ?? 0)`. Poller at 60 000 ms. Add:
 
@@ -2673,7 +2673,7 @@ export function pollBadge(ctx: PanelCtx) {
 }
 ```
 
-- [ ] **Step 6: Errors panel**
+- [x] **Step 6: Errors panel**
 
 `src/lib/admin/panels/errors.ts` renders the `/api/errors-summary` payload. Markup set in `mount`:
 
@@ -2722,7 +2722,7 @@ export function pollBadge(ctx: PanelCtx) {
 }
 ```
 
-- [ ] **Step 7: Users panel**
+- [x] **Step 7: Users panel**
 
 `src/lib/admin/panels/users.ts`. Markup in `mount`:
 
@@ -2752,7 +2752,7 @@ export function pollBadge(ctx: PanelCtx) {
 
 Behaviour: `activate()` loads page 1 if never loaded. Search input debounced 300 ms resets the list (`cursor = null`) and reloads. Rows are built with `el`/`text`: avatar circle with `initials(name || email)`, email (title = id), name muted; provider pill (`Google`, `GitHub`, `Email`, else raw); `timeAgo(created_at)` with `title` = absolute; `timeAgo(last_seen_at)` or `never`; numbers via `formatNumber`; `app_version ?? '-'`; `osLabel(os) ?? '-'`. Clicking a row fetches `/api/admin-user?id=${id}`, marks the row `is-selected`, and renders the detail aside: header (initials, name, email, provider pills from `accounts` with `provider_account_id_tail`), "Devices" list (created via `timeAgo`, `revoked_reason` or `active`, `client_info.app_version`, `osLabel(client_info.os)`, `installation_id.slice(0, 8)`), "Profiles", "Custom agents", "Workspaces" lists, with rows whose `deleted_at` is set given class `line-through opacity-60`. "Load more" appends the next page using `next_cursor`; hidden when null. No poller; `refresh()` reloads page 1 with the current query.
 
-- [ ] **Step 8: Overview panel**
+- [x] **Step 8: Overview panel**
 
 `src/lib/admin/panels/overview.ts`. Markup in `mount`:
 
@@ -2796,7 +2796,7 @@ Behaviour: `activate()` loads page 1 if never loaded. Search input debounced 300
 
 Data: live poller (15 s) fetches `/api/stats` and `/api/stats-live`; summary poller (5 min) fetches `/api/admin-summary`, `/api/stats-history?metric=dau&days=30`, `/api/errors-summary?days=7&limit=1`, and `/api/admin-users?limit=10`. Fill: `ov-active` = `active_now`; `ov-active-dims` = `${distinctCount(by_version)} versions · ${distinctCount(by_os)} OS · ${distinctCount(by_country)} countries`; `ov-dau` = `daily_active_users`; `ov-installs` = `total_installations`; `ov-accounts` = `users.total`, `ov-accounts-7d` = `+${users.last_7d} in 7 days`; `ov-errors` = `total_errors`, `ov-errors-sub` = `${affected_installations} installations`; `ov-active-signed` = `signed_in?.active_now ?? 'n/a'`, `ov-dau-signed` = `signed_in ? `${signed_in.active_today} signed in` : 'signed in: n/a'`; `renderLineArea` for DAU (`#0A84FF`), `renderBars` for `signups_by_day` (`#7A5BFF`) with `ov-signups-providers` = `Google ${g} · GitHub ${gh} · Email ${e}`; recent rows reuse the row builder from `users.ts` (export `buildUserRow(item, onSelect?)` from `users.ts` and import it). Clicking a recent row sets `location.hash = '#users'`. `ctx.setLive` and `ctx.setRefreshed` are called like in telemetry.
 
-- [ ] **Step 9: Admin styles**
+- [x] **Step 9: Admin styles**
 
 Append to `src/styles/global.css`:
 
@@ -2840,7 +2840,7 @@ Append to `src/styles/global.css`:
 
 Run: `npm run build` then `npx vercel dev` (or `npm run dev` for markup-only; the `/api/*` functions need `vercel dev`). Create `.env` locally with `ADMIN_PASSWORD=test`, `ADMIN_SESSION_SECRET=<any 32+ chars>`, `CT_STATS_TOKEN=<real>`, `ADMIN_API_TOKEN=<from A7>`. Open `http://localhost:3000/admin`: wrong password shows "Wrong password."; correct password shows Overview with live numbers; each tab renders; Inbox "mark read" works; Log out returns to the card.
 
-- [ ] **Step 11: Commit**
+- [x] **Step 11: Commit**
 
 ```bash
 git add src/pages/admin.astro src/lib/admin src/styles/global.css
@@ -2854,7 +2854,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 **Files:**
 - Modify: `tests/content-lint.test.js`, `README.md`
 
-- [ ] **Step 1: Add lint tests**
+- [x] **Step 1: Add lint tests**
 
 Append to `tests/content-lint.test.js`:
 
@@ -2891,12 +2891,12 @@ describe('Admin dashboard', () => {
 });
 ```
 
-- [ ] **Step 2: Run**
+- [x] **Step 2: Run**
 
 Run: `npx vitest run tests/content-lint.test.js tests/admin-*.test.js src`
 Expected: PASS.
 
-- [ ] **Step 3: README**
+- [x] **Step 3: README**
 
 Add a section to `README.md`:
 
@@ -2919,12 +2919,12 @@ Login is rate limited to 10 attempts per IP per 15 minutes through the Worker's 
 
 Update the "Project Structure" block: add `admin.astro               # Password-gated admin dashboard (tabs: overview, users, telemetry, errors, inbox)` and `lib/admin/                # Dashboard modules (tabs, charts, panels)` and `api/                      # Vercel edge proxies (session-gated)`.
 
-- [ ] **Step 4: Full suite**
+- [x] **Step 4: Full suite**
 
 Run: `npm run test:run`
 Expected: PASS including the Astro build smoke.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add tests/content-lint.test.js README.md
@@ -2983,7 +2983,7 @@ Work in `C:/Users/talay/agentrium` on the current branch. Tests: `cargo test -p 
 - Consumes: broker contract from A2 (`client` optional object).
 - Produces: `error_reporter::installation_id() -> Option<String>`; `auth::ClientInfo { app_version: &'static str, os: &'static str, installation_id: Option<String> }` with `ClientInfo::current()`; `exchange_code(base_url, code, code_verifier, state, client: &ClientInfo)`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 In `src-tauri/src/auth.rs` `mod tests`, replace the assertion `assert_eq!(body.as_object().unwrap().len(), 3, "exactly the three documented fields");` in `exchange_code_posts_the_documented_body_and_reads_tokens` with:
 
@@ -3016,12 +3016,12 @@ Add a unit test for the serializer:
     }
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `cd src-tauri && cargo test auth::tests 2>&1 | tail -20`
 Expected: compile error, `ClientInfo` not found.
 
-- [ ] **Step 3: Add the getter in `error_reporter.rs`**
+- [x] **Step 3: Add the getter in `error_reporter.rs`**
 
 Below `set_installation_id`:
 
@@ -3035,7 +3035,7 @@ pub fn installation_id() -> Option<String> {
 }
 ```
 
-- [ ] **Step 4: Add `ClientInfo` and thread it through in `auth.rs`**
+- [x] **Step 4: Add `ClientInfo` and thread it through in `auth.rs`**
 
 Near the request structs:
 
@@ -3093,17 +3093,17 @@ The call in `handle_deep_link` becomes `exchange_code(API_BASE, &ret.code, &flow
         .json(&serde_json::json!({ "refresh_token": refresh, "client": ClientInfo::current() }))
 ```
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 Run: `cd src-tauri && cargo test auth::tests 2>&1 | tail -20`
 Expected: all auth tests PASS.
 
-- [ ] **Step 6: Type-check the whole crate and the frontend**
+- [x] **Step 6: Type-check the whole crate and the frontend**
 
 Run: `cd src-tauri && cargo check 2>&1 | tail -5` and from the repo root `npx tsc --noEmit`.
 Expected: clean.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src-tauri/src/auth.rs src-tauri/src/error_reporter.rs
@@ -3118,11 +3118,11 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Modify: `CLAUDE.md` (agentrium) "Desktop ↔ auth broker contract" bullet
 - Modify: `docs/superpowers/plans/2026-09-13-admin-dashboard.md` (tick boxes as tasks land)
 
-- [ ] **Step 1: Extend the contract bullet**
+- [x] **Step 1: Extend the contract bullet**
 
 Append to the "Desktop ↔ auth broker contract" bullet in `CLAUDE.md`: `Token-issuing requests carry an optional \`client\` object (\`auth::ClientInfo\`: app_version, os, installation_id); the broker stores it as \`refresh_tokens.client_info\` for the /admin dashboard. Keep it optional on both sides.`
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add CLAUDE.md docs/superpowers/plans/2026-09-13-admin-dashboard.md
