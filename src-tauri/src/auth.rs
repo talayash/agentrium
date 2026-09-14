@@ -228,11 +228,23 @@ pub struct ClientInfo {
 }
 
 impl ClientInfo {
+    /// `app_version` and `os` are always sent, telemetry consent or not -
+    /// they're needed for compatibility diagnostics (e.g. "this broker
+    /// contract change requires desktop >= X"), and are far less identifying
+    /// than a per-install id. `installation_id` is the correlation key that
+    /// joins an account to the analytics dataset, so it follows the same
+    /// telemetry consent flag as `send_telemetry_heartbeat`: omitted from the
+    /// wire (via `skip_serializing_if`) whenever the user has telemetry off.
     pub fn current() -> Self {
+        let installation_id = if crate::telemetry::enabled() {
+            error_reporter::installation_id()
+        } else {
+            None
+        };
         Self {
             app_version: env!("CARGO_PKG_VERSION"),
             os: std::env::consts::OS,
-            installation_id: error_reporter::installation_id(),
+            installation_id,
         }
     }
 }
@@ -830,6 +842,32 @@ mod tests {
         let c = ClientInfo { app_version: "1.0.0", os: "windows", installation_id: None };
         let v = serde_json::to_value(&c).unwrap();
         assert_eq!(v, serde_json::json!({ "app_version": "1.0.0", "os": "windows" }));
+    }
+
+    /// `ClientInfo::current()` must omit `installation_id` when telemetry
+    /// consent is off, regardless of whether the database has already
+    /// populated one in `error_reporter`.
+    ///
+    /// This only exercises the disabled branch, deliberately. The enabled
+    /// branch calls `error_reporter::installation_id()`, which reads a
+    /// process-global `OnceLock` armed by `error_reporter::init_early()`;
+    /// `error_reporter::tests::enabled_defaults_to_false_before_init`
+    /// explicitly documents relying on no other test in this binary calling
+    /// `init_early()` first, so doing that here to exercise the enabled
+    /// branch would make that other test's outcome depend on run order.
+    /// `client_info_omits_a_missing_installation_id` and
+    /// `exchange_code_posts_the_documented_body_and_reads_tokens` already
+    /// cover the enabled/`Some(id)` shape via direct construction.
+    #[test]
+    fn client_info_current_omits_installation_id_when_telemetry_disabled() {
+        crate::telemetry::set_enabled(false);
+        let info = ClientInfo::current();
+        assert_eq!(info.installation_id, None);
+        let v = serde_json::to_value(&info).unwrap();
+        assert!(
+            v.as_object().unwrap().get("installation_id").is_none(),
+            "installation_id must be absent from the wire when telemetry is off: {v}"
+        );
     }
 
     #[test]

@@ -3785,6 +3785,7 @@ pub async fn send_telemetry_heartbeat(
     app_version: String,
 ) -> Result<(), String> {
     wrap_cmd("send_telemetry_heartbeat", async move {
+        crate::telemetry::set_enabled(enabled);
         if !enabled {
             return Ok(());
         }

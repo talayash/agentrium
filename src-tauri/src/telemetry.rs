@@ -1,6 +1,23 @@
 use serde::Serialize;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 const WORKER_URL: &str = "https://ct-analytics.claude-terminal.workers.dev";
+
+/// Whether the user has telemetry (usage heartbeats) turned on, as last
+/// reported by the frontend via `send_telemetry_heartbeat`. Defaults to
+/// disabled until the frontend's first call. Consulted by
+/// `auth::ClientInfo::current()` so the per-install correlation id sent with
+/// sign-in / refresh requests follows this same consent, not just the
+/// heartbeat itself.
+static TELEMETRY_ENABLED: AtomicBool = AtomicBool::new(false);
+
+pub fn set_enabled(enabled: bool) {
+    TELEMETRY_ENABLED.store(enabled, Ordering::Relaxed);
+}
+
+pub fn enabled() -> bool {
+    TELEMETRY_ENABLED.load(Ordering::Relaxed)
+}
 
 #[derive(Serialize)]
 struct HeartbeatPayload {
