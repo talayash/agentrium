@@ -1,5 +1,7 @@
 # Account Auth Phase C - Admin Dashboard Implementation Plan
 
+> **⚠️ SUPERSEDED — 2026-09-11.** The parent spec was replaced by [2026-09-11-auth-sync-sharing-design.md](../specs/2026-09-11-auth-sync-sharing-design.md). The new spec explicitly defers the admin dashboard to post-v1 (Section 2 non-goals, Section 15 open questions). No admin dashboard plan will be written for v1. **Do not execute this plan.**
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Ship the admin dashboard for `/stat` so you (Tal) can see who is using the app: total signups, recent signup counts, a searchable user list, per-user detail (installations, sessions, sync footprint, app version), a "revoke sessions" action, and an audit log of every admin action.

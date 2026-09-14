@@ -19,6 +19,8 @@ import { useTerminalStore } from '../store/terminalStore';
 import { toast } from '../store/toastStore';
 import { UpdatePill } from './UpdatePill';
 import { SessionWidget } from './titlebar/SessionWidget';
+import { HeaderAuth } from './HeaderAuth';
+import { SyncStatusChip } from './SyncStatusChip';
 import { Tooltip } from './ui/Tooltip';
 import { ThemeToggle } from './ui/ThemeToggle';
 import { ListRow } from './ui/ListRow';
@@ -143,7 +145,20 @@ export function TitleBar() {
 
   return (
     <div
-      onMouseDown={(e) => { if (e.buttons === 1 && (e.target as HTMLElement).closest('.no-drag') === null) appWindow.startDragging(); }}
+      onMouseDown={(e) => {
+        // Portal events bubble through the React tree even when their DOM
+        // nodes are outside the title bar. Starting a native drag there
+        // consumes mouseup/click, leaving dialog buttons unresponsive.
+        const target = e.target;
+        if (
+          e.buttons === 1 &&
+          target instanceof Element &&
+          e.currentTarget.contains(target) &&
+          target.closest('.no-drag') === null
+        ) {
+          appWindow.startDragging();
+        }
+      }}
       className="h-[var(--h-header)] material-chrome flex items-center justify-between pl-2 pr-0 border-b border-seam-strong drag-region select-none"
     >
       {/* Left cluster - traffic lights (mac), sidebar toggle */}
@@ -316,6 +331,10 @@ export function TitleBar() {
           <div className="w-px h-4 bg-seam-strong mx-1" />
 
           <ThemeToggle />
+
+          <SyncStatusChip />
+
+          <HeaderAuth />
         </div>
 
         {!isMac && (

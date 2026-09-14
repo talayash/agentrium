@@ -188,7 +188,10 @@ pub async fn write_paste(
         let base = suggested_name.unwrap_or_else(|| {
             chrono::Local::now().format("paste-%Y-%m-%d-%H%M").to_string()
         });
+        // Every failure here is about the user's filesystem (the terminal's
+        // cwd vanished, permissions, an invalid name) rather than app logic.
         crate::pastes::write_paste(&cwd, &content, &base, &extension)
+            .map_err(error_reporter::user_err)
     })
     .await
 }
@@ -787,7 +790,14 @@ pub async fn save_profile(
     profile: ConfigProfile,
 ) -> Result<(), String> {
     wrap_cmd("save_profile", async move {
-        db_op(&state.db, move |db| db.save_profile(&profile)).await
+        db_op(&state.db, move |db| {
+            let profile_id = profile.id.clone();
+            db.save_profile(&profile)?;
+            // Enqueue for sync under the same DB lock so a crash between
+            // save and enqueue cannot leave a "written but never synced" row.
+            db.touch_sync_row("profiles", &profile_id)
+        })
+        .await
     })
     .await
 }
@@ -803,7 +813,10 @@ pub async fn get_profiles(state: State<'_, AppState>) -> Result<Vec<ConfigProfil
 #[command]
 pub async fn delete_profile(state: State<'_, AppState>, id: String) -> Result<(), String> {
     wrap_cmd("delete_profile", async move {
-        db_op(&state.db, move |db| db.delete_profile(&id)).await
+        // Soft-delete: mark tombstone + enqueue instead of physical DELETE, so
+        // the pusher can propagate the removal to other devices. The row stays
+        // in the table with `deleted_at` set; user-facing reads filter it out.
+        db_op(&state.db, move |db| db.tombstone_sync_row("profiles", &id)).await
     })
     .await
 }
@@ -998,7 +1011,12 @@ pub async fn save_custom_agent(
         agent.name = agent.name.trim().to_string();
         agent.binary = agent.binary.trim().to_string();
         let to_save = agent.clone();
-        db_op(&state.db, move |db| db.save_custom_agent(&to_save)).await?;
+        db_op(&state.db, move |db| {
+            let id = to_save.id.clone();
+            db.save_custom_agent(&to_save)?;
+            db.touch_sync_row("custom_agents", &id)
+        })
+        .await?;
         Ok(agent)
     })
     .await
@@ -1007,7 +1025,8 @@ pub async fn save_custom_agent(
 #[command]
 pub async fn delete_custom_agent(state: State<'_, AppState>, id: String) -> Result<(), String> {
     wrap_cmd("delete_custom_agent", async move {
-        db_op(&state.db, move |db| db.delete_custom_agent(&id)).await
+        // Soft-delete: see delete_profile for rationale.
+        db_op(&state.db, move |db| db.tombstone_sync_row("custom_agents", &id)).await
     })
     .await
 }
@@ -1346,7 +1365,27 @@ async fn fetch_latest_claude_version() -> Result<String, String> {
             Err(e) => last_err = Some(format!("Network error: {}", e)),
         }
     }
-    Err(last_err.unwrap_or_else(|| "Failed to fetch latest version from npm".to_string()))
+    // Reaching the npm registry depends on the user's network and on npm's
+    // availability; neither is a bug in this app.
+    Err(error_reporter::user_err(
+        last_err.unwrap_or_else(|| "Failed to fetch latest version from npm".to_string()),
+    ))
+}
+
+/// True when npm output describes a network failure (offline, DNS, reset,
+/// timeout, proxy) rather than a problem this app can do anything about.
+pub(crate) fn is_npm_network_error(output: &str) -> bool {
+    const MARKERS: [&str; 8] = [
+        "ECONNRESET",
+        "ENOTFOUND",
+        "ETIMEDOUT",
+        "ECONNREFUSED",
+        "EAI_AGAIN",
+        "ERR_SOCKET_TIMEOUT",
+        "npm error network",
+        "npm ERR! network",
+    ];
+    MARKERS.iter().any(|m| output.contains(m))
 }
 
 #[command]
@@ -1367,7 +1406,11 @@ pub async fn update_claude_code() -> Result<String, String> {
         } else {
             let stderr = String::from_utf8_lossy(&output.stderr);
             let stdout = String::from_utf8_lossy(&output.stdout);
-            Err(format!("{}{}", stderr, stdout))
+            let combined = format!("{}{}", stderr, stdout);
+            if is_npm_network_error(&combined) {
+                return Err(error_reporter::user_err(combined));
+            }
+            Err(combined)
         }
     })
     .await
@@ -1650,7 +1693,21 @@ pub async fn open_external_url(url: String) -> Result<(), String> {
         if parsed.scheme() != "https" && parsed.scheme() != "http" {
             return Err("Only HTTP and HTTPS URLs are allowed".to_string());
         }
-        open::that(parsed.as_str()).map_err(|e| e.to_string())
+        match open::that(parsed.as_str()) {
+            Ok(()) => Ok(()),
+            Err(first) => {
+                // The default launcher shells out to PowerShell on Windows, which
+                // some machines restrict. Explorer hands http(s) URLs to the default
+                // browser without a shell, so try it before giving up.
+                #[cfg(windows)]
+                if open::with(parsed.as_str(), "explorer").is_ok() {
+                    return Ok(());
+                }
+                // A machine that cannot launch its own browser is an environment
+                // problem, not an app defect.
+                Err(error_reporter::user_err(format!("Could not open the browser: {first}")))
+            }
+        }
     })
     .await
 }
@@ -1971,7 +2028,27 @@ pub async fn delete_workspace(
     name: String,
 ) -> Result<(), String> {
     wrap_cmd("delete_workspace", async move {
-        db_op(&state.db, move |db| db.delete_workspace(&name)).await
+        // Soft-delete via sync_id (the sync-facing key for workspaces). The
+        // `__`-prefix guard is defense-in-depth: the workspaces UI never
+        // surfaces `__last_session__` as a deletable entry, but removing this
+        // check would let a future caller wipe the ephemeral last-session
+        // snapshot. `tombstone_sync_row` itself is intentionally key-agnostic;
+        // name-policy enforcement belongs at this IPC boundary.
+        db_op(&state.db, move |db| {
+            if name.starts_with("__") {
+                return Err("Cannot delete internal workspaces".to_string());
+            }
+            let sync_id: String = db
+                .conn()
+                .query_row(
+                    "SELECT sync_id FROM workspaces WHERE name = ?1 AND deleted_at IS NULL",
+                    rusqlite::params![name],
+                    |row| row.get(0),
+                )
+                .map_err(|e| e.to_string())?;
+            db.tombstone_sync_row("workspaces", &sync_id)
+        })
+        .await
     })
     .await
 }
@@ -1983,7 +2060,19 @@ pub async fn save_workspace(
     terminals: Vec<crate::terminal::TerminalConfig>,
 ) -> Result<(), String> {
     wrap_cmd("save_workspace", async move {
-        db_op(&state.db, move |db| db.save_workspace(&name, &terminals)).await
+        db_op(&state.db, move |db| {
+            let sync_id = db.save_workspace(&name, &terminals)?;
+            // `__`-prefixed names (currently just `__last_session__`) are
+            // ephemeral local snapshots. Save them, but never enqueue them
+            // for sync - otherwise every terminal-set change would flood
+            // the queue and every other device would clobber its own
+            // running terminals on pull.
+            if !name.starts_with("__") {
+                db.touch_sync_row("workspaces", &sync_id)?;
+            }
+            Ok(())
+        })
+        .await
     })
     .await
 }
@@ -2537,7 +2626,13 @@ async fn list_worktrees_internal(path: &str) -> Result<Vec<WorktreeInfo>, String
         .map_err(|e| format!("Failed to run git worktree list: {}", e))?;
 
     if !output.status.success() {
-        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        // A working directory that is not a git checkout is the user's setup,
+        // not a defect: keep it out of telemetry.
+        if stderr.contains("not a git repository") {
+            return Err(error_reporter::user_err(stderr));
+        }
+        return Err(stderr);
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -3730,6 +3825,21 @@ pub async fn get_installation_id(state: State<'_, AppState>) -> Result<String, S
     .await
 }
 
+/// Push the frontend's telemetry consent into `telemetry::TELEMETRY_ENABLED`
+/// as early as possible on boot, so `auth::ClientInfo::current()` has an
+/// up-to-date consent flag for the very first refresh/rehydrate call - which
+/// fires before `send_telemetry_heartbeat` (that one waits on the setup
+/// check). `send_telemetry_heartbeat` also sets this flag on every call, so
+/// this command only needs to win the race at startup.
+#[command]
+pub async fn set_telemetry_enabled(enabled: bool) -> Result<(), String> {
+    wrap_cmd("set_telemetry_enabled", async move {
+        crate::telemetry::set_enabled(enabled);
+        Ok(())
+    })
+    .await
+}
+
 #[command]
 pub async fn send_telemetry_heartbeat(
     state: State<'_, AppState>,
@@ -3737,6 +3847,7 @@ pub async fn send_telemetry_heartbeat(
     app_version: String,
 ) -> Result<(), String> {
     wrap_cmd("send_telemetry_heartbeat", async move {
+        crate::telemetry::set_enabled(enabled);
         if !enabled {
             return Ok(());
         }
@@ -5735,6 +5846,45 @@ pub async fn lsp_server_log(
     .await
 }
 
+#[tauri::command]
+pub async fn get_sync_enabled(state: tauri::State<'_, AppState>) -> Result<bool, String> {
+    let db = state.db.clone();
+    tokio::task::spawn_blocking(move || {
+        let db = db.lock().unwrap_or_else(|p| p.into_inner());
+        db.get_sync_enabled()
+    })
+    .await
+    .map_err(|e| format!("DB task failed: {e}"))?
+}
+
+#[tauri::command]
+pub async fn set_sync_enabled(
+    enabled: bool,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    // Persist immediately so a next-boot reads the correct default even
+    // before the engine picks up the SetEnabled message.
+    let db = state.db.clone();
+    tokio::task::spawn_blocking(move || {
+        let d = db.lock().unwrap_or_else(|p| p.into_inner());
+        d.set_sync_enabled(enabled)
+    })
+    .await
+    .map_err(|e| format!("DB task failed: {e}"))??;
+    if let Some(handle) = state.sync_handle.lock().await.as_ref() {
+        handle.set_enabled(enabled);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn sync_now(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    if let Some(handle) = state.sync_handle.lock().await.as_ref() {
+        handle.sync_now();
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod version_extraction_tests {
     use super::{extract_version_line, first_path_line, has_semver_like};
@@ -5829,6 +5979,17 @@ mod wrap_cmd_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn npm_network_failures_are_classified_as_environment_errors() {
+        let reset = "npm error code ECONNRESET\nnpm error syscall read\nnpm error network request to https://registry.npmjs.org/@anthropic-ai%2fclaude-code failed, reason: read ECONNRESET";
+        assert!(is_npm_network_error(reset));
+        assert!(is_npm_network_error("npm ERR! network getaddrinfo ENOTFOUND registry.npmjs.org"));
+        assert!(is_npm_network_error("npm error code ETIMEDOUT"));
+        // A genuine install failure must still reach telemetry.
+        assert!(!is_npm_network_error("npm error code EACCES\nnpm error syscall mkdir"));
+        assert!(!is_npm_network_error("npm error 404 Not Found - GET https://registry.npmjs.org/nope"));
+    }
 
     #[test]
     fn create_terminal_request_deserializes_without_agent_field() {

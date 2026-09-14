@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+const dialog = vi.hoisted(() => ({ confirm: vi.fn() }));
+vi.mock('@tauri-apps/plugin-dialog', () => ({ confirm: dialog.confirm }));
 vi.mock('./FileEditorView', () => ({ FileEditorView: () => null }));
 vi.mock('./TerminalView', () => ({ TerminalView: () => null }));
 vi.mock('./FileTreePanel', () => ({ FileTreePanel: () => null }));
@@ -17,17 +19,17 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('dirty file close controls', () => {
-  it.each(['Enter', ' '])('confirms %s and preserves content when cancelled', (key) => {
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+  it.each(['Enter', ' '])('confirms %s and preserves content when cancelled', async (key) => {
+    dialog.confirm.mockResolvedValue(false);
     render(<TerminalTabs />);
     fireEvent.keyDown(screen.getByRole('button', { name: 'Unsaved changes' }), { key });
-    expect(confirm).toHaveBeenCalledOnce();
+    await waitFor(() => expect(dialog.confirm).toHaveBeenCalledOnce());
     expect(useAppStore.getState().openFiles[0].content).toBe('unsaved');
   });
-  it('closes with keyboard after discard is confirmed', () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
+  it('closes with keyboard after discard is confirmed', async () => {
+    dialog.confirm.mockResolvedValue(true);
     render(<TerminalTabs />);
     fireEvent.keyDown(screen.getByRole('button', { name: 'Unsaved changes' }), { key: 'Enter' });
-    expect(useAppStore.getState().openFiles).toEqual([]);
+    await waitFor(() => expect(useAppStore.getState().openFiles).toEqual([]));
   });
 });

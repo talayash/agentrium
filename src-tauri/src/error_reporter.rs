@@ -278,6 +278,14 @@ pub fn set_installation_id(id: String) {
     }
 }
 
+/// The installation id attached at boot, if the database has been opened.
+/// Used by the auth requests so the broker can match accounts to installs.
+pub fn installation_id() -> Option<String> {
+    let state = REPORTER.get()?;
+    let guard = state.installation_id.lock().unwrap_or_else(|p| p.into_inner());
+    if guard.is_empty() { None } else { Some(guard.clone()) }
+}
+
 pub fn set_enabled(enabled: bool) {
     ENABLED.store(enabled, Ordering::Relaxed);
 }
@@ -304,6 +312,12 @@ pub async fn report(
     stack: Option<String>,
 ) {
     if !is_enabled() {
+        return;
+    }
+    // Debug builds run only on the developer's machine (`npm run tauri dev`);
+    // their panics and command errors would otherwise land in the production
+    // error groups alongside real user reports.
+    if cfg!(debug_assertions) {
         return;
     }
     let state = match REPORTER.get() {

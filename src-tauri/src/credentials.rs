@@ -335,3 +335,59 @@ mod tests {
         assert!(e.contains("no longer in"));
     }
 }
+
+// ---- Auth refresh token storage ---------------------------------------------
+
+const AUTH_SERVICE_BASE: &str = "com.claudeterminal.agentrium.auth";
+const REFRESH_TOKEN_KEY: &str = "refresh_token";
+
+/// Service name used for the auth refresh token in the OS keychain.
+/// Suffixed by `crate::instance_suffix()` so a side-loaded QA build
+/// (`AGENTRIUM_INSTANCE_ID` set) doesn't collide with prod's entry.
+fn auth_service() -> String {
+    format!("{AUTH_SERVICE_BASE}{}", crate::instance_suffix())
+}
+
+pub fn store_refresh_token(token: &str) -> Result<(), String> {
+    let svc = auth_service();
+    let entry = keyring::Entry::new(&svc, REFRESH_TOKEN_KEY)
+        .map_err(|e| format!("keyring entry: {e}"))?;
+    entry.set_password(token).map_err(|e| format!("keyring set: {e}"))
+}
+
+pub fn read_refresh_token() -> Result<Option<String>, String> {
+    let svc = auth_service();
+    let entry = keyring::Entry::new(&svc, REFRESH_TOKEN_KEY)
+        .map_err(|e| format!("keyring entry: {e}"))?;
+    match entry.get_password() {
+        Ok(v) => Ok(Some(v)),
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(e) => Err(format!("keyring get: {e}")),
+    }
+}
+
+pub fn clear_refresh_token() -> Result<(), String> {
+    let svc = auth_service();
+    let entry = keyring::Entry::new(&svc, REFRESH_TOKEN_KEY)
+        .map_err(|e| format!("keyring entry: {e}"))?;
+    match entry.delete_credential() {
+        Ok(()) => Ok(()),
+        Err(keyring::Error::NoEntry) => Ok(()),
+        Err(e) => Err(format!("keyring delete: {e}")),
+    }
+}
+
+#[cfg(test)]
+mod auth_token_tests {
+    use super::*;
+
+    #[test]
+    #[ignore] // Requires a real OS keychain; run manually with `cargo test -- --ignored`.
+    fn round_trip_refresh_token() {
+        let value = "test-value-12345";
+        store_refresh_token(value).unwrap();
+        assert_eq!(read_refresh_token().unwrap().as_deref(), Some(value));
+        clear_refresh_token().unwrap();
+        assert!(read_refresh_token().unwrap().is_none());
+    }
+}

@@ -25,6 +25,7 @@ import {
   FileEdit, Loader2,
 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
+import { confirmAction } from '../lib/confirmDialog';
 import { useAppStore } from '../store/appStore';
 import { toast } from '../store/toastStore';
 import { getFileIconUrl } from '../utils/fileIcons';
@@ -156,7 +157,7 @@ export function ChangelistSection({
   const onDiscard = useCallback(async (file: MergedChange) => {
     const label = pathBasename(file.path);
     const verb = file.status === 'untracked' ? 'Delete' : 'Discard';
-    const ok = window.confirm(`${verb}: ${label}? This cannot be undone.`);
+    const ok = await confirmAction(`${verb}: ${label}? This cannot be undone.`, { okLabel: verb });
     if (!ok) return;
     try {
       await invoke('git_discard_file', {
@@ -249,7 +250,7 @@ export function ChangelistSection({
 
   const handleDelete = useCallback(async (id: number, name: string) => {
     if (confirmDelete) {
-      const ok = window.confirm(`Delete changelist "${name}"? Its files revert to Changes.`);
+      const ok = await confirmAction(`Delete changelist "${name}"? Its files revert to Changes.`, { okLabel: 'Delete' });
       if (!ok) return;
     }
     try {

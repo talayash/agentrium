@@ -18,7 +18,11 @@
  *   GET  /stats/live             active in last 15 min, by version/os/country
  *   GET  /stats/history?days=30&metric=dau|heartbeats|update_checks|version|os|country
  *   GET  /errors/summary?days=7&limit=20   top error groups + by source/version/os/day
+ *   POST /admin/login_attempt    admin-dashboard login rate limit (token)
+ *   POST /stats/match            count given installation ids active today / now (token)
  */
+
+import { constantTimeEqual, checkLoginAttempt, parseMatchBody, matchInstallations } from './admin';
 
 interface Env {
   KV_BINDING: KVNamespace;
@@ -92,7 +96,7 @@ const FEEDBACK_RATE_LIMIT_MAX = 5;
 function requireToken(request: Request, expected: string | undefined): Response | null {
   if (!expected) return json({ error: 'server_misconfigured' }, 500);
   const provided = request.headers.get('x-ct-token');
-  if (provided !== expected) return json({ error: 'unauthorized' }, 401);
+  if (provided === null || !constantTimeEqual(provided, expected)) return json({ error: 'unauthorized' }, 401);
   return null;
 }
 
@@ -640,6 +644,35 @@ async function handleStatsHistory(url: URL, env: Env): Promise<Response> {
   return json({ error: 'unknown_metric' }, 400);
 }
 
+async function handleAdminLoginAttempt(request: Request, env: Env): Promise<Response> {
+  const { hashIP } = await import('./feedback');
+  let body: { ip?: unknown };
+  try {
+    body = (await request.json()) as { ip?: unknown };
+  } catch {
+    return json({ error: 'invalid_json' }, 400);
+  }
+  const ip = clampString(body.ip, 64);
+  if (!ip) return json({ error: 'invalid_payload' }, 400);
+  // Same salted hash the feedback route uses; the raw address is never stored.
+  // requireToken already guarantees env.STATS_TOKEN is truthy before this
+  // handler runs, so no fallback salt is reachable here.
+  const ipHash = await hashIP(ip, env.STATS_TOKEN);
+  return json(await checkLoginAttempt(env.KV_BINDING, ipHash));
+}
+
+async function handleStatsMatch(request: Request, env: Env): Promise<Response> {
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: 'invalid_json' }, 400);
+  }
+  const ids = parseMatchBody(body);
+  if (!ids) return json({ error: 'invalid_payload' }, 400);
+  return json(await matchInstallations(env.DB, env.KV_BINDING, ids, todayUTC()));
+}
+
 export default {
   async scheduled(_controller: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
     try {
@@ -710,6 +743,16 @@ export default {
         const denied = requireToken(request, env.STATS_TOKEN);
         if (denied) return denied;
         return await handleFeedbackMarkRead(request, env);
+      }
+      if (request.method === 'POST' && url.pathname === '/admin/login_attempt') {
+        const denied = requireToken(request, env.STATS_TOKEN);
+        if (denied) return denied;
+        return await handleAdminLoginAttempt(request, env);
+      }
+      if (request.method === 'POST' && url.pathname === '/stats/match') {
+        const denied = requireToken(request, env.STATS_TOKEN);
+        if (denied) return denied;
+        return await handleStatsMatch(request, env);
       }
     } catch (err) {
       console.error('[fetch] unhandled error:', err);

@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef, createContext, useContext } from 'react';
 import { RefreshCw, GitBranch, GitFork, FolderOpen, ChevronRight, ChevronDown, CircleDot, ArrowUp, ArrowDown, Upload, Archive, Package, Loader2, Trash2, Download, Plus, Check, Search as SearchIcon, Pin, PinOff, GitPullRequestArrow, TerminalSquare, MoreVertical } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
+import { confirmAction } from '../lib/confirmDialog';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
 import { toast } from '../store/toastStore';
@@ -25,8 +26,9 @@ async function pullWithStashConfirm(args: {
   } catch (err) {
     const msg = typeof err === 'string' ? err : '';
     if (!msg.startsWith(DIRTY_TREE_PREFIX)) throw err;
-    const ok = window.confirm(
+    const ok = await confirmAction(
       `${msg}\n\nStash your changes, pull from ${args.remote}/${args.branch}, then re-apply the stash?`,
+      { title: 'Pull', okLabel: 'Stash and pull', kind: 'info' },
     );
     if (!ok) throw err;
     return await invoke<string>('git_pull_branch', { ...args, autoStash: true });
@@ -819,8 +821,8 @@ export function FileChangesPanel() {
                       <Tooltip label="Drop">
                         <button
                           disabled={busy}
-                          onClick={() => {
-                            if (confirm(`Drop ${s.reference}? This cannot be undone.`)) {
+                          onClick={async () => {
+                            if (await confirmAction(`Drop ${s.reference}? This cannot be undone.`, { title: 'Stash', okLabel: 'Drop' })) {
                               runStashOp('git_stash_drop', s.reference, 'Drop');
                             }
                           }}

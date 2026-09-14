@@ -20,10 +20,25 @@ mod otel_receiver;
 mod lsp;
 mod session_provider;
 mod feedback;
+mod auth;
+mod sync_client;
+mod sync;
 
 use tauri::Manager;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+
+/// Suffix appended to the SQLite data-dir name and OS keychain service
+/// name when the `AGENTRIUM_INSTANCE_ID` env var is set. Enables running a
+/// side-loaded QA dev instance alongside a prod install without sharing
+/// state (DB path, keychain refresh token). Prod release builds never set
+/// the env var, so their paths stay unchanged.
+///
+/// Example: `AGENTRIUM_INSTANCE_ID=.qa` → data dir `ClaudeTerminal.qa`,
+/// keychain service `com.claudeterminal.agentrium.auth.qa`.
+pub fn instance_suffix() -> String {
+    std::env::var("AGENTRIUM_INSTANCE_ID").unwrap_or_default()
+}
 
 pub struct AppState {
     pub terminals: Arc<Mutex<terminal::TerminalManager>>,
@@ -40,6 +55,10 @@ pub struct AppState {
     pub lsp: Arc<Mutex<lsp::LspManager>>,
     /// OS credential store. `Arc<dyn ...>` so tests can swap in `MemoryStore`.
     pub secrets: Arc<dyn credentials::SecretStore>,
+    /// Sync engine handle; `None` when the user is guest / signed out.
+    /// Wrapped in tokio::sync::Mutex because IPC commands hold it across
+    /// `.await` when calling into the engine.
+    pub sync_handle: Arc<Mutex<Option<crate::sync::SyncHandle>>>,
 }
 
 fn main() {
@@ -77,6 +96,20 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        // Single-instance MUST be registered BEFORE the deep-link plugin so it
+        // intercepts second launches first. With its `deep-link` feature on,
+        // any agentrium:// URL in the second process's argv is forwarded into
+        // this instance's on_open_url handler automatically - we don't
+        // manually re-parse argv here.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            // A second Agentrium tried to launch. Bring our main window to the
+            // foreground so the user sees the sign-in complete.
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
+        }))
+        .plugin(tauri_plugin_deep_link::init())
         .setup(|app| {
             let db = database::Database::new()?;
             let installation_id = match db.get_or_create_installation_id() {
@@ -118,7 +151,13 @@ fn main() {
                 otel_agg,
                 lsp: Arc::new(Mutex::new(lsp_manager)),
                 secrets: Arc::new(credentials::KeyringStore),
+                sync_handle: Arc::new(Mutex::new(None)),
             });
+
+            // Pending OAuth flows (state -> PKCE verifier). Separate from
+            // AppState so the auth module owns its own state and can be
+            // extended (Tasks 20, 26) without churning AppState's shape.
+            app.manage(Arc::new(auth::PendingMap::default()));
 
             // WebView2 ships a default browser context menu with "Refresh" that
             // reloads the top-level document - clicking it inside the preview
@@ -139,6 +178,20 @@ fn main() {
                         }
                     });
                 }
+            }
+
+            #[cfg(desktop)]
+            {
+                use tauri_plugin_deep_link::DeepLinkExt;
+                // register() is idempotent; safe to call every launch during dev.
+                let _ = app.deep_link().register("agentrium");
+
+                let handle = app.handle().clone();
+                app.deep_link().on_open_url(move |event| {
+                    for url in event.urls() {
+                        crate::auth::handle_deep_link(&handle, &url.to_string());
+                    }
+                });
             }
 
             Ok(())
@@ -236,6 +289,7 @@ fn main() {
             commands::write_claude_command,
             commands::delete_claude_command,
             commands::get_installation_id,
+            commands::set_telemetry_enabled,
             commands::send_telemetry_heartbeat,
             commands::get_team_tasks,
             commands::summarize_session,
@@ -276,6 +330,17 @@ fn main() {
             commands::lsp_install_server,
             commands::lsp_restart_server,
             commands::lsp_server_log,
+            auth::start_oauth_login,
+            auth::signup_credentials,
+            auth::signin_credentials,
+            auth::fetch_current_user,
+            auth::logout,
+            auth::mark_auth_prompt_seen,
+            auth::get_auth_prompt_seen,
+            auth::rehydrate_auth,
+            commands::get_sync_enabled,
+            commands::set_sync_enabled,
+            commands::sync_now,
         ])
         .on_window_event(|window, event| {
             // Only the main window owns the app lifecycle. Detached (tear-off)

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { MouseEvent, ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { motion } from 'framer-motion';
 import { X } from 'lucide-react';
 import { overlayMotion, dialogMotion } from '../../lib/motionTokens';
@@ -105,7 +106,10 @@ export function Modal({
     if (closeOn === 'doubleClick' && e.target === e.currentTarget) onClose();
   };
 
-  return (
+  // Escape ancestor transforms so the fixed scrim covers the viewport.
+  // Portal events still bubble through React ancestors, including TitleBar.
+  const portalTarget = document.getElementById('root') ?? document.body;
+  return createPortal(
     <motion.div
       {...overlayMotion}
       className={`fixed inset-0 flex items-center justify-center backdrop-blur-[3px] ${scrimClassName}`}
@@ -118,9 +122,7 @@ export function Modal({
         role="dialog"
         aria-modal="true"
         tabIndex={-1}
-        // Stop bubbling so clicks inside the panel never reach the scrim handler.
-        onClick={(e) => e.stopPropagation()}
-        onDoubleClick={(e) => e.stopPropagation()}
+        // The scrim's target check keeps clicks inside the panel from closing it.
         className={`material-sheet rounded-xl overflow-hidden ${panelClassName}`}
       >
         {showHeader && (
@@ -140,6 +142,7 @@ export function Modal({
         )}
         {children}
       </motion.div>
-    </motion.div>
+    </motion.div>,
+    portalTarget,
   );
 }
