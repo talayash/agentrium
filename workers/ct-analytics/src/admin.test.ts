@@ -1,33 +1,55 @@
 import { describe, it, expect } from 'vitest';
-import { checkLoginAttempt, parseMatchBody, matchInstallations, constantTimeEqual, LOGIN_LIMIT, LOGIN_WINDOW_SECONDS } from './admin';
+import {
+  checkLoginAttempt,
+  parseMatchBody,
+  matchInstallations,
+  constantTimeEqual,
+  LOGIN_LIMIT,
+  LOGIN_WINDOW_SECONDS,
+  MATCH_MAX_IDS,
+  MATCH_ID_MAX_LEN,
+} from './admin';
 
 function fakeKv(initial: Record<string, string> = {}) {
   const store = new Map(Object.entries(initial));
+  const ttls: number[] = [];
   return {
     store,
+    ttls,
     get: async (k: string) => store.get(k) ?? null,
-    put: async (k: string, v: string) => { store.set(k, v); },
-  } as unknown as KVNamespace & { store: Map<string, string> };
+    put: async (k: string, v: string, opts?: { expirationTtl?: number }) => {
+      store.set(k, v);
+      if (opts?.expirationTtl !== undefined) ttls.push(opts.expirationTtl);
+    },
+  } as unknown as KVNamespace & { store: Map<string, string>; ttls: number[] };
 }
 
 function fakeDb(dauIds: Set<string>) {
   let prepareCalls = 0;
+  const bindArgCounts: number[] = [];
   const db = {
     prepare: (sqlText: string) => {
       prepareCalls += 1;
       return {
-        bind: (...args: unknown[]) => ({
-          first: async () => {
-            const ids = args.slice(1) as string[]; // args[0] is the date
-            const n = ids.filter((id) => dauIds.has(id)).length;
-            return { n };
-          },
-        }),
+        bind: (...args: unknown[]) => {
+          bindArgCounts.push(args.length);
+          return {
+            first: async () => {
+              const ids = args.slice(1) as string[]; // args[0] is the date
+              const n = ids.filter((id) => dauIds.has(id)).length;
+              return { n };
+            },
+          };
+        },
       };
     },
     _sql: null as unknown,
   } as unknown as D1Database;
-  return { db, get prepareCalls() { return prepareCalls; } };
+  return {
+    db,
+    get prepareCalls() { return prepareCalls; },
+    get maxBindArgs() { return Math.max(0, ...bindArgCounts); },
+  };
 }
 
 describe('checkLoginAttempt', () => {
@@ -42,6 +64,8 @@ describe('checkLoginAttempt', () => {
     const denied = await checkLoginAttempt(kv, 'h1', t0 + 60_000);
     expect(denied.allowed).toBe(false);
     if (!denied.allowed) expect(denied.retry_after_seconds).toBe(LOGIN_WINDOW_SECONDS - 60);
+    // Every write must clamp to the KV minimum TTL (a sub-60s TTL 400s every PUT).
+    for (const ttl of kv.ttls) expect(ttl).toBeGreaterThanOrEqual(60);
   });
   it('resets after the window', async () => {
     const kv = fakeKv();
@@ -49,11 +73,13 @@ describe('checkLoginAttempt', () => {
     for (let i = 0; i <= LOGIN_LIMIT; i++) await checkLoginAttempt(kv, 'h1', t0);
     const later = await checkLoginAttempt(kv, 'h1', t0 + (LOGIN_WINDOW_SECONDS + 1) * 1000);
     expect(later.allowed).toBe(true);
+    for (const ttl of kv.ttls) expect(ttl).toBeGreaterThanOrEqual(60);
   });
   it('keys per hash', async () => {
     const kv = fakeKv();
     for (let i = 0; i <= LOGIN_LIMIT; i++) await checkLoginAttempt(kv, 'a');
     expect((await checkLoginAttempt(kv, 'b')).allowed).toBe(true);
+    for (const ttl of kv.ttls) expect(ttl).toBeGreaterThanOrEqual(60);
   });
 });
 
@@ -65,8 +91,10 @@ describe('parseMatchBody', () => {
     expect(parseMatchBody({})).toBeNull();
     expect(parseMatchBody({ installation_ids: 'a' })).toBeNull();
     expect(parseMatchBody({ installation_ids: [''] })).toBeNull();
-    expect(parseMatchBody({ installation_ids: ['x'.repeat(129)] })).toBeNull();
-    expect(parseMatchBody({ installation_ids: Array.from({ length: 5001 }, (_, i) => `i${i}`) })).toBeNull();
+    expect(parseMatchBody({ installation_ids: ['x'.repeat(MATCH_ID_MAX_LEN + 1)] })).toBeNull();
+    expect(
+      parseMatchBody({ installation_ids: Array.from({ length: MATCH_MAX_IDS + 1 }, (_, i) => `i${i}`) }),
+    ).toBeNull();
   });
   it('accepts an empty list', () => {
     expect(parseMatchBody({ installation_ids: [] })).toEqual([]);
@@ -87,6 +115,12 @@ describe('matchInstallations', () => {
     expect(r.active_today).toBe(250);
     expect(r.active_now).toBe(0);
     expect(fake.prepareCalls).toBe(Math.ceil(250 / 99));
+    // The regression this guards against: D1_CHUNK=100 also yields 3 prepare
+    // calls for 250 ids (ceil(250/99) === ceil(250/100)), so the prepare-call
+    // count alone can't catch a chunk size that's too large. What actually
+    // breaks at D1_CHUNK=100 is the bind width: date + 100 ids = 101 bound
+    // parameters, over D1's 100-parameter-per-statement limit.
+    expect(fake.maxBindArgs).toBeLessThanOrEqual(100);
   });
   it('returns zeros for an empty list without touching storage', async () => {
     const { db } = fakeDb(new Set());

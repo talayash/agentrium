@@ -22,7 +22,7 @@
  *   POST /stats/match            count given installation ids active today / now (token)
  */
 
-import { constantTimeEqual } from './admin';
+import { constantTimeEqual, checkLoginAttempt, parseMatchBody, matchInstallations } from './admin';
 
 interface Env {
   KV_BINDING: KVNamespace;
@@ -645,7 +645,6 @@ async function handleStatsHistory(url: URL, env: Env): Promise<Response> {
 }
 
 async function handleAdminLoginAttempt(request: Request, env: Env): Promise<Response> {
-  const { checkLoginAttempt } = await import('./admin');
   const { hashIP } = await import('./feedback');
   let body: { ip?: unknown };
   try {
@@ -656,12 +655,13 @@ async function handleAdminLoginAttempt(request: Request, env: Env): Promise<Resp
   const ip = clampString(body.ip, 64);
   if (!ip) return json({ error: 'invalid_payload' }, 400);
   // Same salted hash the feedback route uses; the raw address is never stored.
-  const ipHash = await hashIP(ip, env.STATS_TOKEN ?? 'unsalted');
+  // requireToken already guarantees env.STATS_TOKEN is truthy before this
+  // handler runs, so no fallback salt is reachable here.
+  const ipHash = await hashIP(ip, env.STATS_TOKEN);
   return json(await checkLoginAttempt(env.KV_BINDING, ipHash));
 }
 
 async function handleStatsMatch(request: Request, env: Env): Promise<Response> {
-  const { parseMatchBody, matchInstallations } = await import('./admin');
   let body: unknown;
   try {
     body = await request.json();
