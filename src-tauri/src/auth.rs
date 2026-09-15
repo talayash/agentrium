@@ -84,12 +84,48 @@ pub fn generate_pkce() -> (String, String) {
     (verifier, challenge)
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct AuthUser {
     pub id: String,
     pub email: String,
     pub name: Option<String>,
     pub image: Option<String>,
+}
+
+/// Prefix of every "could not reach the broker" error string produced in this
+/// module (`refresh_access_token`, `fetch_current_user`). The sync engine uses
+/// it to show such failures as Offline rather than Error.
+pub const NETWORK_ERROR_PREFIX: &str = "network:";
+
+/// `user_meta` key holding the last authenticated user as JSON, so a launch
+/// with no connectivity can keep the account signed in from local state.
+const AUTH_USER_META: &str = "auth_user";
+
+pub(crate) fn save_cached_auth_user(db: &database::Database, user: &AuthUser) -> Result<(), String> {
+    let json = serde_json::to_string(user).map_err(|e| e.to_string())?;
+    db.set_user_meta(AUTH_USER_META, Some(&json))
+}
+
+pub(crate) fn load_cached_auth_user(db: &database::Database) -> Result<Option<AuthUser>, String> {
+    match db.get_user_meta(AUTH_USER_META)? {
+        Some(json) => serde_json::from_str(&json).map(Some).map_err(|e| e.to_string()),
+        None => Ok(None),
+    }
+}
+
+pub(crate) fn clear_cached_auth_user(db: &database::Database) -> Result<(), String> {
+    db.delete_user_meta(AUTH_USER_META)
+}
+
+/// Which identity a session runs under after a successful token refresh: the
+/// broker's answer when it gave one, otherwise the last user this device
+/// signed in as. `/api/me` being down must not undo a refresh that succeeded.
+pub(crate) fn session_user(fetched: Result<AuthUser, String>, cached: Option<AuthUser>) -> Result<AuthUser, String> {
+    match (fetched, cached) {
+        (Ok(user), _) => Ok(user),
+        (Err(_), Some(cached)) => Ok(cached),
+        (Err(e), None) => Err(e),
+    }
 }
 
 /// Broker base URL. The Vercel endpoint owns the Google OAuth client secret;
@@ -334,16 +370,32 @@ async fn complete_signin(
     refresh: Option<String>,
     event_state: Option<String>,
 ) -> Result<(), String> {
-    let app_state = app.state::<AppState>();
-    let mut engine = app_state.sync_handle.lock().await;
     // Identify the account from the authenticated server response before any
     // local rows can be pushed with this token.
     let user = fetch_current_user(token.clone()).await?;
+    finish_signin(app, user, token, refresh, event_state).await
+}
+
+/// Everything after the account is known: park/restore the local working set
+/// for that account, remember the user for offline launches, (re)start the
+/// sync engine. `token` may be empty when the broker is unreachable: the
+/// engine's first request then 401s and goes through the normal refresh path
+/// as soon as connectivity returns.
+async fn finish_signin(
+    app: &tauri::AppHandle,
+    user: AuthUser,
+    token: String,
+    refresh: Option<String>,
+    event_state: Option<String>,
+) -> Result<(), String> {
+    let app_state = app.state::<AppState>();
+    let mut engine = app_state.sync_handle.lock().await;
     if let Some(previous) = engine.take() { previous.shutdown().await; }
     let db = app_state.db.clone();
     let counts = tokio::task::spawn_blocking(move || {
         let db = db.lock().unwrap_or_else(|p| p.into_inner());
         db.activate_sync_account(&user.id)?;
+        save_cached_auth_user(&db, &user)?;
         run_guest_migration(&db)
     }).await.map_err(|e| e.to_string())??;
     if let Some(refresh) = refresh { credentials::store_refresh_token(&refresh)?; }
@@ -489,7 +541,7 @@ pub async fn fetch_current_user(access_token: String) -> Result<AuthUser, String
             .bearer_auth(&access_token)
             .send()
             .await
-            .map_err(|e| format!("network: {e}"))?;
+            .map_err(|e| format!("{NETWORK_ERROR_PREFIX} {e}"))?;
 
         if !resp.status().is_success() {
             return Err(format!("api returned {}", resp.status()));
@@ -518,6 +570,7 @@ pub async fn logout(state: tauri::State<'_, AppState>) -> Result<(), String> {
         credentials::clear_refresh_token()?;
         tokio::task::spawn_blocking(move || {
             let db = db_arc.lock().unwrap_or_else(|p| p.into_inner());
+            clear_cached_auth_user(&db)?;
             db.delete_user_meta("logged_in_user_id")
         })
         .await
@@ -560,9 +613,19 @@ pub async fn get_auth_prompt_seen(state: tauri::State<'_, AppState>) -> Result<b
     .await
 }
 
-#[derive(Debug, Serialize)]
-pub struct RehydrateResult {
-    pub access_token: String,
+/// What `rehydrate_auth` found at boot. The frontend switches on `kind`.
+#[derive(Debug, Serialize, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum RehydrateOutcome {
+    /// Refresh succeeded; the session is live.
+    SignedIn { access_token: String, user: AuthUser },
+    /// Nothing stored, or the broker rejected the stored token (now cleared).
+    NoSession,
+    /// The broker could not be reached or answered with a transient error.
+    /// The stored refresh token is kept. When `user` is present the account
+    /// stays signed in from local state and the sync engine is running; it
+    /// will recover on its own when connectivity returns.
+    Unavailable { error: String, user: Option<AuthUser> },
 }
 
 fn refresh_status_rejects_token(status: reqwest::StatusCode) -> Result<bool, String> {
@@ -593,7 +656,7 @@ pub async fn refresh_access_token() -> Result<Option<String>, String> {
         .json(&serde_json::json!({ "refresh_token": refresh, "client": ClientInfo::current() }))
         .send()
         .await
-        .map_err(|e| format!("network: {e}"))?;
+        .map_err(|e| format!("{NETWORK_ERROR_PREFIX} {e}"))?;
 
     if refresh_status_rejects_token(resp.status())? {
         let _ = credentials::clear_refresh_token();
@@ -614,21 +677,46 @@ pub async fn refresh_access_token() -> Result<Option<String>, String> {
 }
 
 /// Boot-time refresh flow: swap the keychain refresh token for a fresh access
-/// token (rotating the refresh token as a side-effect). Returns `None` when
-/// there's nothing stored, or when the broker rejects the token — in the
-/// latter case we also clear the stale token so we don't retry next boot.
+/// token (rotating the refresh token as a side-effect).
+///
+/// - Broker rejects the token: it is cleared and the result is `NoSession`.
+/// - Broker unreachable / 5xx: the token is kept. If this device has signed
+///   in before, the account stays signed in from the cached user and the sync
+///   engine starts (offline); otherwise the caller falls back to guest.
+/// - Refresh OK but `/api/me` unreachable: run under the cached user rather
+///   than throwing away a refresh that already rotated the token.
 #[command]
 pub async fn rehydrate_auth(
     app: tauri::AppHandle,
-    _state: tauri::State<'_, AppState>,
-) -> Result<Option<RehydrateResult>, String> {
+    state: tauri::State<'_, AppState>,
+) -> Result<RehydrateOutcome, String> {
+    let db_arc = state.db.clone();
     wrap_cmd("rehydrate_auth", async move {
-        match refresh_access_token().await? {
-            Some(access_token) => {
-                complete_signin(&app, access_token.clone(), None, None).await?;
-                Ok(Some(RehydrateResult { access_token }))
+        let cached = tokio::task::spawn_blocking(move || {
+            let db = db_arc.lock().unwrap_or_else(|p| p.into_inner());
+            load_cached_auth_user(&db)
+        })
+        .await
+        .map_err(|e| e.to_string())?
+        .unwrap_or(None);
+
+        match refresh_access_token().await {
+            Ok(Some(access_token)) => {
+                let user = match session_user(fetch_current_user(access_token.clone()).await, cached) {
+                    Ok(user) => user,
+                    Err(error) => return Ok(RehydrateOutcome::Unavailable { error, user: None }),
+                };
+                finish_signin(&app, user.clone(), access_token.clone(), None, None).await?;
+                Ok(RehydrateOutcome::SignedIn { access_token, user })
             }
-            None => Ok(None),
+            Ok(None) => Ok(RehydrateOutcome::NoSession),
+            Err(error) => {
+                let Some(user) = cached else {
+                    return Ok(RehydrateOutcome::Unavailable { error, user: None });
+                };
+                finish_signin(&app, user.clone(), String::new(), None, None).await?;
+                Ok(RehydrateOutcome::Unavailable { error, user: Some(user) })
+            }
         }
     })
     .await
@@ -711,6 +799,59 @@ mod tests {
         for status in [400, 408, 429, 500, 502, 503, 504] {
             assert!(refresh_status_rejects_token(reqwest::StatusCode::from_u16(status).unwrap()).is_err());
         }
+    }
+
+    fn user(id: &str) -> AuthUser {
+        AuthUser { id: id.into(), email: format!("{id}@example.com"), name: Some(id.into()), image: None }
+    }
+
+    // ---- Offline boot: keep the session when the broker is unreachable ----
+
+    #[test]
+    fn fresh_me_response_wins_over_the_cached_user() {
+        let got = session_user(Ok(user("fresh")), Some(user("cached"))).unwrap();
+        assert_eq!(got.id, "fresh");
+    }
+
+    #[test]
+    fn cached_user_covers_a_failed_me_call() {
+        let got = session_user(Err("network: timed out".into()), Some(user("cached"))).unwrap();
+        assert_eq!(got.id, "cached");
+    }
+
+    #[test]
+    fn failed_me_call_without_a_cache_is_an_error() {
+        assert!(session_user(Err("network: timed out".into()), None).is_err());
+    }
+
+    #[test]
+    fn cached_auth_user_round_trips_through_user_meta() {
+        let db = database::Database::new_in_memory().unwrap();
+        assert_eq!(load_cached_auth_user(&db).unwrap(), None);
+        save_cached_auth_user(&db, &user("u1")).unwrap();
+        assert_eq!(load_cached_auth_user(&db).unwrap(), Some(user("u1")));
+        clear_cached_auth_user(&db).unwrap();
+        assert_eq!(load_cached_auth_user(&db).unwrap(), None);
+    }
+
+    /// The frontend switches on `kind`; pin the wire shape so App.tsx and this
+    /// enum cannot drift apart silently.
+    #[test]
+    fn rehydrate_outcome_wire_shape() {
+        let v = serde_json::to_value(RehydrateOutcome::Unavailable {
+            error: "network: offline".into(),
+            user: Some(user("u1")),
+        })
+        .unwrap();
+        assert_eq!(v["kind"], "unavailable");
+        assert_eq!(v["error"], "network: offline");
+        assert_eq!(v["user"]["id"], "u1");
+
+        let v = serde_json::to_value(RehydrateOutcome::SignedIn { access_token: "tok".into(), user: user("u1") }).unwrap();
+        assert_eq!(v["kind"], "signed_in");
+        assert_eq!(v["access_token"], "tok");
+
+        assert_eq!(serde_json::to_value(RehydrateOutcome::NoSession).unwrap()["kind"], "no_session");
     }
 
     #[test]

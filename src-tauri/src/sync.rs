@@ -52,6 +52,19 @@ pub fn classify_push_failure(err: &sync_client::SyncError) -> PushFailure {
     }
 }
 
+/// Chip state for a failed request. "Could not reach the broker" (no
+/// internet, Vercel or Neon down, a gateway error) is Offline so the user sees
+/// the calm "will sync when the connection returns" copy; a real answer from
+/// the server, or a broken response, is Error.
+pub fn status_for_failure(err: &sync_client::SyncError) -> SyncStatus {
+    match err {
+        sync_client::SyncError::Network(_) => SyncStatus::Offline,
+        sync_client::SyncError::Server(502 | 503 | 504, _) => SyncStatus::Offline,
+        sync_client::SyncError::Refresh(msg) if msg.starts_with(crate::auth::NETWORK_ERROR_PREFIX) => SyncStatus::Offline,
+        _ => SyncStatus::Error,
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PushFailureAction {
     /// Poison rows removed from the queue; count of dropped entries.
@@ -402,6 +415,7 @@ async fn do_push(
             let jitter_unit: f64 = rand::Rng::gen(&mut rand::thread_rng());
             let db_arc = db.clone();
             let queue_c = queue.clone();
+            let failure_status = status_for_failure(&e);
             let handled = tokio::task::spawn_blocking(move || {
                 let db_guard = db_arc.lock().unwrap_or_else(|p| p.into_inner());
                 handle_push_failure(&db_guard, &queue_c, &e, jitter_unit).map(|a| (a, e.to_string()))
@@ -421,7 +435,7 @@ async fn do_push(
                 Ok((PushFailureAction::RetryAfter(delay), msg)) => {
                     crate::error_reporter::report_bg("sync_push", msg.clone());
                     let detail = format!("{msg} (retrying in {}s)", delay.as_secs());
-                    emit_status(app, db, SyncStatus::Error, Some(detail)).await;
+                    emit_status(app, db, failure_status, Some(detail)).await;
                     PushOutcome::BackOffUntil(tokio::time::Instant::now() + delay)
                 }
                 Err(book_keeping) => {
@@ -477,7 +491,7 @@ async fn do_pull(
         Err(e) => {
             let msg = format!("{e}");
             crate::error_reporter::report_bg("sync_pull", msg.clone());
-            emit_status(app, db, SyncStatus::Error, Some(msg)).await;
+            emit_status(app, db, status_for_failure(&e), Some(msg)).await;
         }
     }
 }
@@ -631,6 +645,24 @@ mod tests {
         assert!(matches!(classify_push_failure(&SyncError::Server(500, String::new())), PushFailure::Transient));
         assert!(matches!(classify_push_failure(&SyncError::Server(503, String::new())), PushFailure::Transient));
         assert!(matches!(classify_push_failure(&SyncError::Refresh("x".into())), PushFailure::Transient));
+    }
+
+    /// An unreachable broker (no internet, Vercel/Neon down) is shown as
+    /// Offline with its friendly copy; anything the server actually answered
+    /// with (other than a gateway error) stays a red Error.
+    #[test]
+    fn unreachable_broker_reads_as_offline_not_error() {
+        use sync_client::SyncError;
+        let network = reqwest::Client::new().get("http://[").build().err().expect("invalid url is a reqwest error");
+        assert_eq!(status_for_failure(&SyncError::Network(network)), SyncStatus::Offline);
+        for code in [502, 503, 504] {
+            assert_eq!(status_for_failure(&SyncError::Server(code, String::new())), SyncStatus::Offline, "{code}");
+        }
+        assert_eq!(status_for_failure(&SyncError::Refresh(format!("{} timed out", crate::auth::NETWORK_ERROR_PREFIX))), SyncStatus::Offline);
+
+        assert_eq!(status_for_failure(&SyncError::Server(500, String::new())), SyncStatus::Error);
+        assert_eq!(status_for_failure(&SyncError::Server(401, String::new())), SyncStatus::Error);
+        assert_eq!(status_for_failure(&SyncError::Refresh("decode: bad json".into())), SyncStatus::Error);
     }
 
     #[test]

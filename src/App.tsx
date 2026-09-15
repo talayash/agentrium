@@ -52,7 +52,8 @@ import { useTerminalStore } from './store/terminalStore';
 import { usePreviewStore } from './store/previewStore';
 import { toast } from './store/toastStore';
 import { detectUrl } from './lib/preview/detector';
-import { getAuthPromptSeen, subscribeToAuthEvents, fetchCurrentUser } from './lib/auth';
+import { getAuthPromptSeen, subscribeToAuthEvents, rehydrateAuth } from './lib/auth';
+import { applyRehydrateOutcome } from './lib/rehydrate';
 import { getSyncEnabled, subscribeToSyncEvents } from './lib/sync';
 import { useSyncStore } from './store/syncStore';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
@@ -125,15 +126,14 @@ interface SystemStatus {
 /**
  * Boot-time refresh: if there's a refresh token in the OS keychain, swap it
  * for a fresh access token and hydrate authStore. Returns true when the user
- * is now signed in, so the caller can skip the first-launch popup.
+ * is now signed in (online, or offline from the cached account when the
+ * broker is unreachable), so the caller can skip the first-launch popup.
+ * Only an unexpected IPC failure lands in the catch; "broker down" is a
+ * regular outcome handled by applyRehydrateOutcome.
  */
 async function tryRehydrateAuth(): Promise<boolean> {
   try {
-    const result = await invoke<{ access_token: string } | null>('rehydrate_auth');
-    if (!result) return false;
-    const user = await fetchCurrentUser(result.access_token);
-    useAuthStore.getState().setAuthed(user, result.access_token);
-    return true;
+    return applyRehydrateOutcome(await rehydrateAuth());
   } catch (e) {
     console.warn('[auth] rehydrate failed:', e);
     return false;

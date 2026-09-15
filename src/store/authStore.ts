@@ -14,6 +14,11 @@ type AuthState = {
   user: AuthUser | null;
   accessToken: string | null; // in-memory only, never persisted
   /**
+   * True when the account was restored from local state because the broker
+   * was unreachable at boot. Cleared by the next successful online sign-in.
+   */
+  offline: boolean;
+  /**
    * Last failure reported by the Rust side of a sign-in that completed
    * outside a component (OAuth deep-link callback, token exchange). The
    * LoginModal watches this to stop its spinner and show the message.
@@ -22,6 +27,7 @@ type AuthState = {
   authError: string | null;
   setGuest: () => void;
   setAuthed: (user: AuthUser, accessToken: string) => void;
+  setAuthedOffline: (user: AuthUser) => void;
   setUnknown: () => void;
   setAuthError: (message: string | null) => void;
   clear: () => void;
@@ -41,10 +47,12 @@ export const useAuthStore = create<AuthState>((set) => ({
   mode: 'unknown',
   user: null,
   accessToken: null,
+  offline: false,
   authError: null,
-  setGuest: () => set({ mode: 'guest', user: null, accessToken: null }),
-  setAuthed: (user, accessToken) => set({ mode: 'authed', user, accessToken, authError: null }),
-  setUnknown: () => set({ mode: 'unknown', user: null, accessToken: null }),
+  setGuest: () => set({ mode: 'guest', user: null, accessToken: null, offline: false }),
+  setAuthed: (user, accessToken) => set({ mode: 'authed', user, accessToken, offline: false, authError: null }),
+  setAuthedOffline: (user) => set({ mode: 'authed', user, accessToken: null, offline: true, authError: null }),
+  setUnknown: () => set({ mode: 'unknown', user: null, accessToken: null, offline: false }),
   setAuthError: (message) => set({ authError: message }),
-  clear: () => set({ mode: 'guest', user: null, accessToken: null }),
+  clear: () => set({ mode: 'guest', user: null, accessToken: null, offline: false }),
 }));

@@ -3,6 +3,7 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { useAuthStore, type AuthUser } from '../store/authStore';
 import { toast } from '../store/toastStore';
 import { reportInvokeFailure } from './errorReporter';
+import type { RehydrateOutcome } from './rehydrate';
 
 /**
  * Frontend wrappers over the Rust auth commands (see src-tauri/src/auth.rs).
@@ -91,6 +92,15 @@ export async function logout(): Promise<void> {
  */
 export async function fetchCurrentUser(accessToken: string): Promise<AuthUser> {
   return await invoke<AuthUser>('fetch_current_user', { accessToken });
+}
+
+/**
+ * Boot-time refresh. Rust swaps the keychain refresh token for an access
+ * token and reports what it found; see `applyRehydrateOutcome` for how each
+ * outcome maps onto authStore.
+ */
+export async function rehydrateAuth(): Promise<RehydrateOutcome> {
+  return await invoke<RehydrateOutcome>('rehydrate_auth');
 }
 
 /**
