@@ -14,6 +14,7 @@ import { useAppStore } from '../store/appStore';
 import type { AgentKind, BuiltinAgentKind } from '../lib/agents';
 import { isCustomAgent } from '../lib/agents';
 import { resolveRenameCommit } from '../lib/renameTab';
+import { contextTooltip, refreshSessionContext, sessionDisplayName } from '../lib/sessionContext';
 
 // Soft per-agent tint for the card badge (Apple-clean, theme-aware via /alpha).
 const AGENT_TINT: Record<BuiltinAgentKind, string> = {
@@ -79,6 +80,7 @@ export function SessionCards() {
   const toggleTabPin = useAppStore((s) => s.toggleTabPin);
   const [contextMenu, setContextMenu] = useState<CardContextMenuState | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [refreshingId, setRefreshingId] = useState<string | null>(null);
 
   // Exclude script-child runners and plain shell terminals - they render
   // elsewhere (BottomTerminalPane), never in the session list.
@@ -177,7 +179,7 @@ export function SessionCards() {
     // the right-click lands near the window edges.
     const margin = 4;
     const menuWidth = 220;
-    const menuHeight = 260;
+    const menuHeight = 300;
     const x = Math.min(e.clientX, window.innerWidth - menuWidth - margin);
     const y = Math.min(e.clientY, window.innerHeight - menuHeight - margin);
     setContextMenu({ x: Math.max(margin, x), y: Math.max(margin, y), terminalId });
@@ -220,7 +222,7 @@ export function SessionCards() {
         const inGrid = gridTerminalIds.includes(id);
         const cost = formatCost(metrics.get(id)?.costUsd ?? 0);
         const dir = basename(t.config.working_directory);
-        const name = t.config.nickname || t.config.label;
+        const name = sessionDisplayName(t);
         const gitInfo = gitInfoCache.get(id);
         return (
           <Reorder.Item
@@ -230,6 +232,8 @@ export function SessionCards() {
             role="button"
             tabIndex={0}
             aria-selected={active}
+            aria-label={name}
+            aria-description={t.sessionContext ? contextTooltip(name, t.sessionContext) : undefined}
             drag={renamingId !== id}
             onClick={() => setActiveTerminal(id)}
             onKeyDown={(e) => {
@@ -261,13 +265,15 @@ export function SessionCards() {
                   onCancel={() => setRenamingId(null)}
                 />
               ) : (
+                <Tooltip label={contextTooltip(name, t.sessionContext, t.sessionSummary)} multiline side="right">
                 <span
                   className="text-[13px] font-medium text-text-primary truncate"
+                  tabIndex={0}
                   onDoubleClick={(e) => { e.stopPropagation(); setRenamingId(id); }}
-                  title="Double-click to rename"
                 >
                   {name}
                 </span>
+                </Tooltip>
               )}
               {unread && (
                 <span className="w-1.5 h-1.5 rounded-full bg-accent-primary flex-shrink-0" aria-label="Unread output" />
@@ -362,6 +368,20 @@ export function SessionCards() {
             icon={<Pencil size={13} strokeWidth={1.75} />}
             label="Rename..."
             onClick={() => { setContextMenu(null); setRenamingId(ctxId); }}
+          />
+          <CardMenuItem
+            icon={<Pencil size={13} strokeWidth={1.75} />}
+            label={refreshingId === ctxId ? 'Updating context...' : terminals.get(ctxId)?.config.nickname ? 'Refresh summary' : 'Regenerate title and summary'}
+            disabled={refreshingId !== null}
+            onClick={() => {
+              setContextMenu(null);
+              setRefreshingId(ctxId);
+              void refreshSessionContext(ctxId, true).then(found => {
+                if (!found) toast.info('No context yet', 'Send a task to the agent, then try again.');
+              }).catch(() => {
+                toast.error('Update failed', 'Could not refresh the session context.');
+              }).finally(() => setRefreshingId(null));
+            }}
           />
           <div className="my-1 border-t border-seam" />
           <CardMenuItem

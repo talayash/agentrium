@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { SessionContext } from '../lib/sessionContext';
 import { invoke } from '@tauri-apps/api/core';
 import { Terminal } from '@xterm/xterm';
 import type { WorktreeDetectResult } from '../types/git';
@@ -138,6 +139,7 @@ interface TerminalInstance {
   isWorktree: boolean;
   loopInfo?: LoopInfo | null;
   sessionSummary?: string | null;
+  sessionContext?: SessionContext | null;
   // Script-child metadata: when set, this terminal is an npm-script runner
   // spawned below a parent terminal. Excluded from the tab list and sidebar.
   scriptName?: string;
@@ -203,6 +205,7 @@ interface TerminalState {
   updateTerminalStatus: (id: string, status: TerminalConfig['status']) => void;
   setLoopMode: (id: string, info: LoopInfo | null) => void;
   setSessionSummary: (id: string, summary: string | null) => void;
+  setSessionContext: (id: string, context: SessionContext) => void;
   getTerminalList: () => TerminalConfig[];
   clearUnread: (id: string) => void;
   hasUnread: (id: string) => boolean;
@@ -643,6 +646,14 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       return { terminals: newTerminals };
     });
   },
+
+  setSessionContext: (id, context) => set((state) => {
+    const instance = state.terminals.get(id);
+    if (!instance) return {};
+    const terminals = new Map(state.terminals);
+    terminals.set(id, { ...instance, sessionContext: context });
+    return { terminals };
+  }),
 
   setSessionSummary: (id, summary) => {
     set((state) => {

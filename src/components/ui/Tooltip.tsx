@@ -11,6 +11,7 @@ let warmUntil = 0;
 
 interface TooltipProps {
   label: string;
+  multiline?: boolean;
   /** Optional dimmed shortcut chip after the label, e.g. "Ctrl+B". */
   shortcut?: string;
   side?: TooltipSide;
@@ -25,7 +26,7 @@ interface TooltipProps {
  * The wrapper span uses `display: contents`, so it does not affect layout;
  * the anchor rect is measured from the first element child.
  */
-export function Tooltip({ label, shortcut, side = 'bottom', disabled, children }: TooltipProps) {
+export function Tooltip({ label, shortcut, side = 'bottom', disabled, children, multiline = false }: TooltipProps) {
   const wrapRef = useRef<HTMLSpanElement>(null);
   const tipRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<number | null>(null);
@@ -101,7 +102,7 @@ export function Tooltip({ label, shortcut, side = 'bottom', disabled, children }
           <div
             ref={tipRef}
             role="tooltip"
-            className="fixed z-[90] pointer-events-none whitespace-nowrap rounded-md material-popover ct-pop-in px-2 py-1 text-[11.5px] text-text-primary"
+            className={`fixed z-[90] pointer-events-none rounded-md material-popover ct-pop-in px-2 py-1 text-[11.5px] text-text-primary ${multiline ? 'whitespace-pre-line max-w-[320px] break-words leading-relaxed' : 'whitespace-nowrap'}`}
             style={{
               // Grow out of the anchor: origin faces back toward the trigger.
               transformOrigin:

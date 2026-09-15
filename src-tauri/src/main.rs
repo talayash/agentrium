@@ -19,6 +19,7 @@ mod changelists;
 mod otel_receiver;
 mod lsp;
 mod session_provider;
+mod session_context;
 mod feedback;
 mod auth;
 mod sync_client;
@@ -293,6 +294,7 @@ fn main() {
             commands::send_telemetry_heartbeat,
             commands::get_team_tasks,
             commands::summarize_session,
+            session_context::get_terminal_context,
             commands::save_session_summary,
             commands::get_session_summary,
             commands::list_memory_files,

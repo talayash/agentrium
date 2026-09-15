@@ -34,6 +34,21 @@
 
 The app is Tauri-native (small binary, no Electron bloat) and ships to Windows and macOS.
 
+## Automatic session titles
+
+Unnamed sessions get a short task title after terminal activity settles. Hover or
+focus the title to see the goal, latest progress, and update time. Double-click to
+set your own name; manual names always take priority. The session context menu can
+regenerate the title and summary. The command palette also searches this context.
+
+Live descriptions use the installed Claude CLI (Haiku) and its authentication,
+including for sessions running other agents. A bounded terminal excerpt is sent
+for summarization at most once every two minutes per active session, after output
+changes; this uses the configured Claude account. When summarization is unavailable,
+Agentrium uses the saved first-request preview where supported. Otherwise the
+original name remains. Context is saved locally and restored with recognized agent
+sessions. Manual regeneration bypasses the refresh interval.
+
 ## Supported Agents
 
 Each terminal you spawn can target any of the four agents below. Switch between them with a picker in the New Terminal dialog; the icon on each tab and grid cell tells you which agent is running.

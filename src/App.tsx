@@ -1,4 +1,5 @@
 import { Component, useEffect, useRef, useState } from 'react';
+import { useSessionContext } from './hooks/useSessionContext';
 import type { ErrorInfo, ReactNode } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { reportError, reportInvokeFailure } from './lib/errorReporter';
@@ -141,6 +142,7 @@ async function tryRehydrateAuth(): Promise<boolean> {
 }
 
 function App() {
+  useSessionContext();
   const { sidebarOpen, sidebarCollapsed, hintsOpen, changesOpen, workspacesOpen, settingsOpen, profileModalOpen, newTerminalModalOpen, workspaceModalOpen, worktreeModalOpen, pushModalOpen, sessionHistoryOpen, snippetsModalOpen, commandPaletteOpen, globalSearchOpen, whatsNewOpen, claudeConfigOpen, sessionTimelineOpen, memoryEditorOpen, showStatusBar, notifyOnFinish, restoreSession, triggerChangesRefresh, showRestoreBanner, pendingRestoreConfigs, setShowRestoreBanner, setPendingRestoreConfigs, lastSeenVersion, setLastSeenVersion, openWhatsNew } = useAppStore();
   const { handleTerminalOutput, updateTerminalStatus, setLoopMode, setSessionSummary, createTerminal, createShellTerminalTab, applyTerminalMetrics, adoptTerminal, detachTerminals, closeTerminal, terminals } = useTerminalStore();
 

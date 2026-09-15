@@ -145,8 +145,8 @@ export function CommandPalette() {
         result.push({
           id: `terminal-${config.id}`,
           frecencyKey: '',
-          label: config.nickname || config.label,
-          description: `${config.working_directory} (${config.status})`,
+          label: config.nickname || instance.sessionContext?.title || config.label,
+          description: [instance.sessionContext?.goal, instance.sessionContext?.latest, `${config.working_directory} (${config.status})`].filter(Boolean).join(' · '),
           category: 'Terminals',
           icon: Terminal,
           statusColor: STATUS_DOT[config.status] ?? 'bg-text-tertiary',

@@ -114,9 +114,9 @@ export function TerminalTabs() {
             <SplitSquareHorizontal size={13} className="text-accent-primary" strokeWidth={1.75} />
             <span className="text-text-primary text-[12px] font-medium">Split View</span>
             <span className="text-text-tertiary text-[11px]">
-              {terminals.get(splitTerminalIds[0])?.config.nickname || terminals.get(splitTerminalIds[0])?.config.label}
+              {terminals.get(splitTerminalIds[0])?.config.nickname || terminals.get(splitTerminalIds[0])?.sessionContext?.title || terminals.get(splitTerminalIds[0])?.config.label}
               {' · '}
-              {terminals.get(splitTerminalIds[1])?.config.nickname || terminals.get(splitTerminalIds[1])?.config.label}
+              {terminals.get(splitTerminalIds[1])?.config.nickname || terminals.get(splitTerminalIds[1])?.sessionContext?.title || terminals.get(splitTerminalIds[1])?.config.label}
             </span>
           </div>
           <div className="flex items-center gap-1">
@@ -190,7 +190,7 @@ export function TerminalTabs() {
                 </span>
               </Tooltip>
               <span className="text-[13px] font-medium text-text-primary max-w-[220px] truncate">
-                {activeConfig.nickname || activeConfig.label}
+                {activeConfig.nickname || terminals.get(activeConfig.id)?.sessionContext?.title || activeConfig.label}
               </span>
               {activeConfig.working_directory && (
                 <span className="text-[11px] text-text-tertiary max-w-[160px] truncate">
