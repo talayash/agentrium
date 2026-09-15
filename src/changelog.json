@@ -1,5 +1,13 @@
 [
   {
+    "version": "1.34.1",
+    "date": "2026-09-15",
+    "features": [
+      { "title": "Mouse clicks work again in Claude Code", "description": "Agentrium no longer forces Claude Code's classic renderer, so clicking inside the terminal (menus, links, selection) behaves correctly again." },
+      { "title": "Stay signed in when offline", "description": "If the sync server is unreachable when Agentrium starts, you stay signed in and the sync chip shows Offline instead of dropping you back to guest mode." }
+    ]
+  },
+  {
     "version": "1.34.0",
     "date": "2026-09-14",
     "features": [
