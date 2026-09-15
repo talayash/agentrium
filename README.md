@@ -205,12 +205,13 @@ mode it stays visible while you read older output and fades after returning to
 the bottom. Settings > Terminal Appearance > Scrollbar also offers always and
 hidden modes.
 
-Agentrium launches Claude with `CLAUDE_CODE_NO_FLICKER=0` so its conversation uses
-native scrollback and the thumb can track and drag through real history. Reopen
-or resume an existing fullscreen session to apply this default. An explicit
-profile environment value of `CLAUDE_CODE_NO_FLICKER=1` enables Claude's fullscreen
-renderer instead; fullscreen applications manage their own history, so Agentrium
-hides its scrollbar in that mode and leaves scrolling to the application.
+Claude Code picks its own renderer. Its default fullscreen renderer is the one
+that supports mouse clicks (selecting an option in a permission prompt, `/model`,
+`/config`) and it manages its own history, so Agentrium hides its scrollbar in
+that mode and leaves scrolling to the application. If you prefer Claude's
+conversation in native terminal scrollback, where the thumb can track and drag
+through real history, add `CLAUDE_CODE_NO_FLICKER=0` to the profile's environment
+variables; mouse clicks inside Claude are not available in that renderer.
 
 ### Configuration profiles
 

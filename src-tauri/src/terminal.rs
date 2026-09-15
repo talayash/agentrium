@@ -65,17 +65,22 @@ pub fn build_agent_command(spec: &crate::agents::AgentSpec, args: &[String]) -> 
     (spec.binary.clone(), args.to_vec())
 }
 
+/// Apply the per-agent process environment. `_spec` is the hook for any
+/// future agent-specific defaults; there are none today (see below).
 fn configure_agent_environment(
     cmd: &mut CommandBuilder,
-    spec: &crate::agents::AgentSpec,
+    _spec: &crate::agents::AgentSpec,
     env_vars: &HashMap<String, String>,
 ) {
-    // Claude's fullscreen renderer owns a virtual transcript that xterm cannot
-    // measure or drag. Keep output in native scrollback by default (also
-    // supported by Claude 2.1.117). Explicit profile/session env takes priority.
-    if spec.kind == crate::config::AgentKind::Claude {
-        cmd.env("CLAUDE_CODE_NO_FLICKER", "0");
-    }
+    // Do NOT pick Claude's renderer here. v1.33.6 forced
+    // `CLAUDE_CODE_NO_FLICKER=0` so the conversation lived in xterm's native
+    // scrollback, but Claude Code only enables terminal mouse reporting in its
+    // fullscreen renderer (click-to-select in permission prompts, /model,
+    // /config: Claude Code 2.1.187+). The override silently turned every
+    // mouse click into a no-op (#70). Claude's own default wins; the user can
+    // still opt into native scrollback with a profile env value of
+    // `CLAUDE_CODE_NO_FLICKER=0`, and terminalScrollbar.ts hides its thumb
+    // while an alternate-screen application owns the history.
     for (key, value) in env_vars {
         cmd.env(key, value);
     }
@@ -976,19 +981,28 @@ fn reap_terminal(
 mod tests {
     use super::*;
 
+    /// Regression test for #70: Claude Code only turns on terminal mouse
+    /// reporting in its fullscreen renderer, so forcing the classic renderer
+    /// (`CLAUDE_CODE_NO_FLICKER=0`) silently broke clicking permission-prompt
+    /// options. Agentrium must not pick a renderer on the user's behalf; only
+    /// an explicit profile/session value may set the variable.
     #[test]
-    fn claude_uses_native_scrollback_unless_session_explicitly_overrides_it() {
+    fn claude_renderer_choice_is_left_to_claude_unless_profile_env_sets_it() {
         use crate::config::AgentKind;
         let claude_spec = crate::agents::builtin_spec(&AgentKind::Claude).unwrap();
         let codex_spec = crate::agents::builtin_spec(&AgentKind::Codex).unwrap();
-        let mut cmd = CommandBuilder::new("claude");
-        cmd.env("CLAUDE_CODE_NO_FLICKER", "1");
-        configure_agent_environment(&mut cmd, &claude_spec, &HashMap::new());
-        assert_eq!(cmd.get_env("CLAUDE_CODE_NO_FLICKER"), Some(std::ffi::OsStr::new("0")));
 
-        let overrides = HashMap::from([("CLAUDE_CODE_NO_FLICKER".to_string(), "1".to_string())]);
+        let mut cmd = CommandBuilder::new("claude");
+        cmd.env_remove("CLAUDE_CODE_NO_FLICKER");
+        configure_agent_environment(&mut cmd, &claude_spec, &HashMap::new());
+        assert!(
+            cmd.get_env("CLAUDE_CODE_NO_FLICKER").is_none(),
+            "Agentrium must not inject CLAUDE_CODE_NO_FLICKER for Claude (#70)"
+        );
+
+        let overrides = HashMap::from([("CLAUDE_CODE_NO_FLICKER".to_string(), "0".to_string())]);
         configure_agent_environment(&mut cmd, &claude_spec, &overrides);
-        assert_eq!(cmd.get_env("CLAUDE_CODE_NO_FLICKER"), Some(std::ffi::OsStr::new("1")));
+        assert_eq!(cmd.get_env("CLAUDE_CODE_NO_FLICKER"), Some(std::ffi::OsStr::new("0")));
 
         let mut other = CommandBuilder::new("codex");
         other.env_remove("CLAUDE_CODE_NO_FLICKER");
