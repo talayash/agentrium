@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, memo, useCallback, useMemo } from 'react';
+import { useEffect, useRef, useState, memo, useCallback, useMemo, forwardRef } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { X, Maximize2, Minimize2, Plus, Grid3X3, Layers, Pin } from 'lucide-react';
 import { useTerminalStore } from '../store/terminalStore';
@@ -227,7 +227,12 @@ const TerminalCell = memo(function TerminalCell({ terminalId, index, isFocused, 
   );
 });
 
-function AddTerminalCell() {
+/* forwardRef is load-bearing here, not ceremony: the empty cells render inside
+ * AnimatePresence mode="popLayout", which measures each child through
+ * PopChild's ref before pulling it out of flow. A plain function component
+ * swallows that ref, so the pop-out never gets its measured size and React
+ * warns on every layout change. Same reason ToastCard forwards its ref. */
+const AddTerminalCell = forwardRef<HTMLDivElement>(function AddTerminalCell(_props, ref) {
   const { terminals } = useTerminalStore();
   const { gridTerminalIds, openNewTerminalModal, addToGrid } = useAppStore();
   const [showPicker, setShowPicker] = useState(false);
@@ -241,6 +246,7 @@ function AddTerminalCell() {
 
   return (
     <div
+      ref={ref}
       className={`h-full flex flex-col items-center justify-center bg-elevation-0 rounded-xl transition-all cursor-pointer group relative ${
         dropOver
           ? 'ring-2 ring-accent-primary bg-accent-primary/5'
@@ -336,7 +342,7 @@ function AddTerminalCell() {
       </AnimatePresence>
     </div>
   );
-}
+});
 
 export function TerminalGrid() {
   const {

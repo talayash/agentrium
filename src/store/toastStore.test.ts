@@ -114,4 +114,77 @@ describe('toastStore', () => {
     const types = useToastStore.getState().toasts.map((t) => t.type);
     expect(types).toEqual(['success', 'error', 'warning', 'info']);
   });
+
+  it('stamps each toast with the time it was created', () => {
+    vi.setSystemTime(new Date('2026-09-17T10:00:00Z'));
+
+    useToastStore.getState().addToast({ type: 'info', title: 'stamped', duration: 0 });
+
+    expect(useToastStore.getState().toasts[0].createdAt).toBe(Date.now());
+  });
+
+  it('keeps a toast that asks a question on screen until it is answered', () => {
+    useToastStore.getState().addToast({
+      type: 'error',
+      title: 'Push rejected',
+      actions: [{ label: 'Pull and Retry', onClick: () => {} }],
+    });
+
+    expect(useToastStore.getState().toasts[0].duration).toBe(0);
+
+    vi.advanceTimersByTime(60_000);
+    expect(useToastStore.getState().toasts).toHaveLength(1);
+  });
+
+  it('still honours an explicit duration on a toast that has actions', () => {
+    useToastStore.getState().addToast({
+      type: 'info',
+      title: 'fleeting',
+      duration: 1000,
+      actions: [{ label: 'Undo', onClick: () => {} }],
+    });
+
+    expect(useToastStore.getState().toasts[0].duration).toBe(1000);
+
+    vi.advanceTimersByTime(1000);
+    expect(useToastStore.getState().toasts).toHaveLength(0);
+  });
+
+  it('pauseAutoDismiss holds a toast on screen past its duration', () => {
+    const { addToast, pauseAutoDismiss } = useToastStore.getState();
+    const id = addToast({ type: 'info', title: 'hovered', duration: 1000 });
+
+    vi.advanceTimersByTime(400);
+    pauseAutoDismiss(id);
+    vi.advanceTimersByTime(60_000);
+
+    expect(useToastStore.getState().toasts.find((t) => t.id === id)).toBeDefined();
+  });
+
+  it('resumeAutoDismiss waits only the time that was left when it paused', () => {
+    const { addToast, pauseAutoDismiss, resumeAutoDismiss } = useToastStore.getState();
+    const id = addToast({ type: 'info', title: 'hovered', duration: 1000 });
+
+    vi.advanceTimersByTime(400);
+    pauseAutoDismiss(id);
+    vi.advanceTimersByTime(60_000);
+    resumeAutoDismiss(id);
+
+    vi.advanceTimersByTime(599);
+    expect(useToastStore.getState().toasts.find((t) => t.id === id)).toBeDefined();
+
+    vi.advanceTimersByTime(1);
+    expect(useToastStore.getState().toasts.find((t) => t.id === id)).toBeUndefined();
+  });
+
+  it('pausing a toast that never auto-dismisses is a no-op', () => {
+    const { addToast, pauseAutoDismiss, resumeAutoDismiss } = useToastStore.getState();
+    const id = addToast({ type: 'info', title: 'sticky', duration: 0 });
+
+    pauseAutoDismiss(id);
+    resumeAutoDismiss(id);
+    vi.advanceTimersByTime(60_000);
+
+    expect(useToastStore.getState().toasts.find((t) => t.id === id)).toBeDefined();
+  });
 });

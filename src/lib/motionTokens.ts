@@ -67,6 +67,26 @@ export const dialogMotion = {
   },
 };
 
+/** Notification banner: slides a few points in from the screen edge on a
+ *  momentum spring (it "arrives"), and leaves the same way. The travel is
+ *  deliberately short - a long runway reads as the app demanding attention,
+ *  which is exactly what a passive notification must not do. */
+export const bannerMotion = {
+  initial: { opacity: 0, x: 24, scale: 0.98 },
+  animate: {
+    opacity: 1,
+    x: 0,
+    scale: 1,
+    transition: { ...SPRING_MOMENTUM, opacity: { duration: DUR.fast, ease: EASE_OUT } },
+  },
+  exit: {
+    opacity: 0,
+    x: 24,
+    scale: 0.98,
+    transition: { duration: DUR.fast, ease: EASE_OUT },
+  },
+};
+
 /** Popover / menu: quick pop from its origin with a touch of overshoot.
  *  Pair with a transform-origin anchored to the trigger so it grows out of
  *  what opened it. */

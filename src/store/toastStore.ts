@@ -20,13 +20,23 @@ export interface Toast {
   message?: string;
   duration: number;
   actions?: ToastAction[];
+  /** Epoch ms the toast was raised - drives the relative timestamp the
+   *  banner renders ("now", "2m"). */
+  createdAt: number;
 }
 
 interface ToastState {
   toasts: Toast[];
-  addToast: (toast: Omit<Toast, 'id' | 'duration'> & { duration?: number }) => string;
+  addToast: (toast: Omit<Toast, 'id' | 'duration' | 'createdAt'> & { duration?: number }) => string;
   removeToast: (id: string) => void;
   clearAll: () => void;
+  /** Hold a toast's auto-dismiss while the pointer is over it (macOS keeps a
+   *  banner up as long as you're looking at it). Idempotent; a no-op for a
+   *  toast that never auto-dismisses. */
+  pauseAutoDismiss: (id: string) => void;
+  /** Resume a paused toast with only the time that was left, not a fresh
+   *  full duration. */
+  resumeAutoDismiss: (id: string) => void;
 }
 
 const DEFAULT_DURATION: Record<ToastType, number> = {
@@ -40,38 +50,88 @@ const MAX_TOASTS = 5;
 
 let nextId = 0;
 
-export const useToastStore = create<ToastState>()((set) => ({
-  toasts: [],
+/** Live auto-dismiss timers, keyed by toast id. `remaining` is non-null only
+ *  while the toast is paused under the pointer. Kept outside the store: a
+ *  timer handle is not state anything renders from. */
+interface DismissTimer {
+  handle: ReturnType<typeof setTimeout>;
+  endsAt: number;
+  remaining: number | null;
+}
+const timers = new Map<string, DismissTimer>();
 
-  addToast: (toast) => {
-    const id = `toast-${++nextId}`;
-    const duration = toast.duration ?? DEFAULT_DURATION[toast.type];
+function cancelTimer(id: string): void {
+  const timer = timers.get(id);
+  if (!timer) return;
+  clearTimeout(timer.handle);
+  timers.delete(id);
+}
 
-    set((state) => {
-      const updated = [...state.toasts, { ...toast, id, duration }];
-      // Keep only the most recent toasts
-      return { toasts: updated.slice(-MAX_TOASTS) };
-    });
+export const useToastStore = create<ToastState>()((set) => {
+  const scheduleDismiss = (id: string, ms: number): void => {
+    const handle = setTimeout(() => {
+      timers.delete(id);
+      set((state) => ({ toasts: state.toasts.filter((t) => t.id !== id) }));
+    }, ms);
+    timers.set(id, { handle, endsAt: Date.now() + ms, remaining: null });
+  };
 
-    // Auto-dismiss
-    if (duration > 0) {
-      setTimeout(() => {
-        set((state) => ({
-          toasts: state.toasts.filter((t) => t.id !== id),
-        }));
-      }, duration);
-    }
+  return {
+    toasts: [],
 
-    return id;
-  },
+    addToast: (toast) => {
+      const id = `toast-${++nextId}`;
+      // A toast carrying actions asks the user a question, so it waits for an
+      // answer instead of expiring mid-read. An explicit duration still wins.
+      const hasActions = !!toast.actions && toast.actions.length > 0;
+      const duration = toast.duration ?? (hasActions ? 0 : DEFAULT_DURATION[toast.type]);
 
-  removeToast: (id) =>
-    set((state) => ({
-      toasts: state.toasts.filter((t) => t.id !== id),
-    })),
+      set((state) => {
+        const updated = [...state.toasts, { ...toast, id, duration, createdAt: Date.now() }];
+        // Keep only the most recent toasts
+        const kept = updated.slice(-MAX_TOASTS);
+        // Evicted toasts will never be rendered again - drop their timers so
+        // the map can't grow without bound in a long-lived session.
+        for (const evicted of updated.slice(0, updated.length - kept.length)) {
+          cancelTimer(evicted.id);
+        }
+        return { toasts: kept };
+      });
 
-  clearAll: () => set({ toasts: [] }),
-}));
+      // Auto-dismiss
+      if (duration > 0) {
+        scheduleDismiss(id, duration);
+      }
+
+      return id;
+    },
+
+    removeToast: (id) => {
+      cancelTimer(id);
+      set((state) => ({
+        toasts: state.toasts.filter((t) => t.id !== id),
+      }));
+    },
+
+    clearAll: () => {
+      for (const id of [...timers.keys()]) cancelTimer(id);
+      set({ toasts: [] });
+    },
+
+    pauseAutoDismiss: (id) => {
+      const timer = timers.get(id);
+      if (!timer || timer.remaining !== null) return;
+      clearTimeout(timer.handle);
+      timer.remaining = Math.max(0, timer.endsAt - Date.now());
+    },
+
+    resumeAutoDismiss: (id) => {
+      const timer = timers.get(id);
+      if (!timer || timer.remaining === null) return;
+      scheduleDismiss(id, timer.remaining);
+    },
+  };
+});
 
 type ToastOpts = { duration?: number; actions?: ToastAction[] };
 
