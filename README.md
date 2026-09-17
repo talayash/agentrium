@@ -34,20 +34,19 @@
 
 The app is Tauri-native (small binary, no Electron bloat) and ships to Windows and macOS.
 
-## Automatic session titles
+## Automatic session subtitles
 
-Unnamed sessions get a short task title after terminal activity settles. Hover or
-focus the title to see the goal, latest progress, and update time. Double-click to
-set your own name; manual names always take priority. The session context menu can
-regenerate the title and summary. The command palette also searches this context.
+Session names stay unchanged. A short excerpt from the initial request appears as
+a smaller subtitle on session cards and in compact session headers. Hover or focus
+the card title or subtitle to read its saved context. Double-click the main title
+to rename the session. The command palette also searches the subtitle and context.
 
-Live descriptions use the installed Claude CLI (Haiku) and its authentication,
-including for sessions running other agents. A bounded terminal excerpt is sent
-for summarization at most once every two minutes per active session, after output
-changes; this uses the configured Claude account. When summarization is unavailable,
-Agentrium uses the saved first-request preview where supported. Otherwise the
-original name remains. Context is saved locally and restored with recognized agent
-sessions. Manual regeneration bypasses the refresh interval.
+Subtitles use local Claude, Codex, or Cursor session metadata, with no AI calls,
+additional authentication, or AI usage charges. When metadata is unavailable,
+the subtitle stays blank and extraction retries every 30 seconds. Agents without
+local session metadata do not receive automatic subtitles. Context is saved
+locally and restored with recognized sessions; existing saved descriptions remain
+readable. Use **Refresh context** in the session menu to re-extract the local text.
 
 ## Supported Agents
 
