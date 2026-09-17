@@ -65,6 +65,16 @@ pub fn status_for_failure(err: &sync_client::SyncError) -> SyncStatus {
     }
 }
 
+/// Telemetry gate for a failed sync request, and the counterpart to
+/// `status_for_failure`. A failure the user already sees as the calm Offline
+/// chip is a normal fact of laptop life (sleep/resume, hotel wifi, DNS), not a
+/// defect: reporting it buries real errors in the admin dashboard. It also
+/// never stops, because `DEDUP_WINDOW` (60s) is shorter than
+/// `PULL_INTERVAL_MS` (5min), so dedup can never collapse the repeats.
+pub fn should_report_failure(err: &sync_client::SyncError) -> bool {
+    status_for_failure(err) != SyncStatus::Offline
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PushFailureAction {
     /// Poison rows removed from the queue; count of dropped entries.
@@ -416,6 +426,8 @@ async fn do_push(
             let db_arc = db.clone();
             let queue_c = queue.clone();
             let failure_status = status_for_failure(&e);
+            // Computed before `e` moves into the blocking task below.
+            let report_transient = should_report_failure(&e);
             let handled = tokio::task::spawn_blocking(move || {
                 let db_guard = db_arc.lock().unwrap_or_else(|p| p.into_inner());
                 handle_push_failure(&db_guard, &queue_c, &e, jitter_unit).map(|a| (a, e.to_string()))
@@ -433,7 +445,9 @@ async fn do_push(
                     PushOutcome::Done
                 }
                 Ok((PushFailureAction::RetryAfter(delay), msg)) => {
-                    crate::error_reporter::report_bg("sync_push", msg.clone());
+                    if report_transient {
+                        crate::error_reporter::report_bg("sync_push", msg.clone());
+                    }
                     let detail = format!("{msg} (retrying in {}s)", delay.as_secs());
                     emit_status(app, db, failure_status, Some(detail)).await;
                     PushOutcome::BackOffUntil(tokio::time::Instant::now() + delay)
@@ -490,7 +504,9 @@ async fn do_pull(
         }
         Err(e) => {
             let msg = format!("{e}");
-            crate::error_reporter::report_bg("sync_pull", msg.clone());
+            if should_report_failure(&e) {
+                crate::error_reporter::report_bg("sync_pull", msg.clone());
+            }
             emit_status(app, db, status_for_failure(&e), Some(msg)).await;
         }
     }
@@ -556,6 +572,13 @@ pub(crate) async fn emit_status(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A genuine `reqwest` transport error, provoked by an unparseable URL.
+    /// `SyncError::Network` wraps a real `reqwest::Error`, which has no public
+    /// constructor, so this is the way to build one in a test.
+    fn network_error() -> sync_client::SyncError {
+        sync_client::SyncError::Network(reqwest::Client::new().get("http://[").build().unwrap_err())
+    }
 
     #[test]
     fn failed_pull_rolls_back_rows_and_keeps_cursor_for_retry() {
@@ -653,8 +676,7 @@ mod tests {
     #[test]
     fn unreachable_broker_reads_as_offline_not_error() {
         use sync_client::SyncError;
-        let network = reqwest::Client::new().get("http://[").build().err().expect("invalid url is a reqwest error");
-        assert_eq!(status_for_failure(&SyncError::Network(network)), SyncStatus::Offline);
+        assert_eq!(status_for_failure(&network_error()), SyncStatus::Offline);
         for code in [502, 503, 504] {
             assert_eq!(status_for_failure(&SyncError::Server(code, String::new())), SyncStatus::Offline, "{code}");
         }
@@ -663,6 +685,32 @@ mod tests {
         assert_eq!(status_for_failure(&SyncError::Server(500, String::new())), SyncStatus::Error);
         assert_eq!(status_for_failure(&SyncError::Server(401, String::new())), SyncStatus::Error);
         assert_eq!(status_for_failure(&SyncError::Refresh("decode: bad json".into())), SyncStatus::Error);
+    }
+
+    /// Telemetry must mirror the chip. A failure the user already sees as the
+    /// calm Offline state is a normal fact of laptop life (sleep/resume, hotel
+    /// wifi, DNS) and is not a defect worth an error report. Without this gate
+    /// a permanently-offline install reports forever: `DEDUP_WINDOW` is 60s
+    /// but `PULL_INTERVAL_MS` is 5min, so dedup can never suppress the repeat.
+    #[test]
+    fn offline_class_failures_are_not_reported() {
+        use sync_client::SyncError;
+        assert!(!should_report_failure(&network_error()));
+        for code in [502, 503, 504] {
+            assert!(!should_report_failure(&SyncError::Server(code, String::new())), "{code}");
+        }
+        assert!(!should_report_failure(&SyncError::Refresh(format!("{} timed out", crate::auth::NETWORK_ERROR_PREFIX))));
+    }
+
+    /// The gate must stay narrow: anything the server actually answered with,
+    /// and any broken response, is still a real defect and still reported.
+    #[test]
+    fn server_answered_and_malformed_failures_are_still_reported() {
+        use sync_client::SyncError;
+        assert!(should_report_failure(&SyncError::Server(500, String::new())));
+        assert!(should_report_failure(&SyncError::Server(401, String::new())));
+        assert!(should_report_failure(&SyncError::Server(422, String::new())));
+        assert!(should_report_failure(&SyncError::Refresh("decode: bad json".into())));
     }
 
     #[test]
