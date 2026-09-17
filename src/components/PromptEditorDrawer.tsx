@@ -371,7 +371,7 @@ export function PromptEditorDrawer() {
                     {visibleTerminals.length === 0 && <option value="">No terminals open</option>}
                     {visibleTerminals.map((t) => (
                       <option key={t.config.id} value={t.config.id}>
-                        {t.config.nickname || t.sessionContext?.title || t.config.label}
+                        {t.config.nickname || t.config.label}
                       </option>
                     ))}
                   </select>

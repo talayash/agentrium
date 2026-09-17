@@ -1,9 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Terminal } from '@xterm/xterm';
 const invoke = vi.hoisted(() => vi.fn());
 vi.mock('@tauri-apps/api/core', () => ({ invoke }));
 import { useTerminalStore, type TerminalConfig } from '../store/terminalStore';
-import { captureSessionScreen, contextTooltip, refreshSessionContext, sessionDisplayName, type SessionContext } from './sessionContext';
+import { contextTooltip, refreshSessionContext, sessionDisplayName, type SessionContext } from './sessionContext';
 
 const context: SessionContext = {
   title: 'Fix login redirect', goal: 'Keep users signed in.', latest: 'Checking restart behavior.',
@@ -21,9 +20,9 @@ const seed = () => useTerminalStore.setState({ terminals: new Map([
 beforeEach(() => { invoke.mockReset(); seed(); });
 
 describe('session context', () => {
-  it('prefers a manual name and falls back through generated and default titles', () => {
+  it('keeps the manual or default name when generated context exists', () => {
     expect(sessionDisplayName({ config })).toBe('Agentrium 1');
-    expect(sessionDisplayName({ config, sessionContext: context })).toBe('Fix login redirect');
+    expect(sessionDisplayName({ config, sessionContext: context })).toBe('Agentrium 1');
     expect(sessionDisplayName({ config: { ...config, nickname: 'My task' }, sessionContext: context })).toBe('My task');
   });
 
@@ -65,14 +64,10 @@ describe('session context', () => {
     expect(useTerminalStore.getState().terminals.get('test')?.sessionContext).toEqual(context);
   });
 
-  it('bounds long scrollback while retaining its beginning and end', () => {
-    const current = useTerminalStore.getState().terminals.get('test')!;
-    const xterm = { buffer: { active: { length: 10000, getLine: (i: number) => ({ translateToString: () => `line ${i} ${'x'.repeat(250)}` }) } } } as unknown as Terminal;
-    useTerminalStore.setState({ terminals: new Map([['test', { ...current, xterm }]]) });
-    const screen = captureSessionScreen('test');
-    expect(screen).toContain('line 0 ');
-    expect(screen).toContain('line 9999 ');
-    expect(screen.length).toBeLessThan(16000);
+  it('extracts local context without sending terminal content', async () => {
+    invoke.mockResolvedValue(context);
+    await refreshSessionContext('test');
+    expect(invoke).toHaveBeenCalledWith('get_terminal_context', { id: 'test', screen: '', regenerate: false });
   });
 
   it('shows goal and latest separately and can expose a legacy summary', () => {

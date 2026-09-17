@@ -332,6 +332,13 @@ export function SessionCards() {
                 </Tooltip>
               </span>
             </div>
+            {t.sessionContext?.title && t.sessionContext.title !== name && (
+              <Tooltip label={contextTooltip(name, t.sessionContext, t.sessionSummary)} multiline side="right">
+                <div className="mt-1 text-[12px] text-text-secondary truncate" tabIndex={0}>
+                  {t.sessionContext.title}
+                </div>
+              </Tooltip>
+            )}
             <div className="mt-1 flex items-center gap-2 text-[11px] text-text-tertiary">
               {dir && <span className="truncate">{dir}</span>}
               {gitInfo?.is_git_repo && gitInfo.current_branch && (
@@ -371,7 +378,7 @@ export function SessionCards() {
           />
           <CardMenuItem
             icon={<Pencil size={13} strokeWidth={1.75} />}
-            label={refreshingId === ctxId ? 'Updating context...' : terminals.get(ctxId)?.config.nickname ? 'Refresh summary' : 'Regenerate title and summary'}
+            label={refreshingId === ctxId ? 'Updating context...' : 'Refresh context'}
             disabled={refreshingId !== null}
             onClick={() => {
               setContextMenu(null);

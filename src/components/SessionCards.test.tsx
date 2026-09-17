@@ -19,9 +19,23 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('session card context', () => {
-  it('shows the automatic title and a readable summary on hover', async () => {
+  it('keeps the original name when no context is available', () => {
+    useTerminalStore.getState().setSessionContext('one', null);
     render(<SessionCards />);
-    expect(screen.queryByText('Agentrium 1')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Agentrium 1' })).toBeTruthy();
+    expect(screen.queryByText('Fix login redirect')).toBeNull();
+  });
+
+  it('hides a subtitle identical to the main name', () => {
+    const terminal = useTerminalStore.getState().terminals.get('one')!;
+    useTerminalStore.getState().setSessionContext('one', { ...terminal.sessionContext!, title: 'Agentrium 1' });
+    render(<SessionCards />);
+    expect(screen.getAllByText('Agentrium 1')).toHaveLength(1);
+  });
+
+  it('shows a stable main title, automatic subtitle and summary on hover', async () => {
+    render(<SessionCards />);
+    expect(screen.getByRole('button', { name: 'Agentrium 1' })).toBeTruthy();
     fireEvent.mouseEnter(screen.getByText('Fix login redirect'));
     const tooltip = await screen.findByRole('tooltip');
     expect(tooltip.textContent).toContain('Goal: Keep users signed in.');
@@ -30,13 +44,13 @@ describe('session card context', () => {
 
   it('preserves a manual rename and offers summary refresh afterward', async () => {
     render(<SessionCards />);
-    fireEvent.doubleClick(screen.getByText('Fix login redirect'));
+    fireEvent.doubleClick(screen.getByText('Agentrium 1'));
     const input = screen.getByRole('textbox', { name: 'Rename session' });
     fireEvent.change(input, { target: { value: 'Authentication task' } });
     fireEvent.keyDown(input, { key: 'Enter' });
     await waitFor(() => expect(screen.getByText('Authentication task')).toBeTruthy());
     fireEvent.contextMenu(screen.getByRole('button', { name: 'Authentication task' }));
-    expect(screen.getByRole('menuitem', { name: 'Refresh summary' })).toBeTruthy();
-    expect(screen.queryByRole('menuitem', { name: 'Regenerate title and summary' })).toBeNull();
+    expect(screen.getByRole('menuitem', { name: 'Refresh context' })).toBeTruthy();
+    expect(screen.getByText('Fix login redirect')).toBeTruthy();
   });
 });

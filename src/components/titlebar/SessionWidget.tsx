@@ -73,7 +73,7 @@ export function SessionWidget() {
   const activeState: SessionState = active
     ? terminalStates.get(active.config.id) ?? 'idle'
     : 'idle';
-  const activeName = active ? active.config.nickname || active.sessionContext?.title || active.config.label : 'Sessions';
+  const activeName = active ? active.config.nickname || active.config.label : 'Sessions';
 
   return (
     <>
@@ -135,7 +135,7 @@ export function SessionWidget() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5">
                         <span className="text-[12px] font-medium truncate text-text-primary">
-                          {t.config.nickname || t.sessionContext?.title || t.config.label}
+                          {t.config.nickname || t.config.label}
                         </span>
                         <span className="text-[9px] text-text-tertiary flex-shrink-0">
                           {STATE_LABEL[terminalStates.get(t.config.id) ?? 'idle']}

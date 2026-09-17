@@ -174,8 +174,13 @@ const TerminalCell = memo(function TerminalCell({ terminalId, index, isFocused, 
           <span className={`text-[11px] truncate font-medium cursor-grab ${
             isFocused ? 'text-text-primary' : 'text-text-secondary'
           }`}>
-            {terminal.config.nickname || terminal.sessionContext?.title || terminal.config.label}
+            {terminal.config.nickname || terminal.config.label}
           </span>
+          {terminal.sessionContext?.title && terminal.sessionContext.title !== (terminal.config.nickname || terminal.config.label) && (
+            <span className="text-[11px] text-text-secondary truncate" title={terminal.sessionContext.title}>
+              {'\u00b7'} {terminal.sessionContext.title}
+            </span>
+          )}
           {/* Status dot - pulses when running (matches sketch's cell head) */}
           <span
             className={`inline-block w-1.5 h-1.5 rounded-full flex-shrink-0 ${
@@ -305,7 +310,7 @@ function AddTerminalCell() {
                         <BrandIcon kind={t.config.agent} size={12} />
                       </span>
                       <span className="text-text-primary text-[12px] truncate">
-                        {t.config.nickname || t.sessionContext?.title || t.config.label}
+                        {t.config.nickname || t.config.label}
                       </span>
                     </button>
                   ))}
