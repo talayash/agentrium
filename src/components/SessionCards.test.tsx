@@ -20,7 +20,8 @@ afterEach(cleanup);
 
 describe('session card context', () => {
   it('keeps the original name when no context is available', () => {
-    useTerminalStore.getState().setSessionContext('one', null);
+    const terminal = useTerminalStore.getState().terminals.get('one')!;
+    useTerminalStore.setState({ terminals: new Map([['one', { ...terminal, sessionContext: null }]]) });
     render(<SessionCards />);
     expect(screen.getByRole('button', { name: 'Agentrium 1' })).toBeTruthy();
     expect(screen.queryByText('Fix login redirect')).toBeNull();
