@@ -379,6 +379,21 @@ export function TerminalGrid() {
     });
   }, []);
 
+  // Grid focus lived only in appStore.gridFocusedIndex, while every contextual
+  // panel - the Inspector's Changes tab, the file tree, the title-bar git chip
+  // - reads terminalStore.activeTerminalId. Moving between panes therefore
+  // left them all pinned to whichever tab was last clicked (#71). Mirror the
+  // focused pane into the active terminal from one place, so clicks, Alt
+  // navigation, pane swaps and removals all stay in sync. Keyed on the focused
+  // pane's terminal id, not the index, so appending a freshly created terminal
+  // to the grid does not steal "active" back from it.
+  const focusedTerminalId = gridFocusedIndex === null ? null : gridTerminalIds[gridFocusedIndex] ?? null;
+  useEffect(() => {
+    if (!focusedTerminalId) return;
+    if (useTerminalStore.getState().activeTerminalId === focusedTerminalId) return;
+    setActiveTerminal(focusedTerminalId);
+  }, [focusedTerminalId, setActiveTerminal]);
+
   // Spatial pane navigation, gated behind Alt. The old handler hijacked BARE
   // arrow keys whenever a pane was focused, so they were double-handled - the
   // PTY received them (shell history / cursor / vim) AND the grid moved focus.
