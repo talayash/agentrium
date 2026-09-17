@@ -2,6 +2,27 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/react';
 
 const mocks = vi.hoisted(() => ({ invoke: vi.fn(), editor: vi.fn(), diff: vi.fn() }));
+// Fake IStandaloneDiffEditor: records the order of setModel(null) vs model disposal.
+const makeDiffEditor = (log: string[]) => {
+  const model = {
+    original: { dispose: () => log.push('dispose:original') },
+    modified: { dispose: () => log.push('dispose:modified') },
+  };
+  let current: unknown = model;
+  return {
+    getModel: () => current,
+    setModel: (m: unknown) => { log.push('setModel:' + (m === null ? 'null' : 'model')); current = m; },
+    getModifiedEditor: () => ({
+      getModel: () => ({ updateOptions: () => {} }),
+      onDidChangeModelContent: () => ({ dispose: () => {} }),
+      getValue: () => 'edited',
+      focus: () => {},
+      revealLineInCenter: () => {},
+      setPosition: () => {},
+      setSelection: () => {},
+    }),
+  };
+};
 vi.mock('@tauri-apps/api/core', () => ({ invoke: mocks.invoke }));
 vi.mock('./monacoSetup', () => ({ languageFromPath: () => 'typescript' }));
 vi.mock('@monaco-editor/react', () => ({
@@ -27,6 +48,34 @@ describe('file editor preferences and saving', () => {
     useAppStore.getState().setFileTabMode('a.ts', 'diff');
     view.rerender(<FileEditorView path="a.ts" />);
     expect(mocks.diff.mock.lastCall?.[0].options).toMatchObject({ fontSize: 24, wordWrap: 'on' });
+  });
+
+  it('detaches diff models before disposing them and never lets the library do it', () => {
+    useAppStore.setState({ openFiles: [{ ...file('a.ts'), mode: 'diff' }], activeFilePath: 'a.ts' });
+    const log: string[] = [];
+    const view = render(<FileEditorView path="a.ts" />);
+    const props = mocks.diff.mock.lastCall?.[0];
+    // Without these the wrapper disposes the models before the widget, which
+    // makes Monaco report "TextModel got disposed before DiffEditorWidget
+    // model got reset".
+    expect(props.keepCurrentOriginalModel).toBe(true);
+    expect(props.keepCurrentModifiedModel).toBe(true);
+    props.onMount(makeDiffEditor(log));
+    view.unmount();
+    expect(log).toEqual(['setModel:null', 'dispose:original', 'dispose:modified']);
+  });
+
+  it('disposes diff models when switching back to the plain editor', () => {
+    useAppStore.setState({ openFiles: [{ ...file('a.ts'), mode: 'diff' }], activeFilePath: 'a.ts' });
+    const log: string[] = [];
+    const view = render(<FileEditorView path="a.ts" />);
+    mocks.diff.mock.lastCall?.[0].onMount(makeDiffEditor(log));
+    useAppStore.getState().setFileTabMode('a.ts', 'edit');
+    view.rerender(<FileEditorView path="a.ts" />);
+    expect(log).toEqual(['setModel:null', 'dispose:original', 'dispose:modified']);
+    // Unmounting afterwards must not double-dispose.
+    view.unmount();
+    expect(log).toHaveLength(3);
   });
 
   it('saves latest content on tab switch when enabled', async () => {

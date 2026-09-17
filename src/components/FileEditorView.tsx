@@ -26,6 +26,9 @@ export function FileEditorView({ path }: FileEditorViewProps) {
   const clearEditorNavigation = useAppStore((s) => s.clearEditorNavigation);
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const diffEditorRef = useRef<editor.IStandaloneDiffEditor | null>(null);
+  // Models the DiffEditor is currently showing. We own their disposal - see
+  // the cleanup effect below for why @monaco-editor/react must not do it.
+  const diffModelsRef = useRef<editor.IDiffEditorModel | null>(null);
 
   const {
     editorFontFamily, editorFontSize, editorLineHeight, editorTabSize,
@@ -116,6 +119,30 @@ export function FileEditorView({ path }: FileEditorViewProps) {
     return () => window.removeEventListener('keydown', onKey);
   }, [path, dirty, saveFileTab]);
 
+  // @monaco-editor/react's DiffEditor cleanup disposes the original/modified
+  // TextModels *before* disposing the widget, and DiffEditorWidget reports a
+  // BugIndicatingError ("TextModel got disposed before DiffEditorWidget model
+  // got reset") when a model it still holds dies under it. We opt out of the
+  // library's disposal with keepCurrent*Model and detach the models first.
+  // Runs whenever the DiffEditor goes away: mode toggle, file switch, unmount.
+  useEffect(() => {
+    if (tab?.mode !== 'diff') return;
+    return () => {
+      const models = diffModelsRef.current;
+      diffModelsRef.current = null;
+      if (!models) return;
+      try {
+        // No-op if the widget is already disposed; the guard is removed with it.
+        diffEditorRef.current?.setModel(null);
+      } catch {
+        // Widget already gone - the models are detached either way.
+      }
+      diffEditorRef.current = null;
+      models.original?.dispose();
+      models.modified?.dispose();
+    };
+  }, [tab?.mode, path]);
+
   const onMount: OnMount = (ed) => {
     editorRef.current = ed;
     ed.getModel()?.updateOptions({ tabSize: editorTabSize });
@@ -125,6 +152,7 @@ export function FileEditorView({ path }: FileEditorViewProps) {
 
   const onDiffMount: DiffOnMount = (ed) => {
     diffEditorRef.current = ed;
+    diffModelsRef.current = ed.getModel();
     const modified = ed.getModifiedEditor();
     modified.getModel()?.updateOptions({ tabSize: editorTabSize });
     // Treat the modified (right) side as editable and pipe its changes into
@@ -206,10 +234,9 @@ export function FileEditorView({ path }: FileEditorViewProps) {
           </div>
         ) : tab.mode === 'diff' ? (
           <DiffEditor
-            // Remount on file switch: DiffEditorWidget swaps its modified
-            // TextModel when modifiedModelPath changes, and if disposal races
-            // that async swap, Monaco throws "TextModel got disposed before
-            // DiffEditorWidget model got reset". A hard remount side-steps it.
+            // Remount on file switch: the wrapper swaps the inner editor's
+            // model when modifiedModelPath changes without telling the diff
+            // widget, which then holds a stale model. A hard remount avoids it.
             key={path}
             height="100%"
             language={language}
@@ -219,6 +246,8 @@ export function FileEditorView({ path }: FileEditorViewProps) {
             // markers attach in diff mode too. The original (HEAD) side keeps
             // its auto-generated in-memory model - it gets no markers.
             modifiedModelPath={modelUri}
+            keepCurrentOriginalModel
+            keepCurrentModifiedModel
             onMount={onDiffMount}
             theme="vs-dark"
             options={{ ...options, renderSideBySide: true, readOnly: false, originalEditable: false }}
