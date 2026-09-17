@@ -192,6 +192,11 @@ export function TerminalTabs() {
               <span className="text-[13px] font-medium text-text-primary max-w-[220px] truncate">
                 {activeConfig.nickname || activeConfig.label}
               </span>
+              {terminals.get(activeConfig.id)?.sessionContext?.title && terminals.get(activeConfig.id)?.sessionContext?.title !== (activeConfig.nickname || activeConfig.label) && (
+                <span className="text-[12px] text-text-secondary max-w-[260px] truncate" title={terminals.get(activeConfig.id)?.sessionContext?.title}>
+                  {'\u00b7'} {terminals.get(activeConfig.id)?.sessionContext?.title}
+                </span>
+              )}
               {activeConfig.working_directory && (
                 <span className="text-[11px] text-text-tertiary max-w-[160px] truncate">
                   {fileBasename(activeConfig.working_directory)}

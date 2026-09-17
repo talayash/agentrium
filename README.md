@@ -34,6 +34,20 @@
 
 The app is Tauri-native (small binary, no Electron bloat) and ships to Windows and macOS.
 
+## Automatic session subtitles
+
+Session names stay unchanged. A short excerpt from the initial request appears as
+a smaller subtitle on session cards and in compact session headers. Hover or focus
+the card title or subtitle to read its saved context. Double-click the main title
+to rename the session. The command palette also searches the subtitle and context.
+
+Subtitles use local Claude, Codex, or Cursor session metadata, with no AI calls,
+additional authentication, or AI usage charges. When metadata is unavailable,
+the subtitle stays blank and extraction retries every 30 seconds. Agents without
+local session metadata do not receive automatic subtitles. Context is saved
+locally and restored with recognized sessions; existing saved descriptions remain
+readable. Use **Refresh context** in the session menu to re-extract the local text.
+
 ## Supported Agents
 
 Each terminal you spawn can target any of the four agents below. Switch between them with a picker in the New Terminal dialog; the icon on each tab and grid cell tells you which agent is running.

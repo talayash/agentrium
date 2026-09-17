@@ -176,6 +176,11 @@ const TerminalCell = memo(function TerminalCell({ terminalId, index, isFocused, 
           }`}>
             {terminal.config.nickname || terminal.config.label}
           </span>
+          {terminal.sessionContext?.title && terminal.sessionContext.title !== (terminal.config.nickname || terminal.config.label) && (
+            <span className="text-[11px] text-text-secondary truncate" title={terminal.sessionContext.title}>
+              {'\u00b7'} {terminal.sessionContext.title}
+            </span>
+          )}
           {/* Status dot - pulses when running (matches sketch's cell head) */}
           <span
             className={`inline-block w-1.5 h-1.5 rounded-full flex-shrink-0 ${
@@ -373,6 +378,21 @@ export function TerminalGrid() {
       useTerminalStore.getState().terminals.get(id)?.xterm?.focus();
     });
   }, []);
+
+  // Grid focus lived only in appStore.gridFocusedIndex, while every contextual
+  // panel - the Inspector's Changes tab, the file tree, the title-bar git chip
+  // - reads terminalStore.activeTerminalId. Moving between panes therefore
+  // left them all pinned to whichever tab was last clicked (#71). Mirror the
+  // focused pane into the active terminal from one place, so clicks, Alt
+  // navigation, pane swaps and removals all stay in sync. Keyed on the focused
+  // pane's terminal id, not the index, so appending a freshly created terminal
+  // to the grid does not steal "active" back from it.
+  const focusedTerminalId = gridFocusedIndex === null ? null : gridTerminalIds[gridFocusedIndex] ?? null;
+  useEffect(() => {
+    if (!focusedTerminalId) return;
+    if (useTerminalStore.getState().activeTerminalId === focusedTerminalId) return;
+    setActiveTerminal(focusedTerminalId);
+  }, [focusedTerminalId, setActiveTerminal]);
 
   // Spatial pane navigation, gated behind Alt. The old handler hijacked BARE
   // arrow keys whenever a pane was focused, so they were double-handled - the

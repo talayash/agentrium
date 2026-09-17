@@ -143,7 +143,7 @@ pub fn set_error_reporting_enabled(enabled: bool) -> Result<(), String> {
 /// so it can't be held across `.await`) and runs `f` on the blocking pool
 /// - the lock is held only for the duration of the sync work, and the
 /// runtime workers stay free.
-async fn db_op<T, F>(
+pub(crate) async fn db_op<T, F>(
     db_arc: &std::sync::Arc<std::sync::Mutex<crate::database::Database>>,
     f: F,
 ) -> Result<T, String>
