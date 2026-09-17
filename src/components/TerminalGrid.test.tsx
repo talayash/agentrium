@@ -127,3 +127,33 @@ describe('grid focus drives the active terminal', () => {
     expect(useTerminalStore.getState().unreadTerminalIds.has('beta')).toBe(false);
   });
 });
+
+/**
+ * AnimatePresence mode="popLayout" wraps every child in framer-motion's
+ * PopChild, which attaches a ref to measure the element before pulling it out
+ * of document flow. A plain function component silently swallows that ref, so
+ * the measurement never happens and React logs a console error on every grid
+ * layout change. ToastContainer already learned this (see ToastCard's
+ * forwardRef); the empty grid cell had the same bug.
+ */
+describe('empty grid cells animate without React warnings', () => {
+  it('renders empty panes with no ref warning', () => {
+    const errors: unknown[][] = [];
+    const spy = vi.spyOn(console, 'error').mockImplementation((...args) => {
+      errors.push(args);
+    });
+
+    try {
+      // 2x2 holds four panes; two terminals leaves two empty cells.
+      useAppStore.setState({ gridLayout: '2x2' });
+      render(<TerminalGrid />);
+    } finally {
+      spy.mockRestore();
+    }
+
+    const refWarnings = errors.filter((args) =>
+      args.some((a) => typeof a === 'string' && a.includes('Function components cannot be given refs'))
+    );
+    expect(refWarnings).toEqual([]);
+  });
+});

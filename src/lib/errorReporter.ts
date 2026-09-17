@@ -8,6 +8,14 @@ const STACK_MAX = 8192;
 const NOISE_PATTERNS: readonly RegExp[] = [
   // Benign ResizeObserver warning fired when callbacks complete out of sync.
   /^ResizeObserver loop (?:completed with undelivered notifications|limit exceeded)\.?$/i,
+  // xterm 5.5.0 Viewport schedules syncScrollArea via setTimeout and rAF in
+  // its constructor and cancels neither on dispose. syncScrollArea reads
+  // `this._renderer.value.dimensions`, and `.value` is undefined once the
+  // render service is disposed - so a terminal created and torn down inside a
+  // single frame (a grid re-layout) lands a callback on a dead service. The
+  // terminal is already gone, so nothing is broken. Upstream race; revisit if
+  // xterm ever guards those callbacks.
+  /Cannot read properties of undefined \(reading 'dimensions'\)/,
 ];
 
 /**
