@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.34.2",
+    "date": "2026-09-18",
+    "features": [
+      { "title": "Skip a version you don't want", "description": "The update notification now has a Skip This Version button, and update toasts stack instead of replacing each other." },
+      { "title": "Sessions name themselves", "description": "Terminals pick up a title from your first request and show a live context summary, so you can tell parallel sessions apart at a glance." },
+      { "title": "Grid and editor fixes", "description": "The Inspector's Changes panel now follows the focused pane, empty grid cells render correctly, and Monaco no longer reports a disposed model in diff mode." },
+      { "title": "Quieter when offline", "description": "Sync failures caused by being offline are no longer reported as errors." }
+    ]
+  },
+  {
     "version": "1.34.1",
     "date": "2026-09-15",
     "features": [
