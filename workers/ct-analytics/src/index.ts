@@ -18,11 +18,14 @@
  *   GET  /stats/live             active in last 15 min, by version/os/country
  *   GET  /stats/history?days=30&metric=dau|heartbeats|update_checks|version|os|country
  *   GET  /errors/summary?days=7&limit=20   top error groups + by source/version/os/day
+ *   POST /errors/resolve         mark fingerprints resolved / un-resolved (token)
+ *   POST /feedback/delete        soft-delete / restore inbox messages (token)
  *   POST /admin/login_attempt    admin-dashboard login rate limit (token)
  *   POST /stats/match            count given installation ids active today / now (token)
  */
 
 import { constantTimeEqual, checkLoginAttempt, parseMatchBody, matchInstallations } from './admin';
+import { parseResolveBody, isGroupResolved } from './errors';
 
 interface Env {
   KV_BINDING: KVNamespace;
@@ -403,7 +406,11 @@ async function handleFeedbackList(url: URL, env: Env): Promise<Response> {
   const limit = Math.min(Math.max(parseInt(url.searchParams.get('limit') ?? '100', 10) || 100, 1), 500);
   const unreadOnly = url.searchParams.get('unread_only') === '1';
 
-  const whereClause = unreadOnly ? 'WHERE read_at IS NULL' : '';
+  // Soft-deleted rows leave the list and the counters; the text stays in D1
+  // so the dashboard's Undo can restore it.
+  const whereClause = unreadOnly
+    ? 'WHERE deleted_at IS NULL AND read_at IS NULL'
+    : 'WHERE deleted_at IS NULL';
   const rows = await env.DB.prepare(
     `SELECT id, ts, name, message, app_version, os, country, read_at FROM feedback ${whereClause} ORDER BY id DESC LIMIT ?`,
   )
@@ -420,7 +427,7 @@ async function handleFeedbackList(url: URL, env: Env): Promise<Response> {
     }>();
 
   const totals = await env.DB.prepare(
-    'SELECT COUNT(*) AS total, SUM(CASE WHEN read_at IS NULL THEN 1 ELSE 0 END) AS unread FROM feedback',
+    'SELECT COUNT(*) AS total, SUM(CASE WHEN read_at IS NULL THEN 1 ELSE 0 END) AS unread FROM feedback WHERE deleted_at IS NULL',
   ).first<{ total: number; unread: number }>();
 
   return json({
@@ -447,13 +454,41 @@ async function handleFeedbackMarkRead(request: Request, env: Env): Promise<Respo
   const placeholders = ids.map(() => '?').join(',');
   try {
     const res = await env.DB.prepare(
-      `UPDATE feedback SET read_at = ? WHERE id IN (${placeholders}) AND read_at IS NULL`,
+      `UPDATE feedback SET read_at = ? WHERE id IN (${placeholders}) AND read_at IS NULL AND deleted_at IS NULL`,
     )
       .bind(new Date().toISOString(), ...ids)
       .run();
     return json({ ok: true, updated: res.meta.changes ?? 0 });
   } catch (err) {
     console.error('[feedback] mark_read failed:', err);
+    return json({ error: 'db_error' }, 500);
+  }
+}
+
+async function handleFeedbackDelete(request: Request, env: Env): Promise<Response> {
+  const { parseDeleteBody } = await import('./feedback');
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: 'invalid_json' }, 400);
+  }
+  const parsed = parseDeleteBody(body);
+  if (!parsed) return json({ error: 'invalid_payload' }, 400);
+
+  const placeholders = parsed.ids.map(() => '?').join(',');
+  try {
+    // Soft delete both ways: `deleted: false` clears the stamp, which is what
+    // the dashboard's Undo sends. The message text is never removed here.
+    const res = await env.DB.prepare(
+      `UPDATE feedback SET deleted_at = ? WHERE id IN (${placeholders})`,
+    )
+      .bind(parsed.deleted ? new Date().toISOString() : null, ...parsed.ids)
+      .run();
+    return json({ ok: true, deleted: parsed.deleted, updated: res.meta.changes ?? 0 });
+  } catch (err) {
+    console.error('[feedback] delete failed:', err);
     return json({ error: 'db_error' }, 500);
   }
 }
@@ -545,19 +580,23 @@ async function handleErrorsSummary(url: URL, env: Env): Promise<Response> {
   const limit = Math.min(Math.max(parseInt(url.searchParams.get('limit') ?? '20', 10) || 20, 1), 100);
   const since = `-${days} days`;
 
-  const [totals, groupsRes, bySourceRes, byVersionRes, byOsRes, byDayRes] = await Promise.all([
+  const [totals, groupsRes, bySourceRes, byVersionRes, byOsRes, byDayRes, unresolvedRow] = await Promise.all([
     env.DB.prepare(
       "SELECT COUNT(*) AS total, COUNT(DISTINCT installation_id) AS affected_installations, COUNT(DISTINCT fingerprint) AS unique_fingerprints FROM errors WHERE ts >= datetime('now', ?)",
     )
       .bind(since)
       .first<{ total: number; affected_installations: number; unique_fingerprints: number }>(),
     env.DB.prepare(
-      "SELECT fingerprint, COUNT(*) AS occurrences, COUNT(DISTINCT installation_id) AS users, " +
-        'MAX(ts) AS last_seen, MIN(ts) AS first_seen, ' +
-        'MAX(source) AS source, MAX(kind) AS kind, MAX(message) AS message, MAX(stack) AS stack, ' +
-        'GROUP_CONCAT(DISTINCT app_version) AS versions ' +
-        "FROM errors WHERE ts >= datetime('now', ?) " +
-        'GROUP BY fingerprint ORDER BY occurrences DESC LIMIT ?',
+      "SELECT e.fingerprint AS fingerprint, COUNT(*) AS occurrences, COUNT(DISTINCT e.installation_id) AS users, " +
+        'MAX(e.ts) AS last_seen, MIN(e.ts) AS first_seen, ' +
+        'MAX(e.source) AS source, MAX(e.kind) AS kind, MAX(e.message) AS message, MAX(e.stack) AS stack, ' +
+        'GROUP_CONCAT(DISTINCT e.app_version) AS versions, ' +
+        // Functionally dependent on the GROUP BY key (error_state is keyed by
+        // fingerprint), so MAX just satisfies the aggregate rule.
+        'MAX(es.resolved_at) AS resolved_at, MAX(es.resolved_version) AS resolved_version ' +
+        'FROM errors e LEFT JOIN error_state es ON es.fingerprint = e.fingerprint ' +
+        "WHERE e.ts >= datetime('now', ?) " +
+        'GROUP BY e.fingerprint ORDER BY occurrences DESC LIMIT ?',
     )
       .bind(since, limit)
       .all<{
@@ -571,6 +610,8 @@ async function handleErrorsSummary(url: URL, env: Env): Promise<Response> {
         message: string;
         stack: string | null;
         versions: string;
+        resolved_at: string | null;
+        resolved_version: string | null;
       }>(),
     env.DB.prepare(
       "SELECT source, COUNT(*) AS count FROM errors WHERE ts >= datetime('now', ?) GROUP BY source ORDER BY count DESC",
@@ -592,7 +633,26 @@ async function handleErrorsSummary(url: URL, env: Env): Promise<Response> {
     )
       .bind(since)
       .all<{ date: string; count: number }>(),
+    // Counted over every group in the window, not just the `limit` returned
+    // above, so the tab badge stays right when the top list is truncated.
+    // Both timestamps are toISOString() text, so the string compare is exact.
+    env.DB.prepare(
+      'SELECT COUNT(*) AS n FROM (' +
+        'SELECT e.fingerprint, MAX(e.ts) AS last_seen, MAX(es.resolved_at) AS resolved_at ' +
+        'FROM errors e LEFT JOIN error_state es ON es.fingerprint = e.fingerprint ' +
+        "WHERE e.ts >= datetime('now', ?) GROUP BY e.fingerprint) g " +
+        'WHERE g.resolved_at IS NULL OR g.last_seen > g.resolved_at',
+    )
+      .bind(since)
+      .first<{ n: number }>(),
   ]);
+
+  // `resolved` is derived here rather than stored so a recurrence reopens the
+  // group on the next read, with no background job to keep in sync.
+  const groups = (groupsRes.results ?? []).map((g) => ({
+    ...g,
+    resolved: isGroupResolved(g.last_seen, g.resolved_at),
+  }));
 
   return json({
     window_days: days,
@@ -600,12 +660,53 @@ async function handleErrorsSummary(url: URL, env: Env): Promise<Response> {
     total_errors: totals?.total ?? 0,
     affected_installations: totals?.affected_installations ?? 0,
     unique_fingerprints: totals?.unique_fingerprints ?? 0,
-    top_groups: groupsRes.results ?? [],
+    unresolved_groups: unresolvedRow?.n ?? 0,
+    top_groups: groups,
     by_source: bySourceRes.results ?? [],
     by_version: byVersionRes.results ?? [],
     by_os: byOsRes.results ?? [],
     by_day: byDayRes.results ?? [],
   });
+}
+
+async function handleErrorsResolve(request: Request, env: Env): Promise<Response> {
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: 'invalid_json' }, 400);
+  }
+  const parsed = parseResolveBody(body);
+  if (!parsed) return json({ error: 'invalid_payload' }, 400);
+
+  const now = new Date().toISOString();
+  try {
+    if (parsed.resolved) {
+      // resolved_version is read from the data rather than the request so a
+      // client cannot label a group with a version it never occurred on.
+      await env.DB.batch(
+        parsed.fingerprints.map((fp) =>
+          env.DB.prepare(
+            'INSERT INTO error_state (fingerprint, resolved_at, resolved_version) ' +
+              'VALUES (?, ?, (SELECT app_version FROM errors WHERE fingerprint = ? ORDER BY ts DESC LIMIT 1)) ' +
+              'ON CONFLICT(fingerprint) DO UPDATE SET resolved_at = excluded.resolved_at, ' +
+              'resolved_version = excluded.resolved_version',
+          ).bind(fp, now, fp),
+        ),
+      );
+    } else {
+      // Un-resolving removes the row entirely: absence is the unresolved state.
+      const placeholders = parsed.fingerprints.map(() => '?').join(',');
+      await env.DB.prepare(`DELETE FROM error_state WHERE fingerprint IN (${placeholders})`)
+        .bind(...parsed.fingerprints)
+        .run();
+    }
+  } catch (err) {
+    console.error('[errors] resolve failed:', err);
+    return json({ error: 'db_error' }, 500);
+  }
+
+  return json({ ok: true, resolved: parsed.resolved, count: parsed.fingerprints.length, resolved_at: parsed.resolved ? now : null });
 }
 
 async function handleStatsHistory(url: URL, env: Env): Promise<Response> {
@@ -677,6 +778,11 @@ export default {
   async scheduled(_controller: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
     try {
       await env.DB.prepare("DELETE FROM errors WHERE ts < datetime('now', ?)").bind(`-${ERROR_RETENTION_DAYS} days`).run();
+      // Retention drops the errors themselves, so resolution rows whose
+      // fingerprint no longer occurs anywhere would linger forever.
+      await env.DB.prepare(
+        'DELETE FROM error_state WHERE fingerprint NOT IN (SELECT DISTINCT fingerprint FROM errors)',
+      ).run();
     } catch (err) {
       console.error('[scheduled] error cleanup failed:', err);
     }
@@ -743,6 +849,16 @@ export default {
         const denied = requireToken(request, env.STATS_TOKEN);
         if (denied) return denied;
         return await handleFeedbackMarkRead(request, env);
+      }
+      if (request.method === 'POST' && url.pathname === '/feedback/delete') {
+        const denied = requireToken(request, env.STATS_TOKEN);
+        if (denied) return denied;
+        return await handleFeedbackDelete(request, env);
+      }
+      if (request.method === 'POST' && url.pathname === '/errors/resolve') {
+        const denied = requireToken(request, env.STATS_TOKEN);
+        if (denied) return denied;
+        return await handleErrorsResolve(request, env);
       }
       if (request.method === 'POST' && url.pathname === '/admin/login_attempt') {
         const denied = requireToken(request, env.STATS_TOKEN);

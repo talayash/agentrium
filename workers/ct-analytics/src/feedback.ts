@@ -81,3 +81,46 @@ export async function hashIP(ip: string, salt: string): Promise<string> {
   }
   return hex;
 }
+
+/**
+ * D1 caps bound parameters at 100 per statement. The delete statement binds
+ * one timestamp plus one placeholder per id, so 99 ids is the ceiling.
+ */
+export const DELETE_MAX_IDS = 99;
+
+export interface DeleteRequest {
+  ids: number[];
+  deleted: boolean;
+}
+
+/**
+ * Parser for /feedback/delete. Strict about every id, unlike /feedback/mark_read
+ * which skips malformed entries: silently dropping one id from a destructive
+ * call would act on a different set than the caller asked for. `deleted: false`
+ * is the undo path, which is why it is a flag and not a separate route.
+ */
+export function parseDeleteBody(body: unknown): DeleteRequest | null {
+  if (!body || typeof body !== 'object') return null;
+  const raw = body as { ids?: unknown; deleted?: unknown };
+
+  let deleted = true;
+  if (raw.deleted !== undefined) {
+    if (typeof raw.deleted !== 'boolean') return null;
+    deleted = raw.deleted;
+  }
+
+  if (!Array.isArray(raw.ids)) return null;
+  if (raw.ids.length === 0) return null;
+  if (raw.ids.length > DELETE_MAX_IDS) return null;
+
+  const out = new Set<number>();
+  for (const v of raw.ids) {
+    // Numeric strings are accepted because the list payload carries ids as
+    // JSON numbers but the panel round-trips them through dataset attributes.
+    if (typeof v !== 'number' && typeof v !== 'string') return null;
+    const n = typeof v === 'number' ? v : Number(v.trim());
+    if (!Number.isInteger(n) || n <= 0) return null;
+    out.add(n);
+  }
+  return { ids: [...out], deleted };
+}
