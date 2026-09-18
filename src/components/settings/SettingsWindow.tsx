@@ -1,5 +1,6 @@
 import { useState, useMemo, lazy, Suspense } from 'react';
 import { X } from 'lucide-react';
+import { useDragControls } from 'framer-motion';
 import { useAppStore } from '../../store/appStore';
 import { Modal } from '../ui/Modal';
 import { SettingsCategoryTree } from './SettingsCategoryTree';
@@ -29,6 +30,7 @@ const pages: Record<string, React.LazyExoticComponent<React.ComponentType>> = {
 };
 
 export function SettingsWindow() {
+  const dragControls = useDragControls();
   const closeSettings = useAppStore((s) => s.closeSettings);
   const [active, setActive] = useState<CategoryId>({ group: 'appearance-behavior', page: 'appearance' });
   const [query, setQuery] = useState('');
@@ -46,12 +48,22 @@ export function SettingsWindow() {
     <Modal
       onClose={closeSettings}
       closeOn="click"
+      dragControls={dragControls}
       panelClassName="grid grid-rows-[44px_1fr] w-[92vw] max-w-[1100px] h-[80vh] max-h-[720px]"
     >
-      <div className="flex items-center justify-between px-3 border-b border-[var(--seam)]">
+      <div
+        className="flex items-center justify-between px-3 border-b border-[var(--seam)] cursor-move select-none touch-none"
+        onPointerDown={(event) => {
+          if (event.button !== 0 || !(event.target instanceof Element)) return;
+          if (event.target.closest('button, input, [data-no-drag]')) return;
+          dragControls.start(event);
+        }}
+      >
         <div className="flex items-center gap-3">
           <span className="text-text-primary text-[13px] font-semibold">Settings</span>
-          <SettingsSearch value={query} onChange={setQuery} />
+          <div data-no-drag className="cursor-auto">
+            <SettingsSearch value={query} onChange={setQuery} />
+          </div>
         </div>
         <button
           onClick={closeSettings}

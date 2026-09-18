@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { MouseEvent, ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { motion } from 'framer-motion';
+import { motion, type DragControls } from 'framer-motion';
 import { X } from 'lucide-react';
 import { overlayMotion, dialogMotion } from '../../lib/motionTokens';
 
@@ -22,6 +22,8 @@ interface ModalProps {
   panelClassName?: string;
   /** Extra classes for the scrim (z-index, tint). */
   scrimClassName?: string;
+  /** Opt into dragging from a caller-provided header handle. */
+  dragControls?: DragControls;
 }
 
 /**
@@ -40,8 +42,10 @@ export function Modal({
   closeOnEscape = true,
   panelClassName = 'w-full max-w-lg',
   scrimClassName = 'bg-black/55 z-50',
+  dragControls,
 }: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
+  const scrimRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!closeOnEscape) return;
@@ -112,6 +116,7 @@ export function Modal({
   return createPortal(
     <motion.div
       {...overlayMotion}
+      ref={scrimRef}
       className={`fixed inset-0 flex items-center justify-center backdrop-blur-[3px] ${scrimClassName}`}
       onClick={onScrimClick}
       onDoubleClick={onScrimDoubleClick}
@@ -119,6 +124,12 @@ export function Modal({
       <motion.div
         {...dialogMotion}
         ref={panelRef}
+        drag={dragControls ? true : false}
+        dragControls={dragControls}
+        dragListener={false}
+        dragConstraints={scrimRef}
+        dragElastic={0}
+        dragMomentum={false}
         role="dialog"
         aria-modal="true"
         tabIndex={-1}
