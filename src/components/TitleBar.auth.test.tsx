@@ -1,4 +1,4 @@
-import { StrictMode } from 'react';
+import { StrictMode, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -30,6 +30,7 @@ vi.mock('../store/terminalStore', () => {
 });
 
 import { TitleBar } from './TitleBar';
+import { LoginModal } from './LoginModal';
 import { useAuthStore } from '../store/authStore';
 import { startOAuthLogin, markAuthPromptSeen, logout, signupCredentials, signinCredentials } from '../lib/auth';
 import { setSyncEnabled } from '../lib/sync';
@@ -49,6 +50,35 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('title bar auth interactions', () => {
+  it.each(['guest', 'close', 'backdrop', 'escape'])(
+    'keeps Sign in available after skipping the first prompt via %s', async (dismissal) => {
+      useAuthStore.getState().setUnknown();
+      // Persisting the prompt flag must not delay access to guest mode.
+      vi.mocked(markAuthPromptSeen).mockReturnValueOnce(new Promise(() => {}));
+      function FirstLaunch() {
+        const [showPrompt, setShowPrompt] = useState(true);
+        return <><TitleBar />{showPrompt && <LoginModal onClose={() => setShowPrompt(false)} />}</>;
+      }
+      const user = userEvent.setup();
+      render(<FirstLaunch />);
+      if (dismissal === 'guest') {
+        await user.click(screen.getByRole('button', { name: 'Continue as guest' }));
+      } else if (dismissal === 'close') {
+        await user.click(screen.getByRole('dialog').querySelector('button svg')!);
+      } else if (dismissal === 'backdrop') {
+        await user.click(screen.getByRole('dialog').parentElement!);
+      } else {
+        await user.keyboard('{Escape}');
+      }
+      expect(screen.queryByRole('dialog')).toBeNull();
+      expect(useAuthStore.getState().mode).toBe('guest');
+      expect(markAuthPromptSeen).toHaveBeenCalledTimes(1);
+      await user.click(screen.getByRole('button', { name: 'Sign in' }));
+      await user.click(screen.getByRole('button', { name: 'Sign in with Google' }));
+      expect(startOAuthLogin).toHaveBeenCalledWith('google');
+    },
+  );
+
   it('drags the title bar but excludes controls and portal content', async () => {
     const user = userEvent.setup();
     render(<StrictMode><TitleBar /></StrictMode>);

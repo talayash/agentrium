@@ -80,14 +80,16 @@ export function LoginModal({ onClose }: LoginModalProps) {
     }
   };
 
-  const handleGuest = async () => {
-    try {
-      await markAuthPromptSeen();
-    } catch (err) {
-      reportInvokeFailure('mark_auth_prompt_seen', err);
+  const handleGuest = () => {
+    // Every dismissal skips sign-in, including Escape, the close button and
+    // backdrop. Leave boot's unknown state immediately so Sign in stays visible.
+    if (useAuthStore.getState().mode !== 'authed') {
+      useAuthStore.getState().setGuest();
     }
-    useAuthStore.getState().setGuest();
     onClose();
+    void markAuthPromptSeen().catch((err) => {
+      reportInvokeFailure('mark_auth_prompt_seen', err);
+    });
   };
 
   const handleFormSubmit = async (e: React.FormEvent) => {
@@ -117,7 +119,7 @@ export function LoginModal({ onClose }: LoginModalProps) {
 
   return (
     <Modal
-      onClose={onClose}
+      onClose={handleGuest}
       showHeader
       title="Sign in to Agentrium"
       panelClassName="w-full max-w-md"
