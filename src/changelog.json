@@ -1,5 +1,13 @@
 [
   {
+    "version": "1.34.3",
+    "date": "2026-09-19",
+    "features": [
+      { "title": "Sign in after skipping login", "description": "The header's Sign in button stays available when you dismiss the first login prompt or continue as a guest." },
+      { "title": "Settings window fixes", "description": "The settings popup can be dragged again, and default launch arguments can be configured for each agent." }
+    ]
+  },
+  {
     "version": "1.34.2",
     "date": "2026-09-18",
     "features": [
