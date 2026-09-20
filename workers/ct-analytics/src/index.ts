@@ -1,9 +1,10 @@
+import { admitIngest, boundedJson, validDimensions, versionWithinCeiling } from './ingest';
 /**
  * Agentrium analytics worker.
  *
  * Storage:
  *   - KV (binding: KV_BINDING)
- *       seen:{installation_id}   no TTL,    used to detect first-ever heartbeat
+ *       seen:{installation_id}   TTL=400d,  used to detect first-ever heartbeat
  *       live:{installation_id}   TTL=900s,  metadata = {version, os, country}
  *
  *   - D1 (binding: DB)
@@ -91,6 +92,17 @@ const LIVE_TTL_SECONDS = 900;
 const MAX_HISTORY_DAYS = 365;
 const RATE_LIMIT_TTL_SECONDS = 60;
 const ERROR_RETENTION_DAYS = 90;
+// A `seen:` key is the sole record that an installation was ever observed, so
+// it cannot expire while the install is plausibly alive - but without any TTL
+// every novel UUID leaves a permanent key, and ingest accepts unauthenticated
+// UUIDs at 120/min/IP. 400 days outlives the 365-day history window, so a key
+// only lapses well after its install has stopped reporting. The trade is that
+// an install running continuously past 400 days is recounted once as new.
+const SEEN_TTL_SECONDS = 400 * 24 * 60 * 60;
+// daily_dau holds one row per (date, installation_id) and so grows with every
+// fabricated UUID. Pruned on the same 400-day horizon as `seen:`, which stays
+// clear of MAX_HISTORY_DAYS - no servable chart loses data.
+const DAU_RETENTION_DAYS = 400;
 // /feedback rate limit: 5 submissions per IP per hour is more than any real user
 // will send. Bots that survive the honeypot get squelched here.
 const FEEDBACK_RATE_LIMIT_TTL_SECONDS = 60 * 60;
@@ -143,7 +155,7 @@ function normalize(body: HeartbeatBody, request: Request): NormalizedPayload | n
   const installation_id = clampString(body.installation_id, 128);
   const version = clampString(body.app_version, 32);
   const os = clampString(body.os, 32);
-  if (!installation_id || !version || !os) return null;
+  if (!installation_id || !version || !os || !validDimensions(body.installation_id, body.app_version, body.os)) return null;
 
   const country =
     typeof (request as Request & { cf?: { country?: string } }).cf?.country === 'string'
@@ -167,7 +179,7 @@ function normalizeError(body: ErrorReportBody, request: Request): NormalizedErro
   const source = clampString(body.source, 16);
   const message = clampString(body.message, 2048);
   if (!installation_id || !app_version || !os || !source || !message) return null;
-  if (!ALLOWED_SOURCES.has(source)) return null;
+  if (!ALLOWED_SOURCES.has(source) || !validDimensions(body.installation_id, body.app_version, body.os)) return null;
 
   const country =
     typeof (request as Request & { cf?: { country?: string } }).cf?.country === 'string'
@@ -192,13 +204,8 @@ async function handleHeartbeat(
   env: Env,
   ctx: ExecutionContext,
   dimension: 'heartbeats' | 'update_checks',
+  body: HeartbeatBody,
 ): Promise<Response> {
-  let body: HeartbeatBody;
-  try {
-    body = (await request.json()) as HeartbeatBody;
-  } catch {
-    return json({ error: 'invalid_json' }, 400);
-  }
 
   const payload = normalize(body, request);
   if (!payload) return json({ error: 'invalid_payload' }, 400);
@@ -240,6 +247,7 @@ async function handleHeartbeat(
           os: payload.os,
           country: payload.country,
         }),
+        { expirationTtl: SEEN_TTL_SECONDS },
       ),
     );
   }
@@ -287,13 +295,7 @@ async function handleHeartbeat(
   return json({ ok: true });
 }
 
-async function handleErrorReport(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-  let body: ErrorReportBody;
-  try {
-    body = (await request.json()) as ErrorReportBody;
-  } catch {
-    return json({ error: 'invalid_json' }, 400);
-  }
+async function handleErrorReport(request: Request, env: Env, ctx: ExecutionContext, body: ErrorReportBody): Promise<Response> {
 
   const payload = normalizeError(body, request);
   if (!payload) return json({ error: 'invalid_payload' }, 400);
@@ -344,7 +346,7 @@ async function handleFeedbackIngest(request: Request, env: Env, ctx: ExecutionCo
 
   let body: unknown;
   try {
-    body = await request.json();
+    body = await boundedJson(request);
   } catch {
     return json({ error: 'invalid_json' }, 400);
   }
@@ -470,7 +472,7 @@ async function handleFeedbackDelete(request: Request, env: Env): Promise<Respons
 
   let body: unknown;
   try {
-    body = await request.json();
+    body = await boundedJson(request);
   } catch {
     return json({ error: 'invalid_json' }, 400);
   }
@@ -672,7 +674,7 @@ async function handleErrorsSummary(url: URL, env: Env): Promise<Response> {
 async function handleErrorsResolve(request: Request, env: Env): Promise<Response> {
   let body: unknown;
   try {
-    body = await request.json();
+    body = await boundedJson(request);
   } catch {
     return json({ error: 'invalid_json' }, 400);
   }
@@ -765,7 +767,7 @@ async function handleAdminLoginAttempt(request: Request, env: Env): Promise<Resp
 async function handleStatsMatch(request: Request, env: Env): Promise<Response> {
   let body: unknown;
   try {
-    body = await request.json();
+    body = await boundedJson(request);
   } catch {
     return json({ error: 'invalid_json' }, 400);
   }
@@ -777,7 +779,9 @@ async function handleStatsMatch(request: Request, env: Env): Promise<Response> {
 export default {
   async scheduled(_controller: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
     try {
+      await env.DB.prepare('DELETE FROM ingest_limits WHERE window < ?').bind(Math.floor(Date.now() / 60000) - 1440).run();
       await env.DB.prepare("DELETE FROM errors WHERE ts < datetime('now', ?)").bind(`-${ERROR_RETENTION_DAYS} days`).run();
+      await env.DB.prepare("DELETE FROM daily_dau WHERE date < date('now', ?)").bind(`-${DAU_RETENTION_DAYS} days`).run();
       // Retention drops the errors themselves, so resolution rows whose
       // fingerprint no longer occurs anywhere would linger forever.
       await env.DB.prepare(
@@ -796,26 +800,27 @@ export default {
     const url = new URL(request.url);
 
     try {
-      if (request.method === 'POST' && url.pathname === '/heartbeat') {
-        const cloned = request.clone();
-        const body = await cloned.json().catch(() => ({})) as HeartbeatBody;
+      if (request.method === 'POST' && ['/heartbeat', '/update_check', '/error_report', '/feedback'].includes(url.pathname)) {
+        const ip = request.headers.get('cf-connecting-ip') ?? 'unknown';
+        // Admission precedes parsing and all attacker-controlled persistent keys.
+        if (!await admitIngest(env.DB, ip)) return json({ error: 'rate_limited' }, 429, { 'Retry-After': '60' });
+        if (url.pathname === '/feedback') return await handleFeedbackIngest(request, env, ctx);
+        let body: HeartbeatBody & ErrorReportBody;
+        try {
+          body = await boundedJson(request) as HeartbeatBody & ErrorReportBody;
+          if (!body || typeof body !== 'object' || Array.isArray(body)) return json({ error: 'invalid_payload' }, 400);
+        } catch (err) {
+          return json({ error: err instanceof RangeError ? 'payload_too_large' : 'invalid_json' }, err instanceof RangeError ? 413 : 400);
+        }
+        if (!validDimensions(body.installation_id, body.app_version, body.os)) return json({ error: 'invalid_payload' }, 400);
+        // Format-valid but implausible versions are refused before they can
+        // become a daily_stats bucket. Distinct code: a real release tripping
+        // this means MAX_APP_VERSION needs raising, not that the client is bad.
+        if (!versionWithinCeiling(body.app_version)) return json({ error: 'version_out_of_range' }, 400);
         const denied = await rateLimitIngest(request, env, body.installation_id);
         if (denied) return denied;
-        return await handleHeartbeat(request, env, ctx, 'heartbeats');
-      }
-      if (request.method === 'POST' && url.pathname === '/update_check') {
-        const cloned = request.clone();
-        const body = await cloned.json().catch(() => ({})) as HeartbeatBody;
-        const denied = await rateLimitIngest(request, env, body.installation_id);
-        if (denied) return denied;
-        return await handleHeartbeat(request, env, ctx, 'update_checks');
-      }
-      if (request.method === 'POST' && url.pathname === '/error_report') {
-        const cloned = request.clone();
-        const body = await cloned.json().catch(() => ({})) as ErrorReportBody;
-        const denied = await rateLimitIngest(request, env, body.installation_id);
-        if (denied) return denied;
-        return await handleErrorReport(request, env, ctx);
+        if (url.pathname === '/error_report') return await handleErrorReport(request, env, ctx, body);
+        return await handleHeartbeat(request, env, ctx, url.pathname === '/heartbeat' ? 'heartbeats' : 'update_checks', body);
       }
       if (request.method === 'GET' && url.pathname === '/stats') {
         const denied = requireToken(request, env.STATS_TOKEN);
@@ -836,9 +841,6 @@ export default {
         const denied = requireToken(request, env.STATS_TOKEN);
         if (denied) return denied;
         return await handleErrorsSummary(url, env);
-      }
-      if (request.method === 'POST' && url.pathname === '/feedback') {
-        return await handleFeedbackIngest(request, env, ctx);
       }
       if (request.method === 'GET' && url.pathname === '/feedback/list') {
         const denied = requireToken(request, env.STATS_TOKEN);
