@@ -73,7 +73,6 @@ pub fn register_secret(value: &str) {
 pub fn scrub(input: &str) -> String {
     use std::sync::OnceLock;
     static WIN_USER: OnceLock<regex::Regex> = OnceLock::new();
-    static FILE_URI_USER: OnceLock<regex::Regex> = OnceLock::new();
     static UNIX_USER: OnceLock<regex::Regex> = OnceLock::new();
     static UNIX_HOME: OnceLock<regex::Regex> = OnceLock::new();
     static GITHUB_PAT_PREFIXED: OnceLock<regex::Regex> = OnceLock::new();
@@ -82,14 +81,16 @@ pub fn scrub(input: &str) -> String {
     static OPENAI_KEY: OnceLock<regex::Regex> = OnceLock::new();
     static BEARER: OnceLock<regex::Regex> = OnceLock::new();
     static NPM_AUTHTOKEN: OnceLock<regex::Regex> = OnceLock::new();
-    // Match `C:\Users\<username>` where the username portion ends at the next path
-    // separator, whitespace, or shell metacharacter. The terminator is NOT consumed,
-    // so a trailing backslash, apostrophe, etc. remains intact in the output.
+    static EMAIL: OnceLock<regex::Regex> = OnceLock::new();
+    // Match `<drive>:\Users\<username>` on any drive letter, either case, where
+    // the username portion ends at the next path separator, whitespace, or
+    // shell metacharacter. The terminator is NOT consumed, so a trailing
+    // backslash, apostrophe, etc. remains intact in the output.
     let win = WIN_USER
-        .get_or_init(|| regex::Regex::new(r#"C:\\Users\\[^\\/\s'"<>|*?]+"#).unwrap());
-    let uri = FILE_URI_USER
-        .get_or_init(|| regex::Regex::new(r#"file:///C:/Users/[^/\s'"<>|*?]+"#).unwrap());
+        .get_or_init(|| regex::Regex::new(r#"(?i)\b([a-z]):\\Users\\[^\\/\s'"<>|*?]+"#).unwrap());
     // Unix home paths. `/Users/` is macOS; `/home/` is Linux + most cloud distros.
+    // The `/Users/` rule also covers forward-slash Windows forms on any drive
+    // (`D:/Users/bob`, `file:///D:/Users/bob`) because it is not anchored.
     let unix_users = UNIX_USER
         .get_or_init(|| regex::Regex::new(r#"/Users/[^/\s'"<>|*?]+"#).unwrap());
     let unix_home = UNIX_HOME
@@ -109,9 +110,12 @@ pub fn scrub(input: &str) -> String {
         .get_or_init(|| regex::Regex::new(r"(?i)Bearer\s+[A-Za-z0-9._~+/=-]{16,}").unwrap());
     let npm_token = NPM_AUTHTOKEN
         .get_or_init(|| regex::Regex::new(r"_authToken\s*=\s*\S+").unwrap());
+    // Email addresses (sign-in failures, git author lines, broker responses).
+    let email = EMAIL.get_or_init(|| {
+        regex::Regex::new(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}").unwrap()
+    });
 
-    let s = win.replace_all(input, r"C:\Users\<user>");
-    let s = uri.replace_all(&s, "file:///C:/Users/<user>");
+    let s = win.replace_all(input, r"${1}:\Users\<user>");
     let s = unix_users.replace_all(&s, "/Users/<user>");
     let s = unix_home.replace_all(&s, "/home/<user>");
     let s = gh_prefixed.replace_all(&s, "<github_token>");
@@ -120,6 +124,7 @@ pub fn scrub(input: &str) -> String {
     let s = openai.replace_all(&s, "<api_key>");
     let s = bearer.replace_all(&s, "Bearer <token>");
     let s = npm_token.replace_all(&s, "_authToken=<token>");
+    let s = email.replace_all(&s, "<email>");
     let mut s = s.into_owned();
     if let Ok(q) = RUNTIME_SECRETS.lock() {
         for secret in q.iter() {
@@ -530,6 +535,49 @@ mod tests {
     fn scrub_handles_file_uri_username_followed_by_quote() {
         let input = r#"src=file:///C:/Users/eve" loaded"#;
         assert_eq!(scrub(input), r#"src=file:///C:/Users/<user>" loaded"#);
+    }
+
+    #[test]
+    fn scrub_replaces_windows_user_path_on_any_drive() {
+        // Only C: was covered; a user whose profile or project lives on
+        // another volume leaked their username verbatim.
+        assert_eq!(
+            scrub(r"failed to open D:\Users\bob\proj\Cargo.toml"),
+            r"failed to open D:\Users\<user>\proj\Cargo.toml"
+        );
+        assert_eq!(
+            scrub(r"path e:\users\Eve is missing"),
+            r"path e:\Users\<user> is missing"
+        );
+    }
+
+    #[test]
+    fn scrub_replaces_forward_slash_windows_user_path_on_any_drive() {
+        assert_eq!(
+            scrub("at D:/Users/bob/proj/index.js:3:1"),
+            "at D:/Users/<user>/proj/index.js:3:1"
+        );
+        assert_eq!(
+            scrub("src=file:///D:/Users/bob/app.js"),
+            "src=file:///D:/Users/<user>/app.js"
+        );
+    }
+
+    #[test]
+    fn scrub_redacts_email_addresses() {
+        assert_eq!(
+            scrub("sign-in failed for tal.ayash@example.com (401)"),
+            "sign-in failed for <email> (401)"
+        );
+        assert_eq!(
+            scrub("Author: Bob <bob+git@sub.example.co.uk>, cc jane_d@example.org."),
+            "Author: Bob <<email>>, cc <email>."
+        );
+        // Plain '@' handles that are not addresses stay put.
+        assert_eq!(
+            scrub("npm ERR! @scope/pkg not found"),
+            "npm ERR! @scope/pkg not found"
+        );
     }
 
     #[test]
