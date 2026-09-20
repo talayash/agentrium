@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, expect, it } from 'vitest';
 import { Miniflare } from 'miniflare';
 import worker from './index';
+import { errorDayWindow } from './ingest';
 
 // Exercises the two unbounded-growth fixes against real SQLite and real KV:
 // the `seen:` TTL and the daily_dau prune in the cron. Both fail silently in
@@ -75,4 +76,18 @@ it('prunes daily_dau past the retention horizon and keeps everything inside it',
 
   const rows = await db.prepare('SELECT installation_id FROM daily_dau ORDER BY installation_id').all<{ installation_id: string }>();
   expect((rows.results ?? []).map((r) => r.installation_id)).toEqual(['just-inside-horizon', 'recent', 'today']);
+});
+
+it('cron sweep keeps the current UTC day error-report budget row and drops past days', async () => {
+  const today = errorDayWindow(Date.now());
+  const seed = (key: string, window: number) =>
+    db.prepare('INSERT OR REPLACE INTO ingest_limits (key, window, count) VALUES (?, ?, 5)').bind(key, window).run();
+  await seed('err_day:today', today);
+  await seed('err_day:two-days-ago', today - 2 * 1440);
+  await seed('ip:stale-minute', Math.floor(Date.now() / 60000) - 2000);
+
+  await worker.scheduled({} as any, { DB: db, KV_BINDING: kv } as any, {} as any);
+
+  const rows = await db.prepare('SELECT key FROM ingest_limits ORDER BY key').all<{ key: string }>();
+  expect((rows.results ?? []).map((r) => r.key)).toEqual(['err_day:today']);
 });

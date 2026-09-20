@@ -1,16 +1,42 @@
+/**
+ * Atomic increment of one ingest_limits row. Returns false when the row is
+ * already at `limit` inside the current window; a stale window resets to 1.
+ */
+async function bumpCounter(db: D1Database, key: string, window: number, limit: number): Promise<boolean> {
+  const row = await db.prepare(`INSERT INTO ingest_limits (key, window, count) VALUES (?, ?, 1)
+    ON CONFLICT(key) DO UPDATE SET
+      window = excluded.window,
+      count = CASE WHEN ingest_limits.window != excluded.window THEN 1 ELSE ingest_limits.count + 1 END
+    WHERE ingest_limits.window != excluded.window OR ingest_limits.count < ?
+    RETURNING count`).bind(key, window, limit).first();
+  return row !== null;
+}
+
 /** Atomic D1 admission counters; installation IDs cannot reset these budgets. */
 export async function admitIngest(db: D1Database, ip: string, now = Date.now()): Promise<boolean> {
   const window = Math.floor(now / 60000);
   for (const [key, limit] of [['global', 10000], [`ip:${ip}`, 120]] as const) {
-    const row = await db.prepare(`INSERT INTO ingest_limits (key, window, count) VALUES (?, ?, 1)
-      ON CONFLICT(key) DO UPDATE SET
-        window = excluded.window,
-        count = CASE WHEN ingest_limits.window != excluded.window THEN 1 ELSE ingest_limits.count + 1 END
-      WHERE ingest_limits.window != excluded.window OR ingest_limits.count < ?
-      RETURNING count`).bind(key, window, limit).first();
-    if (!row) return false;
+    if (!await bumpCounter(db, key, window, limit)) return false;
   }
   return true;
+}
+
+/** Error reports one IP may insert per UTC day, on top of the per-minute caps. */
+export const ERROR_REPORT_DAILY_LIMIT = 1000;
+
+/**
+ * Window value for a per-day row. Expressed in the same minute count as the
+ * per-minute rows but aligned to the UTC day start, so the cron sweep
+ * (`window < now_minute - 1440`) only ever removes rows from past days and
+ * cannot reset a budget mid-day. No schema change: same key/window/count row.
+ */
+export function errorDayWindow(now: number): number {
+  return Math.floor(now / 86_400_000) * 1440;
+}
+
+/** Per-IP daily budget for /error_report; the minute caps still apply first. */
+export async function admitErrorReport(db: D1Database, ip: string, now = Date.now()): Promise<boolean> {
+  return bumpCounter(db, `err_day:${ip}`, errorDayWindow(now), ERROR_REPORT_DAILY_LIMIT);
 }
 
 export async function boundedJson(request: Request, cap = 16 * 1024): Promise<unknown> {

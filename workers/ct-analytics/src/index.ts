@@ -1,4 +1,4 @@
-import { admitIngest, boundedJson, validDimensions, versionWithinCeiling } from './ingest';
+import { admitErrorReport, admitIngest, boundedJson, validDimensions, versionWithinCeiling } from './ingest';
 /**
  * Agentrium analytics worker.
  *
@@ -139,6 +139,10 @@ async function rateLimitIngest(request: Request, env: Env, installationId: unkno
 
 function todayUTC(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+function secondsUntilNextUtcDay(now = Date.now()): number {
+  return Math.max(1, Math.ceil((86_400_000 - (now % 86_400_000)) / 1000));
 }
 
 function json(body: unknown, status = 200, extraHeaders: Record<string, string> = {}): Response {
@@ -820,6 +824,11 @@ export default {
         const ip = request.headers.get('cf-connecting-ip') ?? 'unknown';
         // Admission precedes parsing and all attacker-controlled persistent keys.
         if (!await admitIngest(env.DB, ip)) return json({ error: 'rate_limited' }, 429, { 'Retry-After': '60' });
+        // Error reports also carry a per-IP daily budget: the minute cap alone
+        // still admits 172,800 rows a day from one address.
+        if (url.pathname === '/error_report' && !await admitErrorReport(env.DB, ip)) {
+          return json({ error: 'rate_limited' }, 429, { 'Retry-After': String(secondsUntilNextUtcDay()) });
+        }
         if (url.pathname === '/feedback') return await handleFeedbackIngest(request, env, ctx);
         let body: HeartbeatBody & ErrorReportBody;
         try {

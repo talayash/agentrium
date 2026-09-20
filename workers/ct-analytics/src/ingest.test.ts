@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { Miniflare } from 'miniflare';
-import { admitIngest, boundedJson, compareVersions, MAX_APP_VERSION, validDimensions, versionWithinCeiling } from './ingest';
+import { admitErrorReport, admitIngest, boundedJson, compareVersions, ERROR_REPORT_DAILY_LIMIT, errorDayWindow, MAX_APP_VERSION, validDimensions, versionWithinCeiling } from './ingest';
 import worker from './index';
 
 const mf = new Miniflare({ modules: true, script: 'export default { fetch() { return new Response("ok") } }', d1Databases: ['DB'] });
@@ -77,4 +77,40 @@ it('Worker rejects an out-of-range version with a distinct code, before it becom
   // Format-invalid input still reports the generic code, so the two are distinguishable.
   const malformed = await post('not-a-version');
   expect(await malformed.json()).toEqual({ error: 'invalid_payload' });
+});
+
+it('caps error reports per IP per UTC day and resets at the next day', async () => {
+  const day = Date.UTC(2026, 8, 20, 13, 45); // 13:45 UTC, well inside the day
+  await db.prepare('INSERT OR REPLACE INTO ingest_limits (key, window, count) VALUES (?, ?, ?)')
+    .bind('err_day:daily-ip', errorDayWindow(day), ERROR_REPORT_DAILY_LIMIT - 1).run();
+  expect(await admitErrorReport(db, 'daily-ip', day)).toBe(true);        // the 1000th report
+  expect(await admitErrorReport(db, 'daily-ip', day)).toBe(false);       // the 1001st
+  expect(await admitErrorReport(db, 'daily-ip', day + 3_600_000)).toBe(false); // still the same day
+  expect(await admitErrorReport(db, 'daily-ip', day + 86_400_000)).toBe(true); // next UTC day
+  expect(await admitErrorReport(db, 'other-ip', day)).toBe(true);        // budgets are per IP
+});
+
+it('stores the daily window in minute units so the minute-based cron sweep cannot reset it mid-day', () => {
+  const day = Date.UTC(2026, 8, 20, 3, 0);
+  // Aligned to the UTC day start and expressed in the same minute count as the
+  // per-minute rows, so `window < now_minute - 1440` only matches past days.
+  expect(errorDayWindow(day)).toBe(Math.floor(day / 86_400_000) * 1440);
+  expect(errorDayWindow(day + 20 * 3_600_000)).toBe(errorDayWindow(day));
+  expect(errorDayWindow(day + 86_400_000)).toBe(errorDayWindow(day) + 1440);
+});
+
+it('Worker refuses /error_report once the daily IP budget is spent but still admits heartbeats', async () => {
+  await db.prepare('INSERT OR REPLACE INTO ingest_limits (key, window, count) VALUES (?, ?, ?)')
+    .bind('err_day:spent-ip', errorDayWindow(Date.now()), ERROR_REPORT_DAILY_LIMIT).run();
+  const env = { DB: db, KV_BINDING: { get: async () => null, put: async () => undefined } } as any;
+  const send = (path: string) => worker.fetch(new Request(`https://local${path}`, {
+    method: 'POST',
+    headers: { 'cf-connecting-ip': 'spent-ip' },
+    body: JSON.stringify({ installation_id: crypto.randomUUID(), app_version: '1.34.3', os: 'windows', source: 'frontend', message: 'boom', fingerprint: 'abcd' }),
+  }), env, { waitUntil() {} } as any);
+  const denied = await send('/error_report');
+  expect(denied.status).toBe(429);
+  expect(await denied.json()).toEqual({ error: 'rate_limited' });
+  // The minute cap is untouched: the same IP is still admitted on other routes.
+  expect((await send('/heartbeat')).status).not.toBe(429);
 });
