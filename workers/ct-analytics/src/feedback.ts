@@ -71,6 +71,15 @@ export function normalizeFeedback(raw: RawFeedback): NormalizeResult {
  * plaintext IPs in KV. First 16 hex chars are enough entropy for a rate-limit
  * bucket while keeping keys short.
  */
+/**
+ * Salt for IP hashing. Prefer the dedicated IP_HASH_SALT secret so the stats
+ * bearer token never doubles as hashing key material; fall back to STATS_TOKEN
+ * so rate-limit and feedback buckets stay stable until the secret is set.
+ */
+export function ipHashSalt(env: { IP_HASH_SALT?: string; STATS_TOKEN?: string }): string {
+  return env.IP_HASH_SALT || env.STATS_TOKEN || 'unsalted';
+}
+
 export async function hashIP(ip: string, salt: string): Promise<string> {
   const data = new TextEncoder().encode(`${salt}|${ip}`);
   const digest = await crypto.subtle.digest('SHA-256', data);

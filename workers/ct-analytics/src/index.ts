@@ -31,7 +31,15 @@ import { parseResolveBody, isGroupResolved } from './errors';
 interface Env {
   KV_BINDING: KVNamespace;
   DB: D1Database;
+  /** Bearer token for the admin/stats routes (`wrangler secret put STATS_TOKEN`). */
   STATS_TOKEN: string;
+  /**
+   * Salt for hashing client IPs in feedback rows and rate-limit keys
+   * (`wrangler secret put IP_HASH_SALT`). Optional: when unset the worker
+   * falls back to STATS_TOKEN, so setting it rotates every IP-keyed bucket
+   * once and thereafter keeps the bearer token out of hashing altogether.
+   */
+  IP_HASH_SALT?: string;
 }
 
 interface HeartbeatBody {
@@ -342,7 +350,7 @@ async function handleErrorReport(request: Request, env: Env, ctx: ExecutionConte
 }
 
 async function handleFeedbackIngest(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-  const { normalizeFeedback, hashIP } = await import('./feedback');
+  const { normalizeFeedback, hashIP, ipHashSalt } = await import('./feedback');
 
   let body: unknown;
   try {
@@ -359,8 +367,7 @@ async function handleFeedbackIngest(request: Request, env: Env, ctx: ExecutionCo
   }
 
   const ip = request.headers.get('cf-connecting-ip') ?? 'unknown';
-  const salt = env.STATS_TOKEN ?? 'unsalted';
-  const ipHash = await hashIP(ip, salt);
+  const ipHash = await hashIP(ip, ipHashSalt(env));
 
   // Sliding counter: increment, reject when over the cap. Using put with TTL
   // and get gives us a rough hour-window bucket without a heavy counter
@@ -748,7 +755,7 @@ async function handleStatsHistory(url: URL, env: Env): Promise<Response> {
 }
 
 async function handleAdminLoginAttempt(request: Request, env: Env): Promise<Response> {
-  const { hashIP } = await import('./feedback');
+  const { hashIP, ipHashSalt } = await import('./feedback');
   let body: { ip?: unknown };
   try {
     body = (await request.json()) as { ip?: unknown };
@@ -758,9 +765,7 @@ async function handleAdminLoginAttempt(request: Request, env: Env): Promise<Resp
   const ip = clampString(body.ip, 64);
   if (!ip) return json({ error: 'invalid_payload' }, 400);
   // Same salted hash the feedback route uses; the raw address is never stored.
-  // requireToken already guarantees env.STATS_TOKEN is truthy before this
-  // handler runs, so no fallback salt is reachable here.
-  const ipHash = await hashIP(ip, env.STATS_TOKEN);
+  const ipHash = await hashIP(ip, ipHashSalt(env));
   return json(await checkLoginAttempt(env.KV_BINDING, ipHash));
 }
 

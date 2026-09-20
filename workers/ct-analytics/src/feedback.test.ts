@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   normalizeFeedback,
   hashIP,
+  ipHashSalt,
   NAME_MAX,
   MESSAGE_MAX,
   parseDeleteBody,
@@ -133,6 +134,21 @@ describe('hashIP', () => {
     const h = await hashIP(ip, 'salt');
     expect(h).not.toContain(ip);
     expect(h).not.toContain('203');
+  });
+});
+
+describe('ipHashSalt', () => {
+  it('prefers the dedicated IP_HASH_SALT secret over the stats token', () => {
+    expect(ipHashSalt({ STATS_TOKEN: 'tok', IP_HASH_SALT: 'pepper' })).toBe('pepper');
+  });
+
+  it('falls back to STATS_TOKEN so existing buckets keep working until the secret is added', () => {
+    expect(ipHashSalt({ STATS_TOKEN: 'tok' })).toBe('tok');
+    expect(ipHashSalt({ STATS_TOKEN: 'tok', IP_HASH_SALT: '' })).toBe('tok');
+  });
+
+  it('degrades to the legacy unsalted marker when neither secret is set', () => {
+    expect(ipHashSalt({})).toBe('unsalted');
   });
 });
 
