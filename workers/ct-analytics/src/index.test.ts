@@ -47,3 +47,30 @@ describe('IP hashing salt', () => {
     expect(salted).not.toBe(legacy);
   });
 });
+
+describe('bounded bodies on token-gated routes', () => {
+  // Same shape the ingest routes emit for an oversized body, so the admin
+  // proxies see one rejection regardless of which route they hit.
+  const oversized = JSON.stringify({ ids: [1], ip: '203.0.113.7', pad: 'x'.repeat(17_000) });
+  const env = () => ({ KV_BINDING: fakeKv(), DB: {} as D1Database, STATS_TOKEN: TOKEN }) as any;
+
+  it('rejects an oversized /feedback/mark_read body with 413 payload_too_large', async () => {
+    const res = await worker.fetch(post('/feedback/mark_read', oversized), env(), {} as any);
+    expect(res.status).toBe(413);
+    expect(await res.json()).toEqual({ error: 'payload_too_large' });
+  });
+
+  it('rejects an oversized /admin/login_attempt body with 413 payload_too_large', async () => {
+    const res = await worker.fetch(post('/admin/login_attempt', oversized), env(), {} as any);
+    expect(res.status).toBe(413);
+    expect(await res.json()).toEqual({ error: 'payload_too_large' });
+  });
+
+  it('still reports malformed JSON as 400 invalid_json on both routes', async () => {
+    for (const path of ['/feedback/mark_read', '/admin/login_attempt']) {
+      const res = await worker.fetch(post(path, '{not json'), env(), {} as any);
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: 'invalid_json' });
+    }
+  });
+});

@@ -152,6 +152,23 @@ function json(body: unknown, status = 200, extraHeaders: Record<string, string> 
   });
 }
 
+/**
+ * Reads a JSON body through the same 16 KB bounded reader the ingest routes
+ * use, mapping an oversized body to 413 and malformed JSON to 400 so every
+ * route reports the two failures identically.
+ */
+async function readBoundedBody(request: Request): Promise<{ body: unknown } | { response: Response }> {
+  try {
+    return { body: await boundedJson(request) };
+  } catch (err) {
+    return {
+      response: err instanceof RangeError
+        ? json({ error: 'payload_too_large' }, 413)
+        : json({ error: 'invalid_json' }, 400),
+    };
+  }
+}
+
 function clampString(value: unknown, max: number): string | null {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
@@ -447,12 +464,9 @@ async function handleFeedbackList(url: URL, env: Env): Promise<Response> {
 }
 
 async function handleFeedbackMarkRead(request: Request, env: Env): Promise<Response> {
-  let body: { ids?: unknown };
-  try {
-    body = (await request.json()) as { ids?: unknown };
-  } catch {
-    return json({ error: 'invalid_json' }, 400);
-  }
+  const read = await readBoundedBody(request);
+  if ('response' in read) return read.response;
+  const body = (read.body ?? {}) as { ids?: unknown };
   if (!Array.isArray(body.ids)) return json({ error: 'invalid_payload' }, 400);
   const ids: number[] = [];
   for (const raw of body.ids) {
@@ -756,12 +770,9 @@ async function handleStatsHistory(url: URL, env: Env): Promise<Response> {
 
 async function handleAdminLoginAttempt(request: Request, env: Env): Promise<Response> {
   const { hashIP, ipHashSalt } = await import('./feedback');
-  let body: { ip?: unknown };
-  try {
-    body = (await request.json()) as { ip?: unknown };
-  } catch {
-    return json({ error: 'invalid_json' }, 400);
-  }
+  const read = await readBoundedBody(request);
+  if ('response' in read) return read.response;
+  const body = (read.body ?? {}) as { ip?: unknown };
   const ip = clampString(body.ip, 64);
   if (!ip) return json({ error: 'invalid_payload' }, 400);
   // Same salted hash the feedback route uses; the raw address is never stored.
