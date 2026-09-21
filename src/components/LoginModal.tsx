@@ -236,6 +236,8 @@ export function LoginModal({ onClose }: LoginModalProps) {
           </form>
         )}
 
+        <p className="text-[11px] text-text-tertiary">Cloud sync requires verified email ownership. Use Google or GitHub to enable sync; password-only accounts can keep working locally.</p>
+
         {error && (
           <div
             role="alert"

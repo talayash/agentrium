@@ -247,6 +247,46 @@ pub fn resolve_for_spawn(
     Ok(out)
 }
 
+/// Move recognizable legacy profile keys to the OS store before guest sync.
+/// Unknown environment values also stay device-only at the serialization boundary.
+/// Each profile update is atomic; failed keychain writes leave plaintext intact.
+pub fn migrate_profile_keys(db: &crate::database::Database, store: &dyn SecretStore) -> Result<usize, String> {
+    let mut count = 0;
+    for mut profile in db.get_profiles()? {
+        let keys: Vec<_> = profile.env_vars.iter().filter(|(name, value)| {
+            (name.ends_with("_API_KEY") || name.ends_with("_TOKEN") || name.ends_with("_SECRET")) && !value.trim().is_empty()
+        }).map(|(name, value)| (name.clone(), value.clone())).collect();
+        if keys.is_empty() { continue; }
+        let tx = db.conn().unchecked_transaction().map_err(|e| e.to_string())?;
+        for (name, value) in keys {
+            let id = uuid::Uuid::new_v4().to_string();
+            let meta = CredentialMeta {
+                label: format!("Migrated {} {}", &id[..8], name.chars().take(20).collect::<String>()),
+                id: id.clone(), provider: Provider::Custom, env_name: name.clone(),
+                endpoint_env: None, has_key: true, has_endpoint: false,
+                masked_tail: Some(masked_tail_of(&value)), created_at: chrono::Utc::now().to_rfc3339(), last_used_at: None,
+            };
+            validate_save(&meta, Some(&value), None, true, false)?;
+            store.set(&key_entry(&id), &value)?;
+            if store.get(&key_entry(&id))?.as_deref() != Some(value.as_str()) {
+                return Err("Credential migration could not verify the stored key".into());
+            }
+            db.upsert_credential(&meta)?;
+            profile.env_vars.remove(&name);
+            profile.credential_bindings.retain(|b| b.env != name);
+            profile.credential_bindings.push(CredentialBinding { env: name, credential_id: id });
+            count += 1;
+        }
+        // Do not reset sync timestamps or state while changing local-only fields.
+        db.conn().execute("UPDATE profiles SET env_vars = ?1, credential_bindings_json = ?2 WHERE id = ?3",
+            rusqlite::params![serde_json::to_string(&profile.env_vars).map_err(|e| e.to_string())?,
+                serde_json::to_string(&profile.credential_bindings).map_err(|e| e.to_string())?, profile.id])
+            .map_err(|e| e.to_string())?;
+        tx.commit().map_err(|e| e.to_string())?;
+    }
+    Ok(count)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -264,6 +304,35 @@ mod tests {
             created_at: String::new(),
             last_used_at: None,
         }
+    }
+
+    #[test]
+    fn migration_verifies_keychain_before_removing_plaintext_and_is_idempotent() {
+        let db = crate::database::Database::new_in_memory().unwrap();
+        db.conn().execute("INSERT INTO profiles (id, name, working_directory, claude_args, env_vars) VALUES ('p', 'Profile', '/tmp', '[]', '{\"OPENAI_API_KEY\":\"private-key\",\"MODE\":\"test\"}')", []).unwrap();
+        let store = MemoryStore::default();
+        assert_eq!(migrate_profile_keys(&db, &store).unwrap(), 1);
+        let profile = db.get_profiles().unwrap().remove(0);
+        assert!(!profile.env_vars.contains_key("OPENAI_API_KEY"));
+        assert_eq!(profile.env_vars.get("MODE").unwrap(), "test");
+        assert_eq!(store.get(&key_entry(&profile.credential_bindings[0].credential_id)).unwrap().as_deref(), Some("private-key"));
+        assert_eq!(migrate_profile_keys(&db, &store).unwrap(), 0);
+    }
+
+    #[test]
+    fn failed_keychain_migration_preserves_profile_plaintext() {
+        struct Unavailable;
+        impl SecretStore for Unavailable {
+            fn set(&self, _: &str, _: &str) -> Result<(), String> { Err("unavailable".into()) }
+            fn get(&self, _: &str) -> Result<Option<String>, String> { Ok(None) }
+            fn delete(&self, _: &str) -> Result<(), String> { Ok(()) }
+            fn display_name(&self) -> &'static str { "unavailable" }
+        }
+        let db = crate::database::Database::new_in_memory().unwrap();
+        db.conn().execute("INSERT INTO profiles (id, name, working_directory, claude_args, env_vars) VALUES ('p', 'Profile', '/tmp', '[]', '{\"OPENAI_API_KEY\":\"private-key\"}')", []).unwrap();
+        assert!(migrate_profile_keys(&db, &Unavailable).is_err());
+        assert_eq!(db.get_profiles().unwrap()[0].env_vars.get("OPENAI_API_KEY").unwrap(), "private-key");
+        assert!(db.list_credentials().unwrap().is_empty());
     }
 
     #[test]

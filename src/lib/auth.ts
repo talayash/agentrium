@@ -63,20 +63,11 @@ export async function getAuthPromptSeen(): Promise<boolean> {
   return await invoke<boolean>('get_auth_prompt_seen');
 }
 
-/**
- * Sign out locally: clears the OS keychain refresh token, drops the cached
- * user id, and resets the in-memory authStore. Broker-side revocation is M3.
- *
- * The local `authStore.clear()` runs unconditionally (in `finally`) so a
- * transient Rust failure — keychain quirk, DB lock — can never leave the UI
- * stuck showing the authed chip. A stale keychain entry is less bad than
- * lying about the sign-in state; the next boot's rehydrate will either
- * silently drop it (if refresh 401s) or silently sign the user back in
- * (if the token is still valid, which is fine — they were signed in).
- */
+/** Clear local state and report whether server revocation succeeded. */
 export async function logout(): Promise<void> {
   try {
-    await invoke('logout');
+    const revoked = await invoke<boolean>('logout');
+    if (revoked === false) toast.warning('Signed out on this device', 'Server sign-out could not be confirmed. The server session may remain valid until revoked or expired.');
   } catch (err) {
     // Surface for telemetry but don't rethrow — we still want to clear the
     // frontend state so the user sees the sign-out take effect visually.

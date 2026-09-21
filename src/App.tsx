@@ -711,9 +711,10 @@ function App() {
         notify('Terminal Finished', `${name} has finished running.`);
       }
 
-      // Auto-summarize the session
+      // Summarize only after explicit consent in Privacy settings.
       (async () => {
         try {
+          if (!await invoke<boolean>('get_summary_enabled')) return;
           // Check if we already have a summary
           const existing = await invoke<string | null>('get_session_summary', { terminalId: id });
           if (existing) {

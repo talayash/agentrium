@@ -32,6 +32,8 @@ use crate::database;
 use crate::error_reporter;
 use crate::AppState;
 
+static SESSION_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 const PENDING_TTL: Duration = Duration::from_secs(3 * 60);
 
 #[derive(Debug, Clone)]
@@ -391,10 +393,16 @@ async fn finish_signin(
     let app_state = app.state::<AppState>();
     let mut engine = app_state.sync_handle.lock().await;
     if let Some(previous) = engine.take() { previous.shutdown().await; }
+    let _session = SESSION_LOCK.lock().await;
     let db = app_state.db.clone();
     let counts = tokio::task::spawn_blocking(move || {
         let db = db.lock().unwrap_or_else(|p| p.into_inner());
         db.activate_sync_account(&user.id)?;
+        if credentials::migrate_profile_keys(&db, &credentials::KeyringStore).is_err() {
+            // Sync still excludes every env value. Keep local credentials usable
+            // if the OS keychain is unavailable, without reporting secret text.
+            eprintln!("Legacy key migration deferred: local values were preserved");
+        }
         save_cached_auth_user(&db, &user)?;
         run_guest_migration(&db)
     }).await.map_err(|e| e.to_string())??;
@@ -557,16 +565,19 @@ pub async fn fetch_current_user(access_token: String) -> Result<AuthUser, String
     .await
 }
 
-/// Sign out locally: drop the refresh token from the OS keychain and clear the
-/// cached logged-in-user id. The broker has no session state to revoke in M1;
-/// M3 will add server-side revocation when we introduce sync.
+/// Clear local credentials and revoke the server session. False means the
+/// local logout succeeded but server revocation could not be confirmed.
 #[command]
-pub async fn logout(state: tauri::State<'_, AppState>) -> Result<(), String> {
+pub async fn logout(state: tauri::State<'_, AppState>) -> Result<bool, String> {
     let db_arc = state.db.clone();
     // Stop the sync engine first so no more push/pull happens after logout.
     let mut engine = state.sync_handle.lock().await;
     if let Some(handle) = engine.take() { handle.shutdown().await; }
     wrap_cmd("logout", async move {
+        let _session = SESSION_LOCK.lock().await;
+        let refresh = credentials::read_refresh_token()?;
+        // Clear locally even when the network is unavailable. Never persist a
+        // token for retry after the user requested removal from this device.
         credentials::clear_refresh_token()?;
         tokio::task::spawn_blocking(move || {
             let db = db_arc.lock().unwrap_or_else(|p| p.into_inner());
@@ -575,9 +586,19 @@ pub async fn logout(state: tauri::State<'_, AppState>) -> Result<(), String> {
         })
         .await
         .map_err(|e| format!("DB task failed: {e}"))??;
-        Ok(())
+        let revoked = if let Some(refresh) = refresh {
+            revoke_session(API_BASE, &refresh).await
+        } else { true };
+        Ok(revoked)
     })
     .await
+}
+
+async fn revoke_session(api_base: &str, refresh: &str) -> bool {
+    reqwest::Client::new().post(format!("{api_base}/api/auth/logout"))
+        .timeout(Duration::from_secs(5))
+        .json(&serde_json::json!({ "refresh_token": refresh }))
+        .send().await.map(|r| r.status().is_success()).unwrap_or(false)
 }
 
 /// Record that we've shown the "sign in to sync" prompt to this user, so we
@@ -644,6 +665,7 @@ fn refresh_status_rejects_token(status: reqwest::StatusCode) -> Result<bool, Str
 /// Shared by `rehydrate_auth` (boot path) and the sync engine's 401 retry
 /// (background path).
 pub async fn refresh_access_token() -> Result<Option<String>, String> {
+    let _session = SESSION_LOCK.lock().await;
     let refresh = match credentials::read_refresh_token()? {
         Some(v) => v,
         None => return Ok(None),
@@ -941,6 +963,18 @@ mod tests {
             stream.write_all(resp.as_bytes()).unwrap();
         });
         (format!("http://{addr}"), rx)
+    }
+
+    #[test]
+    fn logout_posts_current_token_and_reports_server_failure() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let (base, rx) = one_shot_http_server("HTTP/1.1 200 OK", "{}");
+        assert!(rt.block_on(revoke_session(&base, "current-token")));
+        let request = rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert!(request.starts_with("POST /api/auth/logout HTTP/1.1"));
+        assert!(request.contains("current-token"));
+        let (base, _rx) = one_shot_http_server("HTTP/1.1 503 Unavailable", "{}");
+        assert!(!rt.block_on(revoke_session(&base, "current-token")));
     }
 
     #[test]

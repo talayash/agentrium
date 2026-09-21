@@ -1,6 +1,6 @@
 use crate::config::ConfigProfile;
 use crate::terminal::TerminalConfig;
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use directories::ProjectDirs;
 use serde::{Serialize, Deserialize};
 
@@ -1234,19 +1234,19 @@ impl Database {
                     )
                     .map_err(|e| e.to_string())?;
                 let row = stmt.query_row(params![row_key], |r| {
-                    let claude_args_json: String = r.get(4)?;
-                    let env_vars_json: String = r.get(5)?;
-                    let agent_args_json: Option<String> = r.get(9)?;
+
+
+
                     Ok(json!({
                         "id": r.get::<_, String>(0)?,
                         "name": r.get::<_, String>(1)?,
                         "description": r.get::<_, Option<String>>(2)?,
                         "workingDirectory": r.get::<_, Option<String>>(3)?,
-                        "claudeArgs": serde_json::from_str::<serde_json::Value>(&claude_args_json).unwrap_or(json!([])),
-                        "envVars": serde_json::from_str::<serde_json::Value>(&env_vars_json).unwrap_or(json!({})),
+                        "claudeArgs": json!([]),
+                        "envVars": json!({}),
                         "isDefault": r.get::<_, i32>(6)? != 0,
                         "agent": r.get::<_, String>(8)?,
-                        "agentArgsJson": agent_args_json.and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok()),
+                        "agentArgsJson": serde_json::Value::Null,
                         "updatedAt": r.get::<_, String>(11)?,
                         "deletedAt": r.get::<_, Option<String>>(12)?,
                         "clientVersion": r.get::<_, i64>(13)?,
@@ -1269,18 +1269,18 @@ impl Database {
                     )
                     .map_err(|e| e.to_string())?;
                 let row = stmt.query_row(params![row_key], |r| {
-                    let default_args_json: String = r.get(3)?;
+
                     let required_env_json: String = r.get(6)?;
-                    let bindings_json: String = r.get(7)?;
+
                     Ok(json!({
                         "id": r.get::<_, String>(0)?,
                         "name": r.get::<_, String>(1)?,
                         "binary": r.get::<_, String>(2)?,
-                        "defaultArgs": serde_json::from_str::<serde_json::Value>(&default_args_json).unwrap_or(json!([])),
+                        "defaultArgs": json!([]),
                         "resumeFlag": r.get::<_, Option<String>>(4)?,
                         "color": r.get::<_, String>(5)?,
                         "requiredEnv": serde_json::from_str::<serde_json::Value>(&required_env_json).unwrap_or(json!([])),
-                        "bindings": serde_json::from_str::<serde_json::Value>(&bindings_json).unwrap_or(json!([])),
+                        "bindings": json!([]),
                         "installUrl": r.get::<_, Option<String>>(8)?,
                         "installHint": r.get::<_, Option<String>>(9)?,
                         "updatedAt": r.get::<_, String>(10)?,
@@ -1308,7 +1308,7 @@ impl Database {
                     Ok(json!({
                         "id": r.get::<_, String>(0)?,
                         "name": r.get::<_, String>(1)?,
-                        "terminals": serde_json::from_str::<serde_json::Value>(&terminals_json).unwrap_or(json!([])),
+                        "terminals": crate::sync_privacy::workspace_terminals(&serde_json::from_str::<serde_json::Value>(&terminals_json).unwrap_or(json!([]))),
                         "createdAt": r.get::<_, String>(3)?,
                         "updatedAt": r.get::<_, String>(4)?,
                         "deletedAt": r.get::<_, Option<String>>(5)?,
@@ -1374,18 +1374,22 @@ impl Database {
             .to_string();
         match table {
             "profiles" => {
-                let claude_args = row.get("claudeArgs").map(|v| v.to_string()).unwrap_or_else(|| "[]".into());
-                let env_vars = row.get("envVars").map(|v| v.to_string()).unwrap_or_else(|| "{}".into());
-                let agent_args_json = row.get("agentArgsJson").map(|v| v.to_string());
+                let local = self.conn.query_row(
+                    "SELECT claude_args, env_vars, agent_args_json FROM profiles WHERE id = ?1",
+                    [get_str("id")], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, Option<String>>(2)?)),
+                ).optional().map_err(|e| e.to_string())?;
+                let (claude_args, env_vars, agent_args_json) = local.unwrap_or(("[]".into(), "{}".into(), None));
                 self.conn.execute(
                     "INSERT OR REPLACE INTO profiles
                        (id, name, description, working_directory, claude_args, env_vars,
                         is_default, agent, agent_args_json, updated_at, deleted_at,
-                        client_version, sync_state)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                        client_version, sync_state, credential_bindings_json, preview_json)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13,
+                         (SELECT credential_bindings_json FROM profiles WHERE id = ?1),
+                         (SELECT preview_json FROM profiles WHERE id = ?1))",
                     params![
                         get_str("id"), get_str("name"), get_opt_str("description"),
-                        get_opt_str("workingDirectory"), claude_args, env_vars,
+                        get_str("workingDirectory"), claude_args, env_vars,
                         if get_bool("isDefault") { 1 } else { 0 }, get_str("agent"), agent_args_json,
                         ua, get_opt_str("deletedAt"), get_i64("clientVersion"),
                         SyncState::Synced.as_sql_str(),
@@ -1393,9 +1397,9 @@ impl Database {
                 ).map_err(|e| e.to_string())?;
             }
             "custom_agents" => {
-                let default_args = row.get("defaultArgs").map(|v| v.to_string()).unwrap_or_else(|| "[]".into());
+                let default_args: String = self.conn.query_row("SELECT default_args FROM custom_agents WHERE id = ?1", [get_str("id")], |r| r.get(0)).optional().map_err(|e| e.to_string())?.unwrap_or_else(|| "[]".into());
                 let required_env = row.get("requiredEnv").map(|v| v.to_string()).unwrap_or_else(|| "[]".into());
-                let bindings = row.get("bindings").map(|v| v.to_string()).unwrap_or_else(|| "[]".into());
+                let bindings: String = self.conn.query_row("SELECT bindings FROM custom_agents WHERE id = ?1", [get_str("id")], |r| r.get(0)).optional().map_err(|e| e.to_string())?.unwrap_or_else(|| "[]".into());
                 self.conn.execute(
                     "INSERT OR REPLACE INTO custom_agents
                        (id, name, binary, default_args, resume_flag, color, required_env,
@@ -1414,7 +1418,9 @@ impl Database {
                 ).map_err(|e| e.to_string())?;
             }
             "workspaces" => {
-                let terminals = row.get("terminals").map(|v| v.to_string()).unwrap_or_else(|| "[]".into());
+                let local: Option<String> = self.conn.query_row("SELECT terminals FROM workspaces WHERE sync_id = ?1", [get_str("id")], |r| r.get(0)).optional().map_err(|e| e.to_string())?;
+                let local = local.and_then(|s| serde_json::from_str(&s).ok()).unwrap_or(serde_json::json!([]));
+                let terminals = crate::sync_privacy::restore_local_terminals(&row["terminals"], &local).to_string();
                 let created_at = get_opt_str("createdAt").unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
                 let existing: Option<i64> = self.conn
                     .query_row(
@@ -1460,11 +1466,7 @@ impl Database {
     /// - Switching to an account this device has already seen: the current set
     ///   (rows, queue, cursor) is parked in the previous owner's snapshot and the
     ///   target account's snapshot is restored.
-    /// - Switching to an account new to this device: the current set is parked
-    ///   for the previous owner too, but the live rows stay and are re-flagged
-    ///   `local_only` so `run_guest_migration` pushes them under the new
-    ///   account ("what is on the PC follows the user"). Tombstones, the old
-    ///   queue and the old cursor are not inherited.
+    /// - A new account starts empty. The prior owner's rows remain in its snapshot.
     ///
     /// Internal `__`-prefixed workspaces stay local in every case.
     pub fn activate_sync_account(&self, account: &str) -> Result<(), String> {
@@ -1485,9 +1487,11 @@ impl Database {
                     .collect::<Result<Vec<serde_json::Value>, String>>()?;
                 snapshot.insert(table.into(), serde_json::Value::Array(rows));
             }
+            snapshot.insert("cursor_id".into(), serde_json::json!(self.get_user_meta("last_pull_cursor_id")?));
             snapshot.insert("cursor".into(), serde_json::json!(self.get_last_pull_cursor()?));
             self.set_user_meta(&format!("sync_snapshot:{previous}"), Some(&serde_json::Value::Object(snapshot).to_string()))?;
             self.delete_user_meta("last_pull_cursor")?;
+            self.delete_user_meta("last_pull_cursor_id")?;
             if let Some(saved) = self.get_user_meta(&format!("sync_snapshot:{account}"))? {
                 for table in tables {
                     let filter = if table == "workspaces" { " WHERE substr(name, 1, 2) != '__'" } else { "" };
@@ -1505,26 +1509,19 @@ impl Database {
                     }
                 }
                 if let Some(cursor) = snapshot["cursor"].as_str() { self.set_last_pull_cursor(cursor)?; }
+                self.set_user_meta("last_pull_cursor_id", snapshot["cursor_id"].as_str())?;
             } else {
-                // Account is new to this device: inherit the live working set.
-                // The previous owner's queue is parked in its snapshot; the new
-                // account gets a fresh queue built by run_guest_migration.
-                self.conn.execute("DELETE FROM sync_queue", []).map_err(|e| e.to_string())?;
-                for table in ["profiles", "custom_agents", "workspaces"] {
-                    let filter = if table == "workspaces" { " AND substr(name, 1, 2) != '__'" } else { "" };
-                    self.conn.execute(
-                        &format!("DELETE FROM {table} WHERE deleted_at IS NOT NULL{filter}"), [],
-                    ).map_err(|e| e.to_string())?;
-                    self.conn.execute(
-                        &format!("UPDATE {table} SET sync_state = ?1 WHERE deleted_at IS NULL{filter}"),
-                        [SyncState::LocalOnly.as_sql_str()],
-                    ).map_err(|e| e.to_string())?;
+                // Preserve the old account only in its snapshot; never adopt its rows.
+                for table in tables {
+                    let filter = if table == "workspaces" { " WHERE substr(name, 1, 2) != '__'" } else { "" };
+                    self.conn.execute(&format!("DELETE FROM {table}{filter}"), []).map_err(|e| e.to_string())?;
                 }
             }
         } else {
             // Older builds had a global cursor with no owner. Never carry that
             // cursor into a newly identified account.
             self.delete_user_meta("last_pull_cursor")?;
+            self.delete_user_meta("last_pull_cursor_id")?;
         }
         self.set_user_meta("sync_account_id", Some(account))?;
         tx.commit().map_err(|e| e.to_string())
@@ -1635,10 +1632,9 @@ mod tests {
         db.activate_sync_account("A").unwrap();
         db.set_last_pull_cursor("cursor-A").unwrap();
         db.activate_sync_account("B").unwrap();
-        // B has never been seen on this device: it inherits the working set
-        // (re-flagged local_only for push) but not A's queue or cursor.
-        assert!(db.read_syncable_row_json("profiles", "profile-A").unwrap().is_some());
-        assert_eq!(db.get_workspaces().unwrap().len(), 1);
+        // A new account has no access to the prior account working set.
+        assert!(db.read_syncable_row_json("profiles", "profile-A").unwrap().is_none());
+        assert_eq!(db.get_workspaces().unwrap().len(), 0);
         assert_eq!(db.sync_queue_depth().unwrap(), 0);
         assert_eq!(db.get_last_pull_cursor().unwrap(), None);
         assert!(db.load_workspace("__last_session__").is_ok());
@@ -1647,8 +1643,10 @@ mod tests {
         db.set_last_pull_cursor("cursor-B").unwrap();
         db.activate_sync_account("A").unwrap();
         let profile = db.read_syncable_row_json("profiles", "profile-A").unwrap().unwrap();
-        assert_eq!(profile["claudeArgs"], serde_json::json!(["--verbose"]));
-        assert_eq!(profile["envVars"], serde_json::json!({"MODE": "test"}));
+        assert_eq!(profile["claudeArgs"], serde_json::json!([]));
+        assert_eq!(profile["envVars"], serde_json::json!({}));
+        let env: String = db.conn.query_row("SELECT env_vars FROM profiles WHERE id = 'profile-A'", [], |r| r.get(0)).unwrap();
+        assert!(env.contains("MODE"));
         assert_eq!(db.get_last_pull_cursor().unwrap().as_deref(), Some("cursor-A"));
         assert_eq!(db.peek_sync_queue(10).unwrap()[0].row_key, a);
         assert!(db.read_syncable_row_json("workspaces", &b).unwrap().is_none());
@@ -1661,7 +1659,7 @@ mod tests {
     }
 
     #[test]
-    fn switching_to_an_account_new_to_this_device_inherits_the_working_set() {
+    fn switching_to_a_new_account_never_uploads_previous_accounts_rows() {
         let db = super::Database::new_in_memory().unwrap();
         db.conn.execute("INSERT INTO profiles (id, name, working_directory, claude_args, env_vars, updated_at, sync_state)
             VALUES ('live', 'Live', '/p', '[]', '{}', '2026-09-12T00:00:00Z', 'synced'),
@@ -1676,18 +1674,11 @@ mod tests {
         assert!(queued_under_a >= 2);
 
         db.activate_sync_account("B").unwrap();
-        // Live rows carry over and become local_only so run_guest_migration
-        // enqueues them for push under B. Tombstones are not inherited.
-        assert_eq!(db.get_profiles().unwrap().len(), 1);
-        let state: String = db.conn.query_row(
-            "SELECT sync_state FROM profiles WHERE id = 'live'", [], |r| r.get(0)).unwrap();
-        assert_eq!(state, "local_only");
+        assert!(db.get_profiles().unwrap().is_empty());
         assert!(db.read_syncable_row_json("profiles", "gone").unwrap().is_none());
-        assert!(db.load_workspace("daily").is_ok());
+        assert!(db.load_workspace("daily").is_err());
         assert!(db.load_workspace("__last_session__").is_ok());
-        let ws_state: String = db.conn.query_row(
-            "SELECT sync_state FROM workspaces WHERE sync_id = ?1", [&ws], |r| r.get(0)).unwrap();
-        assert_eq!(ws_state, "local_only");
+        crate::auth::run_guest_migration(&db).unwrap();
         // A's queue and cursor are parked in A's snapshot, not carried into B.
         assert_eq!(db.sync_queue_depth().unwrap(), 0);
         assert_eq!(db.get_last_pull_cursor().unwrap(), None);
@@ -1701,10 +1692,10 @@ mod tests {
         assert_eq!(db.sync_queue_depth().unwrap(), queued_under_a);
         assert_eq!(db.get_last_pull_cursor().unwrap().as_deref(), Some("cursor-A"));
 
-        // B now has its own snapshot, so a second visit restores rather than re-inherits.
+        // B remains empty on repeat visits.
         db.activate_sync_account("B").unwrap();
         assert!(db.read_syncable_row_json("profiles", "gone").unwrap().is_none());
-        assert_eq!(db.get_profiles().unwrap().len(), 1);
+        assert_eq!(db.get_profiles().unwrap().len(), 0);
     }
 
     #[test]
@@ -2530,7 +2521,27 @@ mod tests {
         assert_eq!(v.get("clientVersion").and_then(|x| x.as_i64()), Some(3));
         assert_eq!(v.get("updatedAt").and_then(|x| x.as_str()), Some("2026-06-01T00:00:00Z"));
         assert!(v.get("deletedAt").unwrap().is_null());
-        assert_eq!(v.get("claudeArgs").unwrap().as_array().unwrap()[0].as_str(), Some("--foo"));
+        assert_eq!(v["claudeArgs"], serde_json::json!([]));
+        assert_eq!(v["envVars"], serde_json::json!({}));
+    }
+
+    #[test]
+    fn cloud_pull_preserves_device_only_profile_configuration() {
+        let db = Database::new_in_memory().unwrap();
+        db.conn.execute("INSERT INTO profiles (id, name, working_directory, claude_args, env_vars, credential_bindings_json)
+            VALUES ('local', 'Local', '/tmp', '[\"--token=private\"]', '{\"SECRET\":\"private\"}', '[{\"env\":\"KEY\",\"credential_id\":\"key-id\"}]')", []).unwrap();
+        db.upsert_pulled_row("profiles", &serde_json::json!({
+            "id": "local", "name": "Remote name", "updatedAt": "2026-09-20T00:00:00Z",
+            "envVars": {"SECRET": "remote"}, "claudeArgs": [], "agent": "claude"
+        })).unwrap();
+        let profile = db.get_profiles().unwrap().remove(0);
+        assert_eq!(profile.name, "Remote name");
+        assert_eq!(profile.env_vars.get("SECRET").unwrap(), "private");
+        assert_eq!(profile.claude_args, vec!["--token=private"]);
+        assert_eq!(profile.credential_bindings[0].credential_id, "key-id");
+        let wire = db.read_syncable_row_json("profiles", "local").unwrap().unwrap().to_string();
+        assert!(!wire.contains("private"));
+        assert!(!wire.contains("key-id"));
     }
 
     #[test]

@@ -3861,8 +3861,26 @@ pub async fn send_telemetry_heartbeat(
 // Session summary commands
 
 #[command]
-pub async fn summarize_session(log_path: String) -> Result<Option<String>, String> {
+pub async fn get_summary_enabled(state: State<'_, AppState>) -> Result<bool, String> {
+    wrap_cmd("get_summary_enabled", async move {
+        db_op(&state.db, |db| Ok(db.get_user_meta("external_summary_enabled")?.as_deref() == Some("true"))).await
+    }).await
+}
+
+#[command]
+pub async fn set_summary_enabled(state: State<'_, AppState>, enabled: bool) -> Result<(), String> {
+    wrap_cmd("set_summary_enabled", async move {
+        db_op(&state.db, move |db| db.set_user_meta("external_summary_enabled", Some(if enabled { "true" } else { "false" }))).await
+    }).await
+}
+
+#[command]
+pub async fn summarize_session(state: State<'_, AppState>, log_path: String) -> Result<Option<String>, String> {
     wrap_cmd("summarize_session", async move {
+        // Rust owns consent so direct IPC calls cannot bypass the preference.
+        if !db_op(&state.db, |db| Ok(db.get_user_meta("external_summary_enabled")?.as_deref() == Some("true"))).await? {
+            return Ok(None);
+        }
         // Validate path is under the logs directory
         let data_dir = directories::ProjectDirs::from("com", "claudeterminal", "ClaudeTerminal")
             .ok_or("Failed to get project directories")?
@@ -3882,17 +3900,17 @@ pub async fn summarize_session(log_path: String) -> Result<Option<String>, Strin
             return Err(error_reporter::user_err("Access denied: path is not under logs directory"));
         }
 
-        // Read log file content (capped at 100KB)
-        let bytes = match tokio::fs::read(&canonical_path).await {
-            Ok(b) => b,
+        // Read only the final 16 KiB; never allocate the entire session log.
+        use tokio::io::{AsyncReadExt, AsyncSeekExt};
+        let mut file = match tokio::fs::File::open(&canonical_path).await {
+            Ok(file) => file,
             Err(_) => return Ok(None),
         };
-        let max_bytes = 100 * 1024;
-        let truncated = if bytes.len() > max_bytes {
-            &bytes[bytes.len() - max_bytes..]
-        } else {
-            &bytes
-        };
+        let size = file.metadata().await.map_err(|e| e.to_string())?.len();
+        file.seek(std::io::SeekFrom::Start(size.saturating_sub(16 * 1024))).await.map_err(|e| e.to_string())?;
+        let mut bytes = Vec::new();
+        file.take(16 * 1024).read_to_end(&mut bytes).await.map_err(|e| e.to_string())?;
+        let truncated = &bytes;
         let log_content = String::from_utf8_lossy(truncated);
 
         // Strip ANSI escape sequences. Compile the pattern once - this handler
@@ -3903,7 +3921,7 @@ pub async fn summarize_session(log_path: String) -> Result<Option<String>, Strin
             regex::Regex::new(r"\x1b\[[0-9;]*[a-zA-Z]|\x1b\].*?\x07|\x1b\[.*?[A-Za-z]")
                 .expect("ANSI escape regex must compile - see summarize_session")
         });
-        let clean_content = ansi_re.replace_all(&log_content, "").to_string();
+        let clean_content = error_reporter::scrub(&ansi_re.replace_all(&log_content, ""));
 
         if clean_content.trim().is_empty() {
             return Ok(None);

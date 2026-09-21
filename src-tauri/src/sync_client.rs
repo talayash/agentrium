@@ -15,6 +15,7 @@ const API_BASE: &str = "https://agentrium-api.vercel.app";
 #[derive(Debug, Serialize)]
 pub struct PullRequest {
     pub since: Option<String>,
+    pub since_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tables: Option<Vec<String>>,
 }
@@ -28,6 +29,10 @@ pub struct PullResponse {
     #[serde(default)]
     pub workspaces: Option<Vec<Value>>,
     pub server_time: String,
+    #[serde(default)]
+    pub next_since: Option<String>,
+    #[serde(default)]
+    pub next_since_id: Option<String>,
     #[serde(default)]
     pub truncated: bool,
 }
@@ -83,6 +88,7 @@ impl SyncClient {
             .http
             .post(&url)
             .timeout(std::time::Duration::from_secs(30))
+            .header("x-agentrium-sync-version", "2")
             .bearer_auth(&self.access_token)
             .json(body)
             .send()
@@ -100,7 +106,8 @@ impl SyncClient {
                 .http
                 .post(&url)
                 .timeout(std::time::Duration::from_secs(30))
-                .bearer_auth(&self.access_token)
+                .header("x-agentrium-sync-version", "2")
+            .bearer_auth(&self.access_token)
                 .json(body)
                 .send()
                 .await
@@ -116,7 +123,11 @@ impl SyncClient {
     ) -> Result<Resp, SyncError> {
         let status = resp.status();
         if !status.is_success() {
-            let text = resp.text().await.unwrap_or_default();
+            let retry_after = resp.headers().get("retry-after").and_then(|h| h.to_str().ok()).and_then(|s| s.parse::<u64>().ok());
+            let mut text = resp.text().await.unwrap_or_default();
+            if let Some(seconds) = retry_after {
+                text = format!("retry_after_seconds={};{text}", seconds.min(86400));
+            }
             return Err(SyncError::Server(status.as_u16(), text));
         }
         resp.json::<Resp>().await.map_err(SyncError::Decode)

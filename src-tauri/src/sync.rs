@@ -35,7 +35,7 @@ pub fn jittered(secs: u64, unit: f64) -> std::time::Duration {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PushFailure {
-    /// 4xx other than 401: the server rejected the payload itself. Retrying
+    /// Non-recoverable validation 4xx: the server rejected the payload itself. Retrying
     /// the same rows can never succeed, so they are dropped (spec §7.4).
     Poison,
     /// 5xx, network, refresh, decode, or a 401 that survived the one-shot
@@ -45,7 +45,7 @@ pub enum PushFailure {
 
 pub fn classify_push_failure(err: &sync_client::SyncError) -> PushFailure {
     match err {
-        sync_client::SyncError::Server(code, _) if (400..500).contains(code) && *code != 401 => {
+        sync_client::SyncError::Server(code, _) if (400..500).contains(code) && !matches!(*code, 401 | 403 | 408 | 409 | 429) => {
             PushFailure::Poison
         }
         _ => PushFailure::Transient,
@@ -111,7 +111,12 @@ fn handle_push_failure(
                 most_attempts = most_attempts.max(entry.attempts);
                 db.record_sync_attempt(&entry.table_name, &entry.row_key, Some(&msg))?;
             }
-            Ok(PushFailureAction::RetryAfter(jittered(backoff_secs(most_attempts), jitter_unit)))
+            let server_delay = match err {
+                sync_client::SyncError::Server(_, text) => text.strip_prefix("retry_after_seconds=")
+                    .and_then(|s| s.split(';').next()).and_then(|s| s.parse::<u64>().ok()).unwrap_or(0),
+                _ => 0,
+            };
+            Ok(PushFailureAction::RetryAfter(jittered(backoff_secs(most_attempts), jitter_unit).max(std::time::Duration::from_secs(server_delay))))
         }
     }
 }
@@ -471,17 +476,12 @@ async fn do_pull(
     client: &mut sync_client::SyncClient,
 ) {
     let db_arc = db.clone();
-    let since = tokio::task::spawn_blocking(move || {
-        db_arc
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .get_last_pull_cursor()
-            .unwrap_or(None)
-    })
-    .await
-    .unwrap_or(None);
+    let (since, since_id) = tokio::task::spawn_blocking(move || {
+        let db = db_arc.lock().unwrap_or_else(|p| p.into_inner());
+        (db.get_last_pull_cursor().unwrap_or(None), db.get_user_meta("last_pull_cursor_id").unwrap_or(None))
+    }).await.unwrap_or((None, None));
 
-    let req = sync_client::PullRequest { since, tables: None };
+    let req = sync_client::PullRequest { since, since_id, tables: None };
     emit_status(app, db, SyncStatus::Syncing, None).await;
 
     match client.pull(req).await {
@@ -517,7 +517,9 @@ fn apply_pull_page(db: &Database, resp: &sync_client::PullResponse) -> Result<()
     apply_pulled_rows(db, "profiles", &resp.profiles)?;
     apply_pulled_rows(db, "custom_agents", &resp.custom_agents)?;
     apply_pulled_rows(db, "workspaces", &resp.workspaces)?;
-    db.set_last_pull_cursor(&resp.server_time)?;
+    if resp.truncated && resp.next_since.is_none() { return Err("Server omitted pagination cursor".into()); }
+    db.set_last_pull_cursor(resp.next_since.as_deref().unwrap_or(&resp.server_time))?;
+    db.set_user_meta("last_pull_cursor_id", resp.next_since_id.as_deref())?;
     tx.commit().map_err(|e| e.to_string())
 }
 
@@ -590,6 +592,8 @@ mod tests {
                 "id": "remote", "name": "Remote", "terminals": [],
                 "updatedAt": "2026-09-12T00:00:00Z", "createdAt": "2026-09-12T00:00:00Z"
             }), serde_json::json!({"id": "invalid"})]),
+            next_since: None,
+            next_since_id: None,
             server_time: "after".into(), truncated: false,
         };
         assert!(apply_pull_page(&db, &page).is_err());
@@ -610,7 +614,7 @@ mod tests {
             workspaces: Some(vec![serde_json::json!({
                 "id": "remote", "name": "Shared", "terminals": [],
                 "updatedAt": "2026-09-12T00:00:00Z", "createdAt": "2026-09-12T00:00:00Z"
-            })]), server_time: "after".into(), truncated: false,
+            })]), next_since: None, next_since_id: None, server_time: "after".into(), truncated: false,
         };
         apply_pull_page(&db, &page).unwrap();
         assert_eq!(db.get_workspaces().unwrap().len(), 2);
@@ -641,6 +645,32 @@ mod tests {
     }
 
     // ---- Spec §7.4: exponential backoff on 5xx / network failures ----
+
+    #[test]
+    fn rate_limit_preserves_queue_and_honors_retry_after() {
+        let db = Database::new_in_memory().unwrap();
+        let id = db.save_workspace("pending", &[]).unwrap();
+        db.touch_sync_row("workspaces", &id).unwrap();
+        let queue = db.peek_sync_queue(10).unwrap();
+        let err = sync_client::SyncError::Server(429, "retry_after_seconds=90;rate_limited".into());
+        let action = handle_push_failure(&db, &queue, &err, 0.5).unwrap();
+        assert!(matches!(action, PushFailureAction::RetryAfter(d) if d.as_secs() >= 90));
+        assert_eq!(db.sync_queue_depth().unwrap(), 1);
+    }
+
+    #[test]
+    fn pagination_stores_boundary_and_tie_breaker_not_wall_clock() {
+        let db = Database::new_in_memory().unwrap();
+        let page = sync_client::PullResponse {
+            profiles: None, custom_agents: None, workspaces: None,
+            server_time: "2026-09-20T12:00:00Z".into(),
+            next_since: Some("2026-09-20T11:00:00Z".into()),
+            next_since_id: Some("row-id".into()), truncated: true,
+        };
+        apply_pull_page(&db, &page).unwrap();
+        assert_eq!(db.get_last_pull_cursor().unwrap(), page.next_since);
+        assert_eq!(db.get_user_meta("last_pull_cursor_id").unwrap(), page.next_since_id);
+    }
 
     #[test]
     fn backoff_doubles_from_30s_and_caps_at_one_hour() {

@@ -24,6 +24,7 @@ mod feedback;
 mod auth;
 mod sync_client;
 mod sync;
+mod sync_privacy;
 
 use tauri::Manager;
 use std::sync::Arc;
@@ -294,6 +295,8 @@ fn main() {
             commands::send_telemetry_heartbeat,
             commands::get_team_tasks,
             commands::summarize_session,
+            commands::get_summary_enabled,
+            commands::set_summary_enabled,
             session_context::get_terminal_context,
             commands::save_session_summary,
             commands::get_session_summary,
