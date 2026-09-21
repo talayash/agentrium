@@ -106,6 +106,19 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Configure macOS signing and notarization
+        if: runner.os == 'macOS'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          node --test scripts/configure-macos-signing.test.mjs
+          node scripts/configure-macos-signing.mjs
+
       - name: Install Azure Trusted Signing client (Windows)
         if: matrix.platform == 'windows-latest' && env.AZURE_TENANT_ID != ''
         shell: pwsh
