@@ -495,13 +495,9 @@ async function handleFeedbackMarkRead(request: Request, env: Env): Promise<Respo
 async function handleFeedbackDelete(request: Request, env: Env): Promise<Response> {
   const { parseDeleteBody } = await import('./feedback');
 
-  let body: unknown;
-  try {
-    body = await boundedJson(request);
-  } catch {
-    return json({ error: 'invalid_json' }, 400);
-  }
-  const parsed = parseDeleteBody(body);
+  const read = await readBoundedBody(request);
+  if ('response' in read) return read.response;
+  const parsed = parseDeleteBody(read.body);
   if (!parsed) return json({ error: 'invalid_payload' }, 400);
 
   const placeholders = parsed.ids.map(() => '?').join(',');
@@ -697,13 +693,9 @@ async function handleErrorsSummary(url: URL, env: Env): Promise<Response> {
 }
 
 async function handleErrorsResolve(request: Request, env: Env): Promise<Response> {
-  let body: unknown;
-  try {
-    body = await boundedJson(request);
-  } catch {
-    return json({ error: 'invalid_json' }, 400);
-  }
-  const parsed = parseResolveBody(body);
+  const read = await readBoundedBody(request);
+  if ('response' in read) return read.response;
+  const parsed = parseResolveBody(read.body);
   if (!parsed) return json({ error: 'invalid_payload' }, 400);
 
   const now = new Date().toISOString();
@@ -785,13 +777,9 @@ async function handleAdminLoginAttempt(request: Request, env: Env): Promise<Resp
 }
 
 async function handleStatsMatch(request: Request, env: Env): Promise<Response> {
-  let body: unknown;
-  try {
-    body = await boundedJson(request);
-  } catch {
-    return json({ error: 'invalid_json' }, 400);
-  }
-  const ids = parseMatchBody(body);
+  const read = await readBoundedBody(request);
+  if ('response' in read) return read.response;
+  const ids = parseMatchBody(read.body);
   if (!ids) return json({ error: 'invalid_payload' }, 400);
   return json(await matchInstallations(env.DB, env.KV_BINDING, ids, todayUTC()));
 }

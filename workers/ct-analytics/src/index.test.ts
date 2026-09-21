@@ -66,8 +66,26 @@ describe('bounded bodies on token-gated routes', () => {
     expect(await res.json()).toEqual({ error: 'payload_too_large' });
   });
 
-  it('still reports malformed JSON as 400 invalid_json on both routes', async () => {
-    for (const path of ['/feedback/mark_read', '/admin/login_attempt']) {
+  it('rejects an oversized /feedback/delete body with 413 payload_too_large', async () => {
+    const res = await worker.fetch(post('/feedback/delete', oversized), env(), {} as any);
+    expect(res.status).toBe(413);
+    expect(await res.json()).toEqual({ error: 'payload_too_large' });
+  });
+
+  it('rejects an oversized /errors/resolve body with 413 payload_too_large', async () => {
+    const res = await worker.fetch(post('/errors/resolve', oversized), env(), {} as any);
+    expect(res.status).toBe(413);
+    expect(await res.json()).toEqual({ error: 'payload_too_large' });
+  });
+
+  it('rejects an oversized /stats/match body with 413 payload_too_large', async () => {
+    const res = await worker.fetch(post('/stats/match', oversized), env(), {} as any);
+    expect(res.status).toBe(413);
+    expect(await res.json()).toEqual({ error: 'payload_too_large' });
+  });
+
+  it('still reports malformed JSON as 400 invalid_json on every token-gated route', async () => {
+    for (const path of ['/feedback/mark_read', '/admin/login_attempt', '/feedback/delete', '/errors/resolve', '/stats/match']) {
       const res = await worker.fetch(post(path, '{not json'), env(), {} as any);
       expect(res.status).toBe(400);
       expect(await res.json()).toEqual({ error: 'invalid_json' });
