@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.34.4",
+    "date": "2026-09-21",
+    "features": [
+      { "title": "Secrets stay on your device", "description": "Sync never uploads environment values, CLI arguments or credential bindings. Recognizable API keys in profiles move into the OS credential store." },
+      { "title": "Sync protocol update", "description": "Sync pages on the server cursor, keeps device-only fields when downloading, and waits as long as the server asks when it is busy. Update to keep cloud sync working." },
+      { "title": "Verified accounts for cloud sync", "description": "Cloud sync requires a Google or GitHub sign-in. Password-only accounts keep working locally." },
+      { "title": "Privacy controls", "description": "Settings > Privacy has an opt-in switch for external session summaries. It is off by default." },
+      { "title": "Error reports scrub more", "description": "User folders on any drive and email addresses are removed from error reports before they are sent." }
+    ]
+  },
+  {
     "version": "1.34.3",
     "date": "2026-09-19",
     "features": [
