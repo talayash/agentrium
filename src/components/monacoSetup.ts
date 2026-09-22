@@ -3,6 +3,10 @@
 // once thanks to the module cache.
 import { loader } from '@monaco-editor/react';
 import * as monaco from 'monaco-editor';
+// Monaco exposes service overrides through its standalone runtime, without declarations.
+// @ts-expect-error Internal Monaco module has no TypeScript declarations.
+import { StandaloneServices } from 'monaco-editor/esm/vs/editor/standalone/browser/standaloneServices.js';
+import { monacoDialogService } from '../lib/monacoDialogs';
 import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker';
 import jsonWorker from 'monaco-editor/esm/vs/language/json/json.worker?worker';
 import cssWorker from 'monaco-editor/esm/vs/language/css/css.worker?worker';
@@ -85,6 +89,7 @@ function isPackageJson(uri: monaco.Uri): boolean {
 }
 
 if (typeof window !== 'undefined' && !window.__monacoReady) {
+  StandaloneServices.initialize({ dialogService: monacoDialogService });
   (self as unknown as { MonacoEnvironment: monaco.Environment }).MonacoEnvironment = {
     getWorker(_: string, label: string) {
       // A worker crash never reaches window.onerror - watch each one so the

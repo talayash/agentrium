@@ -76,6 +76,7 @@ function tooltipFor(
   lastError: string | null,
 ): string {
   if (lastError?.includes('desktop_update_required')) return 'Update Agentrium to resume cloud sync. Local changes are preserved.';
+  if (lastError?.includes('credential_access_canceled')) return 'Keychain access was canceled. Click to retry sync and allow access. Local changes are preserved.';
   if (lastError?.includes('email_verification_required')) return 'Sign in with Google or GitHub to verify your email and enable sync. Local changes are preserved.';
   if (lastError?.includes('sync_quota_exceeded')) return 'Cloud storage limit reached. Local changes are preserved. Remove cloud items or contact support.';
   if (lastError?.includes('rate_limited')) return 'Sync delayed by the server. Changes are preserved and will retry automatically.';

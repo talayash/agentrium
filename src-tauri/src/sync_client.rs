@@ -56,6 +56,7 @@ pub struct PushResponse {
 pub struct SyncClient {
     http: reqwest::Client,
     access_token: String,
+    blocked: Option<SyncBlock>,
 }
 
 impl SyncClient {
@@ -63,11 +64,27 @@ impl SyncClient {
         Self {
             http: reqwest::Client::new(),
             access_token,
+            blocked: None,
         }
     }
 
     pub fn set_access_token(&mut self, token: String) {
         self.access_token = token;
+        self.retry_user_action();
+    }
+
+    pub fn is_blocked(&self) -> bool {
+        self.blocked.is_some()
+    }
+
+    pub fn blocked_error(&self) -> Option<SyncError> {
+        self.blocked.map(SyncError::Blocked)
+    }
+
+    pub fn retry_user_action(&mut self) {
+        if self.blocked == Some(SyncBlock::CredentialAccessCanceled) {
+            self.blocked = None;
+        }
     }
 
     pub async fn pull(&mut self, req: PullRequest) -> Result<PullResponse, SyncError> {
@@ -79,6 +96,24 @@ impl SyncClient {
     }
 
     async fn post_with_refresh<Req: Serialize, Resp: for<'de> Deserialize<'de>>(
+        &mut self,
+        path: &str,
+        body: &Req,
+    ) -> Result<Resp, SyncError> {
+        if let Some(reason) = self.blocked {
+            return Err(SyncError::Blocked(reason));
+        }
+        let result = self.send_with_refresh(path, body).await;
+        if let Err(err) = &result {
+            self.blocked = err.block_reason();
+            if let Some(reason) = self.blocked {
+                return Err(SyncError::Blocked(reason));
+            }
+        }
+        result
+    }
+
+    async fn send_with_refresh<Req: Serialize, Resp: for<'de> Deserialize<'de>>(
         &mut self,
         path: &str,
         body: &Req,
@@ -107,7 +142,7 @@ impl SyncClient {
                 .post(&url)
                 .timeout(std::time::Duration::from_secs(30))
                 .header("x-agentrium-sync-version", "2")
-            .bearer_auth(&self.access_token)
+                .bearer_auth(&self.access_token)
                 .json(body)
                 .send()
                 .await
@@ -123,7 +158,11 @@ impl SyncClient {
     ) -> Result<Resp, SyncError> {
         let status = resp.status();
         if !status.is_success() {
-            let retry_after = resp.headers().get("retry-after").and_then(|h| h.to_str().ok()).and_then(|s| s.parse::<u64>().ok());
+            let retry_after = resp
+                .headers()
+                .get("retry-after")
+                .and_then(|h| h.to_str().ok())
+                .and_then(|s| s.parse::<u64>().ok());
             let mut text = resp.text().await.unwrap_or_default();
             if let Some(seconds) = retry_after {
                 text = format!("retry_after_seconds={};{text}", seconds.min(86400));
@@ -136,6 +175,7 @@ impl SyncClient {
 
 #[derive(Debug)]
 pub enum SyncError {
+    Blocked(SyncBlock),
     Network(reqwest::Error),
     Refresh(String),
     Server(u16, String),
@@ -143,6 +183,30 @@ pub enum SyncError {
 }
 
 impl SyncError {
+    pub fn block_reason(&self) -> Option<SyncBlock> {
+        match self {
+            Self::Blocked(reason) => Some(*reason),
+            Self::Server(_, body) => {
+                let body = if body.starts_with("retry_after_seconds=") {
+                    body.split_once(';').map(|(_, body)| body).unwrap_or(body)
+                } else {
+                    body
+                };
+                let value: Value = serde_json::from_str(body).ok()?;
+                (value.get("error").and_then(Value::as_str) == Some("desktop_update_required"))
+                    .then_some(SyncBlock::UpdateRequired)
+            }
+            Self::Refresh(message)
+                if message.starts_with("keyring ")
+                    && (message.contains("User canceled the operation")
+                        || message.contains("User cancelled the operation")) =>
+            {
+                Some(SyncBlock::CredentialAccessCanceled)
+            }
+            _ => None,
+        }
+    }
+
     pub fn is_unauthorized(&self) -> bool {
         matches!(self, SyncError::Server(401, _))
     }
@@ -151,10 +215,73 @@ impl SyncError {
 impl std::fmt::Display for SyncError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            SyncError::Blocked(SyncBlock::UpdateRequired) => write!(f, "desktop_update_required"),
+            SyncError::Blocked(SyncBlock::CredentialAccessCanceled) => {
+                write!(f, "credential_access_canceled")
+            }
             SyncError::Network(e) => write!(f, "network: {e}"),
             SyncError::Refresh(s) => write!(f, "refresh: {s}"),
             SyncError::Server(code, body) => write!(f, "server {code}: {body}"),
             SyncError::Decode(e) => write!(f, "decode: {e}"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SyncBlock {
+    UpdateRequired,
+    CredentialAccessCanceled,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn recognizes_only_actionable_update_and_keychain_errors() {
+        for body in [
+            r#"{"error":"desktop_update_required"}"#,
+            r#"retry_after_seconds=60;{"error":"desktop_update_required"}"#,
+        ] {
+            assert_eq!(
+                SyncError::Server(503, body.into()).block_reason(),
+                Some(SyncBlock::UpdateRequired)
+            );
+        }
+        assert_eq!(
+            SyncError::Refresh(
+                "keyring get: Platform secure storage failure: User canceled the operation.".into()
+            )
+            .block_reason(),
+            Some(SyncBlock::CredentialAccessCanceled)
+        );
+        for err in [
+            SyncError::Server(503, "Service unavailable".into()),
+            SyncError::Server(500, r#"{"message":"desktop_update_required"}"#.into()),
+            SyncError::Refresh(
+                "keyring get: Platform secure storage failure: Access denied".into(),
+            ),
+            SyncError::Refresh("User canceled the operation".into()),
+        ] {
+            assert_eq!(err.block_reason(), None);
+        }
+    }
+
+    #[tokio::test]
+    async fn blocked_requests_do_not_contact_broker_and_require_explicit_resume() {
+        let mut client = SyncClient::new(String::new());
+        for reason in [
+            SyncBlock::UpdateRequired,
+            SyncBlock::CredentialAccessCanceled,
+        ] {
+            client.blocked = Some(reason);
+            let result: Result<Value, _> = client.post_with_refresh("/unused", &()).await;
+            assert!(matches!(result, Err(SyncError::Blocked(r)) if r == reason));
+            client.retry_user_action();
+            assert_eq!(client.is_blocked(), reason == SyncBlock::UpdateRequired);
+            client.blocked = Some(reason);
+            client.set_access_token("rotated".into());
+            assert_eq!(client.is_blocked(), reason == SyncBlock::UpdateRequired);
         }
     }
 }

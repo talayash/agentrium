@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach } from 'vitest';
 
 vi.mock('../lib/sync', () => ({ syncNow: vi.fn() }));
-vi.mock('./ui/Tooltip', () => ({ Tooltip: ({ children }: any) => children }));
+vi.mock('./ui/Tooltip', () => ({ Tooltip: ({ children, label }: any) => <div title={label}>{children}</div> }));
 
 import { SyncStatusChip } from './SyncStatusChip';
 import { useAuthStore } from '../store/authStore';
@@ -28,6 +28,21 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('SyncStatusChip', () => {
+  it('explains the update required to resume paused sync', () => {
+    useSyncStore.setState({ status: 'paused', lastError: 'desktop_update_required', queueDepth: 2 });
+    render(<SyncStatusChip />);
+    expect(screen.getByTitle('Update Agentrium to resume cloud sync. Local changes are preserved.')).toBeTruthy();
+    expect(screen.getByLabelText('Sync: Paused')).toBeTruthy();
+    expect(screen.getByText('2')).toBeTruthy();
+  });
+
+  it('lets the user retry after canceled keychain access', async () => {
+    useSyncStore.setState({ status: 'paused', lastError: 'credential_access_canceled' });
+    render(<SyncStatusChip />);
+    expect(screen.getByTitle('Keychain access was canceled. Click to retry sync and allow access. Local changes are preserved.')).toBeTruthy();
+    await userEvent.setup().click(screen.getByLabelText('Sync: Paused'));
+    expect(syncNow).toHaveBeenCalledOnce();
+  });
   it('renders nothing for guest users', () => {
     useAuthStore.setState({ mode: 'guest', user: null } as any);
     const { container } = render(<SyncStatusChip />);

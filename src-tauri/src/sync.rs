@@ -44,6 +44,9 @@ pub enum PushFailure {
 }
 
 pub fn classify_push_failure(err: &sync_client::SyncError) -> PushFailure {
+    if err.block_reason().is_some() {
+        return PushFailure::Transient;
+    }
     match err {
         sync_client::SyncError::Server(code, _) if (400..500).contains(code) && !matches!(*code, 401 | 403 | 408 | 409 | 429) => {
             PushFailure::Poison
@@ -57,6 +60,9 @@ pub fn classify_push_failure(err: &sync_client::SyncError) -> PushFailure {
 /// the calm "will sync when the connection returns" copy; a real answer from
 /// the server, or a broken response, is Error.
 pub fn status_for_failure(err: &sync_client::SyncError) -> SyncStatus {
+    if err.block_reason().is_some() {
+        return SyncStatus::Paused;
+    }
     match err {
         sync_client::SyncError::Network(_) => SyncStatus::Offline,
         sync_client::SyncError::Server(502 | 503 | 504, _) => SyncStatus::Offline,
@@ -72,7 +78,7 @@ pub fn status_for_failure(err: &sync_client::SyncError) -> SyncStatus {
 /// never stops, because `DEDUP_WINDOW` (60s) is shorter than
 /// `PULL_INTERVAL_MS` (5min), so dedup can never collapse the repeats.
 pub fn should_report_failure(err: &sync_client::SyncError) -> bool {
-    status_for_failure(err) != SyncStatus::Offline
+    !matches!(status_for_failure(err), SyncStatus::Offline | SyncStatus::Paused)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -238,6 +244,7 @@ async fn run_engine(
             cmd = rx.recv() => match cmd {
                 Some(SyncCommand::SyncNow) => {
                     if enabled {
+                        client.retry_user_action();
                         backoff_until = do_push(&app, &db, &mut client).await.next_backoff();
                         do_pull(&app, &db, &mut client).await;
                     }
@@ -253,6 +260,7 @@ async fn run_engine(
                     })
                     .await;
                     if e {
+                        client.retry_user_action();
                         emit_status(&app, &db, SyncStatus::Idle, None).await;
                         backoff_until = do_push(&app, &db, &mut client).await.next_backoff();
                         do_pull(&app, &db, &mut client).await;
@@ -266,7 +274,7 @@ async fn run_engine(
                 Some(SyncCommand::Shutdown) | None => break,
             },
             _ = debounce_tick.tick() => {
-                if !enabled { continue; }
+                if !enabled || client.is_blocked() { continue; }
                 let db_arc = db.clone();
                 let depth = tokio::task::spawn_blocking(move || {
                     db_arc
@@ -289,7 +297,7 @@ async fn run_engine(
                 }
             },
             _ = pull_tick.tick() => {
-                if enabled {
+                if enabled && !client.is_blocked() {
                     do_pull(&app, &db, &mut client).await;
                 }
             }
@@ -319,6 +327,11 @@ async fn do_push(
     db: &Arc<std::sync::Mutex<Database>>,
     client: &mut sync_client::SyncClient,
 ) -> PushOutcome {
+    // Keep the actionable paused status and queue intact until the user resumes.
+    if let Some(error) = client.blocked_error() {
+        emit_status(app, db, SyncStatus::Paused, Some(error.to_string())).await;
+        return PushOutcome::Done;
+    }
     emit_status(app, db, SyncStatus::Syncing, None).await;
 
     // Snapshot queue + resolve row JSON, all under one blocking-lock pass.
@@ -427,6 +440,10 @@ async fn do_push(
             PushOutcome::Done
         }
         Err(e) => {
+            if e.block_reason().is_some() {
+                emit_status(app, db, SyncStatus::Paused, Some(e.to_string())).await;
+                return PushOutcome::Done;
+            }
             let jitter_unit: f64 = rand::Rng::gen(&mut rand::thread_rng());
             let db_arc = db.clone();
             let queue_c = queue.clone();
@@ -475,6 +492,9 @@ async fn do_pull(
     db: &Arc<std::sync::Mutex<Database>>,
     client: &mut sync_client::SyncClient,
 ) {
+    if client.is_blocked() {
+        return;
+    }
     let db_arc = db.clone();
     let (since, since_id) = tokio::task::spawn_blocking(move || {
         let db = db_arc.lock().unwrap_or_else(|p| p.into_inner());
@@ -730,6 +750,17 @@ mod tests {
             assert!(!should_report_failure(&SyncError::Server(code, String::new())), "{code}");
         }
         assert!(!should_report_failure(&SyncError::Refresh(format!("{} timed out", crate::auth::NETWORK_ERROR_PREFIX))));
+    }
+
+    #[test]
+    fn user_action_required_pauses_without_telemetry_or_dropping_changes() {
+        use sync_client::{SyncBlock, SyncError};
+        for reason in [SyncBlock::UpdateRequired, SyncBlock::CredentialAccessCanceled] {
+            let err = SyncError::Blocked(reason);
+            assert_eq!(status_for_failure(&err), SyncStatus::Paused);
+            assert!(!should_report_failure(&err));
+            assert_eq!(classify_push_failure(&err), PushFailure::Transient);
+        }
     }
 
     /// The gate must stay narrow: anything the server actually answered with,
