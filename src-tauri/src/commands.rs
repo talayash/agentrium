@@ -1725,7 +1725,13 @@ pub async fn list_agent_sessions(
         if cwd.is_empty() || cwd.contains('\0') {
             return Err("Invalid cwd".to_string());
         }
-        Ok(crate::session_provider::provider_for(&agent).list_for_cwd(&cwd))
+        // Providers walk their on-disk archive with blocking std::fs, so this
+        // must stay off the runtime threads that serve PTY writes and resizes.
+        tokio::task::spawn_blocking(move || {
+            crate::session_provider::provider_for(&agent).list_for_cwd(&cwd)
+        })
+        .await
+        .map_err(|e| e.to_string())
     })
     .await
 }
@@ -3470,6 +3476,31 @@ pub async fn remove_worktree(
 }
 
 // Session history commands
+
+#[command]
+pub async fn validate_session_directory(path: String) -> Result<(), String> {
+    wrap_cmd("validate_session_directory", async move {
+        if !tokio::fs::metadata(&path).await.map(|m| m.is_dir()).unwrap_or(false) {
+            // Deleted project, unmounted share, removed worktree - environment,
+            // not a defect, so it must not reach telemetry.
+            return Err(error_reporter::user_err(format!(
+                "The session folder is missing or inaccessible: {}",
+                path
+            )));
+        }
+        Ok(())
+    }).await
+}
+
+#[command]
+pub async fn get_session_history_folders(
+    state: State<'_, AppState>,
+) -> Result<Vec<String>, String> {
+    wrap_cmd("get_session_history_folders", async move {
+        db_op(&state.db, |db| db.get_session_history_folders()).await
+    })
+    .await
+}
 
 #[command]
 pub async fn get_session_history(
