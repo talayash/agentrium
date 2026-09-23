@@ -1396,7 +1396,7 @@ pub async fn update_claude_code() -> Result<String, String> {
         let output = cmd
             .output()
             .await
-            .map_err(|e| format!("Failed to run npm: {}", e))?;
+            .map_err(|e| spawn_err("npm", e))?;
 
         if output.status.success() {
             // npm may have moved the binary or the user may have switched
@@ -2198,7 +2198,7 @@ pub async fn get_terminal_changes(
             .current_dir(&working_directory)
             .output()
             .await
-            .map_err(|e| format!("Failed to run git status: {}", e))?;
+            .map_err(|e| spawn_err("git status", e))?;
 
         if !status_output.status.success() {
             return Ok(FileChangesResult {
@@ -2314,7 +2314,7 @@ pub async fn get_file_diff(
             .current_dir(&working_directory)
             .output()
             .await
-            .map_err(|e| format!("Failed to run git status: {}", e))?;
+            .map_err(|e| spawn_err("git status", e))?;
 
         let status_str = String::from_utf8_lossy(&status_output.stdout).trim().to_string();
         let file_status = if status_str.len() >= 2 {
@@ -2365,7 +2365,7 @@ pub async fn get_file_diff(
                 .current_dir(&working_directory)
                 .output()
                 .await
-                .map_err(|e| format!("Failed to run git diff: {}", e))?;
+                .map_err(|e| spawn_err("git diff", e))?;
 
             let text = String::from_utf8_lossy(&diff_output.stdout).to_string();
 
@@ -2375,7 +2375,7 @@ pub async fn get_file_diff(
                     .current_dir(&working_directory)
                     .output()
                     .await
-                    .map_err(|e| format!("Failed to run git diff --cached: {}", e))?;
+                    .map_err(|e| spawn_err("git diff --cached", e))?;
                 String::from_utf8_lossy(&staged_output.stdout).to_string()
             } else {
                 text
@@ -2623,7 +2623,7 @@ async fn list_worktrees_internal(path: &str) -> Result<Vec<WorktreeInfo>, String
         .current_dir(path)
         .output()
         .await
-        .map_err(|e| format!("Failed to run git worktree list: {}", e))?;
+        .map_err(|e| spawn_err("git worktree list", e))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
@@ -2742,6 +2742,26 @@ pub(crate) fn git_cmd_async(args: &[&str]) -> tokio::process::Command {
     git_command(args).into()
 }
 
+/// Message for a child process that could not be *spawned* (as opposed to one
+/// that ran and exited non-zero). Those failures are about the machine, not
+/// about us: Windows refusing the commit charge ("The paging file is too small
+/// for this operation to complete", os error 1455), the binary missing from
+/// PATH, or the handle table being full. The user still sees the plain text;
+/// `wrap_cmd` skips telemetry because the result is tagged via `user_err`.
+pub(crate) fn spawn_err(what: &str, e: std::io::Error) -> String {
+    // ERROR_NOT_ENOUGH_MEMORY, ERROR_OUTOFMEMORY, ERROR_COMMITMENT_LIMIT.
+    let out_of_memory = matches!(e.raw_os_error(), Some(8) | Some(14) | Some(1455))
+        || e.kind() == std::io::ErrorKind::OutOfMemory;
+    let hint = if out_of_memory {
+        " The system is out of committed memory. Close some apps or increase the Windows page file, then try again."
+    } else if e.kind() == std::io::ErrorKind::NotFound {
+        " Check that it is installed and on your PATH."
+    } else {
+        ""
+    };
+    error_reporter::user_err(format!("Failed to run {what}: {e}.{hint}"))
+}
+
 async fn run_git(path: &str, args: &[&str]) -> Result<String, String> {
     // tokio::process::Command runs the child on the async reactor so the
     // handler doesn't stall a runtime worker while git is thinking. On big
@@ -2751,7 +2771,7 @@ async fn run_git(path: &str, args: &[&str]) -> Result<String, String> {
         .current_dir(path)
         .output()
         .await
-        .map_err(|e| format!("Failed to run git {}: {}", args.join(" "), e))?;
+        .map_err(|e| spawn_err(&format!("git {}", args.join(" ")), e))?;
     if !out.status.success() {
         let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
         let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
@@ -3335,7 +3355,7 @@ pub async fn checkout_branch(
             .current_dir(&path)
             .output()
             .await
-            .map_err(|e| format!("Failed to run git checkout: {}", e))?;
+            .map_err(|e| spawn_err("git checkout", e))?;
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
             let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
@@ -4620,7 +4640,7 @@ pub async fn get_path_changes(
             .current_dir(&path)
             .output()
             .await
-            .map_err(|e| format!("Failed to run git status: {}", e))?;
+            .map_err(|e| spawn_err("git status", e))?;
 
         if !status_output.status.success() {
             return Ok(FileChangesResult {
@@ -4667,7 +4687,7 @@ pub async fn get_path_file_diff(
             .current_dir(&path)
             .output()
             .await
-            .map_err(|e| format!("Failed to run git status: {}", e))?;
+            .map_err(|e| spawn_err("git status", e))?;
 
         let status_str = String::from_utf8_lossy(&status_output.stdout).trim().to_string();
         let file_status = if status_str.len() >= 2 {
@@ -4710,7 +4730,7 @@ pub async fn get_path_file_diff(
                 .current_dir(&path)
                 .output()
                 .await
-                .map_err(|e| format!("Failed to run git diff: {}", e))?;
+                .map_err(|e| spawn_err("git diff", e))?;
 
             let text = String::from_utf8_lossy(&diff_output.stdout).to_string();
             if text.trim().is_empty() && !staged {
@@ -4718,7 +4738,7 @@ pub async fn get_path_file_diff(
                     .current_dir(&path)
                     .output()
                     .await
-                    .map_err(|e| format!("Failed to run git diff --cached: {}", e))?;
+                    .map_err(|e| spawn_err("git diff --cached", e))?;
                 String::from_utf8_lossy(&staged_output.stdout).to_string()
             } else {
                 text
@@ -4771,7 +4791,7 @@ pub async fn git_create_branch(
             .current_dir(&path)
             .output()
             .await
-            .map_err(|e| format!("Failed to run git checkout -b: {}", e))?;
+            .map_err(|e| spawn_err("git checkout -b", e))?;
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
             let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
@@ -4824,7 +4844,7 @@ pub async fn get_upstream_branch(
         .current_dir(&path)
         .output()
         .await
-        .map_err(|e| format!("Failed to run git rev-parse: {}", e))?;
+        .map_err(|e| spawn_err("git rev-parse", e))?;
         if !output.status.success() {
             // No upstream configured - not an error, just absent
             return Ok(None);
@@ -4902,7 +4922,7 @@ pub async fn git_pull_branch(
             .current_dir(&path)
             .output()
             .await
-            .map_err(|e| format!("Failed to run git pull: {}", e))?;
+            .map_err(|e| spawn_err("git pull", e))?;
         let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
 
@@ -4937,7 +4957,7 @@ pub async fn git_pull_branch(
                 .current_dir(&path)
                 .output()
                 .await
-                .map_err(|e| format!("Failed to run git stash pop: {}", e))?;
+                .map_err(|e| spawn_err("git stash pop", e))?;
             if !pop.status.success() {
                 let pop_err = String::from_utf8_lossy(&pop.stderr).trim().to_string();
                 // Pop conflicted. The stash stays applied with conflict markers,
@@ -5148,7 +5168,7 @@ pub async fn get_git_head_content(
             .current_dir(&path)
             .output()
             .await
-            .map_err(|e| format!("Failed to run git show: {}", e))?;
+            .map_err(|e| spawn_err("git show", e))?;
         if !output.status.success() {
             // File has no HEAD version - treat as empty (new/untracked file).
             return Ok(String::new());
@@ -5187,7 +5207,7 @@ pub async fn git_discard_file(
             .current_dir(&root)
             .output()
             .await
-            .map_err(|e| format!("Failed to run git checkout: {}", e))?;
+            .map_err(|e| spawn_err("git checkout", e))?;
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
             let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
@@ -6097,5 +6117,39 @@ mod search_coordinate_tests {
             .map(|unit| char::from_u32(unit as u32).unwrap())
             .collect();
         assert_eq!(highlighted, "needle");
+    }
+}
+
+#[cfg(test)]
+mod spawn_err_tests {
+    use super::spawn_err;
+    use crate::error_reporter::{is_user_error, strip_user_prefix};
+    use std::io::{Error, ErrorKind};
+
+    #[test]
+    fn commit_limit_failures_are_user_errors_with_a_page_file_hint() {
+        // ERROR_COMMITMENT_LIMIT (1455): "The paging file is too small for this
+        // operation to complete." Windows refused the spawn, not our code.
+        let msg = spawn_err("git status", Error::from_raw_os_error(1455));
+        assert!(is_user_error(&msg), "environment failures must skip telemetry");
+        let plain = strip_user_prefix(&msg);
+        assert!(plain.starts_with("Failed to run git status:"), "got {plain}");
+        assert!(plain.contains("page file"), "got {plain}");
+    }
+
+    #[test]
+    fn a_missing_binary_points_at_path() {
+        let msg = spawn_err("git status", Error::new(ErrorKind::NotFound, "not found"));
+        assert!(is_user_error(&msg));
+        assert!(strip_user_prefix(&msg).contains("PATH"));
+    }
+
+    #[test]
+    fn other_spawn_failures_stay_user_errors_without_a_hint() {
+        let msg = spawn_err("npm", Error::new(ErrorKind::BrokenPipe, "pipe died"));
+        assert!(is_user_error(&msg));
+        let plain = strip_user_prefix(&msg);
+        assert!(plain.starts_with("Failed to run npm: "), "got {plain}");
+        assert!(!plain.contains("page file"));
     }
 }
