@@ -679,6 +679,22 @@ function App() {
     }
   }, [terminalMetrics, sessionBudgetUsd, budgetWarnedIds, markBudgetWarned, notify]);
 
+  const closedTerminalConfigs = useRef(new Map<string, TerminalConfig>());
+
+  useEffect(() => useTerminalStore.subscribe((state, previous) => {
+    for (const [id, terminal] of previous.terminals) {
+      if (!state.terminals.has(id)) {
+        closedTerminalConfigs.current.set(id, terminal.config);
+      }
+    }
+    // Keep a bounded fallback for delayed finish events after closing a tab.
+    while (closedTerminalConfigs.current.size > 100) {
+      const oldest = closedTerminalConfigs.current.keys().next().value;
+      if (oldest === undefined) break;
+      closedTerminalConfigs.current.delete(oldest);
+    }
+  }), []);
+
   useEffect(() => {
     // Same listen()/cleanup race guard as the other event listeners above.
     let cancelled = false;
@@ -690,7 +706,13 @@ function App() {
       // Get the current terminal name from the store (always up-to-date, even after renames)
       const terminals = useTerminalStore.getState().terminals;
       const terminal = terminals.get(id);
-      const name = terminal?.config.nickname || terminal?.config.label || 'Terminal';
+      const config = terminal?.config ?? closedTerminalConfigs.current.get(id);
+      closedTerminalConfigs.current.delete(id);
+      const name = config?.nickname || config?.label || `Terminal ${id.slice(0, 8)}`;
+      const label = config?.nickname && config.label && config.nickname !== config.label
+        ? `${name} (${config.label})`
+        : name;
+      const message = `"${label}" has finished running.`;
 
       updateTerminalStatus(id, 'Stopped');
       triggerChangesRefresh();
@@ -700,7 +722,7 @@ function App() {
       if (isDetached) return;
 
       // Always show in-app toast
-      toast.info('Terminal Finished', `${name} has finished running.`);
+      toast.info('Terminal Finished', message);
 
       // Status-bar unread dot when the user isn't watching.
       if (document.hidden) {
@@ -708,7 +730,7 @@ function App() {
       }
 
       if (notifyOnFinish) {
-        notify('Terminal Finished', `${name} has finished running.`);
+        notify('Terminal Finished', message);
       }
 
       // Summarize only after explicit consent in Privacy settings.
