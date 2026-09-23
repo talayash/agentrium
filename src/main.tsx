@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import './index.css';
 import { isCancellationError, reportError } from './lib/errorReporter';
+import { installConfirmShim } from './lib/confirmDialog';
 
 // Known-benign browser warnings that fire constantly during layout work
 // (e.g. xterm.js + Framer Motion resizing). Filtering here avoids polluting
@@ -30,6 +31,10 @@ window.addEventListener('unhandledrejection', (e) => {
     typeof r === 'string' ? r : r?.message ?? (r === undefined ? 'undefined' : String(r));
   reportError(name, message, r?.stack);
 });
+
+// Before anything can render an editor: tauri-plugin-dialog's injected
+// window.confirm invokes a command the plugin no longer registers.
+installConfirmShim();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
