@@ -1,5 +1,18 @@
 [
   {
+    "version": "1.34.5",
+    "date": "2026-09-23",
+    "features": [
+      { "title": "Clearer profile selection", "description": "Every profile in the New Terminal dialog now shows a radio ring, and the chosen one is filled in. The small check that sat next to the pin, edit and delete buttons is gone." },
+      { "title": "Restore History sessions without an open terminal", "description": "The Sessions panel groups past sessions by profile and folder so you can reopen one even after its terminal was closed." },
+      { "title": "Faster Sessions panel", "description": "Expanding History no longer walks every archived session for every folder, and it no longer slows down typing in open terminals while it loads." },
+      { "title": "Terminal names in finish notifications", "description": "Notifications for a terminal that finished after it was closed keep the terminal's name instead of showing a blank." },
+      { "title": "Friendlier git errors on a low-memory system", "description": "When Windows refuses to start git because the page file is full, the message now says so and suggests what to change instead of reporting a generic failure." },
+      { "title": "Editor confirmations fixed", "description": "Confirmation prompts inside the code editor could silently proceed as if you had clicked OK. They now stop the action until you answer." },
+      { "title": "Sync pauses on failures you can fix", "description": "When sync hits a problem that needs your attention, it pauses and tells you instead of retrying in the background." }
+    ]
+  },
+  {
     "version": "1.34.4",
     "date": "2026-09-21",
     "features": [
