@@ -7,6 +7,7 @@ import { toast } from '../store/toastStore';
 import { allAgentSpecs, defaultArgsFor } from '../lib/agents';
 import { loadHistoryGroups, type HistoryGroup, type HistoryProfile, type HistorySession } from '../lib/historyGroups';
 import { LatestRequest } from '../lib/latestRequest';
+import { reportInvokeFailure } from '../lib/errorReporter';
 import type { FrameworkHint } from '../lib/preview/framework';
 import { PanelHeader } from './ui/PanelHeader';
 import { ListRow } from './ui/ListRow';
@@ -41,6 +42,8 @@ export function GroupedSessionHistory() {
       );
       if (!request.current.isCurrent(id)) return;
       setGroups(result);
+      if (profiles.status === 'rejected') reportInvokeFailure('get_profiles', profiles.reason);
+      if (folders.status === 'rejected') reportInvokeFailure('get_session_history_folders', folders.reason);
       if (profiles.status === 'rejected' || folders.status === 'rejected') {
         setError('Some history sources could not be loaded. Try refreshing.');
       }
@@ -64,8 +67,10 @@ export function GroupedSessionHistory() {
     const env = { ...profile?.env_vars };
     const bindings = profile?.credential_bindings ?? [];
     for (const binding of bindings) delete env[binding.env];
+    let validated = false;
     try {
       await invoke('validate_session_directory', { path: group.cwd });
+      validated = true;
       const id = await useTerminalStore.getState().createTerminal(
         profile?.name ?? `Resumed ${session.id.slice(0, 8)}`,
         group.cwd,
@@ -83,6 +88,9 @@ export function GroupedSessionHistory() {
       if (app.gridMode) app.addToGrid(id);
     } catch (err) {
       toast.error('Could not restore session', String(err));
+      // A failed validate is environment (folder moved or unmounted) and is
+      // already classified user-facing in Rust; only the spawn is a defect.
+      if (validated) reportInvokeFailure('create_terminal', err);
     } finally {
       openingRef.current = false;
       setOpening(false);
@@ -109,7 +117,7 @@ export function GroupedSessionHistory() {
           </h3>
           <p className="text-[10.5px] text-text-tertiary truncate" title={group.cwd} dir="ltr">{group.cwd}</p>
         </div>
-        <div aria-hidden="true" className="mx-3 mb-1 border-t border-white" />
+        <div aria-hidden="true" className="mx-3 mb-1 border-t border-seam" />
         {group.error && <p role="alert" className="px-3 text-red-400 text-[11px]">{group.error}</p>}
         {group.unsupported && <p className="px-3 text-text-tertiary text-[11px]">This agent has no local session index.</p>}
         {!group.error && !group.unsupported && group.sessions.length === 0 && <p className="px-3 text-text-tertiary text-[11px]">No saved sessions</p>}

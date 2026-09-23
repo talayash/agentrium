@@ -910,12 +910,15 @@ impl Database {
         Ok(())
     }
 
-    /// All known folders, independent of the log viewer's 100-row limit.
+    /// The most recently used folders, independent of the log viewer's 100-row
+    /// limit. Capped because the History panel fans out one session lookup per
+    /// folder per agent, and some agents scan their whole archive per lookup.
     pub fn get_session_history_folders(&self) -> Result<Vec<String>, String> {
         let mut stmt = self.conn.prepare(
             "SELECT working_directory FROM session_history
              WHERE working_directory IS NOT NULL AND TRIM(working_directory) != ''
-             GROUP BY working_directory ORDER BY MAX(started_at) DESC"
+             GROUP BY working_directory ORDER BY MAX(started_at) DESC
+             LIMIT 30"
         ).map_err(|e| e.to_string())?;
         let rows = stmt.query_map([], |row| row.get(0)).map_err(|e| e.to_string())?;
         rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
