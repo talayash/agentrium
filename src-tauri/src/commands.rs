@@ -3472,6 +3472,26 @@ pub async fn remove_worktree(
 // Session history commands
 
 #[command]
+pub async fn validate_session_directory(path: String) -> Result<(), String> {
+    wrap_cmd("validate_session_directory", async move {
+        if !tokio::fs::metadata(&path).await.map(|m| m.is_dir()).unwrap_or(false) {
+            return Err(format!("The session folder is missing or inaccessible: {}", path));
+        }
+        Ok(())
+    }).await
+}
+
+#[command]
+pub async fn get_session_history_folders(
+    state: State<'_, AppState>,
+) -> Result<Vec<String>, String> {
+    wrap_cmd("get_session_history_folders", async move {
+        db_op(&state.db, |db| db.get_session_history_folders()).await
+    })
+    .await
+}
+
+#[command]
 pub async fn get_session_history(
     state: State<'_, AppState>,
 ) -> Result<Vec<SessionHistoryEntry>, String> {

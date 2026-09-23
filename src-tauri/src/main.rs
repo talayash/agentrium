@@ -273,6 +273,8 @@ fn main() {
             commands::create_worktree,
             commands::remove_worktree,
             commands::get_session_history,
+            commands::get_session_history_folders,
+            commands::validate_session_directory,
             commands::get_session_log,
             commands::read_log_file,
             commands::delete_session_history,

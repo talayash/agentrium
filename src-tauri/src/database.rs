@@ -910,6 +910,17 @@ impl Database {
         Ok(())
     }
 
+    /// All known folders, independent of the log viewer's 100-row limit.
+    pub fn get_session_history_folders(&self) -> Result<Vec<String>, String> {
+        let mut stmt = self.conn.prepare(
+            "SELECT working_directory FROM session_history
+             WHERE working_directory IS NOT NULL AND TRIM(working_directory) != ''
+             GROUP BY working_directory ORDER BY MAX(started_at) DESC"
+        ).map_err(|e| e.to_string())?;
+        let rows = stmt.query_map([], |row| row.get(0)).map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    }
+
     pub fn get_session_history(&self) -> Result<Vec<SessionHistoryEntry>, String> {
         let mut stmt = self.conn
             .prepare("SELECT id, terminal_id, label, started_at, ended_at, log_path, working_directory, claude_session_id FROM session_history ORDER BY started_at DESC LIMIT 100")
@@ -1919,6 +1930,19 @@ mod tests {
         assert_eq!(found.log_path.as_deref(), Some("/log/path"));
         assert_eq!(found.working_directory.as_deref(), Some("/work/dir"));
         assert_eq!(found.claude_session_id.as_deref(), Some("sess-abc"));
+    }
+
+    #[test]
+    fn history_folders_are_distinct_and_not_limited_to_recent_logs() {
+        let db = Database::new_in_memory().unwrap();
+        db.insert_session_history("old", "Old", "2025-01-01", None, Some("/older")).unwrap();
+        for i in 0..105 {
+            db.insert_session_history(&format!("t{i}"), "New", "2026-01-01", None, Some("/newer")).unwrap();
+        }
+        db.insert_session_history("empty", "Empty", "2026-01-02", None, Some("  ")).unwrap();
+        db.insert_session_history("legacy", "Legacy", "2026-01-02", None, None).unwrap();
+        db.update_session_ended("old", "2025-01-02").unwrap();
+        assert_eq!(db.get_session_history_folders().unwrap(), vec!["/newer", "/older"]);
     }
 
     #[test]
