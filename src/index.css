@@ -415,6 +415,65 @@
   transition-duration: 0.001s !important;
 }
 
+/* Liquid-glass circular loader (GlassSpinner). The glass bead and its
+   specular highlight stay still - the light source is fixed, as on real
+   glass - while only the accent arc inside the rim rotates. The global
+   reduce-motion cascade above freezes the arc. */
+.ct-glass-spinner {
+  position: relative;
+  display: inline-block;
+  flex-shrink: 0;
+  border-radius: 9999px;
+  background:
+    radial-gradient(120% 120% at 30% 20%, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.04) 55%, rgba(255, 255, 255, 0.02));
+  box-shadow:
+    inset 0 0 0 0.5px rgba(255, 255, 255, 0.28),
+    inset 0 1px 1px rgba(255, 255, 255, 0.30),
+    inset 0 -1px 2px rgba(0, 0, 0, 0.25),
+    0 1px 3px rgba(0, 0, 0, 0.30);
+  backdrop-filter: blur(6px) saturate(170%);
+  -webkit-backdrop-filter: blur(6px) saturate(170%);
+}
+.ct-glass-spinner::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0turn,
+    transparent 0.35turn,
+    color-mix(in srgb, var(--accent-primary) 35%, transparent) 0.6turn,
+    var(--accent-primary) 0.88turn,
+    #fff 0.99turn,
+    transparent 1turn
+  );
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - var(--ring, 2px) - 0.5px), #000 calc(100% - var(--ring, 2px)));
+  mask: radial-gradient(farthest-side, transparent calc(100% - var(--ring, 2px) - 0.5px), #000 calc(100% - var(--ring, 2px)));
+  filter: drop-shadow(0 0 1.5px color-mix(in srgb, var(--accent-primary) 70%, transparent));
+  animation: ct-glass-spin 0.9s linear infinite;
+}
+.ct-glass-spinner::after {
+  content: '';
+  position: absolute;
+  top: 12%;
+  left: 22%;
+  width: 45%;
+  height: 28%;
+  border-radius: 9999px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0));
+  pointer-events: none;
+}
+:root[data-theme="light"] .ct-glass-spinner {
+  background:
+    radial-gradient(120% 120% at 30% 20%, rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.35) 55%, rgba(0, 0, 0, 0.04));
+  box-shadow:
+    inset 0 0 0 0.5px rgba(0, 0, 0, 0.14),
+    inset 0 1px 1px rgba(255, 255, 255, 0.9),
+    0 1px 3px rgba(0, 0, 0, 0.14);
+}
+@keyframes ct-glass-spin { to { transform: rotate(1turn); } }
+
 /* Active-work tab indicator keyframes (Phase 5). Reduce-motion neutralizes. */
 @keyframes ct-pulse-dot {
   0%, 100% { transform: scale(1);    opacity: 1; }

@@ -12,6 +12,7 @@ import type { FrameworkHint } from '../lib/preview/framework';
 import { PanelHeader } from './ui/PanelHeader';
 import { ListRow } from './ui/ListRow';
 import { EmptyState } from './ui/EmptyState';
+import { GlassSpinner } from './ui/GlassSpinner';
 
 const agentName = (agent: string) => allAgentSpecs().find(s => s.kind === agent)?.displayName ?? agent;
 
@@ -107,7 +108,9 @@ export function GroupedSessionHistory() {
       </button> : undefined} />
     {!collapsed && <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden pb-1" aria-busy={loading}>
       {error && <p role="alert" className="px-3 py-2 text-red-400 text-[11px]">{error}</p>}
-      {loading && groups.length === 0 && <p className="px-3 py-2 text-text-tertiary text-[11px]">Loading sessions...</p>}
+      {loading && groups.length === 0 && <p className="flex items-center gap-2 px-3 py-2 text-text-tertiary text-[11px]">
+        <GlassSpinner size={14} />Loading sessions...
+      </p>}
       {!loading && !error && groups.length === 0 && <EmptyState icon={<MessageSquare size={20} />}
         title="No saved sessions" description="Sessions from your profiles and previously used folders will appear here." compact />}
       {groups.map(group => <section key={group.id} aria-label={group.name} className="pb-3">

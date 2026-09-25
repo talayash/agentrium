@@ -58,6 +58,9 @@ interface Props {
   setExpandedFile: (v: string | null) => void;
   terminalId: string | null;
   pathOverride: string | null;
+  /** Toolbar Expand All / Collapse All. `seq` changes on every click so the
+   *  same command can be issued twice in a row. */
+  treeCommand?: { kind: 'expand' | 'collapse'; seq: number } | null;
 }
 
 // IntelliJ conveys git status via filename color: new = green, modified = blue,
@@ -76,7 +79,7 @@ function pathBasename(p: string): string {
   return idx === -1 ? trimmed : trimmed.slice(idx + 1);
 }
 
-function joinRepoPath(root: string, relative: string): string {
+export function joinRepoPath(root: string, relative: string): string {
   const cleanRoot = root.replace(/\\/g, '/').replace(/\/+$/, '');
   const cleanRel = relative.replace(/\\/g, '/').replace(/^\/+/, '');
   const unquotedRel = cleanRel.startsWith('"') && cleanRel.endsWith('"')
@@ -147,7 +150,7 @@ type GroupKind = 'default' | 'named' | 'unversioned';
 
 export function ChangelistSection({
   repoPath, files, branch, onStage, onUnstage, stagingPaths, refreshTrigger,
-  expandedFile, setExpandedFile, terminalId, pathOverride,
+  expandedFile, setExpandedFile, terminalId, pathOverride, treeCommand,
 }: Props) {
   const confirmDelete = useAppStore((s) => s.vcsChangelistsConfirmDelete);
   const triggerChangesRefresh = useAppStore((s) => s.triggerChangesRefresh);
@@ -182,6 +185,14 @@ export function ChangelistSection({
   const [editingName, setEditingName] = useState('');
   const [menuListId, setMenuListId] = useState<number | null>(null);
   const [contextFile, setContextFile] = useState<{ file: MergedChange; x: number; y: number } | null>(null);
+
+  // Group names are the collapse keys - see renderGroup.
+  const groupNamesRef = useRef<string[]>([]);
+  groupNamesRef.current = ['Changes', ...lists.filter((l) => l.id != null).map((l) => l.name), 'Unversioned Files'];
+  useEffect(() => {
+    if (!treeCommand) return;
+    setCollapsed(treeCommand.kind === 'collapse' ? new Set(groupNamesRef.current) : new Set());
+  }, [treeCommand]);
 
   const fetch = useCallback(async () => {
     if (!repoPath) { setLists([{ id: null, name: 'Default', is_default: true }]); setAssignments(new Map()); return; }
@@ -306,7 +317,7 @@ export function ChangelistSection({
             }
           }}
           title={reserved ? RESERVED_HINT : undefined}
-          className={`group flex items-center gap-1.5 pl-7 pr-2 py-[3px] cursor-pointer transition-colors ${
+          className={`group flex items-center gap-1.5 pl-7 pr-2 py-[3px] rounded-md cursor-pointer transition-colors ${
             isSelected ? 'bg-accent-primary' : 'hover:bg-fill-hover'
           }`}
         >
@@ -381,7 +392,7 @@ export function ChangelistSection({
     const someChecked = stagedCount > 0 || partialCount > 0;
     return (
       <div key={`${kind}:${headerName}:${listId ?? ''}`}>
-        <div className="group flex items-center gap-1 px-1.5 py-[3px] hover:bg-fill-hover">
+        <div className="group flex items-center gap-1 px-1.5 py-[3px] rounded-md hover:bg-fill-hover">
           <button
             onClick={() => {
               const next = new Set(collapsed);
