@@ -178,6 +178,17 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
       cursorWidth: 2,
       allowProposedApi: true,
       scrollback,
+      // OSC 8 hyperlinks bypass WebLinksAddon. Without a handler xterm's
+      // default confirm()s and then window.open()s ANY scheme inside the
+      // webview, so route them through the same http/https-only command.
+      linkHandler: {
+        activate: (_event, uri) => {
+          invoke('open_external_url', { url: uri }).catch((err) => {
+            reportInvokeFailure('open_external_url', err);
+          });
+        },
+        allowNonHttpProtocols: false,
+      },
     });
 
     const fitAddon = new FitAddon();
