@@ -20,7 +20,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS-blue?style=flat-square" alt="Platform">
-  <img src="https://img.shields.io/badge/version-1.34.1-green?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.34.6-green?style=flat-square" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-orange?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/Tauri-2.x-purple?style=flat-square" alt="Tauri">
   <img src="https://img.shields.io/badge/React-18-blue?style=flat-square" alt="React">
@@ -33,6 +33,20 @@
 **Agentrium** (Agent Desktop Environment) is a cross-platform desktop app for developers who work with multiple coding-agent CLIs. Pick which agent each terminal launches, mix them freely in tabs or a grid, save per-profile setups, and get a native window with proper tabs, split view, session restore, git worktree lifecycle, and hunk review on top.
 
 The app is Tauri-native (small binary, no Electron bloat) and ships to Windows and macOS.
+
+## Automatic session subtitles
+
+Session names stay unchanged. A short excerpt from the initial request appears as
+a smaller subtitle on session cards and in compact session headers. Hover or focus
+the card title or subtitle to read its saved context. Double-click the main title
+to rename the session. The command palette also searches the subtitle and context.
+
+Subtitles use local Claude, Codex, or Cursor session metadata, with no AI calls,
+additional authentication, or AI usage charges. When metadata is unavailable,
+the subtitle stays blank and extraction retries every 30 seconds. Agents without
+local session metadata do not receive automatic subtitles. Context is saved
+locally and restored with recognized sessions; existing saved descriptions remain
+readable. Use **Refresh context** in the session menu to re-extract the local text.
 
 ## Supported Agents
 
@@ -163,10 +177,10 @@ Download the latest release for your platform from the [Releases page](https://g
 
 | Platform | Installer | Description |
 |---|---|---|
-| Windows | [Agentrium_1.34.1_x64-setup.exe](https://github.com/talayash/agentrium/releases/latest/download/Agentrium_1.34.1_x64-setup.exe) | NSIS Installer (Recommended) |
-| Windows | [Agentrium_1.34.1_x64_en-US.msi](https://github.com/talayash/agentrium/releases/latest/download/Agentrium_1.34.1_x64_en-US.msi) | MSI Installer |
-| macOS (Apple Silicon) | [Agentrium_1.34.1_aarch64.dmg](https://github.com/talayash/agentrium/releases/latest/download/Agentrium_1.34.1_aarch64.dmg) | DMG for M1/M2/M3/M4 Macs |
-| macOS (Intel) | [Agentrium_1.34.1_x64.dmg](https://github.com/talayash/agentrium/releases/latest/download/Agentrium_1.34.1_x64.dmg) | DMG for Intel Macs |
+| Windows | [Agentrium_1.34.6_x64-setup.exe](https://github.com/talayash/agentrium/releases/latest/download/Agentrium_1.34.6_x64-setup.exe) | NSIS Installer (Recommended) |
+| Windows | [Agentrium_1.34.6_x64_en-US.msi](https://github.com/talayash/agentrium/releases/latest/download/Agentrium_1.34.6_x64_en-US.msi) | MSI Installer |
+| macOS (Apple Silicon) | [Agentrium_1.34.6_aarch64.dmg](https://github.com/talayash/agentrium/releases/latest/download/Agentrium_1.34.6_aarch64.dmg) | DMG for M1/M2/M3/M4 Macs |
+| macOS (Intel) | [Agentrium_1.34.6_x64.dmg](https://github.com/talayash/agentrium/releases/latest/download/Agentrium_1.34.6_x64.dmg) | DMG for Intel Macs |
 
 > Existing 1.31.x installs auto-update to 1.32.0 via the in-app updater. The bundle identifier is unchanged, so profiles, workspaces, and session history carry over. Pre-rebrand 1.31.x download artifacts are still available on the release history if you need an older build.
 

@@ -1,146 +1,95 @@
-# macOS code-signing & notarization plan
+# macOS signing and notarization
+
+The release workflow supports Developer ID signing and notarization on both Mac
+architectures. Activation requires the six repository secrets below. Without any
+Apple secrets, releases retain their previous unsigned/ad-hoc behavior and CI
+prints a warning. Partial configuration fails before building.
 
 ## Why this is needed
 
-Right now the macOS DMG and `.app` shipped from CI are **unsigned and un-notarized**:
+[Issue #75](https://github.com/talayash/agentrium/issues/75) shows macOS requesting
+the login Keychain password to read `com.claudeterminal.agentrium.auth`. This is
+Agentrium's refresh token, shared by Google and email sign-in.
 
-- `src-tauri/tauri.conf.json` `bundle.macOS` only sets `minimumSystemVersion`. There's no `signingIdentity`, no `notarize` block.
-- `.github/workflows/release.yml` passes `TAURI_SIGNING_PRIVATE_KEY` (the **updater**'s minisign key - a different thing) but no Apple Developer ID secrets to `tauri-action`.
+The previous release workflow only passed the Tauri updater signing key. That
+verifies update downloads but does not establish the app's identity to macOS.
+Unsigned/ad-hoc builds lack an identity that stays stable across rebuilds, so
+Keychain can ask again after each update. A consistent Developer ID signature
+allows Keychain to recognize subsequent versions as the same application.
+See [Apple's code signing requirements](https://developer.apple.com/documentation/technotes/tn3127-inside-code-signing-requirements)
+and [Tauri's signing guide](https://tauri.app/distribute/sign/macos/).
 
-When users download the DMG via Safari/Chrome, macOS attaches `com.apple.quarantine`. On first launch, Gatekeeper sees no Developer ID signature and shows the misleading "Agentrium is damaged and can't be opened" dialog. The `xattr -dr com.apple.quarantine` workaround works because it strips the quarantine bit - but it should not be required of normal users.
+Signing and notarization also address Gatekeeper's first-launch warnings.
+Keep the bundle identifier `com.claudeterminal.desktop` and Developer ID team
+stable across releases. Do not change Keychain service names, delete users'
+tokens, or broaden Keychain access permissions to work around signing prompts.
 
-The fix is to sign with a **Developer ID Application** certificate and notarize with Apple's notary service so Gatekeeper recognizes the binary as trusted.
+## One-time setup
 
-## Prerequisites (one-time)
+Use an Apple Developer Program account to create a **Developer ID Application**
+certificate. Import it on a Mac with its private key, then export the identity
+from Keychain Access as a password-protected `.p12`. Obtain an app-specific
+password for notarization from the Apple account settings.
 
-You need to enroll in the Apple Developer Program (**$99/yr**, individual or organization). Then in Apple's developer portal create:
-
-1. **Developer ID Application certificate** (NOT Mac App Store / Mac Installer). Download the `.cer`, double-click to install into Keychain, then export from Keychain Access as a `.p12` with a strong password. This is the file CI will use.
-2. **App-specific password** for your Apple ID - from <https://appleid.apple.com> → "App-Specific Passwords". Used by `notarytool`.
-3. Note your **Team ID** (10-character alphanumeric) from the developer portal.
-
-## GitHub repo secrets to add
-
-Under **Settings → Secrets and variables → Actions → New repository secret**:
+Add these secrets under the repository's **Settings → Secrets and variables →
+Actions**. Do not commit the certificate or passwords.
 
 | Secret | Value |
 |---|---|
-| `APPLE_CERTIFICATE` | base64 of the `.p12` file: `base64 -i cert.p12 \| pbcopy` |
-| `APPLE_CERTIFICATE_PASSWORD` | password used when exporting the `.p12` |
-| `APPLE_SIGNING_IDENTITY` | full identity string, e.g. `Developer ID Application: Tal Ayash (ABCDE12345)` - found via `security find-identity -v -p codesigning` after importing |
-| `APPLE_ID` | your Apple ID email |
-| `APPLE_PASSWORD` | the app-specific password from step 2 |
-| `APPLE_TEAM_ID` | the 10-character Team ID |
+| `APPLE_CERTIFICATE` | Base64 of the exported `.p12`, generated with `openssl base64 -A -in certificate.p12` |
+| `APPLE_CERTIFICATE_PASSWORD` | Password protecting the `.p12` |
+| `APPLE_SIGNING_IDENTITY` | Full `Developer ID Application: Name (TEAMID)` identity from `security find-identity -v -p codesigning` |
+| `APPLE_ID` | Apple account email used for notarization |
+| `APPLE_PASSWORD` | Apple app-specific password |
+| `APPLE_TEAM_ID` | Developer team ID |
 
-## Code changes
+The macOS-only configuration step validates the set and exports it through
+`GITHUB_ENV` for the Tauri build. Empty secrets are not exported: Tauri treats
+some present-but-empty variables as configured credentials. The Tauri bundler
+imports the certificate into a temporary keychain, signs the bundles, submits
+them for notarization, and staples the tickets. Signing/notarization failures
+fail the release rather than publishing a partially signed build.
 
-### 1. `src-tauri/tauri.conf.json`
+Tauri enables hardened runtime by default. No extra JIT or library-validation
+exceptions are introduced; this app uses the system WKWebView. No hard-coded
+signing identity is needed in `tauri.conf.json` because the environment supplies it.
 
-Replace the current `bundle.macOS` block:
+## Validation
 
-```json
-"macOS": {
-  "minimumSystemVersion": "10.15"
-}
+Run the configuration regression tests locally:
+
+```sh
+node --test scripts/configure-macos-signing.test.mjs
 ```
 
-with:
+After the first signed release, validate on both Apple Silicon and Intel Macs:
 
-```json
-"macOS": {
-  "minimumSystemVersion": "10.15",
-  "signingIdentity": "-",
-  "hardenedRuntime": true,
-  "entitlements": "entitlements.plist"
-}
+```sh
+codesign --verify --deep --strict --verbose=2 /Applications/Agentrium.app
+codesign -d -r- /Applications/Agentrium.app
+spctl --assess --type execute -vvv /Applications/Agentrium.app
+xcrun stapler validate /Applications/Agentrium.app
 ```
 
-`"signingIdentity": "-"` is a placeholder that `tauri-action` will override at build time using the `APPLE_SIGNING_IDENTITY` env var. Hardened Runtime is required for notarization.
+Expect a Developer ID designated requirement containing the correct identifier
+and team, and `source=Notarized Developer ID` from Gatekeeper. Test a browser DMG
+download on a clean Mac as well as an in-app update.
 
-### 2. `src-tauri/entitlements.plist` (new file)
+For the Keychain regression, sign in, quit, and install a second signed version
+using the same team and bundle identifier. Launch and verify sign-in is restored
+without another authorization prompt. Test a saved API key too: it uses the same
+OS Keychain mechanism. This requires two real macOS builds; Windows tests cannot
+validate Keychain trust.
 
-Notarization requires a hardened runtime, and the app needs entitlements that match what it actually does - most importantly, the JIT entitlement that lets the embedded WebView2/WKWebView run, and `allow-unsigned-executable-memory` because Tauri's webview maps unsigned JIT pages.
+## Existing users
 
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>com.apple.security.cs.allow-jit</key><true/>
-  <key>com.apple.security.cs.allow-unsigned-executable-memory</key><true/>
-  <key>com.apple.security.cs.disable-library-validation</key><true/>
-</dict>
-</plist>
-```
+The transition from an unsigned/ad-hoc build to Developer ID signing may still
+prompt once for an existing Keychain item. In the dialog from issue #75, users
+can enter their **Mac login Keychain password** and choose **Always Allow**.
+Deleting the item and signing in again should not be necessary. An old or
+separately configured login Keychain may use a different password from the
+current Mac account password.
 
-### 3. `.github/workflows/release.yml`
-
-Add the Apple secrets to the `Build Tauri App` step's `env:`:
-
-```yaml
-- name: Build Tauri App
-  uses: tauri-apps/tauri-action@73fb865345c54760d875b94642314f8c0c894afa # v0.6.1
-  env:
-    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-    TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-    CT_INGEST_TOKEN: ${{ secrets.CT_INGEST_TOKEN }}
-    AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-    AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-    AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-    # NEW - macOS signing & notarization (no-ops on Windows runners):
-    APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-    APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-    APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-    APPLE_ID: ${{ secrets.APPLE_ID }}
-    APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-    APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-```
-
-`tauri-action` auto-detects these env vars and:
-1. Imports `APPLE_CERTIFICATE` into a temporary keychain on the macOS runner.
-2. Codesigns the `.app` and the embedded helper binaries with `APPLE_SIGNING_IDENTITY` and the entitlements.
-3. Submits to Apple's notary service via `notarytool` using `APPLE_ID` / `APPLE_PASSWORD` / `APPLE_TEAM_ID`.
-4. Staples the notarization ticket onto the `.app` and `.dmg` so they validate offline.
-
-The Windows job ignores Apple secrets (no `if:` guard needed; they're just unused env on that runner).
-
-## Verification (after first signed release)
-
-1. Pull the new DMG from the GitHub release on a fresh Mac (no developer mode, no `xattr` cleanup).
-2. Mount, drag to Applications, double-click. The "damaged" dialog should not appear. macOS may show the standard "downloaded from internet, are you sure?" prompt once - that's expected and normal.
-3. Verify on the command line:
-   ```
-   spctl --assess --type execute -vvv /Applications/Agentrium.app
-   # → /Applications/Agentrium.app: accepted
-   #   source=Notarized Developer ID
-   ```
-4. Verify the staple is attached:
-   ```
-   stapler validate /Applications/Agentrium.app
-   # → The validate action worked!
-   ```
-
-If `spctl` shows `source=Developer ID` (without "Notarized"), the signing worked but the notarization step didn't - check the `tauri-action` logs for the `notarytool submit` output, which will include a submission ID you can pass to `notarytool log <id> --apple-id … --team-id … --password …` to see what Apple's automated checks complained about.
-
-## Cost / time
-
-- $99/yr for the developer program.
-- ~10 minutes to add the secrets and merge the changes above.
-- Each release adds ~3-5 min to the macOS jobs (signing + Apple notarization round-trip). Apple is usually fast (<1 min) but occasionally slow (10+ min) - fail open and let CI complete.
-
-## Bridging until signed builds ship
-
-Until the cert is set up, the README's macOS section can document the workaround so users don't get stuck:
-
-```markdown
-### First launch on macOS
-
-The current macOS builds are unsigned. macOS will show "Agentrium is damaged and can't be opened" - this is Gatekeeper, not actual damage. To allow the app to run:
-
-  xattr -dr com.apple.quarantine /Applications/Agentrium.app
-
-This strips the quarantine flag set by your browser. We're working on getting the app signed and notarized so this step will not be needed.
-```
-
-Once the signed release ships, drop that section.
+Until signing credentials are configured and signed releases ship, recurring
+prompts after updates remain possible. The workflow change alone cannot fix
+already-installed builds.

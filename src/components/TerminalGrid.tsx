@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, memo, useCallback, useMemo } from 'react';
+import { useEffect, useRef, useState, memo, useCallback, useMemo, forwardRef } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { X, Maximize2, Minimize2, Plus, Grid3X3, Layers, Pin } from 'lucide-react';
 import { useTerminalStore } from '../store/terminalStore';
@@ -176,6 +176,11 @@ const TerminalCell = memo(function TerminalCell({ terminalId, index, isFocused, 
           }`}>
             {terminal.config.nickname || terminal.config.label}
           </span>
+          {terminal.sessionContext?.title && terminal.sessionContext.title !== (terminal.config.nickname || terminal.config.label) && (
+            <span className="text-[11px] text-text-secondary truncate" title={terminal.sessionContext.title}>
+              {'\u00b7'} {terminal.sessionContext.title}
+            </span>
+          )}
           {/* Status dot - pulses when running (matches sketch's cell head) */}
           <span
             className={`inline-block w-1.5 h-1.5 rounded-full flex-shrink-0 ${
@@ -222,7 +227,12 @@ const TerminalCell = memo(function TerminalCell({ terminalId, index, isFocused, 
   );
 });
 
-function AddTerminalCell() {
+/* forwardRef is load-bearing here, not ceremony: the empty cells render inside
+ * AnimatePresence mode="popLayout", which measures each child through
+ * PopChild's ref before pulling it out of flow. A plain function component
+ * swallows that ref, so the pop-out never gets its measured size and React
+ * warns on every layout change. Same reason ToastCard forwards its ref. */
+const AddTerminalCell = forwardRef<HTMLDivElement>(function AddTerminalCell(_props, ref) {
   const { terminals } = useTerminalStore();
   const { gridTerminalIds, openNewTerminalModal, addToGrid } = useAppStore();
   const [showPicker, setShowPicker] = useState(false);
@@ -236,6 +246,7 @@ function AddTerminalCell() {
 
   return (
     <div
+      ref={ref}
       className={`h-full flex flex-col items-center justify-center bg-elevation-0 rounded-xl transition-all cursor-pointer group relative ${
         dropOver
           ? 'ring-2 ring-accent-primary bg-accent-primary/5'
@@ -331,7 +342,7 @@ function AddTerminalCell() {
       </AnimatePresence>
     </div>
   );
-}
+});
 
 export function TerminalGrid() {
   const {
@@ -373,6 +384,21 @@ export function TerminalGrid() {
       useTerminalStore.getState().terminals.get(id)?.xterm?.focus();
     });
   }, []);
+
+  // Grid focus lived only in appStore.gridFocusedIndex, while every contextual
+  // panel - the Inspector's Changes tab, the file tree, the title-bar git chip
+  // - reads terminalStore.activeTerminalId. Moving between panes therefore
+  // left them all pinned to whichever tab was last clicked (#71). Mirror the
+  // focused pane into the active terminal from one place, so clicks, Alt
+  // navigation, pane swaps and removals all stay in sync. Keyed on the focused
+  // pane's terminal id, not the index, so appending a freshly created terminal
+  // to the grid does not steal "active" back from it.
+  const focusedTerminalId = gridFocusedIndex === null ? null : gridTerminalIds[gridFocusedIndex] ?? null;
+  useEffect(() => {
+    if (!focusedTerminalId) return;
+    if (useTerminalStore.getState().activeTerminalId === focusedTerminalId) return;
+    setActiveTerminal(focusedTerminalId);
+  }, [focusedTerminalId, setActiveTerminal]);
 
   // Spatial pane navigation, gated behind Alt. The old handler hijacked BARE
   // arrow keys whenever a pane was focused, so they were double-handled - the

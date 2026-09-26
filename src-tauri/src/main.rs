@@ -19,10 +19,12 @@ mod changelists;
 mod otel_receiver;
 mod lsp;
 mod session_provider;
+mod session_context;
 mod feedback;
 mod auth;
 mod sync_client;
 mod sync;
+mod sync_privacy;
 
 use tauri::Manager;
 use std::sync::Arc;
@@ -271,6 +273,8 @@ fn main() {
             commands::create_worktree,
             commands::remove_worktree,
             commands::get_session_history,
+            commands::get_session_history_folders,
+            commands::validate_session_directory,
             commands::get_session_log,
             commands::read_log_file,
             commands::delete_session_history,
@@ -293,6 +297,9 @@ fn main() {
             commands::send_telemetry_heartbeat,
             commands::get_team_tasks,
             commands::summarize_session,
+            commands::get_summary_enabled,
+            commands::set_summary_enabled,
+            session_context::get_terminal_context,
             commands::save_session_summary,
             commands::get_session_summary,
             commands::list_memory_files,

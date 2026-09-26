@@ -2,8 +2,11 @@ import { describe, it, expect } from 'vitest';
 import {
   normalizeFeedback,
   hashIP,
+  ipHashSalt,
   NAME_MAX,
   MESSAGE_MAX,
+  parseDeleteBody,
+  DELETE_MAX_IDS,
   type RawFeedback,
 } from './feedback';
 
@@ -131,5 +134,82 @@ describe('hashIP', () => {
     const h = await hashIP(ip, 'salt');
     expect(h).not.toContain(ip);
     expect(h).not.toContain('203');
+  });
+});
+
+describe('ipHashSalt', () => {
+  it('prefers the dedicated IP_HASH_SALT secret over the stats token', () => {
+    expect(ipHashSalt({ STATS_TOKEN: 'tok', IP_HASH_SALT: 'pepper' })).toBe('pepper');
+  });
+
+  it('falls back to STATS_TOKEN so existing buckets keep working until the secret is added', () => {
+    expect(ipHashSalt({ STATS_TOKEN: 'tok' })).toBe('tok');
+    expect(ipHashSalt({ STATS_TOKEN: 'tok', IP_HASH_SALT: '' })).toBe('tok');
+  });
+
+  it('degrades to the legacy unsalted marker when neither secret is set', () => {
+    expect(ipHashSalt({})).toBe('unsalted');
+  });
+});
+
+describe('parseDeleteBody', () => {
+  it('accepts a delete request', () => {
+    expect(parseDeleteBody({ ids: [1, 2], deleted: true })).toEqual({ ids: [1, 2], deleted: true });
+  });
+
+  it('accepts an undo request', () => {
+    // Undo is the same endpoint with the flag flipped, which is why the
+    // toast's Undo button needs no special server route.
+    expect(parseDeleteBody({ ids: [3], deleted: false })).toEqual({ ids: [3], deleted: false });
+  });
+
+  it('defaults deleted to true when the flag is absent', () => {
+    expect(parseDeleteBody({ ids: [1] })?.deleted).toBe(true);
+  });
+
+  it('accepts numeric strings, since JSON ids may arrive as text', () => {
+    expect(parseDeleteBody({ ids: ['4', '5'] })?.ids).toEqual([4, 5]);
+  });
+
+  it('de-duplicates ids', () => {
+    expect(parseDeleteBody({ ids: [7, 7, 8] })?.ids).toEqual([7, 8]);
+  });
+
+  it('rejects a non-object body', () => {
+    expect(parseDeleteBody(null)).toBeNull();
+    expect(parseDeleteBody(42)).toBeNull();
+  });
+
+  it('rejects a missing or non-array ids field', () => {
+    expect(parseDeleteBody({})).toBeNull();
+    expect(parseDeleteBody({ ids: 5 })).toBeNull();
+  });
+
+  it('rejects an empty id list', () => {
+    expect(parseDeleteBody({ ids: [] })).toBeNull();
+  });
+
+  it('rejects a non-boolean deleted flag', () => {
+    expect(parseDeleteBody({ ids: [1], deleted: 'yes' })).toBeNull();
+  });
+
+  it('rejects ids that are not positive integers', () => {
+    // Strict, unlike mark_read: silently skipping a malformed id in a
+    // destructive call would delete a different set than the caller asked for.
+    expect(parseDeleteBody({ ids: [0] })).toBeNull();
+    expect(parseDeleteBody({ ids: [-1] })).toBeNull();
+    expect(parseDeleteBody({ ids: [1.5] })).toBeNull();
+    expect(parseDeleteBody({ ids: ['abc'] })).toBeNull();
+    expect(parseDeleteBody({ ids: [null] })).toBeNull();
+  });
+
+  it('rejects a batch larger than the D1 bound-parameter budget', () => {
+    const many = Array.from({ length: DELETE_MAX_IDS + 1 }, (_, i) => i + 1);
+    expect(parseDeleteBody({ ids: many })).toBeNull();
+  });
+
+  it('accepts a batch exactly at the cap', () => {
+    const many = Array.from({ length: DELETE_MAX_IDS }, (_, i) => i + 1);
+    expect(parseDeleteBody({ ids: many })?.ids).toHaveLength(DELETE_MAX_IDS);
   });
 });

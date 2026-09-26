@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef, createContext, useContext } from 'react';
-import { RefreshCw, GitBranch, GitFork, FolderOpen, ChevronRight, ChevronDown, CircleDot, ArrowUp, ArrowDown, Upload, Archive, Package, Loader2, Trash2, Download, Plus, Check, Search as SearchIcon, Pin, PinOff, GitPullRequestArrow, TerminalSquare, MoreVertical } from 'lucide-react';
+import { RefreshCw, GitBranch, GitFork, ChevronRight, ChevronDown, CircleDot, ArrowUp, ArrowDown, Upload, Archive, Package, Loader2, Trash2, Download, Plus, Check, Search as SearchIcon, Pin, PinOff, GitPullRequestArrow, TerminalSquare, MoreVertical, Undo2, FileDiff, Expand, Shrink, Minus, FolderGit2 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { confirmAction } from '../lib/confirmDialog';
 import { useTerminalStore } from '../store/terminalStore';
@@ -7,7 +7,8 @@ import { useAppStore } from '../store/appStore';
 import { toast } from '../store/toastStore';
 import { Button } from './ui/Button';
 import { Tooltip } from './ui/Tooltip';
-import { ChangelistSection, type MergedChange } from './ChangelistSection';
+import { ChangelistSection, joinRepoPath, type MergedChange } from './ChangelistSection';
+import { reportInvokeFailure } from '../lib/errorReporter';
 import type { WorktreeInfo, PushPreview } from '../types/git';
 
 const DIRTY_TREE_PREFIX = 'Working tree has uncommitted changes';
@@ -139,6 +140,12 @@ export function FileChangesPanel() {
   const [lastCommit, setLastCommit] = useState<LastCommitInfo | null>(null);
   const [commitMenuOpen, setCommitMenuOpen] = useState(false);
   const commitMenuRef = useRef<HTMLDivElement>(null);
+  const [panelMenuOpen, setPanelMenuOpen] = useState(false);
+  const panelMenuRef = useRef<HTMLDivElement>(null);
+  const [amendMenuOpen, setAmendMenuOpen] = useState(false);
+  const amendMenuRef = useRef<HTMLDivElement>(null);
+  const [treeCommand, setTreeCommand] = useState<{ kind: 'expand' | 'collapse'; seq: number } | null>(null);
+  const [rollingBack, setRollingBack] = useState(false);
   // Files currently being staged/unstaged - keyed by "stage:path" or "unstage:path"
   const [stagingPaths, setStagingPaths] = useState<Set<string>>(new Set());
   const triggerChangesRefreshAction = useAppStore.getState().triggerChangesRefresh;
@@ -455,22 +462,50 @@ export function FileChangesPanel() {
   }, [result?.changes]);
   const checkedCount = mergedChanges.filter((m) => m.staged || m.partial).length;
 
-  // Close the commit kebab menu on outside click / Escape.
-  useEffect(() => {
-    if (!commitMenuOpen) return;
-    const onDown = (e: MouseEvent) => {
-      if (commitMenuRef.current && !commitMenuRef.current.contains(e.target as Node)) {
-        setCommitMenuOpen(false);
+  // Close the kebab / amend popovers on outside click / Escape.
+  useDismiss(commitMenuOpen, commitMenuRef, () => setCommitMenuOpen(false));
+  useDismiss(panelMenuOpen, panelMenuRef, () => setPanelMenuOpen(false));
+  useDismiss(amendMenuOpen, amendMenuRef, () => setAmendMenuOpen(false));
+
+  // IntelliJ "Rollback": revert every checked file to HEAD. Only modified and
+  // deleted files can be restored with `git checkout HEAD --`; new/renamed
+  // files have no HEAD path under that name, so they are left alone.
+  const rollbackTargets = useMemo(
+    () => mergedChanges.filter((m) => (m.staged || m.partial) && (m.status === 'modified' || m.status === 'deleted')),
+    [mergedChanges],
+  );
+  const handleRollback = useCallback(async () => {
+    if (!activePath || rollbackTargets.length === 0) return;
+    const n = rollbackTargets.length;
+    const ok = await confirmAction(
+      `Roll back ${n} checked file${n !== 1 ? 's' : ''} to HEAD? Local changes are lost. This cannot be undone.`,
+      { title: 'Rollback', okLabel: 'Rollback' },
+    );
+    if (!ok) return;
+    setRollingBack(true);
+    const root = result?.repo_root ?? activePath;
+    let failed = 0;
+    for (const f of rollbackTargets) {
+      try {
+        await invoke('git_discard_file', { path: root, file: f.path, untracked: false });
+        useAppStore.getState().closeFileTab(joinRepoPath(root, f.path));
+      } catch (err) {
+        failed++;
+        toast.error(`Rollback failed: ${f.path}`, typeof err === 'string' ? err : 'Unknown error');
+        reportInvokeFailure('git_discard_file', err);
       }
-    };
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setCommitMenuOpen(false); };
-    document.addEventListener('mousedown', onDown);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onDown);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [commitMenuOpen]);
+    }
+    if (failed < n) toast.success('Rolled back', `${n - failed} file${n - failed !== 1 ? 's' : ''}`);
+    setRollingBack(false);
+    triggerChangesRefreshAction();
+  }, [activePath, rollbackTargets, result?.repo_root, triggerChangesRefreshAction]);
+
+  const diffTarget = expandedFile ? mergedChanges.find((m) => m.path === expandedFile) ?? null : null;
+  const handleShowDiff = useCallback(() => {
+    if (!diffTarget || !activePath || diffTarget.status === 'deleted') return;
+    const root = result?.repo_root ?? activePath;
+    void useAppStore.getState().openDiffTab(joinRepoPath(root, diffTarget.path), root, diffTarget.path);
+  }, [diffTarget, activePath, result?.repo_root]);
 
   // Splitter between Repositories and Changes - mirrors the Sidebar/Explorer
   // splitter so the user can give either section more room.
@@ -512,51 +547,91 @@ export function FileChangesPanel() {
   return (
     <RepoSelectionContext.Provider value={{ selectedRepoPath, activePath, setSelectedRepoPath }}>
     <div className="h-full bg-bg-secondary border-l border-border flex flex-col">
-      {/* Header - IntelliJ commit tool window style: active "Commit" tab + icon toolbar */}
-      <div className="px-2 pt-2 pb-2 border-b border-border">
-        <div className="flex items-center justify-between mb-1.5">
-          <span className="h-6 px-2.5 inline-flex items-center rounded-md bg-elevation-3 text-text-primary text-[12px] font-medium select-none">
-            Commit
-          </span>
+      {/* Header - IntelliJ commit tool window: title + kebab/minimize, then an icon toolbar */}
+      <div className="border-b border-border">
+        <div className="flex items-center justify-between h-8 pl-3 pr-1.5">
+          <span className="text-[12.5px] font-semibold text-text-primary select-none">Commit</span>
           <div className="flex items-center gap-0.5">
-            <Tooltip label="Pull from upstream into the current branch">
-            <button
-              onClick={handleQuickPull}
-              disabled={pullingTop || !activeTerminalId || !result?.is_git_repo}
-              className="w-6 h-6 flex items-center justify-center rounded hover:bg-fill-hover text-success transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
-              aria-label="Pull"
-            >
-              {pullingTop ? (
-                <Loader2 size={13} className="animate-spin" />
-              ) : (
-                <GitPullRequestArrow size={13} strokeWidth={2} />
+            <div className="relative" ref={panelMenuRef}>
+              <ToolbarButton label="Options" tooltipDisabled={panelMenuOpen}
+                onClick={() => setPanelMenuOpen((v) => !v)} className="text-text-secondary">
+                <MoreVertical size={13} />
+              </ToolbarButton>
+              {panelMenuOpen && (
+                <div className="absolute right-0 top-full mt-1 z-50 w-[190px] material-popover rounded-lg overflow-hidden py-1">
+                  <MenuItem
+                    icon={<RefreshCw size={12} />}
+                    disabled={!activeCwd}
+                    onClick={() => { setPanelMenuOpen(false); if (activeCwd) fetchRepos(activeCwd); }}
+                  >
+                    Rescan Repositories
+                  </MenuItem>
+                  <MenuItem
+                    icon={<FolderGit2 size={12} />}
+                    disabled={!activePath || !result?.is_git_repo}
+                    onClick={() => {
+                      setPanelMenuOpen(false);
+                      const target = activeGitInfo?.main_repo_path ?? activePath;
+                      if (target) openWorktreeModal(target);
+                    }}
+                  >
+                    Manage Worktrees…
+                  </MenuItem>
+                </div>
               )}
-            </button>
-            </Tooltip>
-            <Tooltip label="Push commits to remote" shortcut="Ctrl+Shift+K">
-            <button
-              onClick={() => { if (activePath) useAppStore.getState().openPushModal(activePath); }}
-              disabled={!activePath || !result?.is_git_repo}
-              className="w-6 h-6 flex items-center justify-center rounded hover:bg-fill-hover text-error transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
-              aria-label="Push"
-            >
-              <Upload size={13} strokeWidth={2} />
-            </button>
-            </Tooltip>
-            <Tooltip label="Refresh">
-            <button
-              onClick={() => fetchChanges()}
-              disabled={loading || !activeTerminalId}
-              className="w-6 h-6 flex items-center justify-center rounded hover:bg-fill-hover text-accent-primary transition-colors disabled:opacity-40"
-              aria-label="Refresh"
-            >
-              <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
-            </button>
-            </Tooltip>
+            </div>
+            <ToolbarButton label="Hide" onClick={() => useAppStore.getState().toggleChanges()} className="text-text-secondary">
+              <Minus size={13} />
+            </ToolbarButton>
           </div>
         </div>
+        <div className="flex items-center gap-0.5 h-8 px-1.5" role="toolbar" aria-label="Commit actions">
+          <ToolbarButton label="Refresh" onClick={() => fetchChanges()} disabled={loading || !activeTerminalId} className="text-accent-primary">
+            <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+          </ToolbarButton>
+          <ToolbarButton
+            label={rollbackTargets.length > 0 ? `Rollback ${rollbackTargets.length} checked file${rollbackTargets.length !== 1 ? 's' : ''}` : 'Rollback (check modified files first)'}
+            onClick={handleRollback}
+            disabled={rollingBack || rollbackTargets.length === 0}
+            className="text-text-secondary"
+          >
+            {rollingBack ? <Loader2 size={13} className="animate-spin" /> : <Undo2 size={13} />}
+          </ToolbarButton>
+          <ToolbarButton
+            label={diffTarget ? `Show Diff: ${diffTarget.path}` : 'Show Diff (select a file)'}
+            onClick={handleShowDiff}
+            disabled={!diffTarget || diffTarget.status === 'deleted'}
+            className="text-text-secondary"
+          >
+            <FileDiff size={13} />
+          </ToolbarButton>
+          <ToolbarButton label="Pull from upstream into the current branch" onClick={handleQuickPull}
+            disabled={pullingTop || !activeTerminalId || !result?.is_git_repo} className="text-success">
+            {pullingTop ? <Loader2 size={13} className="animate-spin" /> : <GitPullRequestArrow size={13} strokeWidth={2} />}
+          </ToolbarButton>
+          <ToolbarButton label="Push commits to remote" shortcut="Ctrl+Shift+K"
+            onClick={() => { if (activePath) useAppStore.getState().openPushModal(activePath); }}
+            disabled={!activePath || !result?.is_git_repo} className="text-error">
+            <Upload size={13} strokeWidth={2} />
+          </ToolbarButton>
+          <ToolbarButton label="Stash Changes" onClick={handleStash}
+            disabled={stashing || committing || pushing || !result?.is_git_repo || (result?.changes.length ?? 0) === 0}
+            className="text-text-secondary">
+            {stashing ? <Loader2 size={13} className="animate-spin" /> : <Archive size={13} />}
+          </ToolbarButton>
+          <span aria-hidden="true" className="mx-1 h-4 w-px bg-border" />
+          <ToolbarButton label="Expand All" onClick={() => setTreeCommand((c) => ({ kind: 'expand', seq: (c?.seq ?? 0) + 1 }))}
+            disabled={!result?.is_git_repo} className="text-text-secondary">
+            <Expand size={13} />
+          </ToolbarButton>
+          <ToolbarButton label="Collapse All" onClick={() => setTreeCommand((c) => ({ kind: 'collapse', seq: (c?.seq ?? 0) + 1 }))}
+            disabled={!result?.is_git_repo} className="text-text-secondary">
+            <Shrink size={13} />
+          </ToolbarButton>
+        </div>
+        <div className="px-3 pb-2 empty:hidden">
         {result?.branch && (
-          <div className="flex items-center gap-1.5 text-text-secondary">
+          <div className="flex items-center gap-1.5 text-text-secondary" title={result.working_directory}>
             {activeGitInfo?.is_worktree ? (
               <GitFork size={12} className="text-purple-400" />
             ) : (
@@ -596,6 +671,7 @@ export function FileChangesPanel() {
             </button>
           </div>
         )}
+        </div>
       </div>
 
       {/* Resizable stack: Repositories (top) ⇕ Changes (bottom) */}
@@ -689,7 +765,7 @@ export function FileChangesPanel() {
 
         {/* Content */}
         <div
-          className="overflow-y-auto p-1.5 min-h-0"
+          className="overflow-y-auto px-1.5 py-1 min-h-0"
           style={
             showResizable
               ? { flex: `${1 - repositoriesHeightRatio} 1 0` }
@@ -722,19 +798,13 @@ export function FileChangesPanel() {
             </div>
           )}
 
-          {activeTerminalId && result && result.is_git_repo && result.changes.length === 0 && !result.error && (
-            <div className="flex items-center justify-center h-full">
-              <p className="text-text-tertiary text-[12px]">No uncommitted changes</p>
-            </div>
-          )}
-
           {activeTerminalId && result?.error && (
             <div className="p-3">
               <p className="text-red-400 text-[12px]">{result.error}</p>
             </div>
           )}
 
-          {mergedChanges.length > 0 && activePath && result?.is_git_repo && (
+          {activePath && result?.is_git_repo && !result.error && (
             <ChangelistSection
               repoPath={result.repo_root ?? activePath}
               files={mergedChanges}
@@ -747,6 +817,7 @@ export function FileChangesPanel() {
               setExpandedFile={setExpandedFile}
               terminalId={activeTerminalId}
               pathOverride={usingSelectedRepo ? selectedRepoPath : null}
+              treeCommand={treeCommand}
             />
           )}
         </div>
@@ -842,95 +913,158 @@ export function FileChangesPanel() {
 
       {/* Commit area - IntelliJ style: Amend row, message box, Commit / Commit and Push… */}
       {result?.is_git_repo && (
-        <div className="border-t border-border p-2">
-          <label className="flex items-center gap-2 mb-1.5 px-0.5 text-[12px] text-text-secondary cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={amend}
-              onChange={toggleAmend}
-              disabled={committing || pushing || !lastCommit}
-              className="accent-accent-primary w-[13px] h-[13px]"
-            />
-            <span className={amend ? 'text-text-primary' : ''}>Amend</span>
+        <div className="border-t border-border p-2 pt-1.5">
+          <div className="flex items-center gap-1.5 h-6 mb-1.5 px-0.5">
+            <label className="flex items-center gap-2 text-[12px] text-text-secondary cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={amend}
+                onChange={toggleAmend}
+                disabled={committing || pushing || !lastCommit}
+                className="accent-accent-primary w-[13px] h-[13px]"
+              />
+              <span className={amend ? 'text-text-primary' : ''}>Amend</span>
+            </label>
             {lastCommit && (
-              <span className="text-[11px] text-text-tertiary truncate" title={lastCommit.subject}>
-                {lastCommit.subject}
-              </span>
+              <div className="relative min-w-0" ref={amendMenuRef}>
+                <button
+                  onClick={() => setAmendMenuOpen((v) => !v)}
+                  aria-expanded={amendMenuOpen}
+                  className="flex items-center gap-0.5 text-[12px] text-accent-primary hover:text-accent-secondary transition-colors"
+                >
+                  last commit
+                  <ChevronDown size={12} />
+                </button>
+                {amendMenuOpen && (
+                  <div className="absolute left-0 bottom-full mb-1 z-50 w-[240px] material-popover rounded-lg overflow-hidden p-2.5">
+                    <p className="text-[10.5px] uppercase tracking-wider text-text-tertiary mb-1">Last commit</p>
+                    <p className="text-[12px] text-text-primary whitespace-pre-wrap break-words line-clamp-6">{lastCommit.message}</p>
+                    <button
+                      onClick={() => { setAmendMenuOpen(false); if (!amend) toggleAmend(); }}
+                      disabled={amend || committing || pushing}
+                      className="mt-2 text-[12px] text-accent-primary hover:text-accent-secondary disabled:opacity-40"
+                    >
+                      Amend this commit
+                    </button>
+                  </div>
+                )}
+              </div>
             )}
-          </label>
+          </div>
           <textarea
             value={commitMessage}
             onChange={(e) => setCommitMessage(e.target.value)}
             placeholder="Commit Message"
-            rows={4}
-            className="w-full bg-bg-primary ring-1 ring-inset ring-border rounded-md px-2 py-1.5 text-[12px] text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 resize-none"
+            aria-label="Commit message"
+            className="block w-full h-[clamp(96px,26vh,260px)] bg-bg-primary ring-1 ring-inset ring-border rounded-md px-2 py-1.5 font-mono text-[12px] text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 resize-none"
           />
           <div className="flex items-center mt-2 gap-1.5">
             <Button
-              variant="primary"
+              variant="secondary"
               size="sm"
               onClick={() => handleCommit(false, 'none')}
               disabled={committing || pushing || stashing || !commitMessage.trim() || (checkedCount === 0 && !amend)}
               loading={committing && !pushing}
               title={checkedCount === 0 && !amend ? 'Check files to include them in the commit' : 'Commit checked files'}
+              className="!text-text-primary"
             >
               Commit
             </Button>
-            <button
+            <Button
+              variant="secondary"
+              size="sm"
               onClick={() => handleCommit(true, 'none')}
               disabled={committing || pushing || stashing || !commitMessage.trim() || (checkedCount === 0 && !amend)}
-              className="flex items-center gap-1 h-7 px-2.5 rounded-md text-[11.5px] text-text-primary ring-1 ring-inset ring-border hover:bg-fill-hover transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
+              loading={pushing}
               title="Commit checked files and push"
+              className="!text-text-primary"
             >
-              {pushing ? <Loader2 size={12} className="animate-spin" /> : null}
               Commit and Push…
-            </button>
+            </Button>
             <span className="flex-1" />
             <div className="relative" ref={commitMenuRef}>
-              <Tooltip label="More actions" disabled={commitMenuOpen}>
-                <button
-                  onClick={() => setCommitMenuOpen((v) => !v)}
-                  className="w-6 h-6 flex items-center justify-center rounded hover:bg-fill-hover text-text-secondary transition-colors"
-                  aria-label="More commit actions"
-                >
-                  <MoreVertical size={13} />
-                </button>
-              </Tooltip>
+              <ToolbarButton label="More actions" tooltipDisabled={commitMenuOpen}
+                onClick={() => setCommitMenuOpen((v) => !v)} className="text-text-secondary">
+                <MoreVertical size={13} />
+              </ToolbarButton>
               {commitMenuOpen && (
                 <div className="absolute right-0 bottom-full mb-1 z-50 w-[170px] material-popover rounded-lg overflow-hidden py-1">
-                  <button
+                  <MenuItem
+                    icon={stashing ? <Loader2 size={12} className="animate-spin" /> : <Archive size={12} />}
                     onClick={() => { setCommitMenuOpen(false); handleStash(); }}
                     disabled={stashing || committing || pushing || result.changes.length === 0}
-                    className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] text-text-primary hover:bg-fill-hover disabled:opacity-40"
                   >
-                    {stashing ? <Loader2 size={12} className="animate-spin" /> : <Archive size={12} />}
                     Stash Changes
-                  </button>
+                  </MenuItem>
                 </div>
               )}
             </div>
           </div>
         </div>
       )}
-
-      {/* Footer */}
-      <div className="p-2 border-t border-border">
-        <div className="bg-bg-primary ring-1 ring-border rounded-md p-2.5">
-          {result?.working_directory && (
-            <div className="flex items-center gap-1.5 mb-1">
-              <FolderOpen size={11} className="text-text-tertiary shrink-0" />
-              <p className="text-text-tertiary text-[11px] truncate" title={result.working_directory} dir="ltr">
-                {result.working_directory}
-              </p>
-            </div>
-          )}
-          <p className="text-text-secondary text-[11px]">
-            {result ? `${mergedChanges.length} changed file${mergedChanges.length !== 1 ? 's' : ''}` : 'Press F2 to toggle'}
-          </p>
-        </div>
-      </div>
     </div>
     </RepoSelectionContext.Provider>
+  );
+}
+
+/** Closes a popover on outside mousedown or Escape while `open`. */
+function useDismiss(open: boolean, ref: React.RefObject<HTMLElement | null>, close: () => void) {
+  const closeRef = useRef(close);
+  closeRef.current = close;
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) closeRef.current();
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') closeRef.current(); };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open, ref]);
+}
+
+/** 24px icon button used by the IntelliJ-style toolbar rows. */
+function ToolbarButton({ label, shortcut, onClick, disabled, tooltipDisabled, className = '', children }: {
+  label: string;
+  shortcut?: string;
+  onClick: () => void;
+  disabled?: boolean;
+  tooltipDisabled?: boolean;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Tooltip label={label} shortcut={shortcut} disabled={tooltipDisabled}>
+      <button
+        onClick={onClick}
+        disabled={disabled}
+        aria-label={label}
+        className={`w-6 h-6 flex items-center justify-center rounded hover:bg-fill-hover transition-colors disabled:opacity-40 disabled:hover:bg-transparent ${className}`}
+      >
+        {children}
+      </button>
+    </Tooltip>
+  );
+}
+
+function MenuItem({ icon, onClick, disabled, children }: {
+  icon: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] text-text-primary hover:bg-fill-hover disabled:opacity-40 disabled:hover:bg-transparent"
+    >
+      {icon}
+      {children}
+    </button>
   );
 }
 

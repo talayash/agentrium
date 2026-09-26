@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { MouseEvent, ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { motion } from 'framer-motion';
+import { motion, type DragControls } from 'framer-motion';
 import { X } from 'lucide-react';
 import { overlayMotion, dialogMotion } from '../../lib/motionTokens';
 
@@ -22,7 +22,18 @@ interface ModalProps {
   panelClassName?: string;
   /** Extra classes for the scrim (z-index, tint). */
   scrimClassName?: string;
+  /** Opt into dragging from a caller-provided header handle. */
+  dragControls?: DragControls;
 }
+
+/**
+ * Open modals, innermost last. Dialogs can stack (Add API Key opens over the
+ * profile editor) and every one listens on `document`, so only the top one
+ * may act on Escape or trap Tab: otherwise one Escape closes both and drops
+ * the lower dialog's unsaved edits, and the two focus traps fight.
+ */
+const modalStack: object[] = [];
+const isTopModal = (token: object) => modalStack[modalStack.length - 1] === token;
 
 /**
  * Shared modal shell: animated scrim + panel, optional header, Escape + scrim
@@ -40,17 +51,30 @@ export function Modal({
   closeOnEscape = true,
   panelClassName = 'w-full max-w-lg',
   scrimClassName = 'bg-black/55 z-50',
+  dragControls,
 }: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
+  const scrimRef = useRef<HTMLDivElement>(null);
+  const stackToken = useRef({}).current;
+
+  // Registered before the key listeners below so a modal is on the stack by
+  // the time any key reaches it.
+  useEffect(() => {
+    modalStack.push(stackToken);
+    return () => {
+      const i = modalStack.indexOf(stackToken);
+      if (i !== -1) modalStack.splice(i, 1);
+    };
+  }, [stackToken]);
 
   useEffect(() => {
     if (!closeOnEscape) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape' && isTopModal(stackToken)) onClose();
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [closeOnEscape, onClose]);
+  }, [closeOnEscape, onClose, stackToken]);
 
   // Focus management: move focus into the dialog on open, trap Tab within it,
   // and restore focus to the trigger on close. Without this, Tab escapes behind
@@ -72,7 +96,7 @@ export function Modal({
     else panel?.focus();
 
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Tab' || !panel) return;
+      if (e.key !== 'Tab' || !panel || !isTopModal(stackToken)) return;
       const items = getFocusable();
       if (items.length === 0) {
         e.preventDefault();
@@ -112,6 +136,7 @@ export function Modal({
   return createPortal(
     <motion.div
       {...overlayMotion}
+      ref={scrimRef}
       className={`fixed inset-0 flex items-center justify-center backdrop-blur-[3px] ${scrimClassName}`}
       onClick={onScrimClick}
       onDoubleClick={onScrimDoubleClick}
@@ -119,6 +144,12 @@ export function Modal({
       <motion.div
         {...dialogMotion}
         ref={panelRef}
+        drag={dragControls ? true : false}
+        dragControls={dragControls}
+        dragListener={false}
+        dragConstraints={scrimRef}
+        dragElastic={0}
+        dragMomentum={false}
         role="dialog"
         aria-modal="true"
         tabIndex={-1}

@@ -31,11 +31,14 @@ function resetStore() {
     status: 'idle',
     updateInfo: null,
     downloadProgress: 0,
+    downloadedBytes: 0,
+    totalBytes: 0,
     error: null,
     lastCheckAt: null,
     bannerDismissedVersion: null,
     bannerSnoozedUntil: null,
     notifiedVersion: null,
+    skippedVersion: null,
   });
 }
 
@@ -232,5 +235,119 @@ describe('updaterStore', () => {
       expect(isTransientNetworkError(undefined)).toBe(false);
       expect(isTransientNetworkError({})).toBe(false);
     });
+  });
+});
+
+describe('updaterStore download reporting', () => {
+  beforeEach(() => {
+    resetStore();
+    checkMock.mockReset();
+    downloadAndInstallMock.mockReset();
+    reportInvokeFailureMock.mockReset();
+  });
+
+  it('exposes byte counts so the sheet can show size, not just a percentage', async () => {
+    downloadAndInstallMock.mockImplementation(async (onEvent: (e: unknown) => void) => {
+      onEvent({ event: 'Started', data: { contentLength: 18_400_000 } });
+      onEvent({ event: 'Progress', data: { chunkLength: 4_600_000 } });
+      onEvent({ event: 'Progress', data: { chunkLength: 6_600_000 } });
+    });
+    checkMock.mockResolvedValueOnce(fakeUpdate('1.23.0'));
+
+    await useUpdaterStore.getState().downloadAndInstall();
+
+    const state = useUpdaterStore.getState();
+    expect(state.totalBytes).toBe(18_400_000);
+    expect(state.downloadedBytes).toBe(11_200_000);
+    expect(state.downloadProgress).toBe(61);
+  });
+
+  it('clears byte counts from a previous attempt when a new download starts', async () => {
+    useUpdaterStore.setState({ downloadedBytes: 999, totalBytes: 999 });
+    downloadAndInstallMock.mockImplementation(async () => undefined);
+    checkMock.mockResolvedValueOnce(fakeUpdate('1.23.0'));
+
+    await useUpdaterStore.getState().downloadAndInstall();
+
+    expect(useUpdaterStore.getState().downloadedBytes).toBe(0);
+    expect(useUpdaterStore.getState().totalBytes).toBe(0);
+  });
+});
+
+describe('updaterStore skipVersion', () => {
+  beforeEach(() => {
+    resetStore();
+    localStorage.clear();
+    checkMock.mockReset();
+  });
+
+  it('records the version currently on offer', () => {
+    useUpdaterStore.setState({ updateInfo: { version: '1.23.0', date: '', body: '' } });
+
+    useUpdaterStore.getState().skipVersion();
+
+    expect(useUpdaterStore.getState().skippedVersion).toBe('1.23.0');
+  });
+
+  it('remembers a skipped version across a restart', async () => {
+    useUpdaterStore.setState({ updateInfo: { version: '1.23.0', date: '', body: '' } });
+    useUpdaterStore.getState().skipVersion();
+
+    vi.resetModules();
+    const fresh = await import('./updaterStore');
+
+    expect(fresh.useUpdaterStore.getState().skippedVersion).toBe('1.23.0');
+  });
+
+  it('starts with nothing skipped when storage holds no version', async () => {
+    vi.resetModules();
+    const fresh = await import('./updaterStore');
+
+    expect(fresh.useUpdaterStore.getState().skippedVersion).toBeNull();
+  });
+
+  it('stops skipping once a newer version is published', async () => {
+    useUpdaterStore.setState({ updateInfo: { version: '1.23.0', date: '', body: '' } });
+    useUpdaterStore.getState().skipVersion();
+
+    checkMock.mockResolvedValueOnce(fakeUpdate('1.24.0'));
+    useUpdaterStore.setState({ status: 'idle' });
+    await useUpdaterStore.getState().checkForUpdates();
+
+    expect(useUpdaterStore.getState().skippedVersion).toBeNull();
+  });
+});
+
+describe('updaterStore clearDeferrals', () => {
+  beforeEach(() => {
+    resetStore();
+    localStorage.clear();
+  });
+
+  it('forgets every reason the sheet was hidden', () => {
+    useUpdaterStore.setState({
+      updateInfo: { version: '1.23.0', date: '', body: '' },
+      bannerDismissedVersion: '1.23.0',
+      bannerSnoozedUntil: Date.now() + 60_000,
+    });
+    useUpdaterStore.getState().skipVersion();
+
+    useUpdaterStore.getState().clearDeferrals();
+
+    const state = useUpdaterStore.getState();
+    expect(state.bannerDismissedVersion).toBeNull();
+    expect(state.bannerSnoozedUntil).toBeNull();
+    expect(state.skippedVersion).toBeNull();
+  });
+
+  it('clears the skip from storage too, so it does not come back on restart', async () => {
+    useUpdaterStore.setState({ updateInfo: { version: '1.23.0', date: '', body: '' } });
+    useUpdaterStore.getState().skipVersion();
+
+    useUpdaterStore.getState().clearDeferrals();
+
+    vi.resetModules();
+    const fresh = await import('./updaterStore');
+    expect(fresh.useUpdaterStore.getState().skippedVersion).toBeNull();
   });
 });

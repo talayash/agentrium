@@ -346,9 +346,6 @@ impl TerminalManager {
         // the binary name and echoes the args back so we can hand them to
         // CommandBuilder platform-appropriately.
         let (agent_binary, spawn_args) = build_agent_command(&spec, &claude_args);
-        // On Windows the binary goes through `cmd.exe /C`, so re-check it here
-        // regardless of where the spec came from (local save, sync, older DB).
-        crate::custom_agents::validate_binary(&agent_binary).map_err(error_reporter::user_err)?;
 
         // Spawn the agent binary directly so the process exits when it
         // finishes, allowing the terminal-finished event to fire for

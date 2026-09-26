@@ -1,4 +1,5 @@
 import { Component, useEffect, useRef, useState } from 'react';
+import { useSessionContext } from './hooks/useSessionContext';
 import type { ErrorInfo, ReactNode } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { reportError, reportInvokeFailure } from './lib/errorReporter';
@@ -141,6 +142,7 @@ async function tryRehydrateAuth(): Promise<boolean> {
 }
 
 function App() {
+  useSessionContext();
   const { sidebarOpen, sidebarCollapsed, hintsOpen, changesOpen, workspacesOpen, settingsOpen, profileModalOpen, newTerminalModalOpen, workspaceModalOpen, worktreeModalOpen, pushModalOpen, sessionHistoryOpen, snippetsModalOpen, commandPaletteOpen, globalSearchOpen, whatsNewOpen, claudeConfigOpen, sessionTimelineOpen, memoryEditorOpen, showStatusBar, notifyOnFinish, restoreSession, triggerChangesRefresh, showRestoreBanner, pendingRestoreConfigs, setShowRestoreBanner, setPendingRestoreConfigs, lastSeenVersion, setLastSeenVersion, openWhatsNew } = useAppStore();
   const { handleTerminalOutput, updateTerminalStatus, setLoopMode, setSessionSummary, createTerminal, createShellTerminalTab, applyTerminalMetrics, adoptTerminal, detachTerminals, closeTerminal, terminals } = useTerminalStore();
 
@@ -677,6 +679,22 @@ function App() {
     }
   }, [terminalMetrics, sessionBudgetUsd, budgetWarnedIds, markBudgetWarned, notify]);
 
+  const closedTerminalConfigs = useRef(new Map<string, TerminalConfig>());
+
+  useEffect(() => useTerminalStore.subscribe((state, previous) => {
+    for (const [id, terminal] of previous.terminals) {
+      if (!state.terminals.has(id)) {
+        closedTerminalConfigs.current.set(id, terminal.config);
+      }
+    }
+    // Keep a bounded fallback for delayed finish events after closing a tab.
+    while (closedTerminalConfigs.current.size > 100) {
+      const oldest = closedTerminalConfigs.current.keys().next().value;
+      if (oldest === undefined) break;
+      closedTerminalConfigs.current.delete(oldest);
+    }
+  }), []);
+
   useEffect(() => {
     // Same listen()/cleanup race guard as the other event listeners above.
     let cancelled = false;
@@ -688,7 +706,13 @@ function App() {
       // Get the current terminal name from the store (always up-to-date, even after renames)
       const terminals = useTerminalStore.getState().terminals;
       const terminal = terminals.get(id);
-      const name = terminal?.config.nickname || terminal?.config.label || 'Terminal';
+      const config = terminal?.config ?? closedTerminalConfigs.current.get(id);
+      closedTerminalConfigs.current.delete(id);
+      const name = config?.nickname || config?.label || `Terminal ${id.slice(0, 8)}`;
+      const label = config?.nickname && config.label && config.nickname !== config.label
+        ? `${name} (${config.label})`
+        : name;
+      const message = `"${label}" has finished running.`;
 
       updateTerminalStatus(id, 'Stopped');
       triggerChangesRefresh();
@@ -698,7 +722,7 @@ function App() {
       if (isDetached) return;
 
       // Always show in-app toast
-      toast.info('Terminal Finished', `${name} has finished running.`);
+      toast.info('Terminal Finished', message);
 
       // Status-bar unread dot when the user isn't watching.
       if (document.hidden) {
@@ -706,12 +730,13 @@ function App() {
       }
 
       if (notifyOnFinish) {
-        notify('Terminal Finished', `${name} has finished running.`);
+        notify('Terminal Finished', message);
       }
 
-      // Auto-summarize the session
+      // Summarize only after explicit consent in Privacy settings.
       (async () => {
         try {
+          if (!await invoke<boolean>('get_summary_enabled')) return;
           // Check if we already have a summary
           const existing = await invoke<string | null>('get_session_summary', { terminalId: id });
           if (existing) {

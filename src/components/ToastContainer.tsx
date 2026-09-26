@@ -1,8 +1,10 @@
-import { useEffect, useRef } from 'react';
+import { forwardRef, useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { CheckCircle, XCircle, AlertTriangle, Info, X } from 'lucide-react';
+import { CheckCircle, XCircle, AlertTriangle, Info, X, ChevronDown, ChevronUp } from 'lucide-react';
 import { useToastStore } from '../store/toastStore';
-import type { ToastType } from '../store/toastStore';
+import type { Toast, ToastAction, ToastType } from '../store/toastStore';
+import { bannerMotion } from '../lib/motionTokens';
+import { formatRelativeTime } from '../lib/relativeTime';
 
 const ICON_MAP: Record<ToastType, typeof CheckCircle> = {
   success: CheckCircle,
@@ -11,38 +13,31 @@ const ICON_MAP: Record<ToastType, typeof CheckCircle> = {
   info: Info,
 };
 
-const COLOR_MAP: Record<ToastType, { icon: string; bar: string; tint: string; ring: string }> = {
-  success: {
-    icon: 'text-success',
-    bar: 'bg-success',
-    tint: 'bg-success/10',
-    ring: 'ring-success/40',
-  },
-  error: {
-    icon: 'text-error',
-    bar: 'bg-error',
-    tint: 'bg-error/10',
-    ring: 'ring-error/40',
-  },
-  warning: {
-    icon: 'text-warning',
-    bar: 'bg-warning',
-    tint: 'bg-warning/10',
-    ring: 'ring-warning/40',
-  },
-  info: {
-    icon: 'text-accent-primary',
-    bar: 'bg-accent-primary',
-    tint: 'bg-accent-primary/10',
-    ring: 'ring-accent-primary/40',
-  },
+/* Semantic colour lives on the GLYPH ONLY - never on the surface. Tinting the
+   whole card by severity makes every banner a different colour field, so the
+   eye has to parse the surface before the text; it also gives each type a
+   different effective text contrast. One 16px mark in a fixed position is
+   readable in peripheral vision and keeps the body copy on constant ground. */
+const ICON_COLOR: Record<ToastType, string> = {
+  success: 'text-success',
+  error: 'text-error',
+  warning: 'text-warning',
+  info: 'text-accent-primary',
 };
 
-function actionClasses(a: import('../store/toastStore').ToastAction): string {
+/** Above this many waiting notifications the rest deck behind the newest
+ *  rather than growing a wall down the side of the window. */
+const COLLAPSE_THRESHOLD = 3;
+
+/** How often the relative timestamps re-render. Coarse on purpose - the
+ *  labels themselves are coarse, so a finer tick would be wasted work. */
+const TICK_MS = 30_000;
+
+function actionClasses(a: ToastAction): string {
   const variant: 'primary' | 'neutral' | 'danger' = a.variant ?? (a.primary ? 'primary' : 'neutral');
   switch (variant) {
     case 'primary':
-      return 'bg-accent-primary text-white hover:bg-accent-primary/90 shadow-[0_2px_6px_rgba(0,0,0,0.3)]';
+      return 'text-white bg-gradient-to-b from-accent-secondary to-accent-primary shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_1px_2px_rgba(0,0,0,0.3)] hover:brightness-110';
     case 'danger':
       return 'bg-warning/15 text-warning ring-1 ring-warning/40 hover:bg-warning/25';
     case 'neutral':
@@ -51,113 +46,164 @@ function actionClasses(a: import('../store/toastStore').ToastAction): string {
   }
 }
 
-function ToastItem({ id, type, title, message, duration, actions }: {
-  id: string;
-  type: ToastType;
-  title: string;
-  message?: string;
-  duration: number;
-  actions?: import('../store/toastStore').ToastAction[];
-}) {
+/* forwardRef is load-bearing, not ceremony: AnimatePresence mode="popLayout"
+   hands a ref to its DIRECT child to measure it out of flow. A plain function
+   component swallows that ref, and the exit animation then never completes -
+   the card stays mounted forever. */
+const ToastCard = forwardRef<HTMLDivElement, { toast: Toast; now: number }>(function ToastCard(
+  { toast, now },
+  ref,
+) {
   const removeToast = useToastStore((s) => s.removeToast);
-  const progressRef = useRef<HTMLDivElement>(null);
-  const Icon = ICON_MAP[type];
-  const colors = COLOR_MAP[type];
-  const hasActions = !!actions && actions.length > 0;
+  const pauseAutoDismiss = useToastStore((s) => s.pauseAutoDismiss);
+  const resumeAutoDismiss = useToastStore((s) => s.resumeAutoDismiss);
 
-  useEffect(() => {
-    const el = progressRef.current;
-    if (!el || duration <= 0) return;
-    // Start the shrink animation on next frame so the transition applies
-    requestAnimationFrame(() => {
-      el.style.transition = `width ${duration}ms linear`;
-      el.style.width = '0%';
-    });
-  }, [duration]);
+  const { id, type, title, message, actions, createdAt } = toast;
+  const Icon = ICON_MAP[type];
+  const hasActions = !!actions && actions.length > 0;
 
   return (
     <motion.div
+      ref={ref}
       layout
-      initial={{ opacity: 0, x: 88, scale: 0.96 }}
-      animate={{
-        opacity: 1,
-        x: 0,
-        scale: 1,
-        // Arrives with momentum - a slight settle is earned here.
-        transition: { type: 'spring', bounce: 0.18, duration: 0.42, opacity: { duration: 0.15, ease: 'easeOut' } },
-      }}
-      exit={{ opacity: 0, x: 88, scale: 0.96, transition: { duration: 0.16, ease: 'easeOut' } }}
-      className={`relative overflow-hidden rounded-lg bg-elevation-3 ring-1 ${colors.ring} shadow-elevation-3 pointer-events-auto isolate ${
-        hasActions ? 'w-[420px]' : 'w-[320px]'
-      }`}
+      {...bannerMotion}
+      // An error is the one case worth interrupting a screen reader for.
+      role={type === 'error' ? 'alert' : 'status'}
+      // macOS keeps a banner up as long as the pointer is on it - you should
+      // never lose a notification by reading it.
+      onMouseEnter={() => pauseAutoDismiss(id)}
+      onMouseLeave={() => resumeAutoDismiss(id)}
+      className="group material-popover pointer-events-auto w-[360px] rounded-2xl px-3.5 py-3"
     >
-      {/* Colored tint layer - sits above the opaque base so the card stays opaque */}
-      <div className={`absolute inset-0 pointer-events-none ${colors.tint}`} />
-      {/* Left status accent bar - thicker when the toast has actions so it
-          reads as a decision card, not a passing notification */}
-      <div className={`absolute left-0 top-0 bottom-0 ${hasActions ? 'w-[5px]' : 'w-[3px]'} ${colors.bar}`} />
+      <div className="flex items-start gap-3">
+        <Icon size={17} strokeWidth={2.2} className={`${ICON_COLOR[type]} mt-px shrink-0`} />
 
-      {/* Content */}
-      <div className={`relative flex flex-col ${hasActions ? 'gap-2.5 px-4 py-3 pl-5' : 'gap-1.5 px-3 py-2.5 pl-4'}`}>
-        <div className={`flex items-start ${hasActions ? 'gap-3' : 'gap-2.5'}`}>
-          <Icon size={hasActions ? 20 : 16} className={`${colors.icon} ${hasActions ? 'mt-0.5' : 'mt-0.5'} shrink-0`} />
-          <div className="flex-1 min-w-0">
-            <p className={`text-text-primary font-semibold leading-tight ${hasActions ? 'text-[13px]' : 'text-[12px]'}`}>
-              {title}
-            </p>
-            {message && (
-              <p className={`text-text-secondary mt-1 leading-snug ${hasActions ? 'text-[12px]' : 'text-[11px] mt-0.5'}`}>
-                {message}
-              </p>
-            )}
-          </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-[13px] font-semibold leading-tight text-text-primary">{title}</p>
+          {message && (
+            <p className="mt-0.5 text-[12px] leading-snug text-text-secondary">{message}</p>
+          )}
+
+          {hasActions && (
+            <div className="mt-2.5 flex flex-wrap gap-2">
+              {actions!.map((a, i) => (
+                <button
+                  key={i}
+                  onClick={() => {
+                    a.onClick();
+                    removeToast(id);
+                  }}
+                  className={`h-7 rounded-lg px-3.5 text-[12px] font-medium transition-[background-color,filter] duration-100 ${actionClasses(a)}`}
+                >
+                  {a.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="mt-px flex shrink-0 items-center gap-1.5">
+          <span className="text-[11px] tabular-nums text-text-tertiary">
+            {formatRelativeTime(now - createdAt)}
+          </span>
+          {/* Revealed on hover, as in Notification Center - a permanent close
+              affordance on every card turns the stack into a row of buttons. */}
           <button
             onClick={() => removeToast(id)}
-            className="text-text-tertiary hover:text-text-secondary transition-colors shrink-0 mt-0.5"
-            aria-label="Dismiss"
+            aria-label="Dismiss notification"
+            className="text-text-tertiary opacity-0 transition-opacity duration-100 hover:text-text-secondary focus-visible:opacity-100 group-hover:opacity-100"
           >
-            <X size={13} />
+            <X size={13} strokeWidth={2.4} />
           </button>
         </div>
-        {hasActions && (
-          <div className="flex flex-wrap gap-2 mt-0.5">
-            {actions!.map((a, i) => (
-              <button
-                key={i}
-                onClick={() => { a.onClick(); removeToast(id); }}
-                className={`text-[12px] font-medium px-3 py-1.5 rounded-md transition-colors ${actionClasses(a)}`}
-              >
-                {a.label}
-              </button>
-            ))}
-          </div>
-        )}
       </div>
-
-      {/* Progress bar */}
-      {duration > 0 && (
-        <div className="relative h-[2px] w-full bg-fill-hover">
-          <div
-            ref={progressRef}
-            className={`h-full ${colors.bar} opacity-70`}
-            style={{ width: '100%' }}
-          />
-        </div>
-      )}
     </motion.div>
   );
-}
+});
 
 export function ToastContainer() {
   const toasts = useToastStore((s) => s.toasts);
+  const clearAll = useToastStore((s) => s.clearAll);
+  const [expanded, setExpanded] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+
+  // Re-render so the relative timestamps age while a banner sits on screen.
+  // Only ticks while something is showing.
+  useEffect(() => {
+    if (toasts.length === 0) return;
+    const timer = setInterval(() => setNow(Date.now()), TICK_MS);
+    return () => clearInterval(timer);
+  }, [toasts.length]);
+
+  // Collapse again once the backlog drains, so the next burst starts tidy.
+  useEffect(() => {
+    if (toasts.length <= COLLAPSE_THRESHOLD) setExpanded(false);
+  }, [toasts.length]);
+
+  // `ordered` is newest-first, which is what the collapse logic slices against
+  // (a collapsed deck keeps the NEWEST card on top of the pile).
+  const ordered = [...toasts].reverse();
+  const collapsed = ordered.length > COLLAPSE_THRESHOLD && !expanded;
+  const visible = collapsed ? ordered.slice(0, 1) : ordered;
+  const hiddenCount = ordered.length - visible.length;
+
+  // The stack hangs off the bottom-right corner, so document order runs
+  // oldest -> newest: the newest ends up nearest the corner, where it is
+  // closest to the pointer and to where the eye last was.
+  const rendered = [...visible].reverse();
 
   return (
-    <div className="fixed bottom-8 right-3 z-[100000] flex flex-col-reverse gap-2 pointer-events-none">
-      <AnimatePresence mode="popLayout">
-        {toasts.map((t) => (
-          <ToastItem key={t.id} {...t} />
-        ))}
-      </AnimatePresence>
+    <div
+      data-testid="notification-region"
+      className="pointer-events-none fixed bottom-8 right-3 z-[100000] flex flex-col items-end gap-2.5"
+    >
+      {/* Controls sit ABOVE the stack - below it is the window edge. */}
+      {hiddenCount > 0 && (
+        <button
+          onClick={() => setExpanded(true)}
+          className="pointer-events-auto mb-5 mr-1.5 flex items-center gap-1.5 text-[11.5px] font-medium text-text-tertiary transition-colors hover:text-text-secondary"
+        >
+          {hiddenCount} more {hiddenCount === 1 ? 'notification' : 'notifications'}
+          <ChevronUp size={13} strokeWidth={2.4} />
+        </button>
+      )}
+
+      {expanded && ordered.length > COLLAPSE_THRESHOLD && (
+        <div className="pointer-events-auto mr-1.5 flex items-center gap-4">
+          <button
+            onClick={() => setExpanded(false)}
+            className="flex items-center gap-1.5 text-[11.5px] font-medium text-text-tertiary transition-colors hover:text-text-secondary"
+          >
+            <ChevronDown size={13} strokeWidth={2.4} />
+            Collapse
+          </button>
+          <button
+            onClick={clearAll}
+            className="text-[11.5px] font-medium text-accent-secondary transition-opacity hover:opacity-80"
+          >
+            Clear All
+          </button>
+        </div>
+      )}
+
+      <div className="relative">
+        {/* Deck: the notifications behind the newest. Anchored to the bottom so
+            they peek out ABOVE the front card, away from the window edge. */}
+        {collapsed && (
+          <>
+            <div className="material-popover pointer-events-none absolute inset-x-3.5 bottom-4 h-[68px] rounded-2xl opacity-50" />
+            <div className="material-popover pointer-events-none absolute inset-x-[7px] bottom-2 h-[68px] rounded-2xl opacity-75" />
+          </>
+        )}
+
+        <div className="relative flex flex-col items-end gap-2.5">
+          <AnimatePresence mode="popLayout">
+            {rendered.map((t) => (
+              <ToastCard key={t.id} toast={t} now={now} />
+            ))}
+          </AnimatePresence>
+        </div>
+      </div>
     </div>
   );
 }

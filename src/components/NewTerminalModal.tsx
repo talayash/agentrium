@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FolderOpen, Terminal, GitBranch, GitFork, Plus, Loader2, ChevronDown, Check, Pencil, Pin, PinOff, Trash2, SlidersHorizontal, KeyRound } from 'lucide-react';
+import { FolderOpen, Terminal, GitBranch, GitFork, Plus, Loader2, ChevronDown, Pencil, Pin, PinOff, Trash2, SlidersHorizontal, KeyRound } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore, NEW_PROFILE_ID } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
@@ -50,6 +50,29 @@ interface ConfigProfile {
   agent_args?: Partial<Record<AgentKind, string[]>>;
   credential_bindings?: CredentialBinding[];
 }
+
+/** Radio ring shown on every profile row. Unselected rows carry the empty
+ *  ring so the single filled one reads as "chosen" without a legend - the
+ *  earlier lone trailing check had nothing to contrast against and sat in
+ *  the same slot as the pin/edit/delete hover actions.
+ *  Tint note: `bg-accent-primary/N` compiles to nothing because the token is
+ *  a bare `var()` (no alpha channel), so selection uses the accent-following
+ *  `--accent-glow-sm` token instead. */
+function ProfileRadioRing({ selected }: { selected: boolean }) {
+  return (
+    <span
+      aria-hidden="true"
+      data-testid="profile-radio-ring"
+      className={`w-4 h-4 rounded-full border-[1.5px] flex-shrink-0 grid place-items-center transition-colors ${
+        selected ? 'border-accent-primary bg-accent-primary' : 'border-text-tertiary/50 group-hover:border-text-tertiary'
+      }`}
+    >
+      {selected && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
+    </span>
+  );
+}
+
+const PROFILE_ROW_SELECTED = 'bg-[var(--accent-glow-sm)]';
 
 const TAG_COLORS = [
   'bg-red-500',
@@ -568,22 +591,25 @@ export function NewTerminalModal() {
                   New Profile
                 </button>
               </div>
-              <div className="rounded-xl ring-1 ring-seam bg-elevation-2 divide-y divide-[var(--seam)] max-h-[218px] overflow-y-auto">
+              <div
+                role="radiogroup"
+                aria-label="Profile"
+                className="rounded-xl ring-1 ring-seam bg-elevation-2 divide-y divide-[var(--seam)] max-h-[218px] overflow-y-auto"
+              >
                 <button
                   type="button"
-                  aria-pressed={selectedProfileId === null}
+                  role="radio"
+                  aria-checked={selectedProfileId === null}
                   onClick={() => setSelectedProfileId(null)}
-                  className={`w-full flex items-center gap-2.5 px-3 h-[42px] text-left transition-colors ${
-                    selectedProfileId === null ? 'bg-accent-primary/10' : 'hover:bg-fill-hover'
+                  className={`group w-full flex items-center gap-2.5 px-3 h-[42px] text-left transition-colors ${
+                    selectedProfileId === null ? PROFILE_ROW_SELECTED : 'hover:bg-fill-hover'
                   }`}
                 >
+                  <ProfileRadioRing selected={selectedProfileId === null} />
                   <div className="flex-1 min-w-0">
                     <p className="text-text-primary text-[12.5px] font-medium leading-tight">No Profile</p>
                     <p className="text-text-tertiary text-[11px] leading-tight">Custom settings</p>
                   </div>
-                  {selectedProfileId === null && (
-                    <Check size={14} className="text-accent-primary flex-shrink-0" strokeWidth={2.25} />
-                  )}
                 </button>
                 {[...profiles.filter((p) => pinnedProfileIds.includes(p.id)),
                   ...profiles.filter((p) => !pinnedProfileIds.includes(p.id))].map((profile) => {
@@ -599,12 +625,14 @@ export function NewTerminalModal() {
                     >
                       <button
                         type="button"
-                        aria-pressed={isSel}
+                        role="radio"
+                        aria-checked={isSel}
                         onClick={() => setSelectedProfileId(profile.id)}
-                        className={`w-full flex items-center gap-2 px-3 h-[42px] pr-28 text-left transition-colors ${
-                          isSel ? 'bg-accent-primary/10' : 'hover:bg-fill-hover'
+                        className={`w-full flex items-center gap-2.5 px-3 h-[42px] pr-24 text-left transition-colors ${
+                          isSel ? PROFILE_ROW_SELECTED : 'hover:bg-fill-hover'
                         }`}
                       >
+                        <ProfileRadioRing selected={isSel} />
                         {isPinned && (
                           <Pin size={11} className="text-accent-primary flex-shrink-0" aria-label="Pinned" />
                         )}
@@ -652,9 +680,6 @@ export function NewTerminalModal() {
                               <Trash2 size={12} />
                             </button>
                           </>
-                        )}
-                        {isSel && (
-                          <Check size={14} className="text-accent-primary flex-shrink-0" strokeWidth={2.25} />
                         )}
                       </span>
                     </div>

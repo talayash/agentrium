@@ -3,8 +3,8 @@ import { motion } from 'framer-motion';
 import { X, FileText, Brain, BookOpen, Save, RotateCw, ChevronRight } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from '../store/appStore';
-import { toast } from '../store/toastStore';
 import { reportInvokeFailure } from '../lib/errorReporter';
+import { useMemoryDocument } from '../hooks/useMemoryDocument';
 
 interface ClaudeMdInfo {
   path: string;
@@ -25,27 +25,14 @@ export function MemoryEditor() {
   const { closeMemoryEditor } = useAppStore();
   const [activeTab, setActiveTab] = useState<Tab>('claudemd');
 
-  // CLAUDE.md state
   const [claudeMdFiles, setClaudeMdFiles] = useState<ClaudeMdInfo[]>([]);
-  const [selectedClaudeMd, setSelectedClaudeMd] = useState<ClaudeMdInfo | null>(null);
-  const [claudeMdContent, setClaudeMdContent] = useState('');
-  const [claudeMdDirty, setClaudeMdDirty] = useState(false);
-
-  // Memory state
   const [memoryFiles, setMemoryFiles] = useState<MemoryFileInfo[]>([]);
-  const [selectedMemory, setSelectedMemory] = useState<MemoryFileInfo | null>(null);
-  const [memoryContent, setMemoryContent] = useState('');
-  const [memoryDirty, setMemoryDirty] = useState(false);
-
-  // Rules state
   const [ruleFiles] = useState<MemoryFileInfo[]>([]);
-  const [selectedRule, setSelectedRule] = useState<MemoryFileInfo | null>(null);
-  const [ruleContent, setRuleContent] = useState('');
-  const [ruleDirty, setRuleDirty] = useState(false);
-
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const claudeMd = useMemoryDocument<ClaudeMdInfo>(setError);
+  const memory = useMemoryDocument<MemoryFileInfo>(setError);
+  const rule = useMemoryDocument<MemoryFileInfo>(setError);
 
   useEffect(() => {
     loadClaudeMdFiles();
@@ -72,100 +59,12 @@ export function MemoryEditor() {
     }
   };
 
-  const handleSelectClaudeMd = async (file: ClaudeMdInfo) => {
-    setSelectedClaudeMd(file);
-    setLoading(true);
-    setError(null);
-    try {
-      const content = await invoke<string>('read_memory_file', { path: file.path });
-      setClaudeMdContent(content);
-      setClaudeMdDirty(false);
-    } catch (err) {
-      setError(String(err));
-      setClaudeMdContent('');
-    } finally {
-      setLoading(false);
+  // Closing drops every tab's edits, so ask once per tab that has some.
+  const requestClose = async () => {
+    for (const doc of [claudeMd, memory, rule]) {
+      if (!(await doc.confirmDiscard())) return;
     }
-  };
-
-  const handleSaveClaudeMd = async () => {
-    if (!selectedClaudeMd) return;
-    setSaving(true);
-    setError(null);
-    try {
-      await invoke('write_memory_file', { path: selectedClaudeMd.path, content: claudeMdContent });
-      setClaudeMdDirty(false);
-      toast.success('File Saved', selectedClaudeMd.path.split(/[/\\]/).pop() || 'CLAUDE.md');
-    } catch (err) {
-      setError(String(err));
-      toast.error('Save Failed', String(err));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleSelectMemory = async (file: MemoryFileInfo) => {
-    setSelectedMemory(file);
-    setLoading(true);
-    setError(null);
-    try {
-      const content = await invoke<string>('read_memory_file', { path: file.path });
-      setMemoryContent(content);
-      setMemoryDirty(false);
-    } catch (err) {
-      setError(String(err));
-      setMemoryContent('');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSaveMemory = async () => {
-    if (!selectedMemory) return;
-    setSaving(true);
-    setError(null);
-    try {
-      await invoke('write_memory_file', { path: selectedMemory.path, content: memoryContent });
-      setMemoryDirty(false);
-      toast.success('File Saved', selectedMemory.path.split(/[/\\]/).pop() || 'Memory file');
-    } catch (err) {
-      setError(String(err));
-      toast.error('Save Failed', String(err));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleSelectRule = async (file: MemoryFileInfo) => {
-    setSelectedRule(file);
-    setLoading(true);
-    setError(null);
-    try {
-      const content = await invoke<string>('read_memory_file', { path: file.path });
-      setRuleContent(content);
-      setRuleDirty(false);
-    } catch (err) {
-      setError(String(err));
-      setRuleContent('');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSaveRule = async () => {
-    if (!selectedRule) return;
-    setSaving(true);
-    setError(null);
-    try {
-      await invoke('write_memory_file', { path: selectedRule.path, content: ruleContent });
-      setRuleDirty(false);
-      toast.success('File Saved', selectedRule.path.split(/[/\\]/).pop() || 'Rule file');
-    } catch (err) {
-      setError(String(err));
-      toast.error('Save Failed', String(err));
-    } finally {
-      setSaving(false);
-    }
+    closeMemoryEditor();
   };
 
   // Group memory files by project
@@ -188,7 +87,7 @@ export function MemoryEditor() {
       exit={{ opacity: 0 }}
       transition={{ duration: 0.15 }}
       className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
-      onDoubleClick={closeMemoryEditor}
+      onDoubleClick={() => void requestClose()}
     >
       <motion.div
         initial={{ opacity: 0, scale: 0.98 }}
@@ -207,7 +106,8 @@ export function MemoryEditor() {
             <span className="text-text-tertiary text-[11px]">F8</span>
           </div>
           <button
-            onClick={closeMemoryEditor}
+            onClick={() => void requestClose()}
+            aria-label="Close Memory Editor"
             className="p-1 rounded hover:bg-fill-hover text-text-tertiary transition-colors"
           >
             <X size={16} />
@@ -244,9 +144,9 @@ export function MemoryEditor() {
                   claudeMdFiles.map((file) => (
                     <button
                       key={file.path}
-                      onClick={() => handleSelectClaudeMd(file)}
+                      onClick={() => claudeMd.select(file)}
                       className={`w-full text-left p-2 rounded-md text-[12px] mb-0.5 transition-colors ${
-                        selectedClaudeMd?.path === file.path
+                        claudeMd.selected?.path === file.path
                           ? 'bg-accent-primary/10 text-accent-primary'
                           : 'text-text-primary hover:bg-fill-hover'
                       }`}
@@ -265,27 +165,27 @@ export function MemoryEditor() {
 
               {/* Editor */}
               <div className="flex-1 flex flex-col">
-                {selectedClaudeMd ? (
+                {claudeMd.selected ? (
                   <>
                     <div className="flex items-center justify-between px-3 py-2 border-b border-border">
-                      <span className="text-text-secondary text-[11px] truncate">{selectedClaudeMd.path}</span>
+                      <span className="text-text-secondary text-[11px] truncate">{claudeMd.selected.path}</span>
                       <button
-                        onClick={handleSaveClaudeMd}
-                        disabled={!claudeMdDirty || saving}
+                        onClick={claudeMd.save}
+                        disabled={!claudeMd.canSave}
                         className="flex items-center gap-1 px-2 py-1 rounded-md text-[11px] bg-accent-primary/10 text-accent-primary hover:bg-accent-primary/20 disabled:opacity-40 transition-colors"
                       >
                         <Save size={11} />
-                        {saving ? 'Saving...' : 'Save'}
+                        {claudeMd.saving ? 'Saving...' : 'Save'}
                       </button>
                     </div>
-                    {loading ? (
+                    {claudeMd.loading ? (
                       <div className="flex-1 flex items-center justify-center">
                         <RotateCw size={16} className="text-text-tertiary animate-spin" />
                       </div>
                     ) : (
                       <textarea
-                        value={claudeMdContent}
-                        onChange={(e) => { setClaudeMdContent(e.target.value); setClaudeMdDirty(true); }}
+                        value={claudeMd.content}
+                        onChange={(e) => claudeMd.edit(e.target.value)}
                         className="flex-1 bg-bg-primary p-3 text-text-primary text-[12px] font-mono resize-none focus:outline-none"
                         spellCheck={false}
                       />
@@ -316,9 +216,9 @@ export function MemoryEditor() {
                       {files.map((file) => (
                         <button
                           key={file.path}
-                          onClick={() => handleSelectMemory(file)}
+                          onClick={() => memory.select(file)}
                           className={`w-full text-left p-2 rounded-md text-[12px] mb-0.5 transition-colors ${
-                            selectedMemory?.path === file.path
+                            memory.selected?.path === file.path
                               ? 'bg-accent-primary/10 text-accent-primary'
                               : 'text-text-primary hover:bg-fill-hover'
                           }`}
@@ -339,27 +239,27 @@ export function MemoryEditor() {
 
               {/* Editor */}
               <div className="flex-1 flex flex-col">
-                {selectedMemory ? (
+                {memory.selected ? (
                   <>
                     <div className="flex items-center justify-between px-3 py-2 border-b border-border">
-                      <span className="text-text-secondary text-[11px] truncate">{selectedMemory.name}</span>
+                      <span className="text-text-secondary text-[11px] truncate">{memory.selected.name}</span>
                       <button
-                        onClick={handleSaveMemory}
-                        disabled={!memoryDirty || saving}
+                        onClick={memory.save}
+                        disabled={!memory.canSave}
                         className="flex items-center gap-1 px-2 py-1 rounded-md text-[11px] bg-accent-primary/10 text-accent-primary hover:bg-accent-primary/20 disabled:opacity-40 transition-colors"
                       >
                         <Save size={11} />
-                        {saving ? 'Saving...' : 'Save'}
+                        {memory.saving ? 'Saving...' : 'Save'}
                       </button>
                     </div>
-                    {loading ? (
+                    {memory.loading ? (
                       <div className="flex-1 flex items-center justify-center">
                         <RotateCw size={16} className="text-text-tertiary animate-spin" />
                       </div>
                     ) : (
                       <textarea
-                        value={memoryContent}
-                        onChange={(e) => { setMemoryContent(e.target.value); setMemoryDirty(true); }}
+                        value={memory.content}
+                        onChange={(e) => memory.edit(e.target.value)}
                         className="flex-1 bg-bg-primary p-3 text-text-primary text-[12px] font-mono resize-none focus:outline-none"
                         spellCheck={false}
                       />
@@ -383,9 +283,9 @@ export function MemoryEditor() {
                   ruleFiles.map((file) => (
                     <button
                       key={file.path}
-                      onClick={() => handleSelectRule(file)}
+                      onClick={() => rule.select(file)}
                       className={`w-full text-left p-2 rounded-md text-[12px] mb-0.5 transition-colors ${
-                        selectedRule?.path === file.path
+                        rule.selected?.path === file.path
                           ? 'bg-accent-primary/10 text-accent-primary'
                           : 'text-text-primary hover:bg-fill-hover'
                       }`}
@@ -400,27 +300,27 @@ export function MemoryEditor() {
               </div>
 
               <div className="flex-1 flex flex-col">
-                {selectedRule ? (
+                {rule.selected ? (
                   <>
                     <div className="flex items-center justify-between px-3 py-2 border-b border-border">
-                      <span className="text-text-secondary text-[11px] truncate">{selectedRule.name}</span>
+                      <span className="text-text-secondary text-[11px] truncate">{rule.selected.name}</span>
                       <button
-                        onClick={handleSaveRule}
-                        disabled={!ruleDirty || saving}
+                        onClick={rule.save}
+                        disabled={!rule.canSave}
                         className="flex items-center gap-1 px-2 py-1 rounded-md text-[11px] bg-accent-primary/10 text-accent-primary hover:bg-accent-primary/20 disabled:opacity-40 transition-colors"
                       >
                         <Save size={11} />
-                        {saving ? 'Saving...' : 'Save'}
+                        {rule.saving ? 'Saving...' : 'Save'}
                       </button>
                     </div>
-                    {loading ? (
+                    {rule.loading ? (
                       <div className="flex-1 flex items-center justify-center">
                         <RotateCw size={16} className="text-text-tertiary animate-spin" />
                       </div>
                     ) : (
                       <textarea
-                        value={ruleContent}
-                        onChange={(e) => { setRuleContent(e.target.value); setRuleDirty(true); }}
+                        value={rule.content}
+                        onChange={(e) => rule.edit(e.target.value)}
                         className="flex-1 bg-bg-primary p-3 text-text-primary text-[12px] font-mono resize-none focus:outline-none"
                         spellCheck={false}
                       />

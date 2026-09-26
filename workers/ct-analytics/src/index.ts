@@ -1,9 +1,10 @@
+import { admitErrorReport, admitIngest, boundedJson, validDimensions, versionWithinCeiling } from './ingest';
 /**
  * Agentrium analytics worker.
  *
  * Storage:
  *   - KV (binding: KV_BINDING)
- *       seen:{installation_id}   no TTL,    used to detect first-ever heartbeat
+ *       seen:{installation_id}   TTL=400d,  used to detect first-ever heartbeat
  *       live:{installation_id}   TTL=900s,  metadata = {version, os, country}
  *
  *   - D1 (binding: DB)
@@ -18,16 +19,27 @@
  *   GET  /stats/live             active in last 15 min, by version/os/country
  *   GET  /stats/history?days=30&metric=dau|heartbeats|update_checks|version|os|country
  *   GET  /errors/summary?days=7&limit=20   top error groups + by source/version/os/day
+ *   POST /errors/resolve         mark fingerprints resolved / un-resolved (token)
+ *   POST /feedback/delete        soft-delete / restore inbox messages (token)
  *   POST /admin/login_attempt    admin-dashboard login rate limit (token)
  *   POST /stats/match            count given installation ids active today / now (token)
  */
 
 import { constantTimeEqual, checkLoginAttempt, parseMatchBody, matchInstallations } from './admin';
+import { parseResolveBody, isGroupResolved } from './errors';
 
 interface Env {
   KV_BINDING: KVNamespace;
   DB: D1Database;
+  /** Bearer token for the admin/stats routes (`wrangler secret put STATS_TOKEN`). */
   STATS_TOKEN: string;
+  /**
+   * Salt for hashing client IPs in feedback rows and rate-limit keys
+   * (`wrangler secret put IP_HASH_SALT`). Optional: when unset the worker
+   * falls back to STATS_TOKEN, so setting it rotates every IP-keyed bucket
+   * once and thereafter keeps the bearer token out of hashing altogether.
+   */
+  IP_HASH_SALT?: string;
 }
 
 interface HeartbeatBody {
@@ -88,6 +100,17 @@ const LIVE_TTL_SECONDS = 900;
 const MAX_HISTORY_DAYS = 365;
 const RATE_LIMIT_TTL_SECONDS = 60;
 const ERROR_RETENTION_DAYS = 90;
+// A `seen:` key is the sole record that an installation was ever observed, so
+// it cannot expire while the install is plausibly alive - but without any TTL
+// every novel UUID leaves a permanent key, and ingest accepts unauthenticated
+// UUIDs at 120/min/IP. 400 days outlives the 365-day history window, so a key
+// only lapses well after its install has stopped reporting. The trade is that
+// an install running continuously past 400 days is recounted once as new.
+const SEEN_TTL_SECONDS = 400 * 24 * 60 * 60;
+// daily_dau holds one row per (date, installation_id) and so grows with every
+// fabricated UUID. Pruned on the same 400-day horizon as `seen:`, which stays
+// clear of MAX_HISTORY_DAYS - no servable chart loses data.
+const DAU_RETENTION_DAYS = 400;
 // /feedback rate limit: 5 submissions per IP per hour is more than any real user
 // will send. Bots that survive the honeypot get squelched here.
 const FEEDBACK_RATE_LIMIT_TTL_SECONDS = 60 * 60;
@@ -118,6 +141,10 @@ function todayUTC(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+function secondsUntilNextUtcDay(now = Date.now()): number {
+  return Math.max(1, Math.ceil((86_400_000 - (now % 86_400_000)) / 1000));
+}
+
 function json(body: unknown, status = 200, extraHeaders: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -127,6 +154,23 @@ function json(body: unknown, status = 200, extraHeaders: Record<string, string> 
       ...extraHeaders,
     },
   });
+}
+
+/**
+ * Reads a JSON body through the same 16 KB bounded reader the ingest routes
+ * use, mapping an oversized body to 413 and malformed JSON to 400 so every
+ * route reports the two failures identically.
+ */
+async function readBoundedBody(request: Request): Promise<{ body: unknown } | { response: Response }> {
+  try {
+    return { body: await boundedJson(request) };
+  } catch (err) {
+    return {
+      response: err instanceof RangeError
+        ? json({ error: 'payload_too_large' }, 413)
+        : json({ error: 'invalid_json' }, 400),
+    };
+  }
 }
 
 function clampString(value: unknown, max: number): string | null {
@@ -140,7 +184,7 @@ function normalize(body: HeartbeatBody, request: Request): NormalizedPayload | n
   const installation_id = clampString(body.installation_id, 128);
   const version = clampString(body.app_version, 32);
   const os = clampString(body.os, 32);
-  if (!installation_id || !version || !os) return null;
+  if (!installation_id || !version || !os || !validDimensions(body.installation_id, body.app_version, body.os)) return null;
 
   const country =
     typeof (request as Request & { cf?: { country?: string } }).cf?.country === 'string'
@@ -164,7 +208,7 @@ function normalizeError(body: ErrorReportBody, request: Request): NormalizedErro
   const source = clampString(body.source, 16);
   const message = clampString(body.message, 2048);
   if (!installation_id || !app_version || !os || !source || !message) return null;
-  if (!ALLOWED_SOURCES.has(source)) return null;
+  if (!ALLOWED_SOURCES.has(source) || !validDimensions(body.installation_id, body.app_version, body.os)) return null;
 
   const country =
     typeof (request as Request & { cf?: { country?: string } }).cf?.country === 'string'
@@ -189,13 +233,8 @@ async function handleHeartbeat(
   env: Env,
   ctx: ExecutionContext,
   dimension: 'heartbeats' | 'update_checks',
+  body: HeartbeatBody,
 ): Promise<Response> {
-  let body: HeartbeatBody;
-  try {
-    body = (await request.json()) as HeartbeatBody;
-  } catch {
-    return json({ error: 'invalid_json' }, 400);
-  }
 
   const payload = normalize(body, request);
   if (!payload) return json({ error: 'invalid_payload' }, 400);
@@ -237,6 +276,7 @@ async function handleHeartbeat(
           os: payload.os,
           country: payload.country,
         }),
+        { expirationTtl: SEEN_TTL_SECONDS },
       ),
     );
   }
@@ -284,13 +324,7 @@ async function handleHeartbeat(
   return json({ ok: true });
 }
 
-async function handleErrorReport(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-  let body: ErrorReportBody;
-  try {
-    body = (await request.json()) as ErrorReportBody;
-  } catch {
-    return json({ error: 'invalid_json' }, 400);
-  }
+async function handleErrorReport(request: Request, env: Env, ctx: ExecutionContext, body: ErrorReportBody): Promise<Response> {
 
   const payload = normalizeError(body, request);
   if (!payload) return json({ error: 'invalid_payload' }, 400);
@@ -337,11 +371,11 @@ async function handleErrorReport(request: Request, env: Env, ctx: ExecutionConte
 }
 
 async function handleFeedbackIngest(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-  const { normalizeFeedback, hashIP } = await import('./feedback');
+  const { normalizeFeedback, hashIP, ipHashSalt } = await import('./feedback');
 
   let body: unknown;
   try {
-    body = await request.json();
+    body = await boundedJson(request);
   } catch {
     return json({ error: 'invalid_json' }, 400);
   }
@@ -354,8 +388,7 @@ async function handleFeedbackIngest(request: Request, env: Env, ctx: ExecutionCo
   }
 
   const ip = request.headers.get('cf-connecting-ip') ?? 'unknown';
-  const salt = env.STATS_TOKEN ?? 'unsalted';
-  const ipHash = await hashIP(ip, salt);
+  const ipHash = await hashIP(ip, ipHashSalt(env));
 
   // Sliding counter: increment, reject when over the cap. Using put with TTL
   // and get gives us a rough hour-window bucket without a heavy counter
@@ -403,7 +436,11 @@ async function handleFeedbackList(url: URL, env: Env): Promise<Response> {
   const limit = Math.min(Math.max(parseInt(url.searchParams.get('limit') ?? '100', 10) || 100, 1), 500);
   const unreadOnly = url.searchParams.get('unread_only') === '1';
 
-  const whereClause = unreadOnly ? 'WHERE read_at IS NULL' : '';
+  // Soft-deleted rows leave the list and the counters; the text stays in D1
+  // so the dashboard's Undo can restore it.
+  const whereClause = unreadOnly
+    ? 'WHERE deleted_at IS NULL AND read_at IS NULL'
+    : 'WHERE deleted_at IS NULL';
   const rows = await env.DB.prepare(
     `SELECT id, ts, name, message, app_version, os, country, read_at FROM feedback ${whereClause} ORDER BY id DESC LIMIT ?`,
   )
@@ -420,7 +457,7 @@ async function handleFeedbackList(url: URL, env: Env): Promise<Response> {
     }>();
 
   const totals = await env.DB.prepare(
-    'SELECT COUNT(*) AS total, SUM(CASE WHEN read_at IS NULL THEN 1 ELSE 0 END) AS unread FROM feedback',
+    'SELECT COUNT(*) AS total, SUM(CASE WHEN read_at IS NULL THEN 1 ELSE 0 END) AS unread FROM feedback WHERE deleted_at IS NULL',
   ).first<{ total: number; unread: number }>();
 
   return json({
@@ -431,12 +468,9 @@ async function handleFeedbackList(url: URL, env: Env): Promise<Response> {
 }
 
 async function handleFeedbackMarkRead(request: Request, env: Env): Promise<Response> {
-  let body: { ids?: unknown };
-  try {
-    body = (await request.json()) as { ids?: unknown };
-  } catch {
-    return json({ error: 'invalid_json' }, 400);
-  }
+  const read = await readBoundedBody(request);
+  if ('response' in read) return read.response;
+  const body = (read.body ?? {}) as { ids?: unknown };
   if (!Array.isArray(body.ids)) return json({ error: 'invalid_payload' }, 400);
   const ids: number[] = [];
   for (const raw of body.ids) {
@@ -447,13 +481,37 @@ async function handleFeedbackMarkRead(request: Request, env: Env): Promise<Respo
   const placeholders = ids.map(() => '?').join(',');
   try {
     const res = await env.DB.prepare(
-      `UPDATE feedback SET read_at = ? WHERE id IN (${placeholders}) AND read_at IS NULL`,
+      `UPDATE feedback SET read_at = ? WHERE id IN (${placeholders}) AND read_at IS NULL AND deleted_at IS NULL`,
     )
       .bind(new Date().toISOString(), ...ids)
       .run();
     return json({ ok: true, updated: res.meta.changes ?? 0 });
   } catch (err) {
     console.error('[feedback] mark_read failed:', err);
+    return json({ error: 'db_error' }, 500);
+  }
+}
+
+async function handleFeedbackDelete(request: Request, env: Env): Promise<Response> {
+  const { parseDeleteBody } = await import('./feedback');
+
+  const read = await readBoundedBody(request);
+  if ('response' in read) return read.response;
+  const parsed = parseDeleteBody(read.body);
+  if (!parsed) return json({ error: 'invalid_payload' }, 400);
+
+  const placeholders = parsed.ids.map(() => '?').join(',');
+  try {
+    // Soft delete both ways: `deleted: false` clears the stamp, which is what
+    // the dashboard's Undo sends. The message text is never removed here.
+    const res = await env.DB.prepare(
+      `UPDATE feedback SET deleted_at = ? WHERE id IN (${placeholders})`,
+    )
+      .bind(parsed.deleted ? new Date().toISOString() : null, ...parsed.ids)
+      .run();
+    return json({ ok: true, deleted: parsed.deleted, updated: res.meta.changes ?? 0 });
+  } catch (err) {
+    console.error('[feedback] delete failed:', err);
     return json({ error: 'db_error' }, 500);
   }
 }
@@ -545,19 +603,23 @@ async function handleErrorsSummary(url: URL, env: Env): Promise<Response> {
   const limit = Math.min(Math.max(parseInt(url.searchParams.get('limit') ?? '20', 10) || 20, 1), 100);
   const since = `-${days} days`;
 
-  const [totals, groupsRes, bySourceRes, byVersionRes, byOsRes, byDayRes] = await Promise.all([
+  const [totals, groupsRes, bySourceRes, byVersionRes, byOsRes, byDayRes, unresolvedRow] = await Promise.all([
     env.DB.prepare(
       "SELECT COUNT(*) AS total, COUNT(DISTINCT installation_id) AS affected_installations, COUNT(DISTINCT fingerprint) AS unique_fingerprints FROM errors WHERE ts >= datetime('now', ?)",
     )
       .bind(since)
       .first<{ total: number; affected_installations: number; unique_fingerprints: number }>(),
     env.DB.prepare(
-      "SELECT fingerprint, COUNT(*) AS occurrences, COUNT(DISTINCT installation_id) AS users, " +
-        'MAX(ts) AS last_seen, MIN(ts) AS first_seen, ' +
-        'MAX(source) AS source, MAX(kind) AS kind, MAX(message) AS message, MAX(stack) AS stack, ' +
-        'GROUP_CONCAT(DISTINCT app_version) AS versions ' +
-        "FROM errors WHERE ts >= datetime('now', ?) " +
-        'GROUP BY fingerprint ORDER BY occurrences DESC LIMIT ?',
+      "SELECT e.fingerprint AS fingerprint, COUNT(*) AS occurrences, COUNT(DISTINCT e.installation_id) AS users, " +
+        'MAX(e.ts) AS last_seen, MIN(e.ts) AS first_seen, ' +
+        'MAX(e.source) AS source, MAX(e.kind) AS kind, MAX(e.message) AS message, MAX(e.stack) AS stack, ' +
+        'GROUP_CONCAT(DISTINCT e.app_version) AS versions, ' +
+        // Functionally dependent on the GROUP BY key (error_state is keyed by
+        // fingerprint), so MAX just satisfies the aggregate rule.
+        'MAX(es.resolved_at) AS resolved_at, MAX(es.resolved_version) AS resolved_version ' +
+        'FROM errors e LEFT JOIN error_state es ON es.fingerprint = e.fingerprint ' +
+        "WHERE e.ts >= datetime('now', ?) " +
+        'GROUP BY e.fingerprint ORDER BY occurrences DESC LIMIT ?',
     )
       .bind(since, limit)
       .all<{
@@ -571,6 +633,8 @@ async function handleErrorsSummary(url: URL, env: Env): Promise<Response> {
         message: string;
         stack: string | null;
         versions: string;
+        resolved_at: string | null;
+        resolved_version: string | null;
       }>(),
     env.DB.prepare(
       "SELECT source, COUNT(*) AS count FROM errors WHERE ts >= datetime('now', ?) GROUP BY source ORDER BY count DESC",
@@ -592,7 +656,26 @@ async function handleErrorsSummary(url: URL, env: Env): Promise<Response> {
     )
       .bind(since)
       .all<{ date: string; count: number }>(),
+    // Counted over every group in the window, not just the `limit` returned
+    // above, so the tab badge stays right when the top list is truncated.
+    // Both timestamps are toISOString() text, so the string compare is exact.
+    env.DB.prepare(
+      'SELECT COUNT(*) AS n FROM (' +
+        'SELECT e.fingerprint, MAX(e.ts) AS last_seen, MAX(es.resolved_at) AS resolved_at ' +
+        'FROM errors e LEFT JOIN error_state es ON es.fingerprint = e.fingerprint ' +
+        "WHERE e.ts >= datetime('now', ?) GROUP BY e.fingerprint) g " +
+        'WHERE g.resolved_at IS NULL OR g.last_seen > g.resolved_at',
+    )
+      .bind(since)
+      .first<{ n: number }>(),
   ]);
+
+  // `resolved` is derived here rather than stored so a recurrence reopens the
+  // group on the next read, with no background job to keep in sync.
+  const groups = (groupsRes.results ?? []).map((g) => ({
+    ...g,
+    resolved: isGroupResolved(g.last_seen, g.resolved_at),
+  }));
 
   return json({
     window_days: days,
@@ -600,12 +683,49 @@ async function handleErrorsSummary(url: URL, env: Env): Promise<Response> {
     total_errors: totals?.total ?? 0,
     affected_installations: totals?.affected_installations ?? 0,
     unique_fingerprints: totals?.unique_fingerprints ?? 0,
-    top_groups: groupsRes.results ?? [],
+    unresolved_groups: unresolvedRow?.n ?? 0,
+    top_groups: groups,
     by_source: bySourceRes.results ?? [],
     by_version: byVersionRes.results ?? [],
     by_os: byOsRes.results ?? [],
     by_day: byDayRes.results ?? [],
   });
+}
+
+async function handleErrorsResolve(request: Request, env: Env): Promise<Response> {
+  const read = await readBoundedBody(request);
+  if ('response' in read) return read.response;
+  const parsed = parseResolveBody(read.body);
+  if (!parsed) return json({ error: 'invalid_payload' }, 400);
+
+  const now = new Date().toISOString();
+  try {
+    if (parsed.resolved) {
+      // resolved_version is read from the data rather than the request so a
+      // client cannot label a group with a version it never occurred on.
+      await env.DB.batch(
+        parsed.fingerprints.map((fp) =>
+          env.DB.prepare(
+            'INSERT INTO error_state (fingerprint, resolved_at, resolved_version) ' +
+              'VALUES (?, ?, (SELECT app_version FROM errors WHERE fingerprint = ? ORDER BY ts DESC LIMIT 1)) ' +
+              'ON CONFLICT(fingerprint) DO UPDATE SET resolved_at = excluded.resolved_at, ' +
+              'resolved_version = excluded.resolved_version',
+          ).bind(fp, now, fp),
+        ),
+      );
+    } else {
+      // Un-resolving removes the row entirely: absence is the unresolved state.
+      const placeholders = parsed.fingerprints.map(() => '?').join(',');
+      await env.DB.prepare(`DELETE FROM error_state WHERE fingerprint IN (${placeholders})`)
+        .bind(...parsed.fingerprints)
+        .run();
+    }
+  } catch (err) {
+    console.error('[errors] resolve failed:', err);
+    return json({ error: 'db_error' }, 500);
+  }
+
+  return json({ ok: true, resolved: parsed.resolved, count: parsed.fingerprints.length, resolved_at: parsed.resolved ? now : null });
 }
 
 async function handleStatsHistory(url: URL, env: Env): Promise<Response> {
@@ -645,30 +765,21 @@ async function handleStatsHistory(url: URL, env: Env): Promise<Response> {
 }
 
 async function handleAdminLoginAttempt(request: Request, env: Env): Promise<Response> {
-  const { hashIP } = await import('./feedback');
-  let body: { ip?: unknown };
-  try {
-    body = (await request.json()) as { ip?: unknown };
-  } catch {
-    return json({ error: 'invalid_json' }, 400);
-  }
+  const { hashIP, ipHashSalt } = await import('./feedback');
+  const read = await readBoundedBody(request);
+  if ('response' in read) return read.response;
+  const body = (read.body ?? {}) as { ip?: unknown };
   const ip = clampString(body.ip, 64);
   if (!ip) return json({ error: 'invalid_payload' }, 400);
   // Same salted hash the feedback route uses; the raw address is never stored.
-  // requireToken already guarantees env.STATS_TOKEN is truthy before this
-  // handler runs, so no fallback salt is reachable here.
-  const ipHash = await hashIP(ip, env.STATS_TOKEN);
+  const ipHash = await hashIP(ip, ipHashSalt(env));
   return json(await checkLoginAttempt(env.KV_BINDING, ipHash));
 }
 
 async function handleStatsMatch(request: Request, env: Env): Promise<Response> {
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return json({ error: 'invalid_json' }, 400);
-  }
-  const ids = parseMatchBody(body);
+  const read = await readBoundedBody(request);
+  if ('response' in read) return read.response;
+  const ids = parseMatchBody(read.body);
   if (!ids) return json({ error: 'invalid_payload' }, 400);
   return json(await matchInstallations(env.DB, env.KV_BINDING, ids, todayUTC()));
 }
@@ -676,7 +787,14 @@ async function handleStatsMatch(request: Request, env: Env): Promise<Response> {
 export default {
   async scheduled(_controller: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
     try {
+      await env.DB.prepare('DELETE FROM ingest_limits WHERE window < ?').bind(Math.floor(Date.now() / 60000) - 1440).run();
       await env.DB.prepare("DELETE FROM errors WHERE ts < datetime('now', ?)").bind(`-${ERROR_RETENTION_DAYS} days`).run();
+      await env.DB.prepare("DELETE FROM daily_dau WHERE date < date('now', ?)").bind(`-${DAU_RETENTION_DAYS} days`).run();
+      // Retention drops the errors themselves, so resolution rows whose
+      // fingerprint no longer occurs anywhere would linger forever.
+      await env.DB.prepare(
+        'DELETE FROM error_state WHERE fingerprint NOT IN (SELECT DISTINCT fingerprint FROM errors)',
+      ).run();
     } catch (err) {
       console.error('[scheduled] error cleanup failed:', err);
     }
@@ -690,26 +808,32 @@ export default {
     const url = new URL(request.url);
 
     try {
-      if (request.method === 'POST' && url.pathname === '/heartbeat') {
-        const cloned = request.clone();
-        const body = await cloned.json().catch(() => ({})) as HeartbeatBody;
+      if (request.method === 'POST' && ['/heartbeat', '/update_check', '/error_report', '/feedback'].includes(url.pathname)) {
+        const ip = request.headers.get('cf-connecting-ip') ?? 'unknown';
+        // Admission precedes parsing and all attacker-controlled persistent keys.
+        if (!await admitIngest(env.DB, ip)) return json({ error: 'rate_limited' }, 429, { 'Retry-After': '60' });
+        // Error reports also carry a per-IP daily budget: the minute cap alone
+        // still admits 172,800 rows a day from one address.
+        if (url.pathname === '/error_report' && !await admitErrorReport(env.DB, ip)) {
+          return json({ error: 'rate_limited' }, 429, { 'Retry-After': String(secondsUntilNextUtcDay()) });
+        }
+        if (url.pathname === '/feedback') return await handleFeedbackIngest(request, env, ctx);
+        let body: HeartbeatBody & ErrorReportBody;
+        try {
+          body = await boundedJson(request) as HeartbeatBody & ErrorReportBody;
+          if (!body || typeof body !== 'object' || Array.isArray(body)) return json({ error: 'invalid_payload' }, 400);
+        } catch (err) {
+          return json({ error: err instanceof RangeError ? 'payload_too_large' : 'invalid_json' }, err instanceof RangeError ? 413 : 400);
+        }
+        if (!validDimensions(body.installation_id, body.app_version, body.os)) return json({ error: 'invalid_payload' }, 400);
+        // Format-valid but implausible versions are refused before they can
+        // become a daily_stats bucket. Distinct code: a real release tripping
+        // this means MAX_APP_VERSION needs raising, not that the client is bad.
+        if (!versionWithinCeiling(body.app_version)) return json({ error: 'version_out_of_range' }, 400);
         const denied = await rateLimitIngest(request, env, body.installation_id);
         if (denied) return denied;
-        return await handleHeartbeat(request, env, ctx, 'heartbeats');
-      }
-      if (request.method === 'POST' && url.pathname === '/update_check') {
-        const cloned = request.clone();
-        const body = await cloned.json().catch(() => ({})) as HeartbeatBody;
-        const denied = await rateLimitIngest(request, env, body.installation_id);
-        if (denied) return denied;
-        return await handleHeartbeat(request, env, ctx, 'update_checks');
-      }
-      if (request.method === 'POST' && url.pathname === '/error_report') {
-        const cloned = request.clone();
-        const body = await cloned.json().catch(() => ({})) as ErrorReportBody;
-        const denied = await rateLimitIngest(request, env, body.installation_id);
-        if (denied) return denied;
-        return await handleErrorReport(request, env, ctx);
+        if (url.pathname === '/error_report') return await handleErrorReport(request, env, ctx, body);
+        return await handleHeartbeat(request, env, ctx, url.pathname === '/heartbeat' ? 'heartbeats' : 'update_checks', body);
       }
       if (request.method === 'GET' && url.pathname === '/stats') {
         const denied = requireToken(request, env.STATS_TOKEN);
@@ -731,9 +855,6 @@ export default {
         if (denied) return denied;
         return await handleErrorsSummary(url, env);
       }
-      if (request.method === 'POST' && url.pathname === '/feedback') {
-        return await handleFeedbackIngest(request, env, ctx);
-      }
       if (request.method === 'GET' && url.pathname === '/feedback/list') {
         const denied = requireToken(request, env.STATS_TOKEN);
         if (denied) return denied;
@@ -743,6 +864,16 @@ export default {
         const denied = requireToken(request, env.STATS_TOKEN);
         if (denied) return denied;
         return await handleFeedbackMarkRead(request, env);
+      }
+      if (request.method === 'POST' && url.pathname === '/feedback/delete') {
+        const denied = requireToken(request, env.STATS_TOKEN);
+        if (denied) return denied;
+        return await handleFeedbackDelete(request, env);
+      }
+      if (request.method === 'POST' && url.pathname === '/errors/resolve') {
+        const denied = requireToken(request, env.STATS_TOKEN);
+        if (denied) return denied;
+        return await handleErrorsResolve(request, env);
       }
       if (request.method === 'POST' && url.pathname === '/admin/login_attempt') {
         const denied = requireToken(request, env.STATS_TOKEN);

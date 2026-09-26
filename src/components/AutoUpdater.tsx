@@ -1,31 +1,69 @@
 import { useEffect, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Download, RefreshCw, X, Rocket, Clock } from 'lucide-react';
+import { AnimatePresence } from 'framer-motion';
+import { AlertTriangle, Check } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useUpdaterStore } from '../store/updaterStore';
 import { reportInvokeFailure } from '../lib/errorReporter';
+import { formatBytes } from '../lib/formatBytes';
+import { Modal } from './ui/Modal';
 import { Button } from './ui/Button';
+import appIcon from '../assets/app-icon.png';
 
 const FOUR_HOURS_MS = 4 * 60 * 60 * 1000;
 const THIRTY_MINUTES_MS = 30 * 60 * 1000;
+const RELEASES_URL = 'https://github.com/talayash/agentrium/releases/latest';
+
+/** App mark for the alert. Alerts in macOS lead with the application's icon at
+ *  ~64pt, with a small status badge for a non-neutral outcome. */
+function AppMark({ badge }: { badge?: 'ready' | 'failed' }) {
+  return (
+    <div className="relative h-16 w-16">
+      <img
+        src={appIcon}
+        alt=""
+        draggable={false}
+        className={`h-16 w-16 ${badge === 'failed' ? 'saturate-50 brightness-75' : ''}`}
+      />
+      {badge && (
+        <div
+          className={`absolute -bottom-1 -right-1 flex h-[25px] w-[25px] items-center justify-center rounded-full ring-[3.5px] ring-[var(--material-sheet-bg)] ${
+            badge === 'ready' ? 'bg-success' : 'bg-warning'
+          }`}
+        >
+          {badge === 'ready' ? (
+            <Check size={14} strokeWidth={3.2} className="text-elevation-0" />
+          ) : (
+            <AlertTriangle size={13} strokeWidth={2.6} className="text-elevation-0" />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function AutoUpdater() {
   const {
     status,
     updateInfo,
     downloadProgress,
+    downloadedBytes,
+    totalBytes,
+    error,
     bannerDismissedVersion,
     bannerSnoozedUntil,
     notifiedVersion,
+    skippedVersion,
     checkForUpdates,
     downloadAndInstall,
     restart,
     dismissBanner,
     snoozeBanner,
+    skipVersion,
     markNotified,
   } = useUpdaterStore();
   const [now, setNow] = useState(() => Date.now());
+  const [optionHeld, setOptionHeld] = useState(false);
 
   // Check for updates on mount
   useEffect(() => {
@@ -71,7 +109,7 @@ export function AutoUpdater() {
     };
   }, [checkForUpdates]);
 
-  // When a snooze is active, tick once after it expires so the banner reappears.
+  // When a snooze is active, tick once after it expires so the sheet reappears.
   useEffect(() => {
     if (bannerSnoozedUntil === null) return;
     const remaining = bannerSnoozedUntil - Date.now();
@@ -83,6 +121,18 @@ export function AutoUpdater() {
     return () => clearTimeout(id);
   }, [bannerSnoozedUntil]);
 
+  // Option reveals the snooze variant of "Later" in place, the macOS pattern
+  // for a hidden alternative to a visible button.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => setOptionHeld(e.altKey);
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('keyup', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('keyup', onKey);
+    };
+  }, []);
+
   // Fire a desktop toast once per detected version so users see the update
   // even if the app is minimized/backgrounded.
   useEffect(() => {
@@ -92,7 +142,7 @@ export function AutoUpdater() {
       title: 'Agentrium update available',
       body: `Version ${updateInfo.version} is ready to install. Open the app to update.`,
     }).catch((err) => {
-      // Notification failures are non-fatal - the in-app banner still shows.
+      // Notification failures are non-fatal - the in-app sheet still shows.
       // We still report so we know if the OS notification path is broken.
       reportInvokeFailure('send_notification', err);
     });
@@ -102,116 +152,180 @@ export function AutoUpdater() {
   const snoozeActive = bannerSnoozedUntil !== null && now < bannerSnoozedUntil;
   const dismissedForCurrent =
     updateInfo !== null && bannerDismissedVersion === updateInfo.version;
+  const skippedForCurrent = updateInfo !== null && skippedVersion === updateInfo.version;
 
-  const bannerEligible =
-    status === 'available' || status === 'downloading' || status === 'ready';
-  const showBanner = bannerEligible && !dismissedForCurrent && !snoozeActive;
+  // An `error` with no updateInfo is a failed background *check* - that is the
+  // pill's job, not an alert's. Only a failure against a known update earns a
+  // sheet, because that one interrupted something the user asked for.
+  const sheetEligible =
+    status === 'available' ||
+    status === 'downloading' ||
+    status === 'ready' ||
+    status === 'error';
 
-  if (!showBanner) {
-    return null;
-  }
+  const showSheet =
+    sheetEligible &&
+    updateInfo !== null &&
+    !dismissedForCurrent &&
+    !snoozeActive &&
+    !skippedForCurrent;
+
+  // Escape is always the safe out, and the safe out is "ask me again next
+  // launch" - never the irreversible skip.
+  const handleLater = () => dismissBanner();
+
+  const handleLaterClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+    if (e.altKey) snoozeBanner(FOUR_HOURS_MS);
+    else dismissBanner();
+  };
 
   return (
     <AnimatePresence>
-      <motion.div
-        initial={{ opacity: 0, y: -30 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: -30 }}
-        transition={{ duration: 0.15 }}
-        className="fixed top-10 left-1/2 -translate-x-1/2 z-50 max-w-md w-full mx-4"
-      >
-        <div className="material-popover rounded-lg overflow-hidden">
-          {/* Header */}
-          <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
-            <div className="flex items-center gap-2">
-              {status === 'available' && <Download size={14} className="text-accent-primary" />}
-              {status === 'downloading' && <RefreshCw size={14} className="text-accent-primary animate-spin" />}
-              {status === 'ready' && <Rocket size={14} className="text-success" />}
-              <span className="text-text-primary text-[13px] font-medium">
-                {status === 'available' && `Update Available: v${updateInfo?.version}`}
-                {status === 'downloading' && 'Downloading update...'}
-                {status === 'ready' && 'Update Ready'}
-              </span>
-            </div>
-            <button
-              onClick={dismissBanner}
-              title="Dismiss until next launch"
-              className="p-1 rounded hover:bg-fill-hover text-text-tertiary transition-colors"
-            >
-              <X size={14} />
-            </button>
-          </div>
+      {showSheet && updateInfo && (
+        <Modal
+          key="update-sheet"
+          onClose={handleLater}
+          closeOn="none"
+          panelClassName="w-[440px]"
+          scrimClassName="bg-black/45 z-[90]"
+        >
+          <div className="flex flex-col items-center px-[26px] pb-5 pt-[30px]">
+            {status === 'available' && (
+              <>
+                <AppMark />
+                <h2 className="mt-[19px] text-center text-[17px] font-semibold tracking-title text-text-primary">
+                  A new version is available
+                </h2>
+                <p className="mt-2 text-center text-[12px] font-medium tabular-nums text-text-secondary">
+                  Agentrium {updateInfo.version}
+                  {updateInfo.date ? ` · ${updateInfo.date}` : ''}
+                </p>
 
-          {/* Content */}
-          <div className="p-3">
-            {status === 'available' && updateInfo && (
-              <div className="space-y-3">
                 {updateInfo.body && (
-                  <p className="text-text-tertiary text-[11px] line-clamp-3">
-                    {updateInfo.body}
-                  </p>
+                  <div className="relative mt-5 w-full">
+                    <div className="max-h-44 overflow-y-auto whitespace-pre-line rounded-lg bg-elevation-2 px-4 pb-[18px] pt-3.5 text-left text-[12px] leading-relaxed text-text-secondary shadow-[inset_0_0_0_1px_var(--seam)]">
+                      {updateInfo.body}
+                    </div>
+                    {/* The notes scroll; fade the cut so it reads as "more below"
+                        rather than a sentence that stops mid-air. */}
+                    <div className="pointer-events-none absolute inset-x-px bottom-px h-8 rounded-b-lg bg-gradient-to-b from-transparent to-elevation-2" />
+                  </div>
                 )}
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    variant="primary"
-                    icon={<Download size={14} />}
-                    onClick={() => downloadAndInstall()}
-                    className="flex-1 min-w-[140px]"
-                  >
-                    Update Now
+
+                <div className="mt-5 flex w-full items-center gap-2">
+                  <Button variant="ghost" size="sm" onClick={skipVersion}>
+                    Skip This Version
                   </Button>
-                  <Button
-                    variant="ghost"
-                    icon={<Clock size={12} />}
-                    onClick={() => snoozeBanner(FOUR_HOURS_MS)}
-                  >
-                    Remind in 4h
+                  <div className="flex-grow" />
+                  <Button variant="secondary" size="sm" onClick={handleLaterClick}>
+                    {optionHeld ? 'Remind Me Later' : 'Later'}
                   </Button>
-                  <Button variant="ghost" onClick={dismissBanner}>
-                    Later
+                  <Button variant="primary" size="sm" onClick={() => void downloadAndInstall()}>
+                    Update
                   </Button>
                 </div>
-              </div>
+              </>
             )}
 
             {status === 'downloading' && (
-              <div className="space-y-2">
-                <div className="flex justify-between text-[11px] text-text-tertiary">
-                  <span>Downloading...</span>
-                  <span>{downloadProgress}%</span>
-                </div>
-                <div className="h-1 bg-border rounded-full overflow-hidden">
+              <>
+                <AppMark />
+                <h2 className="mt-[19px] text-center text-[17px] font-semibold tracking-title text-text-primary">
+                  Downloading Agentrium {updateInfo.version}
+                </h2>
+
+                <div
+                  role="progressbar"
+                  aria-label="Download progress"
+                  aria-valuenow={downloadProgress}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  className="mt-[22px] h-1 w-full overflow-hidden rounded-full bg-fill-hover"
+                >
                   <div
-                    className="h-full bg-accent-primary transition-all duration-300"
+                    className="h-full rounded-full bg-gradient-to-r from-accent-secondary to-accent-primary transition-[width] duration-300"
                     style={{ width: `${downloadProgress}%` }}
                   />
                 </div>
-              </div>
+
+                <p className="mt-3 text-center text-[11px] tabular-nums text-text-tertiary">
+                  {totalBytes > 0
+                    ? `${formatBytes(downloadedBytes)} of ${formatBytes(totalBytes)}`
+                    : `${downloadProgress}%`}
+                </p>
+
+                <div className="mt-[22px] flex w-full justify-end">
+                  {/* No Cancel: the updater plugin has no abort. Offering one would
+                      be a lie, so the honest affordance is to get out of the way. */}
+                  <Button variant="secondary" size="sm" onClick={dismissBanner}>
+                    Continue in Background
+                  </Button>
+                </div>
+              </>
             )}
 
             {status === 'ready' && (
-              <div className="space-y-3">
-                <p className="text-text-secondary text-[12px]">
-                  Update downloaded. Restart to apply.
+              <>
+                <AppMark badge="ready" />
+                <h2 className="mt-[19px] text-center text-[17px] font-semibold tracking-title text-text-primary">
+                  Agentrium {updateInfo.version} is ready
+                </h2>
+                <p className="mt-2 max-w-[320px] text-center text-[12px] leading-relaxed text-text-secondary">
+                  Your terminals, layout and scrollback will be restored after the relaunch.
                 </p>
-                <div className="flex gap-2">
-                  <button
-                    onClick={restart}
-                    className="flex-1 flex items-center justify-center gap-2 bg-success hover:bg-success/90 text-white h-9 px-4 rounded-md text-[12px] font-medium transition-colors"
-                  >
-                    <Rocket size={14} />
-                    Restart Now
-                  </button>
-                  <Button variant="ghost" onClick={dismissBanner}>
-                    Later
+
+                <div className="mt-6 flex w-full items-center gap-2">
+                  <Button variant="ghost" size="sm" onClick={dismissBanner}>
+                    Install on Quit
+                  </Button>
+                  <div className="flex-grow" />
+                  <Button variant="primary" size="sm" onClick={() => void restart()}>
+                    Relaunch and Install
                   </Button>
                 </div>
-              </div>
+              </>
             )}
 
+            {status === 'error' && (
+              <>
+                <AppMark badge="failed" />
+                <h2 className="mt-[19px] text-center text-[17px] font-semibold tracking-title text-text-primary">
+                  The update could not be downloaded
+                </h2>
+                <p className="mt-2 max-w-[330px] text-center text-[12px] leading-relaxed text-text-secondary">
+                  Check your connection and try again, or download the installer from the release page.
+                </p>
+
+                {error && (
+                  <details className="mt-4 w-full">
+                    <summary className="cursor-pointer list-none py-1 text-[11.5px] font-medium text-text-tertiary">
+                      Show details
+                    </summary>
+                    <div className="mt-2 break-words rounded-lg bg-elevation-2 px-3 py-2.5 font-mono text-[11px] leading-relaxed text-text-secondary shadow-[inset_0_0_0_1px_var(--seam)]">
+                      {error}
+                    </div>
+                  </details>
+                )}
+
+                <div className="mt-[22px] flex w-full items-center gap-2">
+                  <a
+                    href={RELEASES_URL}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex h-7 items-center rounded-md px-2.5 text-[12px] font-medium text-text-secondary transition-colors hover:text-text-primary"
+                  >
+                    Download Manually
+                  </a>
+                  <div className="flex-grow" />
+                  <Button variant="primary" size="sm" onClick={() => void downloadAndInstall()}>
+                    Try Again
+                  </Button>
+                </div>
+              </>
+            )}
           </div>
-        </div>
-      </motion.div>
+        </Modal>
+      )}
     </AnimatePresence>
   );
 }

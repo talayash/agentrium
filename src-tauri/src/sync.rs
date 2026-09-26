@@ -11,6 +11,25 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 
 const PUSH_BATCH_ROW_CAP: usize = 500;
+/// Serialized-row budget per push. The broker rejects bodies over 4 MiB
+/// (`BODY_CAP_BYTES` in agentrium-api push/route.ts) with a 413; 500 valid
+/// rows of up to 64 KiB each can reach ~32 MiB, so batches are cut by size
+/// too, leaving headroom for the JSON envelope.
+const PUSH_BATCH_BYTE_CAP: usize = 3 * 1024 * 1024;
+
+/// How many of the leading rows (by serialized size) fit in one push. Always
+/// at least one, so an oversized single row still gets sent and, if the
+/// server rejects it, dropped on its own.
+fn rows_within_byte_cap(sizes: &[usize], cap: usize) -> usize {
+    let mut total = 0usize;
+    for (i, size) in sizes.iter().enumerate() {
+        total = total.saturating_add(*size);
+        if total > cap && i > 0 {
+            return i;
+        }
+    }
+    sizes.len()
+}
 const DEBOUNCE_MS: u64 = 5_000;
 const PULL_INTERVAL_MS: u64 = 5 * 60 * 1_000;
 /// Spec §7.4: after a transient push failure wait `min(30 * 2^attempts, 3600)`
@@ -35,7 +54,7 @@ pub fn jittered(secs: u64, unit: f64) -> std::time::Duration {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PushFailure {
-    /// 4xx other than 401: the server rejected the payload itself. Retrying
+    /// Non-recoverable validation 4xx: the server rejected the payload itself. Retrying
     /// the same rows can never succeed, so they are dropped (spec §7.4).
     Poison,
     /// 5xx, network, refresh, decode, or a 401 that survived the one-shot
@@ -44,8 +63,11 @@ pub enum PushFailure {
 }
 
 pub fn classify_push_failure(err: &sync_client::SyncError) -> PushFailure {
+    if err.block_reason().is_some() {
+        return PushFailure::Transient;
+    }
     match err {
-        sync_client::SyncError::Server(code, _) if (400..500).contains(code) && *code != 401 => {
+        sync_client::SyncError::Server(code, _) if (400..500).contains(code) && !matches!(*code, 401 | 403 | 408 | 409 | 429) => {
             PushFailure::Poison
         }
         _ => PushFailure::Transient,
@@ -57,6 +79,9 @@ pub fn classify_push_failure(err: &sync_client::SyncError) -> PushFailure {
 /// the calm "will sync when the connection returns" copy; a real answer from
 /// the server, or a broken response, is Error.
 pub fn status_for_failure(err: &sync_client::SyncError) -> SyncStatus {
+    if err.block_reason().is_some() {
+        return SyncStatus::Paused;
+    }
     match err {
         sync_client::SyncError::Network(_) => SyncStatus::Offline,
         sync_client::SyncError::Server(502 | 503 | 504, _) => SyncStatus::Offline,
@@ -65,10 +90,25 @@ pub fn status_for_failure(err: &sync_client::SyncError) -> SyncStatus {
     }
 }
 
+/// Telemetry gate for a failed sync request, and the counterpart to
+/// `status_for_failure`. A failure the user already sees as the calm Offline
+/// chip is a normal fact of laptop life (sleep/resume, hotel wifi, DNS), not a
+/// defect: reporting it buries real errors in the admin dashboard. It also
+/// never stops, because `DEDUP_WINDOW` (60s) is shorter than
+/// `PULL_INTERVAL_MS` (5min), so dedup can never collapse the repeats.
+pub fn should_report_failure(err: &sync_client::SyncError) -> bool {
+    !matches!(status_for_failure(err), SyncStatus::Offline | SyncStatus::Paused)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PushFailureAction {
-    /// Poison rows removed from the queue; count of dropped entries.
+    /// Poison rows removed from the queue; count of dropped entries. Only
+    /// ever a single-row batch: see `Split`.
     Dropped(usize),
+    /// A multi-row batch was rejected as a whole (one invalid row, or 413).
+    /// Nothing is dropped; retry with at most this many rows so the bad row
+    /// ends up isolated and valid rows in the same batch still sync.
+    Split(usize),
     /// Attempt recorded on every batched row; hold automatic pushes this long.
     RetryAfter(std::time::Duration),
 }
@@ -82,6 +122,12 @@ fn handle_push_failure(
     jitter_unit: f64,
 ) -> Result<PushFailureAction, String> {
     match classify_push_failure(err) {
+        PushFailure::Poison if queue.len() > 1 => {
+            // The broker validates the whole body at once, so a 400/413 says
+            // nothing about which rows are bad. Bisect instead of dropping
+            // up to 500 valid changes with it.
+            Ok(PushFailureAction::Split((queue.len() / 2).max(1)))
+        }
         PushFailure::Poison => {
             // Match on enqueued_at so a row the user edited after the
             // snapshot keeps its fresh entry and gets its own attempt.
@@ -101,9 +147,45 @@ fn handle_push_failure(
                 most_attempts = most_attempts.max(entry.attempts);
                 db.record_sync_attempt(&entry.table_name, &entry.row_key, Some(&msg))?;
             }
-            Ok(PushFailureAction::RetryAfter(jittered(backoff_secs(most_attempts), jitter_unit)))
+            let server_delay = match err {
+                sync_client::SyncError::Server(_, text) => text.strip_prefix("retry_after_seconds=")
+                    .and_then(|s| s.split(';').next()).and_then(|s| s.parse::<u64>().ok()).unwrap_or(0),
+                _ => 0,
+            };
+            Ok(PushFailureAction::RetryAfter(jittered(backoff_secs(most_attempts), jitter_unit).max(std::time::Duration::from_secs(server_delay))))
         }
     }
+}
+
+/// Book-keep rows the broker refused in an otherwise successful push (today
+/// only `clock_skew`). They stay queued, but get an attempt recorded, which
+/// moves them behind fresh edits in `peek_sync_queue`, and any future
+/// `updated_at` is pulled back to `now` so they sync once the clock is right.
+/// Returns how many snapshotted rows were rejected and the backoff to apply;
+/// `None` when nothing was rejected.
+fn handle_rejected_rows(
+    db: &Database,
+    queue: &[crate::database::SyncQueueRow],
+    rejected: &std::collections::HashMap<String, Vec<sync_client::RejectedRow>>,
+    now: chrono::DateTime<chrono::Utc>,
+    jitter_unit: f64,
+) -> Result<Option<(usize, std::time::Duration)>, String> {
+    let mut count = 0usize;
+    let mut most_attempts: i64 = 0;
+    for entry in queue {
+        let Some(row) = rejected
+            .get(&entry.table_name)
+            .and_then(|rows| rows.iter().find(|r| r.id == entry.row_key))
+        else { continue };
+        count += 1;
+        most_attempts = most_attempts.max(entry.attempts);
+        db.record_sync_attempt(&entry.table_name, &entry.row_key, Some(&row.reason))?;
+        db.clamp_future_updated_at(&entry.table_name, &entry.row_key, now)?;
+    }
+    if count == 0 {
+        return Ok(None);
+    }
+    Ok(Some((count, jittered(backoff_secs(most_attempts), jitter_unit))))
 }
 
 /// Compare two ISO-8601 timestamps and return whether `incoming` should win.
@@ -210,6 +292,8 @@ async fn run_engine(
     // Set after a transient push failure; automatic pushes wait it out.
     // User-initiated actions (Sync now, re-enable) clear it.
     let mut backoff_until: Option<tokio::time::Instant> = None;
+    // Current push batch size; see `do_push`.
+    let mut push_row_limit = PUSH_BATCH_ROW_CAP;
 
     if enabled {
         emit_status(&app, &db, SyncStatus::Idle, None).await;
@@ -223,7 +307,8 @@ async fn run_engine(
             cmd = rx.recv() => match cmd {
                 Some(SyncCommand::SyncNow) => {
                     if enabled {
-                        backoff_until = do_push(&app, &db, &mut client).await.next_backoff();
+                        client.retry_user_action();
+                        backoff_until = do_push(&app, &db, &mut client, &mut push_row_limit).await.next_backoff();
                         do_pull(&app, &db, &mut client).await;
                     }
                 }
@@ -238,8 +323,9 @@ async fn run_engine(
                     })
                     .await;
                     if e {
+                        client.retry_user_action();
                         emit_status(&app, &db, SyncStatus::Idle, None).await;
-                        backoff_until = do_push(&app, &db, &mut client).await.next_backoff();
+                        backoff_until = do_push(&app, &db, &mut client, &mut push_row_limit).await.next_backoff();
                         do_pull(&app, &db, &mut client).await;
                     } else {
                         emit_status(&app, &db, SyncStatus::Paused, None).await;
@@ -251,7 +337,7 @@ async fn run_engine(
                 Some(SyncCommand::Shutdown) | None => break,
             },
             _ = debounce_tick.tick() => {
-                if !enabled { continue; }
+                if !enabled || client.is_blocked() { continue; }
                 let db_arc = db.clone();
                 let depth = tokio::task::spawn_blocking(move || {
                     db_arc
@@ -268,13 +354,13 @@ async fn run_engine(
                 let backing_off = backoff_until.is_some_and(|t| tokio::time::Instant::now() < t);
                 if let Some(since) = dirty_since {
                     if !backing_off && since.elapsed() >= std::time::Duration::from_millis(DEBOUNCE_MS) {
-                        backoff_until = do_push(&app, &db, &mut client).await.next_backoff();
+                        backoff_until = do_push(&app, &db, &mut client, &mut push_row_limit).await.next_backoff();
                         dirty_since = None;
                     }
                 }
             },
             _ = pull_tick.tick() => {
-                if enabled {
+                if enabled && !client.is_blocked() {
                     do_pull(&app, &db, &mut client).await;
                 }
             }
@@ -299,38 +385,61 @@ impl PushOutcome {
     }
 }
 
+/// `row_limit` is the engine's current batch size: halved while bisecting a
+/// rejected batch (`PushFailureAction::Split`), doubled back after each
+/// accepted push.
 async fn do_push(
     app: &tauri::AppHandle,
     db: &Arc<std::sync::Mutex<Database>>,
     client: &mut sync_client::SyncClient,
+    row_limit: &mut usize,
 ) -> PushOutcome {
+    // Keep the actionable paused status and queue intact until the user resumes.
+    if let Some(error) = client.blocked_error() {
+        emit_status(app, db, SyncStatus::Paused, Some(error.to_string())).await;
+        return PushOutcome::Done;
+    }
     emit_status(app, db, SyncStatus::Syncing, None).await;
 
     // Snapshot queue + resolve row JSON, all under one blocking-lock pass.
     let db_arc = db.clone();
+    let limit = (*row_limit).clamp(1, PUSH_BATCH_ROW_CAP);
     let snapshot = tokio::task::spawn_blocking(move || {
         let db_guard = db_arc.lock().unwrap_or_else(|p| p.into_inner());
-        let queue = db_guard.peek_sync_queue(PUSH_BATCH_ROW_CAP).unwrap_or_default();
-        let mut profiles = Vec::new();
-        let mut custom_agents = Vec::new();
-        let mut workspaces = Vec::new();
+        let mut queue = db_guard.peek_sync_queue(limit).unwrap_or_default();
+        let mut resolved = Vec::with_capacity(queue.len());
         for row in &queue {
             match db_guard.read_syncable_row_json(&row.table_name, &row.row_key) {
-                Ok(Some(v)) => match row.table_name.as_str() {
-                    "profiles" => profiles.push((row.row_key.clone(), v)),
-                    "custom_agents" => custom_agents.push((row.row_key.clone(), v)),
-                    "workspaces" => workspaces.push((row.row_key.clone(), v)),
-                    _ => {}
-                },
-                Ok(None) => {
-                    // Row was deleted before we got to push it. Drop the queue entry.
-                }
+                Ok(v) => resolved.push(v),
                 Err(e) => {
                     crate::error_reporter::report_bg(
                         "sync_push_read",
                         format!("{}/{}: {e}", row.table_name, row.row_key),
                     );
+                    resolved.push(None);
                 }
+            }
+        }
+        // Rows past the byte budget stay queued for the next push; they must
+        // also leave the snapshot so they are neither acked nor dropped here.
+        let sizes: Vec<usize> = resolved
+            .iter()
+            .map(|v| v.as_ref().map_or(0, |v| serde_json::to_vec(v).map_or(0, |b| b.len())))
+            .collect();
+        let keep = rows_within_byte_cap(&sizes, PUSH_BATCH_BYTE_CAP);
+        queue.truncate(keep);
+        resolved.truncate(keep);
+        let mut profiles = Vec::new();
+        let mut custom_agents = Vec::new();
+        let mut workspaces = Vec::new();
+        for (row, value) in queue.iter().zip(resolved) {
+            // None: row was deleted before we got to push it. Drop the queue entry.
+            let Some(v) = value else { continue };
+            match row.table_name.as_str() {
+                "profiles" => profiles.push((row.row_key.clone(), v)),
+                "custom_agents" => custom_agents.push((row.row_key.clone(), v)),
+                "workspaces" => workspaces.push((row.row_key.clone(), v)),
+                _ => {}
             }
         }
         (queue, profiles, custom_agents, workspaces)
@@ -372,12 +481,14 @@ async fn do_push(
         Ok(resp) => {
             let accepted = resp.accepted.clone();
             let skipped = resp.skipped;
+            let rejected = resp.rejected;
+            let jitter_unit: f64 = rand::Rng::gen(&mut rand::thread_rng());
             let db_arc = db.clone();
             let profiles_c = profiles.clone();
             let custom_agents_c = custom_agents.clone();
             let workspaces_c = workspaces.clone();
             let queue_c = queue.clone();
-            let acknowledged = tokio::task::spawn_blocking(move || -> Result<(), String> {
+            let acknowledged = tokio::task::spawn_blocking(move || -> Result<Option<(usize, std::time::Duration)>, String> {
                 let db_guard = db_arc.lock().unwrap_or_else(|p| p.into_inner());
                 let tx = db_guard.conn().unchecked_transaction().map_err(|e| e.to_string())?;
                 for (table, ids) in &accepted {
@@ -401,21 +512,45 @@ async fn do_push(
                     });
                     if confirmed { db_guard.acknowledge_sync_entry(entry)?; }
                 }
-                tx.commit().map_err(|e| e.to_string())
+                let rejections = handle_rejected_rows(&db_guard, &queue_c, &rejected, chrono::Utc::now(), jitter_unit)?;
+                tx.commit().map_err(|e| e.to_string())?;
+                Ok(rejections)
             })
             .await;
-            if let Err(error) = acknowledged.map_err(|e| e.to_string()).and_then(|r| r) {
-                emit_status(app, db, SyncStatus::Error, Some(error)).await;
-                return PushOutcome::Done;
+            let rejections = match acknowledged.map_err(|e| e.to_string()).and_then(|r| r) {
+                Ok(r) => r,
+                Err(error) => {
+                    emit_status(app, db, SyncStatus::Error, Some(error)).await;
+                    return PushOutcome::Done;
+                }
+            };
+            *row_limit = row_limit.saturating_mul(2).min(PUSH_BATCH_ROW_CAP);
+            if let Some((count, delay)) = rejections {
+                // Rejected rows stay queued, so without a backoff the debounce
+                // tick would re-push them every ~5 s forever while the chip
+                // said Idle. Tell the user why instead.
+                let plural = if count == 1 { "" } else { "s" };
+                let detail = format!(
+                    "{count} change{plural} not synced: this computer's clock is ahead of the server.                      Correct the system date and time; they will sync automatically (retrying in {}s).",
+                    delay.as_secs()
+                );
+                emit_status(app, db, SyncStatus::Error, Some(detail)).await;
+                return PushOutcome::BackOffUntil(tokio::time::Instant::now() + delay);
             }
             emit_status(app, db, SyncStatus::Idle, None).await;
             PushOutcome::Done
         }
         Err(e) => {
+            if e.block_reason().is_some() {
+                emit_status(app, db, SyncStatus::Paused, Some(e.to_string())).await;
+                return PushOutcome::Done;
+            }
             let jitter_unit: f64 = rand::Rng::gen(&mut rand::thread_rng());
             let db_arc = db.clone();
             let queue_c = queue.clone();
             let failure_status = status_for_failure(&e);
+            // Computed before `e` moves into the blocking task below.
+            let report_transient = should_report_failure(&e);
             let handled = tokio::task::spawn_blocking(move || {
                 let db_guard = db_arc.lock().unwrap_or_else(|p| p.into_inner());
                 handle_push_failure(&db_guard, &queue_c, &e, jitter_unit).map(|a| (a, e.to_string()))
@@ -432,8 +567,16 @@ async fn do_push(
                     emit_status(app, db, SyncStatus::Error, Some(detail)).await;
                     PushOutcome::Done
                 }
+                Ok((PushFailureAction::Split(next_limit), _)) => {
+                    // Retry the first half straight away; at most log2(500)
+                    // rounds before the bad row is alone and dropped by itself.
+                    *row_limit = next_limit;
+                    Box::pin(do_push(app, db, client, row_limit)).await
+                }
                 Ok((PushFailureAction::RetryAfter(delay), msg)) => {
-                    crate::error_reporter::report_bg("sync_push", msg.clone());
+                    if report_transient {
+                        crate::error_reporter::report_bg("sync_push", msg.clone());
+                    }
                     let detail = format!("{msg} (retrying in {}s)", delay.as_secs());
                     emit_status(app, db, failure_status, Some(detail)).await;
                     PushOutcome::BackOffUntil(tokio::time::Instant::now() + delay)
@@ -456,18 +599,16 @@ async fn do_pull(
     db: &Arc<std::sync::Mutex<Database>>,
     client: &mut sync_client::SyncClient,
 ) {
+    if client.is_blocked() {
+        return;
+    }
     let db_arc = db.clone();
-    let since = tokio::task::spawn_blocking(move || {
-        db_arc
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .get_last_pull_cursor()
-            .unwrap_or(None)
-    })
-    .await
-    .unwrap_or(None);
+    let (since, since_id) = tokio::task::spawn_blocking(move || {
+        let db = db_arc.lock().unwrap_or_else(|p| p.into_inner());
+        (db.get_last_pull_cursor().unwrap_or(None), db.get_user_meta("last_pull_cursor_id").unwrap_or(None))
+    }).await.unwrap_or((None, None));
 
-    let req = sync_client::PullRequest { since, tables: None };
+    let req = sync_client::PullRequest { since, since_id, tables: None };
     emit_status(app, db, SyncStatus::Syncing, None).await;
 
     match client.pull(req).await {
@@ -490,7 +631,9 @@ async fn do_pull(
         }
         Err(e) => {
             let msg = format!("{e}");
-            crate::error_reporter::report_bg("sync_pull", msg.clone());
+            if should_report_failure(&e) {
+                crate::error_reporter::report_bg("sync_pull", msg.clone());
+            }
             emit_status(app, db, status_for_failure(&e), Some(msg)).await;
         }
     }
@@ -501,7 +644,9 @@ fn apply_pull_page(db: &Database, resp: &sync_client::PullResponse) -> Result<()
     apply_pulled_rows(db, "profiles", &resp.profiles)?;
     apply_pulled_rows(db, "custom_agents", &resp.custom_agents)?;
     apply_pulled_rows(db, "workspaces", &resp.workspaces)?;
-    db.set_last_pull_cursor(&resp.server_time)?;
+    if resp.truncated && resp.next_since.is_none() { return Err("Server omitted pagination cursor".into()); }
+    db.set_last_pull_cursor(resp.next_since.as_deref().unwrap_or(&resp.server_time))?;
+    db.set_user_meta("last_pull_cursor_id", resp.next_since_id.as_deref())?;
     tx.commit().map_err(|e| e.to_string())
 }
 
@@ -557,6 +702,13 @@ pub(crate) async fn emit_status(
 mod tests {
     use super::*;
 
+    /// A genuine `reqwest` transport error, provoked by an unparseable URL.
+    /// `SyncError::Network` wraps a real `reqwest::Error`, which has no public
+    /// constructor, so this is the way to build one in a test.
+    fn network_error() -> sync_client::SyncError {
+        sync_client::SyncError::Network(reqwest::Client::new().get("http://[").build().unwrap_err())
+    }
+
     #[test]
     fn failed_pull_rolls_back_rows_and_keeps_cursor_for_retry() {
         let db = Database::new_in_memory().unwrap();
@@ -567,6 +719,8 @@ mod tests {
                 "id": "remote", "name": "Remote", "terminals": [],
                 "updatedAt": "2026-09-12T00:00:00Z", "createdAt": "2026-09-12T00:00:00Z"
             }), serde_json::json!({"id": "invalid"})]),
+            next_since: None,
+            next_since_id: None,
             server_time: "after".into(), truncated: false,
         };
         assert!(apply_pull_page(&db, &page).is_err());
@@ -587,7 +741,7 @@ mod tests {
             workspaces: Some(vec![serde_json::json!({
                 "id": "remote", "name": "Shared", "terminals": [],
                 "updatedAt": "2026-09-12T00:00:00Z", "createdAt": "2026-09-12T00:00:00Z"
-            })]), server_time: "after".into(), truncated: false,
+            })]), next_since: None, next_since_id: None, server_time: "after".into(), truncated: false,
         };
         apply_pull_page(&db, &page).unwrap();
         assert_eq!(db.get_workspaces().unwrap().len(), 2);
@@ -618,6 +772,32 @@ mod tests {
     }
 
     // ---- Spec §7.4: exponential backoff on 5xx / network failures ----
+
+    #[test]
+    fn rate_limit_preserves_queue_and_honors_retry_after() {
+        let db = Database::new_in_memory().unwrap();
+        let id = db.save_workspace("pending", &[]).unwrap();
+        db.touch_sync_row("workspaces", &id).unwrap();
+        let queue = db.peek_sync_queue(10).unwrap();
+        let err = sync_client::SyncError::Server(429, "retry_after_seconds=90;rate_limited".into());
+        let action = handle_push_failure(&db, &queue, &err, 0.5).unwrap();
+        assert!(matches!(action, PushFailureAction::RetryAfter(d) if d.as_secs() >= 90));
+        assert_eq!(db.sync_queue_depth().unwrap(), 1);
+    }
+
+    #[test]
+    fn pagination_stores_boundary_and_tie_breaker_not_wall_clock() {
+        let db = Database::new_in_memory().unwrap();
+        let page = sync_client::PullResponse {
+            profiles: None, custom_agents: None, workspaces: None,
+            server_time: "2026-09-20T12:00:00Z".into(),
+            next_since: Some("2026-09-20T11:00:00Z".into()),
+            next_since_id: Some("row-id".into()), truncated: true,
+        };
+        apply_pull_page(&db, &page).unwrap();
+        assert_eq!(db.get_last_pull_cursor().unwrap(), page.next_since);
+        assert_eq!(db.get_user_meta("last_pull_cursor_id").unwrap(), page.next_since_id);
+    }
 
     #[test]
     fn backoff_doubles_from_30s_and_caps_at_one_hour() {
@@ -653,8 +833,7 @@ mod tests {
     #[test]
     fn unreachable_broker_reads_as_offline_not_error() {
         use sync_client::SyncError;
-        let network = reqwest::Client::new().get("http://[").build().err().expect("invalid url is a reqwest error");
-        assert_eq!(status_for_failure(&SyncError::Network(network)), SyncStatus::Offline);
+        assert_eq!(status_for_failure(&network_error()), SyncStatus::Offline);
         for code in [502, 503, 504] {
             assert_eq!(status_for_failure(&SyncError::Server(code, String::new())), SyncStatus::Offline, "{code}");
         }
@@ -665,17 +844,144 @@ mod tests {
         assert_eq!(status_for_failure(&SyncError::Refresh("decode: bad json".into())), SyncStatus::Error);
     }
 
+    /// Telemetry must mirror the chip. A failure the user already sees as the
+    /// calm Offline state is a normal fact of laptop life (sleep/resume, hotel
+    /// wifi, DNS) and is not a defect worth an error report. Without this gate
+    /// a permanently-offline install reports forever: `DEDUP_WINDOW` is 60s
+    /// but `PULL_INTERVAL_MS` is 5min, so dedup can never suppress the repeat.
     #[test]
-    fn poison_response_drops_the_snapshotted_queue_rows() {
+    fn offline_class_failures_are_not_reported() {
+        use sync_client::SyncError;
+        assert!(!should_report_failure(&network_error()));
+        for code in [502, 503, 504] {
+            assert!(!should_report_failure(&SyncError::Server(code, String::new())), "{code}");
+        }
+        assert!(!should_report_failure(&SyncError::Refresh(format!("{} timed out", crate::auth::NETWORK_ERROR_PREFIX))));
+    }
+
+    #[test]
+    fn user_action_required_pauses_without_telemetry_or_dropping_changes() {
+        use sync_client::{SyncBlock, SyncError};
+        for reason in [SyncBlock::UpdateRequired, SyncBlock::CredentialAccessCanceled] {
+            let err = SyncError::Blocked(reason);
+            assert_eq!(status_for_failure(&err), SyncStatus::Paused);
+            assert!(!should_report_failure(&err));
+            assert_eq!(classify_push_failure(&err), PushFailure::Transient);
+        }
+    }
+
+    /// The gate must stay narrow: anything the server actually answered with,
+    /// and any broken response, is still a real defect and still reported.
+    #[test]
+    fn server_answered_and_malformed_failures_are_still_reported() {
+        use sync_client::SyncError;
+        assert!(should_report_failure(&SyncError::Server(500, String::new())));
+        assert!(should_report_failure(&SyncError::Server(401, String::new())));
+        assert!(should_report_failure(&SyncError::Server(422, String::new())));
+        assert!(should_report_failure(&SyncError::Refresh("decode: bad json".into())));
+    }
+
+    #[test]
+    fn poison_response_on_a_multi_row_batch_splits_instead_of_dropping() {
         let db = Database::new_in_memory().unwrap();
         db.enqueue_sync("profiles", "p1").unwrap();
         db.enqueue_sync("workspaces", "w1").unwrap();
+        db.enqueue_sync("workspaces", "w2").unwrap();
         let queue = db.peek_sync_queue(10).unwrap();
 
         let action = handle_push_failure(&db, &queue, &sync_client::SyncError::Server(422, "bad row".into()), 0.5).unwrap();
+        assert!(matches!(action, PushFailureAction::Split(1)));
+        let too_large = handle_push_failure(&db, &queue, &sync_client::SyncError::Server(413, "payload_too_large".into()), 0.5).unwrap();
+        assert!(matches!(too_large, PushFailureAction::Split(1)));
+        assert_eq!(db.sync_queue_depth().unwrap(), 3, "valid rows in a rejected batch must stay queued");
+    }
 
-        assert!(matches!(action, PushFailureAction::Dropped(2)));
-        assert_eq!(db.sync_queue_depth().unwrap(), 0);
+    #[test]
+    fn poison_response_on_a_single_row_drops_only_that_row() {
+        let db = Database::new_in_memory().unwrap();
+        db.enqueue_sync("profiles", "p1").unwrap();
+        db.enqueue_sync("workspaces", "w1").unwrap();
+        let queue = db.peek_sync_queue(1).unwrap();
+
+        let action = handle_push_failure(&db, &queue, &sync_client::SyncError::Server(422, "bad row".into()), 0.5).unwrap();
+
+        assert!(matches!(action, PushFailureAction::Dropped(1)));
+        assert_eq!(db.sync_queue_depth().unwrap(), 1);
+    }
+
+    fn future_profile(db: &Database, id: &str, updated_at: &str) {
+        db.upsert_pulled_row("profiles", &serde_json::json!({
+            "id": id, "name": id, "workingDirectory": "/tmp", "claudeArgs": [], "envVars": {},
+            "isDefault": false, "agent": "claude", "updatedAt": updated_at, "clientVersion": 1,
+        })).unwrap();
+        db.enqueue_sync("profiles", id).unwrap();
+    }
+
+    #[test]
+    fn clock_skew_rejections_stay_queued_back_off_and_get_restamped() {
+        let db = Database::new_in_memory().unwrap();
+        future_profile(&db, "p1", "2099-01-01T00:00:00+00:00");
+        future_profile(&db, "p2", "2026-01-01T00:00:00+00:00");
+        let queue = db.peek_sync_queue(10).unwrap();
+        let rejected = std::collections::HashMap::from([(
+            "profiles".to_string(),
+            vec![sync_client::RejectedRow { id: "p1".into(), reason: "clock_skew".into() }],
+        )]);
+        let now = chrono::DateTime::parse_from_rfc3339("2026-09-26T12:00:00+00:00").unwrap().with_timezone(&chrono::Utc);
+
+        let out = handle_rejected_rows(&db, &queue, &rejected, now, 0.5).unwrap();
+
+        assert_eq!(out, Some((1, std::time::Duration::from_secs(30))));
+        assert_eq!(db.sync_queue_depth().unwrap(), 2, "a rejected row is not dropped");
+        // The future stamp is pulled back so the row can sync once the clock is right;
+        // a row with a sane stamp is left alone.
+        assert_eq!(db.get_local_updated_at("profiles", "p1").unwrap().as_deref(), Some(now.to_rfc3339().as_str()));
+        assert_eq!(db.get_local_updated_at("profiles", "p2").unwrap().as_deref(), Some("2026-01-01T00:00:00+00:00"));
+        // The rejected row now sorts behind fresh edits instead of heading every batch.
+        let next = db.peek_sync_queue(10).unwrap();
+        assert_eq!(next[0].row_key, "p2");
+        assert_eq!(next[1].row_key, "p1");
+        assert_eq!(next[1].last_error.as_deref(), Some("clock_skew"));
+    }
+
+    #[test]
+    fn no_rejections_means_no_backoff_and_unknown_tables_are_ignored() {
+        let db = Database::new_in_memory().unwrap();
+        future_profile(&db, "p1", "2099-01-01T00:00:00+00:00");
+        let queue = db.peek_sync_queue(10).unwrap();
+        let now = chrono::Utc::now();
+        assert_eq!(handle_rejected_rows(&db, &queue, &Default::default(), now, 0.5).unwrap(), None);
+        // A table name from the server that is not ours never reaches SQL.
+        assert!(!db.clamp_future_updated_at("sqlite_master; --", "p1", now).unwrap());
+        let other_table = std::collections::HashMap::from([(
+            "users".to_string(),
+            vec![sync_client::RejectedRow { id: "p1".into(), reason: "clock_skew".into() }],
+        )]);
+        assert_eq!(handle_rejected_rows(&db, &queue, &other_table, now, 0.5).unwrap(), None);
+    }
+
+    #[test]
+    fn push_response_without_rejected_still_parses() {
+        let resp: sync_client::PushResponse = serde_json::from_str(r#"{"accepted":{},"skipped":{}}"#).unwrap();
+        assert!(resp.rejected.is_empty());
+        let resp: sync_client::PushResponse = serde_json::from_str(
+            r#"{"accepted":{"profiles":[]},"skipped":{},"rejected":{"profiles":[{"id":"p1","reason":"clock_skew"}]}}"#,
+        ).unwrap();
+        assert_eq!(resp.rejected["profiles"][0].reason, "clock_skew");
+    }
+
+    #[test]
+    fn batches_are_cut_by_serialized_size() {
+        let kib = 1024;
+        assert_eq!(rows_within_byte_cap(&[], 3 * kib), 0);
+        assert_eq!(rows_within_byte_cap(&[kib, kib, kib], 3 * kib), 3);
+        assert_eq!(rows_within_byte_cap(&[kib, kib, kib, 1], 3 * kib), 3);
+        // A single row larger than the cap still goes out alone.
+        assert_eq!(rows_within_byte_cap(&[10 * kib, kib], 3 * kib), 1);
+        // 500 rows of ~10 KiB (a 4.9 MB body) no longer fit in one push.
+        let sizes = vec![10 * kib; 500];
+        let n = rows_within_byte_cap(&sizes, PUSH_BATCH_BYTE_CAP);
+        assert!(n < 500 && n * 10 * kib <= PUSH_BATCH_BYTE_CAP);
     }
 
     #[test]

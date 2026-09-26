@@ -1,5 +1,55 @@
 [
   {
+    "version": "1.34.6",
+    "date": "2026-09-25",
+    "features": [
+      { "title": "IntelliJ-style Commit panel", "description": "The Changes panel now follows the IntelliJ Commit window layout: a toolbar with Refresh, Rollback, Show Diff, Pull, Push, Stash and Expand or Collapse All, an Amend row with a last commit preview, and a larger commit message box." },
+      { "title": "Glass loading spinner", "description": "The Sessions list shows a liquid glass spinner while saved sessions load." }
+    ]
+  },
+  {
+    "version": "1.34.5",
+    "date": "2026-09-23",
+    "features": [
+      { "title": "Clearer profile selection", "description": "Every profile in the New Terminal dialog now shows a radio ring, and the chosen one is filled in. The small check that sat next to the pin, edit and delete buttons is gone." },
+      { "title": "Restore History sessions without an open terminal", "description": "The Sessions panel groups past sessions by profile and folder so you can reopen one even after its terminal was closed." },
+      { "title": "Faster Sessions panel", "description": "Expanding History no longer walks every archived session for every folder, and it no longer slows down typing in open terminals while it loads." },
+      { "title": "Terminal names in finish notifications", "description": "Notifications for a terminal that finished after it was closed keep the terminal's name instead of showing a blank." },
+      { "title": "Friendlier git errors on a low-memory system", "description": "When Windows refuses to start git because the page file is full, the message now says so and suggests what to change instead of reporting a generic failure." },
+      { "title": "Editor confirmations fixed", "description": "Confirmation prompts inside the code editor could silently proceed as if you had clicked OK. They now stop the action until you answer." },
+      { "title": "Sync pauses on failures you can fix", "description": "When sync hits a problem that needs your attention, it pauses and tells you instead of retrying in the background." }
+    ]
+  },
+  {
+    "version": "1.34.4",
+    "date": "2026-09-21",
+    "features": [
+      { "title": "Secrets stay on your device", "description": "Sync never uploads environment values, CLI arguments or credential bindings. Recognizable API keys in profiles move into the OS credential store." },
+      { "title": "Sync protocol update", "description": "Sync pages on the server cursor, keeps device-only fields when downloading, and waits as long as the server asks when it is busy. Update to keep cloud sync working." },
+      { "title": "Verified accounts for cloud sync", "description": "Cloud sync requires a Google or GitHub sign-in. Password-only accounts keep working locally." },
+      { "title": "Privacy controls", "description": "Settings > Privacy has an opt-in switch for external session summaries. It is off by default." },
+      { "title": "Error reports scrub more", "description": "User folders on any drive and email addresses are removed from error reports before they are sent." }
+    ]
+  },
+  {
+    "version": "1.34.3",
+    "date": "2026-09-19",
+    "features": [
+      { "title": "Sign in after skipping login", "description": "The header's Sign in button stays available when you dismiss the first login prompt or continue as a guest." },
+      { "title": "Settings window fixes", "description": "The settings popup can be dragged again, and default launch arguments can be configured for each agent." }
+    ]
+  },
+  {
+    "version": "1.34.2",
+    "date": "2026-09-18",
+    "features": [
+      { "title": "Skip a version you don't want", "description": "The update notification now has a Skip This Version button, and update toasts stack instead of replacing each other." },
+      { "title": "Sessions name themselves", "description": "Terminals pick up a title from your first request and show a live context summary, so you can tell parallel sessions apart at a glance." },
+      { "title": "Grid and editor fixes", "description": "The Inspector's Changes panel now follows the focused pane, empty grid cells render correctly, and Monaco no longer reports a disposed model in diff mode." },
+      { "title": "Quieter when offline", "description": "Sync failures caused by being offline are no longer reported as errors." }
+    ]
+  },
+  {
     "version": "1.34.1",
     "date": "2026-09-15",
     "features": [

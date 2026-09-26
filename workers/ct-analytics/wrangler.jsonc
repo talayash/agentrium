@@ -1,6 +1,9 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "ct-analytics",
+  // Secrets are not declared here; set them with `wrangler secret put <NAME>`:
+  //   STATS_TOKEN   bearer token for the admin/stats routes (required)
+  //   IP_HASH_SALT  salt for client-IP hashing; optional, falls back to STATS_TOKEN
   "main": "src/index.ts",
   "account_id": "9aee479fccde79fa86e9aa788a3c418e",
   "compatibility_date": "2025-02-04",

@@ -36,16 +36,47 @@ interface UpdateInfo {
 
 export type UpdateStatus = 'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'error' | 'up-to-date';
 
+// "Skip This Version" has to outlive the process - otherwise it is just a
+// slower "Later". Kept in localStorage rather than the app's persisted store
+// so an updater decision can't be lost to an appStore migration.
+const SKIPPED_VERSION_KEY = 'claude-terminal-skipped-update';
+
+function loadSkippedVersion(): string | null {
+  try {
+    return localStorage.getItem(SKIPPED_VERSION_KEY);
+  } catch {
+    // Storage disabled (private mode / hardened webview) - skip stays
+    // session-only, which degrades to "Later" rather than breaking.
+    return null;
+  }
+}
+
+function persistSkippedVersion(version: string | null): void {
+  try {
+    if (version === null) localStorage.removeItem(SKIPPED_VERSION_KEY);
+    else localStorage.setItem(SKIPPED_VERSION_KEY, version);
+  } catch {
+    // See loadSkippedVersion - non-fatal.
+  }
+}
+
 interface UpdaterState {
   status: UpdateStatus;
   updateInfo: UpdateInfo | null;
   downloadProgress: number;
+  /** Bytes pulled so far in the active download. The sheet shows real size
+   *  ("11.2 MB of 18.4 MB") because a bare percentage hides a stalled
+   *  transfer on a slow link. */
+  downloadedBytes: number;
+  /** Total size of the active download, 0 until the server reports it. */
+  totalBytes: number;
   error: string | null;
   lastCheckAt: number | null;
   // Banner gating - keep the user in control of when they're prompted.
   bannerDismissedVersion: string | null;  // "Later" - suppress banner for this version until next launch
   bannerSnoozedUntil: number | null;       // "Remind in 4h" - epoch ms after which the banner may show again
   notifiedVersion: string | null;          // version we've already sent a desktop toast for (avoid duplicate toasts)
+  skippedVersion: string | null;           // "Skip This Version" - suppressed across restarts until a newer one ships
 
   checkForUpdates: () => Promise<{ available: boolean }>;
   downloadAndInstall: (preFetched?: Update) => Promise<boolean>;
@@ -53,17 +84,25 @@ interface UpdaterState {
   dismissBanner: () => void;
   snoozeBanner: (ms: number) => void;
   markNotified: (version: string) => void;
+  skipVersion: () => void;
+  /** Forget every reason the update sheet is being withheld - dismissal,
+   *  snooze and a persisted skip. Called when the user asks for the update
+   *  directly (the title-bar pill), which overrides any earlier "not now". */
+  clearDeferrals: () => void;
 }
 
 export const useUpdaterStore = create<UpdaterState>((set, get) => ({
   status: 'idle',
   updateInfo: null,
   downloadProgress: 0,
+  downloadedBytes: 0,
+  totalBytes: 0,
   error: null,
   lastCheckAt: null,
   bannerDismissedVersion: null,
   bannerSnoozedUntil: null,
   notifiedVersion: null,
+  skippedVersion: loadSkippedVersion(),
 
   checkForUpdates: async () => {
     // Don't re-check if already downloading or ready
@@ -97,6 +136,12 @@ export const useUpdaterStore = create<UpdaterState>((set, get) => ({
         // If a *newer* update appeared, reset any dismissal/snooze for the
         // previous version so the user is re-prompted for the new one.
         const versionChanged = prevVersion !== update.version;
+        // A skip survives restarts, so it can't be keyed off `versionChanged`
+        // (updateInfo is null on every launch, which would clear it at once).
+        // It lapses only when a version OTHER than the skipped one ships.
+        const skipLapsed =
+          get().skippedVersion !== null && get().skippedVersion !== update.version;
+        if (skipLapsed) persistSkippedVersion(null);
         set({
           updateInfo: {
             version: update.version,
@@ -107,6 +152,7 @@ export const useUpdaterStore = create<UpdaterState>((set, get) => ({
           ...(versionChanged
             ? { bannerDismissedVersion: null, bannerSnoozedUntil: null, notifiedVersion: null }
             : {}),
+          ...(skipLapsed ? { skippedVersion: null } : {}),
         });
         return { available: true };
       } else {
@@ -128,7 +174,7 @@ export const useUpdaterStore = create<UpdaterState>((set, get) => ({
 
   downloadAndInstall: async (preFetched?: Update) => {
     try {
-      set({ status: 'downloading', downloadProgress: 0 });
+      set({ status: 'downloading', downloadProgress: 0, downloadedBytes: 0, totalBytes: 0 });
       const update = preFetched ?? (await check());
       if (!update) {
         set({ status: 'error', error: 'Update no longer available' });
@@ -142,15 +188,19 @@ export const useUpdaterStore = create<UpdaterState>((set, get) => ({
         switch (event.event) {
           case 'Started':
             contentLength = event.data.contentLength || 0;
+            set({ totalBytes: contentLength });
             break;
           case 'Progress':
             downloaded += event.data.chunkLength;
-            if (contentLength > 0) {
-              set({ downloadProgress: Math.round((downloaded / contentLength) * 100) });
-            }
+            set({
+              downloadedBytes: downloaded,
+              ...(contentLength > 0
+                ? { downloadProgress: Math.round((downloaded / contentLength) * 100) }
+                : {}),
+            });
             break;
           case 'Finished':
-            set({ downloadProgress: 100 });
+            set({ downloadProgress: 100, downloadedBytes: contentLength || downloaded });
             break;
         }
       });
@@ -195,5 +245,16 @@ export const useUpdaterStore = create<UpdaterState>((set, get) => ({
 
   markNotified: (version: string) => {
     set({ notifiedVersion: version });
+  },
+
+  skipVersion: () => {
+    const version = get().updateInfo?.version ?? null;
+    persistSkippedVersion(version);
+    set({ skippedVersion: version, bannerSnoozedUntil: null });
+  },
+
+  clearDeferrals: () => {
+    persistSkippedVersion(null);
+    set({ bannerDismissedVersion: null, bannerSnoozedUntil: null, skippedVersion: null });
   },
 }));

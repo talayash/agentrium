@@ -38,6 +38,7 @@ struct SessionMetaLine {
 
 #[derive(Deserialize)]
 struct SessionMetaPayload {
+    #[serde(alias = "id")]
     session_id: String,
     cwd: String,
 }
@@ -87,7 +88,8 @@ fn read_first_user_preview(path: &Path, max_lines: usize, max_chars: usize) -> O
         // as the first user turn - that's boilerplate identical across every
         // session in the same cwd and would make picker previews useless.
         // Skip it and look for the next user turn (the real prompt).
-        if text.trim_start().starts_with("<environment_context>") { continue; }
+        if ["<environment_context>", "# AGENTS.md instructions", "<permissions instructions>"]
+            .iter().any(|prefix| text.trim_start().starts_with(prefix)) { continue; }
         let mut t: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
         if t.chars().count() > max_chars {
             t = t.chars().take(max_chars).collect::<String>() + "…";
@@ -169,6 +171,14 @@ mod tests {
     }
 
     #[test]
+    fn read_session_meta_accepts_id_field() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("rollout.jsonl");
+        std::fs::write(&path, r#"{"type":"session_meta","payload":{"id":"abc","cwd":"/project"}}"#).unwrap();
+        assert_eq!(read_session_meta(&path), Some(("abc".into(), "/project".into())));
+    }
+
+    #[test]
     fn normalize_cwd_folds_case_and_slashes() {
         assert_eq!(normalize_cwd(r"C:\Users\A"), "c:/users/a");
         assert_eq!(normalize_cwd("C:/Users/A"), "c:/users/a");
@@ -190,6 +200,7 @@ mod tests {
         // identical.
         let tmp = tempfile::tempdir().unwrap();
         let extra = [
+            r##"{"type":"response_item","payload":{"role":"user","content":[{"text":"# AGENTS.md instructions for /project"}]}}"##,
             r#"{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<environment_context>\n<cwd>C:\\proj</cwd>\n</environment_context>"}]}}"#,
             r#"{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"fix the bug in main.rs"}]}}"#,
         ];

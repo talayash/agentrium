@@ -17,6 +17,7 @@ import { EmptyState } from './ui/EmptyState';
 import { listAgentSessions, type AgentSessionInfo } from '../lib/agentSessions';
 import { confirmAction } from '../lib/confirmDialog';
 import type { AgentKind } from '../lib/agents';
+import { GroupedSessionHistory } from './GroupedSessionHistory';
 
 const isMac = navigator.platform.toUpperCase().includes('MAC');
 const REVEAL_LABEL = isMac ? 'Reveal in Finder' : 'Show in File Explorer';
@@ -55,6 +56,11 @@ function formatRelativeTime(iso: string): string {
 }
 
 export function SessionsPanel() {
+  const hasTerminals = useTerminalStore(s => s.terminals.size > 0);
+  return hasTerminals ? <ActiveSessionsPanel /> : <GroupedSessionHistory />;
+}
+
+function ActiveSessionsPanel() {
   const collapsed = useAppStore((s) => s.sessionsCollapsed);
   const toggleCollapsed = useAppStore((s) => s.toggleSessionsCollapsed);
   const pinnedRepoPath = useAppStore((s) => s.pinnedRepoPath);

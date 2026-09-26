@@ -143,7 +143,7 @@ pub fn set_error_reporting_enabled(enabled: bool) -> Result<(), String> {
 /// so it can't be held across `.await`) and runs `f` on the blocking pool
 /// - the lock is held only for the duration of the sync work, and the
 /// runtime workers stay free.
-async fn db_op<T, F>(
+pub(crate) async fn db_op<T, F>(
     db_arc: &std::sync::Arc<std::sync::Mutex<crate::database::Database>>,
     f: F,
 ) -> Result<T, String>
@@ -384,7 +384,15 @@ async fn resolve_agent_spec(
     let id = kind.custom_id().unwrap_or_default().to_string();
     let row = db_op(&state.db, move |db| db.get_custom_agent(&id)).await?;
     match row {
-        Some(a) => Ok(crate::agents::AgentSpec::from_custom(&a)),
+        // Re-check at spawn time: rows written by a pre-validation pull (or
+        // any other path into SQLite) must never reach `cmd.exe /C`.
+        Some(a) => {
+            crate::custom_agents::validate_launch_fields(&a.binary, a.resume_flag.as_deref(), &a.required_env)
+                .map_err(|e| error_reporter::user_err(format!(
+                    "{e}. Fix this agent in Settings > Agents & Keys before starting it."
+                )))?;
+            Ok(crate::agents::AgentSpec::from_custom(&a))
+        }
         None => Err(error_reporter::user_err(
             "This agent was removed. Pick another agent or add it again in Settings > Agents & Keys.",
         )),
@@ -1396,7 +1404,7 @@ pub async fn update_claude_code() -> Result<String, String> {
         let output = cmd
             .output()
             .await
-            .map_err(|e| format!("Failed to run npm: {}", e))?;
+            .map_err(|e| spawn_err("npm", e))?;
 
         if output.status.success() {
             // npm may have moved the binary or the user may have switched
@@ -1725,7 +1733,13 @@ pub async fn list_agent_sessions(
         if cwd.is_empty() || cwd.contains('\0') {
             return Err("Invalid cwd".to_string());
         }
-        Ok(crate::session_provider::provider_for(&agent).list_for_cwd(&cwd))
+        // Providers walk their on-disk archive with blocking std::fs, so this
+        // must stay off the runtime threads that serve PTY writes and resizes.
+        tokio::task::spawn_blocking(move || {
+            crate::session_provider::provider_for(&agent).list_for_cwd(&cwd)
+        })
+        .await
+        .map_err(|e| e.to_string())
     })
     .await
 }
@@ -2198,7 +2212,7 @@ pub async fn get_terminal_changes(
             .current_dir(&working_directory)
             .output()
             .await
-            .map_err(|e| format!("Failed to run git status: {}", e))?;
+            .map_err(|e| spawn_err("git status", e))?;
 
         if !status_output.status.success() {
             return Ok(FileChangesResult {
@@ -2314,7 +2328,7 @@ pub async fn get_file_diff(
             .current_dir(&working_directory)
             .output()
             .await
-            .map_err(|e| format!("Failed to run git status: {}", e))?;
+            .map_err(|e| spawn_err("git status", e))?;
 
         let status_str = String::from_utf8_lossy(&status_output.stdout).trim().to_string();
         let file_status = if status_str.len() >= 2 {
@@ -2365,7 +2379,7 @@ pub async fn get_file_diff(
                 .current_dir(&working_directory)
                 .output()
                 .await
-                .map_err(|e| format!("Failed to run git diff: {}", e))?;
+                .map_err(|e| spawn_err("git diff", e))?;
 
             let text = String::from_utf8_lossy(&diff_output.stdout).to_string();
 
@@ -2375,7 +2389,7 @@ pub async fn get_file_diff(
                     .current_dir(&working_directory)
                     .output()
                     .await
-                    .map_err(|e| format!("Failed to run git diff --cached: {}", e))?;
+                    .map_err(|e| spawn_err("git diff --cached", e))?;
                 String::from_utf8_lossy(&staged_output.stdout).to_string()
             } else {
                 text
@@ -2623,7 +2637,7 @@ async fn list_worktrees_internal(path: &str) -> Result<Vec<WorktreeInfo>, String
         .current_dir(path)
         .output()
         .await
-        .map_err(|e| format!("Failed to run git worktree list: {}", e))?;
+        .map_err(|e| spawn_err("git worktree list", e))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
@@ -2742,6 +2756,26 @@ pub(crate) fn git_cmd_async(args: &[&str]) -> tokio::process::Command {
     git_command(args).into()
 }
 
+/// Message for a child process that could not be *spawned* (as opposed to one
+/// that ran and exited non-zero). Those failures are about the machine, not
+/// about us: Windows refusing the commit charge ("The paging file is too small
+/// for this operation to complete", os error 1455), the binary missing from
+/// PATH, or the handle table being full. The user still sees the plain text;
+/// `wrap_cmd` skips telemetry because the result is tagged via `user_err`.
+pub(crate) fn spawn_err(what: &str, e: std::io::Error) -> String {
+    // ERROR_NOT_ENOUGH_MEMORY, ERROR_OUTOFMEMORY, ERROR_COMMITMENT_LIMIT.
+    let out_of_memory = matches!(e.raw_os_error(), Some(8) | Some(14) | Some(1455))
+        || e.kind() == std::io::ErrorKind::OutOfMemory;
+    let hint = if out_of_memory {
+        " The system is out of committed memory. Close some apps or increase the Windows page file, then try again."
+    } else if e.kind() == std::io::ErrorKind::NotFound {
+        " Check that it is installed and on your PATH."
+    } else {
+        ""
+    };
+    error_reporter::user_err(format!("Failed to run {what}: {e}.{hint}"))
+}
+
 async fn run_git(path: &str, args: &[&str]) -> Result<String, String> {
     // tokio::process::Command runs the child on the async reactor so the
     // handler doesn't stall a runtime worker while git is thinking. On big
@@ -2751,7 +2785,7 @@ async fn run_git(path: &str, args: &[&str]) -> Result<String, String> {
         .current_dir(path)
         .output()
         .await
-        .map_err(|e| format!("Failed to run git {}: {}", args.join(" "), e))?;
+        .map_err(|e| spawn_err(&format!("git {}", args.join(" ")), e))?;
     if !out.status.success() {
         let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
         let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
@@ -3335,7 +3369,7 @@ pub async fn checkout_branch(
             .current_dir(&path)
             .output()
             .await
-            .map_err(|e| format!("Failed to run git checkout: {}", e))?;
+            .map_err(|e| spawn_err("git checkout", e))?;
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
             let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
@@ -3450,6 +3484,31 @@ pub async fn remove_worktree(
 }
 
 // Session history commands
+
+#[command]
+pub async fn validate_session_directory(path: String) -> Result<(), String> {
+    wrap_cmd("validate_session_directory", async move {
+        if !tokio::fs::metadata(&path).await.map(|m| m.is_dir()).unwrap_or(false) {
+            // Deleted project, unmounted share, removed worktree - environment,
+            // not a defect, so it must not reach telemetry.
+            return Err(error_reporter::user_err(format!(
+                "The session folder is missing or inaccessible: {}",
+                path
+            )));
+        }
+        Ok(())
+    }).await
+}
+
+#[command]
+pub async fn get_session_history_folders(
+    state: State<'_, AppState>,
+) -> Result<Vec<String>, String> {
+    wrap_cmd("get_session_history_folders", async move {
+        db_op(&state.db, |db| db.get_session_history_folders()).await
+    })
+    .await
+}
 
 #[command]
 pub async fn get_session_history(
@@ -3861,8 +3920,26 @@ pub async fn send_telemetry_heartbeat(
 // Session summary commands
 
 #[command]
-pub async fn summarize_session(log_path: String) -> Result<Option<String>, String> {
+pub async fn get_summary_enabled(state: State<'_, AppState>) -> Result<bool, String> {
+    wrap_cmd("get_summary_enabled", async move {
+        db_op(&state.db, |db| Ok(db.get_user_meta("external_summary_enabled")?.as_deref() == Some("true"))).await
+    }).await
+}
+
+#[command]
+pub async fn set_summary_enabled(state: State<'_, AppState>, enabled: bool) -> Result<(), String> {
+    wrap_cmd("set_summary_enabled", async move {
+        db_op(&state.db, move |db| db.set_user_meta("external_summary_enabled", Some(if enabled { "true" } else { "false" }))).await
+    }).await
+}
+
+#[command]
+pub async fn summarize_session(state: State<'_, AppState>, log_path: String) -> Result<Option<String>, String> {
     wrap_cmd("summarize_session", async move {
+        // Rust owns consent so direct IPC calls cannot bypass the preference.
+        if !db_op(&state.db, |db| Ok(db.get_user_meta("external_summary_enabled")?.as_deref() == Some("true"))).await? {
+            return Ok(None);
+        }
         // Validate path is under the logs directory
         let data_dir = directories::ProjectDirs::from("com", "claudeterminal", "ClaudeTerminal")
             .ok_or("Failed to get project directories")?
@@ -3882,17 +3959,17 @@ pub async fn summarize_session(log_path: String) -> Result<Option<String>, Strin
             return Err(error_reporter::user_err("Access denied: path is not under logs directory"));
         }
 
-        // Read log file content (capped at 100KB)
-        let bytes = match tokio::fs::read(&canonical_path).await {
-            Ok(b) => b,
+        // Read only the final 16 KiB; never allocate the entire session log.
+        use tokio::io::{AsyncReadExt, AsyncSeekExt};
+        let mut file = match tokio::fs::File::open(&canonical_path).await {
+            Ok(file) => file,
             Err(_) => return Ok(None),
         };
-        let max_bytes = 100 * 1024;
-        let truncated = if bytes.len() > max_bytes {
-            &bytes[bytes.len() - max_bytes..]
-        } else {
-            &bytes
-        };
+        let size = file.metadata().await.map_err(|e| e.to_string())?.len();
+        file.seek(std::io::SeekFrom::Start(size.saturating_sub(16 * 1024))).await.map_err(|e| e.to_string())?;
+        let mut bytes = Vec::new();
+        file.take(16 * 1024).read_to_end(&mut bytes).await.map_err(|e| e.to_string())?;
+        let truncated = &bytes;
         let log_content = String::from_utf8_lossy(truncated);
 
         // Strip ANSI escape sequences. Compile the pattern once - this handler
@@ -3903,7 +3980,7 @@ pub async fn summarize_session(log_path: String) -> Result<Option<String>, Strin
             regex::Regex::new(r"\x1b\[[0-9;]*[a-zA-Z]|\x1b\].*?\x07|\x1b\[.*?[A-Za-z]")
                 .expect("ANSI escape regex must compile - see summarize_session")
         });
-        let clean_content = ansi_re.replace_all(&log_content, "").to_string();
+        let clean_content = error_reporter::scrub(&ansi_re.replace_all(&log_content, ""));
 
         if clean_content.trim().is_empty() {
             return Ok(None);
@@ -4602,7 +4679,7 @@ pub async fn get_path_changes(
             .current_dir(&path)
             .output()
             .await
-            .map_err(|e| format!("Failed to run git status: {}", e))?;
+            .map_err(|e| spawn_err("git status", e))?;
 
         if !status_output.status.success() {
             return Ok(FileChangesResult {
@@ -4649,7 +4726,7 @@ pub async fn get_path_file_diff(
             .current_dir(&path)
             .output()
             .await
-            .map_err(|e| format!("Failed to run git status: {}", e))?;
+            .map_err(|e| spawn_err("git status", e))?;
 
         let status_str = String::from_utf8_lossy(&status_output.stdout).trim().to_string();
         let file_status = if status_str.len() >= 2 {
@@ -4692,7 +4769,7 @@ pub async fn get_path_file_diff(
                 .current_dir(&path)
                 .output()
                 .await
-                .map_err(|e| format!("Failed to run git diff: {}", e))?;
+                .map_err(|e| spawn_err("git diff", e))?;
 
             let text = String::from_utf8_lossy(&diff_output.stdout).to_string();
             if text.trim().is_empty() && !staged {
@@ -4700,7 +4777,7 @@ pub async fn get_path_file_diff(
                     .current_dir(&path)
                     .output()
                     .await
-                    .map_err(|e| format!("Failed to run git diff --cached: {}", e))?;
+                    .map_err(|e| spawn_err("git diff --cached", e))?;
                 String::from_utf8_lossy(&staged_output.stdout).to_string()
             } else {
                 text
@@ -4753,7 +4830,7 @@ pub async fn git_create_branch(
             .current_dir(&path)
             .output()
             .await
-            .map_err(|e| format!("Failed to run git checkout -b: {}", e))?;
+            .map_err(|e| spawn_err("git checkout -b", e))?;
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
             let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
@@ -4806,7 +4883,7 @@ pub async fn get_upstream_branch(
         .current_dir(&path)
         .output()
         .await
-        .map_err(|e| format!("Failed to run git rev-parse: {}", e))?;
+        .map_err(|e| spawn_err("git rev-parse", e))?;
         if !output.status.success() {
             // No upstream configured - not an error, just absent
             return Ok(None);
@@ -4884,7 +4961,7 @@ pub async fn git_pull_branch(
             .current_dir(&path)
             .output()
             .await
-            .map_err(|e| format!("Failed to run git pull: {}", e))?;
+            .map_err(|e| spawn_err("git pull", e))?;
         let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
 
@@ -4919,7 +4996,7 @@ pub async fn git_pull_branch(
                 .current_dir(&path)
                 .output()
                 .await
-                .map_err(|e| format!("Failed to run git stash pop: {}", e))?;
+                .map_err(|e| spawn_err("git stash pop", e))?;
             if !pop.status.success() {
                 let pop_err = String::from_utf8_lossy(&pop.stderr).trim().to_string();
                 // Pop conflicted. The stash stays applied with conflict markers,
@@ -5130,7 +5207,7 @@ pub async fn get_git_head_content(
             .current_dir(&path)
             .output()
             .await
-            .map_err(|e| format!("Failed to run git show: {}", e))?;
+            .map_err(|e| spawn_err("git show", e))?;
         if !output.status.success() {
             // File has no HEAD version - treat as empty (new/untracked file).
             return Ok(String::new());
@@ -5169,7 +5246,7 @@ pub async fn git_discard_file(
             .current_dir(&root)
             .output()
             .await
-            .map_err(|e| format!("Failed to run git checkout: {}", e))?;
+            .map_err(|e| spawn_err("git checkout", e))?;
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
             let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
@@ -6079,5 +6156,39 @@ mod search_coordinate_tests {
             .map(|unit| char::from_u32(unit as u32).unwrap())
             .collect();
         assert_eq!(highlighted, "needle");
+    }
+}
+
+#[cfg(test)]
+mod spawn_err_tests {
+    use super::spawn_err;
+    use crate::error_reporter::{is_user_error, strip_user_prefix};
+    use std::io::{Error, ErrorKind};
+
+    #[test]
+    fn commit_limit_failures_are_user_errors_with_a_page_file_hint() {
+        // ERROR_COMMITMENT_LIMIT (1455): "The paging file is too small for this
+        // operation to complete." Windows refused the spawn, not our code.
+        let msg = spawn_err("git status", Error::from_raw_os_error(1455));
+        assert!(is_user_error(&msg), "environment failures must skip telemetry");
+        let plain = strip_user_prefix(&msg);
+        assert!(plain.starts_with("Failed to run git status:"), "got {plain}");
+        assert!(plain.contains("page file"), "got {plain}");
+    }
+
+    #[test]
+    fn a_missing_binary_points_at_path() {
+        let msg = spawn_err("git status", Error::new(ErrorKind::NotFound, "not found"));
+        assert!(is_user_error(&msg));
+        assert!(strip_user_prefix(&msg).contains("PATH"));
+    }
+
+    #[test]
+    fn other_spawn_failures_stay_user_errors_without_a_hint() {
+        let msg = spawn_err("npm", Error::new(ErrorKind::BrokenPipe, "pipe died"));
+        assert!(is_user_error(&msg));
+        let plain = strip_user_prefix(&msg);
+        assert!(plain.starts_with("Failed to run npm: "), "got {plain}");
+        assert!(!plain.contains("page file"));
     }
 }

@@ -11,6 +11,7 @@ export function UpdatePill() {
     restart,
     checkForUpdates,
     downloadAndInstall,
+    clearDeferrals,
   } = useUpdaterStore();
 
   if (status !== 'ready' && status !== 'error' && status !== 'available') {
@@ -46,8 +47,10 @@ export function UpdatePill() {
           exit={{ opacity: 0, scale: 0.9 }}
           transition={{ duration: 0.6, times: [0, 0.5, 1] }}
           onClick={() => {
-            // Re-show the banner if it was dismissed/snoozed, then start the download.
-            useUpdaterStore.setState({ bannerDismissedVersion: null, bannerSnoozedUntil: null });
+            // Asking for the update here overrides any earlier "not now" -
+            // dismissal, snooze OR a persisted skip. Without clearing the skip
+            // the sheet stays hidden and the click appears to do nothing.
+            clearDeferrals();
             void downloadAndInstall();
           }}
           className="no-drag flex items-center gap-1.5 h-6 px-2.5 rounded-full text-white text-[11px] font-medium max-w-[180px] transition-all hover:brightness-110"
