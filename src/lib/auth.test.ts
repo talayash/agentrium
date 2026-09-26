@@ -44,6 +44,25 @@ describe('subscribeToAuthEvents', () => {
     expect(handlers.get('auth-tokens-received')).toBeDefined();
   });
 
+  it('hydrates from the user Rust sends with the tokens, without a second /api/me call', async () => {
+    await subscribeToAuthEvents();
+    const user = { id: 'u1', email: 'a@b.c', name: 'A', image: null };
+    vi.mocked(invoke).mockResolvedValue(undefined);
+    await handlers.get('auth-tokens-received')!({ payload: { access_token: 'AT', state: 's', user } });
+    expect(useAuthStore.getState().mode).toBe('authed');
+    expect(useAuthStore.getState().user).toEqual(user);
+    expect(invoke).not.toHaveBeenCalledWith('fetch_current_user', expect.anything());
+  });
+
+  it('stops the login spinner with an error when the user cannot be loaded', async () => {
+    await subscribeToAuthEvents();
+    vi.mocked(invoke).mockRejectedValueOnce('fetch /api/me failed: timed out');
+    await handlers.get('auth-tokens-received')!({ payload: { access_token: 'AT', state: 's' } });
+    expect(useAuthStore.getState().mode).not.toBe('authed');
+    expect(useAuthStore.getState().authError).toContain('timed out');
+    expect(useToastStore.getState().toasts[0].type).toBe('error');
+  });
+
   it('unsubscribes both listeners', async () => {
     const unlisten = await subscribeToAuthEvents();
     unlisten();

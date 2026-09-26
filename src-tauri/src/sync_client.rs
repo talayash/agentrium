@@ -51,6 +51,17 @@ pub struct PushRequest {
 pub struct PushResponse {
     pub accepted: HashMap<String, Vec<String>>,
     pub skipped: HashMap<String, Vec<String>>,
+    /// Rows the broker refused without storing, per table. Today the only
+    /// reason is `clock_skew` (stamped > 5 min ahead of server time). Default
+    /// empty so a broker that omits it still parses.
+    #[serde(default)]
+    pub rejected: HashMap<String, Vec<RejectedRow>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct RejectedRow {
+    pub id: String,
+    pub reason: String,
 }
 
 pub struct SyncClient {

@@ -27,6 +27,15 @@ interface ModalProps {
 }
 
 /**
+ * Open modals, innermost last. Dialogs can stack (Add API Key opens over the
+ * profile editor) and every one listens on `document`, so only the top one
+ * may act on Escape or trap Tab: otherwise one Escape closes both and drops
+ * the lower dialog's unsaved edits, and the two focus traps fight.
+ */
+const modalStack: object[] = [];
+const isTopModal = (token: object) => modalStack[modalStack.length - 1] === token;
+
+/**
  * Shared modal shell: animated scrim + panel, optional header, Escape + scrim
  * dismissal. Collapses the backdrop/panel/animation boilerplate that each
  * dialog used to re-implement. Relies on a parent <AnimatePresence> for exit
@@ -46,15 +55,26 @@ export function Modal({
 }: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const scrimRef = useRef<HTMLDivElement>(null);
+  const stackToken = useRef({}).current;
+
+  // Registered before the key listeners below so a modal is on the stack by
+  // the time any key reaches it.
+  useEffect(() => {
+    modalStack.push(stackToken);
+    return () => {
+      const i = modalStack.indexOf(stackToken);
+      if (i !== -1) modalStack.splice(i, 1);
+    };
+  }, [stackToken]);
 
   useEffect(() => {
     if (!closeOnEscape) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape' && isTopModal(stackToken)) onClose();
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [closeOnEscape, onClose]);
+  }, [closeOnEscape, onClose, stackToken]);
 
   // Focus management: move focus into the dialog on open, trap Tab within it,
   // and restore focus to the trigger on close. Without this, Tab escapes behind
@@ -76,7 +96,7 @@ export function Modal({
     else panel?.focus();
 
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Tab' || !panel) return;
+      if (e.key !== 'Tab' || !panel || !isTopModal(stackToken)) return;
       const items = getFocusable();
       if (items.length === 0) {
         e.preventDefault();

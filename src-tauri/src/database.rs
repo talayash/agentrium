@@ -1085,12 +1085,15 @@ impl Database {
         Ok(())
     }
 
+    /// Oldest first among the rows with the fewest attempts: rows the broker
+    /// keeps rejecting (clock skew) must not sit at the head of every batch
+    /// and starve fresh edits behind them.
     pub fn peek_sync_queue(&self, limit: usize) -> Result<Vec<SyncQueueRow>, String> {
         let mut stmt = self
             .conn
             .prepare(
                 "SELECT table_name, row_key, enqueued_at, attempts, last_attempt_at, last_error
-                 FROM sync_queue ORDER BY enqueued_at LIMIT ?1",
+                 FROM sync_queue ORDER BY attempts, enqueued_at LIMIT ?1",
             )
             .map_err(|e| e.to_string())?;
         let rows = stmt
@@ -1337,6 +1340,37 @@ impl Database {
             }
             _ => Ok(None),
         }
+    }
+
+    /// Pull a row's `updated_at` back to `now` when it is stamped in the
+    /// future. A row edited while the system clock ran ahead is rejected by
+    /// the broker (`clock_skew`) until real time catches up with the stamp;
+    /// once the clock is right again this lets it sync on the next push. A
+    /// clock that is still ahead just stamps "now" ahead again, so this never
+    /// makes things worse. Returns whether the row changed.
+    pub fn clamp_future_updated_at(
+        &self,
+        table: &str,
+        row_key: &str,
+        now: chrono::DateTime<chrono::Utc>,
+    ) -> Result<bool, String> {
+        // `table` can come from a server response; never format an unknown
+        // name into SQL.
+        let where_col = match table {
+            "profiles" | "custom_agents" => "id",
+            "workspaces" => "sync_id",
+            _ => return Ok(false),
+        };
+        let Some(stamp) = self.get_local_updated_at(table, row_key)? else { return Ok(false) };
+        let Ok(parsed) = chrono::DateTime::parse_from_rfc3339(&stamp) else { return Ok(false) };
+        if parsed.with_timezone(&chrono::Utc) <= now {
+            return Ok(false);
+        }
+        let sql = format!("UPDATE {table} SET updated_at = ?1 WHERE {where_col} = ?2 AND updated_at = ?3");
+        let changed = self.conn
+            .execute(&sql, params![now.to_rfc3339(), row_key, stamp])
+            .map_err(|e| e.to_string())?;
+        Ok(changed > 0)
     }
 
     /// Return the `updated_at` timestamp for a syncable row, or `None` if
