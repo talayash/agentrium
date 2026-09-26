@@ -219,7 +219,28 @@ impl TerminalManager {
         "NODE_OPTIONS", "NODE_EXTRA_CA_CERTS",
         "ELECTRON_RUN_AS_NODE",
         "HOME", "USERPROFILE", "HOMEDRIVE", "HOMEPATH",
+        // Startup hooks that run arbitrary code in the agent's shell or in the
+        // tools it spawns (git, python, perl, ruby, node, JVM, .NET).
+        "BASH_ENV", "ENV", "PROMPT_COMMAND", "ZDOTDIR",
+        "PYTHONSTARTUP", "PYTHONPATH", "PYTHONHOME",
+        "PERL5OPT", "PERL5LIB", "RUBYOPT", "RUBYLIB", "NODE_PATH",
+        "JAVA_TOOL_OPTIONS", "_JAVA_OPTIONS", "JDK_JAVA_OPTIONS", "DOTNET_STARTUP_HOOKS",
+        "SSH_ASKPASS",
     ];
+
+    /// Prefix families blocked alongside `BLOCKED_ENV_VARS`. `GIT_` covers
+    /// GIT_SSH_COMMAND, GIT_EXTERNAL_DIFF and the GIT_CONFIG_KEY_n/VALUE_n
+    /// injection (e.g. core.fsmonitor); `NPM_CONFIG_` covers npm lifecycle
+    /// overrides such as script-shell.
+    const BLOCKED_ENV_PREFIXES: &'static [&'static str] = &["GIT_", "NPM_CONFIG_", "LD_", "DYLD_"];
+
+    /// True when a user- or sync-supplied env var must not reach the PTY.
+    /// Case-insensitive: Windows env names are, and npm reads `npm_config_*`.
+    pub(crate) fn is_blocked_env_name(name: &str) -> bool {
+        let upper = name.to_ascii_uppercase();
+        Self::BLOCKED_ENV_VARS.iter().any(|b| b.eq_ignore_ascii_case(&upper))
+            || Self::BLOCKED_ENV_PREFIXES.iter().any(|p| upper.starts_with(p))
+    }
 
     // The PTY spawn path genuinely needs all of these to avoid an intermediate
     // struct that would just push the complexity elsewhere.
@@ -290,18 +311,12 @@ impl TerminalManager {
         // Filter out blocked environment variables
         let safe_env_vars: HashMap<String, String> = env_vars
             .into_iter()
-            .filter(|(key, _)| {
-                let upper = key.to_uppercase();
-                !Self::BLOCKED_ENV_VARS.iter().any(|blocked| blocked.eq_ignore_ascii_case(&upper))
-            })
+            .filter(|(key, _)| !Self::is_blocked_env_name(key))
             .collect();
 
         let safe_secret_env: HashMap<String, String> = secret_env_vars
             .into_iter()
-            .filter(|(key, _)| {
-                let upper = key.to_uppercase();
-                !Self::BLOCKED_ENV_VARS.iter().any(|blocked| blocked.eq_ignore_ascii_case(&upper))
-            })
+            .filter(|(key, _)| !Self::is_blocked_env_name(key))
             .collect();
 
         // Generate the id early so it can be injected as an OTel resource
@@ -331,6 +346,9 @@ impl TerminalManager {
         // the binary name and echoes the args back so we can hand them to
         // CommandBuilder platform-appropriately.
         let (agent_binary, spawn_args) = build_agent_command(&spec, &claude_args);
+        // On Windows the binary goes through `cmd.exe /C`, so re-check it here
+        // regardless of where the spec came from (local save, sync, older DB).
+        crate::custom_agents::validate_binary(&agent_binary).map_err(error_reporter::user_err)?;
 
         // Spawn the agent binary directly so the process exits when it
         // finishes, allowing the terminal-finished event to fire for
@@ -980,6 +998,20 @@ fn reap_terminal(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn blocked_env_names_cover_exec_hooks_and_prefix_families() {
+        for name in [
+            "PATH", "path", "BASH_ENV", "PYTHONSTARTUP", "NODE_PATH", "JAVA_TOOL_OPTIONS",
+            "GIT_SSH_COMMAND", "GIT_CONFIG_COUNT", "GIT_CONFIG_KEY_0", "git_external_diff",
+            "npm_config_script_shell", "LD_AUDIT", "DYLD_FRAMEWORK_PATH",
+        ] {
+            assert!(TerminalManager::is_blocked_env_name(name), "{name} should be blocked");
+        }
+        for name in ["ANTHROPIC_API_KEY", "OPENAI_BASE_URL", "CLAUDE_CODE_NO_FLICKER", "MY_GITHUB_ORG", "LANG"] {
+            assert!(!TerminalManager::is_blocked_env_name(name), "{name} should be allowed");
+        }
+    }
 
     /// Regression test for #70: Claude Code only turns on terminal mouse
     /// reporting in its fullscreen renderer, so forcing the classic renderer
