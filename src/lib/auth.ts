@@ -128,19 +128,27 @@ export async function rehydrateAuth(): Promise<RehydrateOutcome> {
  * which is exactly what happened when the broker's callback contract changed.
  */
 export async function subscribeToAuthEvents(): Promise<UnlistenFn> {
-  const unlistenTokens = await listen<{ access_token: string; state: string }>(
+  const unlistenTokens = await listen<{ access_token: string; state: string; user?: AuthUser }>(
     'auth-tokens-received',
     async (event) => {
-      const { access_token } = event.payload;
+      const { access_token, user: verified } = event.payload;
       try {
-        const user = await fetchCurrentUser(access_token);
+        // Rust verified the account before starting the session and sends it
+        // along; fetching /api/me a second time only added a way to fail.
+        const user = verified ?? (await fetchCurrentUser(access_token));
         useAuthStore.getState().setAuthed(user, access_token);
-        await markAuthPromptSeen();
       } catch (err) {
-        // Background handler: no toast target, but the OAuth flow is
-        // user-initiated so a silent failure would hide a real bug.
+        // The sign-in finished on the Rust side, but the UI could not learn
+        // who signed in. Surface it so LoginModal stops spinning, instead of
+        // leaving it on "Opening browser..." until it times out.
+        const message = err instanceof Error ? err.message : String(err);
+        useAuthStore.getState().setAuthError(message);
+        toast.error('Sign-in failed', message);
         reportInvokeFailure('auth_tokens_received_handler', err);
+        return;
       }
+      // Cosmetic flag; a failure here must not undo a successful sign-in.
+      await markAuthPromptSeen().catch((err) => reportInvokeFailure('mark_auth_prompt_seen', err));
     },
   );
   const unlistenError = await listen<string>('auth-error', (event) => {

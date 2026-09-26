@@ -157,6 +157,37 @@ fn handle_push_failure(
     }
 }
 
+/// Book-keep rows the broker refused in an otherwise successful push (today
+/// only `clock_skew`). They stay queued, but get an attempt recorded, which
+/// moves them behind fresh edits in `peek_sync_queue`, and any future
+/// `updated_at` is pulled back to `now` so they sync once the clock is right.
+/// Returns how many snapshotted rows were rejected and the backoff to apply;
+/// `None` when nothing was rejected.
+fn handle_rejected_rows(
+    db: &Database,
+    queue: &[crate::database::SyncQueueRow],
+    rejected: &std::collections::HashMap<String, Vec<sync_client::RejectedRow>>,
+    now: chrono::DateTime<chrono::Utc>,
+    jitter_unit: f64,
+) -> Result<Option<(usize, std::time::Duration)>, String> {
+    let mut count = 0usize;
+    let mut most_attempts: i64 = 0;
+    for entry in queue {
+        let Some(row) = rejected
+            .get(&entry.table_name)
+            .and_then(|rows| rows.iter().find(|r| r.id == entry.row_key))
+        else { continue };
+        count += 1;
+        most_attempts = most_attempts.max(entry.attempts);
+        db.record_sync_attempt(&entry.table_name, &entry.row_key, Some(&row.reason))?;
+        db.clamp_future_updated_at(&entry.table_name, &entry.row_key, now)?;
+    }
+    if count == 0 {
+        return Ok(None);
+    }
+    Ok(Some((count, jittered(backoff_secs(most_attempts), jitter_unit))))
+}
+
 /// Compare two ISO-8601 timestamps and return whether `incoming` should win.
 /// LWW: incoming wins iff strictly newer than local. Tie goes to local.
 /// This is the client-side counterpart to the server's `>=` skip check —
@@ -450,12 +481,14 @@ async fn do_push(
         Ok(resp) => {
             let accepted = resp.accepted.clone();
             let skipped = resp.skipped;
+            let rejected = resp.rejected;
+            let jitter_unit: f64 = rand::Rng::gen(&mut rand::thread_rng());
             let db_arc = db.clone();
             let profiles_c = profiles.clone();
             let custom_agents_c = custom_agents.clone();
             let workspaces_c = workspaces.clone();
             let queue_c = queue.clone();
-            let acknowledged = tokio::task::spawn_blocking(move || -> Result<(), String> {
+            let acknowledged = tokio::task::spawn_blocking(move || -> Result<Option<(usize, std::time::Duration)>, String> {
                 let db_guard = db_arc.lock().unwrap_or_else(|p| p.into_inner());
                 let tx = db_guard.conn().unchecked_transaction().map_err(|e| e.to_string())?;
                 for (table, ids) in &accepted {
@@ -479,14 +512,31 @@ async fn do_push(
                     });
                     if confirmed { db_guard.acknowledge_sync_entry(entry)?; }
                 }
-                tx.commit().map_err(|e| e.to_string())
+                let rejections = handle_rejected_rows(&db_guard, &queue_c, &rejected, chrono::Utc::now(), jitter_unit)?;
+                tx.commit().map_err(|e| e.to_string())?;
+                Ok(rejections)
             })
             .await;
-            if let Err(error) = acknowledged.map_err(|e| e.to_string()).and_then(|r| r) {
-                emit_status(app, db, SyncStatus::Error, Some(error)).await;
-                return PushOutcome::Done;
-            }
+            let rejections = match acknowledged.map_err(|e| e.to_string()).and_then(|r| r) {
+                Ok(r) => r,
+                Err(error) => {
+                    emit_status(app, db, SyncStatus::Error, Some(error)).await;
+                    return PushOutcome::Done;
+                }
+            };
             *row_limit = row_limit.saturating_mul(2).min(PUSH_BATCH_ROW_CAP);
+            if let Some((count, delay)) = rejections {
+                // Rejected rows stay queued, so without a backoff the debounce
+                // tick would re-push them every ~5 s forever while the chip
+                // said Idle. Tell the user why instead.
+                let plural = if count == 1 { "" } else { "s" };
+                let detail = format!(
+                    "{count} change{plural} not synced: this computer's clock is ahead of the server.                      Correct the system date and time; they will sync automatically (retrying in {}s).",
+                    delay.as_secs()
+                );
+                emit_status(app, db, SyncStatus::Error, Some(detail)).await;
+                return PushOutcome::BackOffUntil(tokio::time::Instant::now() + delay);
+            }
             emit_status(app, db, SyncStatus::Idle, None).await;
             PushOutcome::Done
         }
@@ -857,6 +907,67 @@ mod tests {
 
         assert!(matches!(action, PushFailureAction::Dropped(1)));
         assert_eq!(db.sync_queue_depth().unwrap(), 1);
+    }
+
+    fn future_profile(db: &Database, id: &str, updated_at: &str) {
+        db.upsert_pulled_row("profiles", &serde_json::json!({
+            "id": id, "name": id, "workingDirectory": "/tmp", "claudeArgs": [], "envVars": {},
+            "isDefault": false, "agent": "claude", "updatedAt": updated_at, "clientVersion": 1,
+        })).unwrap();
+        db.enqueue_sync("profiles", id).unwrap();
+    }
+
+    #[test]
+    fn clock_skew_rejections_stay_queued_back_off_and_get_restamped() {
+        let db = Database::new_in_memory().unwrap();
+        future_profile(&db, "p1", "2099-01-01T00:00:00+00:00");
+        future_profile(&db, "p2", "2026-01-01T00:00:00+00:00");
+        let queue = db.peek_sync_queue(10).unwrap();
+        let rejected = std::collections::HashMap::from([(
+            "profiles".to_string(),
+            vec![sync_client::RejectedRow { id: "p1".into(), reason: "clock_skew".into() }],
+        )]);
+        let now = chrono::DateTime::parse_from_rfc3339("2026-09-26T12:00:00+00:00").unwrap().with_timezone(&chrono::Utc);
+
+        let out = handle_rejected_rows(&db, &queue, &rejected, now, 0.5).unwrap();
+
+        assert_eq!(out, Some((1, std::time::Duration::from_secs(30))));
+        assert_eq!(db.sync_queue_depth().unwrap(), 2, "a rejected row is not dropped");
+        // The future stamp is pulled back so the row can sync once the clock is right;
+        // a row with a sane stamp is left alone.
+        assert_eq!(db.get_local_updated_at("profiles", "p1").unwrap().as_deref(), Some(now.to_rfc3339().as_str()));
+        assert_eq!(db.get_local_updated_at("profiles", "p2").unwrap().as_deref(), Some("2026-01-01T00:00:00+00:00"));
+        // The rejected row now sorts behind fresh edits instead of heading every batch.
+        let next = db.peek_sync_queue(10).unwrap();
+        assert_eq!(next[0].row_key, "p2");
+        assert_eq!(next[1].row_key, "p1");
+        assert_eq!(next[1].last_error.as_deref(), Some("clock_skew"));
+    }
+
+    #[test]
+    fn no_rejections_means_no_backoff_and_unknown_tables_are_ignored() {
+        let db = Database::new_in_memory().unwrap();
+        future_profile(&db, "p1", "2099-01-01T00:00:00+00:00");
+        let queue = db.peek_sync_queue(10).unwrap();
+        let now = chrono::Utc::now();
+        assert_eq!(handle_rejected_rows(&db, &queue, &Default::default(), now, 0.5).unwrap(), None);
+        // A table name from the server that is not ours never reaches SQL.
+        assert!(!db.clamp_future_updated_at("sqlite_master; --", "p1", now).unwrap());
+        let other_table = std::collections::HashMap::from([(
+            "users".to_string(),
+            vec![sync_client::RejectedRow { id: "p1".into(), reason: "clock_skew".into() }],
+        )]);
+        assert_eq!(handle_rejected_rows(&db, &queue, &other_table, now, 0.5).unwrap(), None);
+    }
+
+    #[test]
+    fn push_response_without_rejected_still_parses() {
+        let resp: sync_client::PushResponse = serde_json::from_str(r#"{"accepted":{},"skipped":{}}"#).unwrap();
+        assert!(resp.rejected.is_empty());
+        let resp: sync_client::PushResponse = serde_json::from_str(
+            r#"{"accepted":{"profiles":[]},"skipped":{},"rejected":{"profiles":[{"id":"p1","reason":"clock_skew"}]}}"#,
+        ).unwrap();
+        assert_eq!(resp.rejected["profiles"][0].reason, "clock_skew");
     }
 
     #[test]

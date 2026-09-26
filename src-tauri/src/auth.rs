@@ -202,6 +202,10 @@ pub async fn start_oauth_login(
 pub struct AuthTokensReceivedPayload {
     pub access_token: String,
     pub state: String,
+    /// The account Rust already verified via `/api/me` before starting the
+    /// session. The frontend hydrates from it instead of fetching again, so a
+    /// failed second request can no longer leave the login modal spinning.
+    pub user: AuthUser,
 }
 
 /// Parsed `agentrium://auth-return` callback (broker contract: `code` + `state`).
@@ -395,6 +399,7 @@ async fn finish_signin(
     if let Some(previous) = engine.take() { previous.shutdown().await; }
     let _session = SESSION_LOCK.lock().await;
     let db = app_state.db.clone();
+    let event_user = user.clone();
     let counts = tokio::task::spawn_blocking(move || {
         let db = db.lock().unwrap_or_else(|p| p.into_inner());
         db.activate_sync_account(&user.id)?;
@@ -420,7 +425,7 @@ async fn finish_signin(
     *engine = Some(crate::sync::start_engine(app.clone(), app_state.db.clone(), token.clone()));
     if counts.total() > 0 { let _ = app.emit("guest-migration-completed", counts); }
     if let Some(state) = event_state {
-        app.emit("auth-tokens-received", AuthTokensReceivedPayload { access_token: token, state })
+        app.emit("auth-tokens-received", AuthTokensReceivedPayload { access_token: token, state, user: event_user })
             .map_err(|e| e.to_string())?;
     }
     Ok(())
