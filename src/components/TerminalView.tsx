@@ -7,7 +7,6 @@ import { SearchAddon } from '@xterm/addon-search';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { SerializeAddon } from '@xterm/addon-serialize';
-import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
@@ -15,6 +14,7 @@ import { toast } from '../store/toastStore';
 import { resolveTerminalTheme } from '../lib/terminalThemes';
 import { copyText, readClipboardText } from '../lib/clipboard';
 import { reportInvokeFailure } from '../lib/errorReporter';
+import { openTerminalLink } from '../lib/terminalLinks';
 import { classifyPasteInput } from '../lib/pasteWarning';
 import { toBracketedPaste } from '../lib/bracketedPaste';
 import { decideCtrlC } from '../lib/ctrlCAction';
@@ -182,21 +182,13 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
       // default confirm()s and then window.open()s ANY scheme inside the
       // webview, so route them through the same http/https-only command.
       linkHandler: {
-        activate: (_event, uri) => {
-          invoke('open_external_url', { url: uri }).catch((err) => {
-            reportInvokeFailure('open_external_url', err);
-          });
-        },
+        activate: (_event, uri) => openTerminalLink(uri),
         allowNonHttpProtocols: false,
       },
     });
 
     const fitAddon = new FitAddon();
-    const webLinksAddon = new WebLinksAddon((_event, uri) => {
-      invoke('open_external_url', { url: uri }).catch((err) => {
-        reportInvokeFailure('open_external_url', err);
-      });
-    });
+    const webLinksAddon = new WebLinksAddon((_event, uri) => openTerminalLink(uri));
     const searchAddon = new SearchAddon();
     const serializeAddon = new SerializeAddon();
 
