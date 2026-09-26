@@ -384,7 +384,15 @@ async fn resolve_agent_spec(
     let id = kind.custom_id().unwrap_or_default().to_string();
     let row = db_op(&state.db, move |db| db.get_custom_agent(&id)).await?;
     match row {
-        Some(a) => Ok(crate::agents::AgentSpec::from_custom(&a)),
+        // Re-check at spawn time: rows written by a pre-validation pull (or
+        // any other path into SQLite) must never reach `cmd.exe /C`.
+        Some(a) => {
+            crate::custom_agents::validate_launch_fields(&a.binary, a.resume_flag.as_deref(), &a.required_env)
+                .map_err(|e| error_reporter::user_err(format!(
+                    "{e}. Fix this agent in Settings > Agents & Keys before starting it."
+                )))?;
+            Ok(crate::agents::AgentSpec::from_custom(&a))
+        }
         None => Err(error_reporter::user_err(
             "This agent was removed. Pick another agent or add it again in Settings > Agents & Keys.",
         )),

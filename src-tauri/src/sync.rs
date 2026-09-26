@@ -11,6 +11,25 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 
 const PUSH_BATCH_ROW_CAP: usize = 500;
+/// Serialized-row budget per push. The broker rejects bodies over 4 MiB
+/// (`BODY_CAP_BYTES` in agentrium-api push/route.ts) with a 413; 500 valid
+/// rows of up to 64 KiB each can reach ~32 MiB, so batches are cut by size
+/// too, leaving headroom for the JSON envelope.
+const PUSH_BATCH_BYTE_CAP: usize = 3 * 1024 * 1024;
+
+/// How many of the leading rows (by serialized size) fit in one push. Always
+/// at least one, so an oversized single row still gets sent and, if the
+/// server rejects it, dropped on its own.
+fn rows_within_byte_cap(sizes: &[usize], cap: usize) -> usize {
+    let mut total = 0usize;
+    for (i, size) in sizes.iter().enumerate() {
+        total = total.saturating_add(*size);
+        if total > cap && i > 0 {
+            return i;
+        }
+    }
+    sizes.len()
+}
 const DEBOUNCE_MS: u64 = 5_000;
 const PULL_INTERVAL_MS: u64 = 5 * 60 * 1_000;
 /// Spec §7.4: after a transient push failure wait `min(30 * 2^attempts, 3600)`
@@ -83,8 +102,13 @@ pub fn should_report_failure(err: &sync_client::SyncError) -> bool {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PushFailureAction {
-    /// Poison rows removed from the queue; count of dropped entries.
+    /// Poison rows removed from the queue; count of dropped entries. Only
+    /// ever a single-row batch: see `Split`.
     Dropped(usize),
+    /// A multi-row batch was rejected as a whole (one invalid row, or 413).
+    /// Nothing is dropped; retry with at most this many rows so the bad row
+    /// ends up isolated and valid rows in the same batch still sync.
+    Split(usize),
     /// Attempt recorded on every batched row; hold automatic pushes this long.
     RetryAfter(std::time::Duration),
 }
@@ -98,6 +122,12 @@ fn handle_push_failure(
     jitter_unit: f64,
 ) -> Result<PushFailureAction, String> {
     match classify_push_failure(err) {
+        PushFailure::Poison if queue.len() > 1 => {
+            // The broker validates the whole body at once, so a 400/413 says
+            // nothing about which rows are bad. Bisect instead of dropping
+            // up to 500 valid changes with it.
+            Ok(PushFailureAction::Split((queue.len() / 2).max(1)))
+        }
         PushFailure::Poison => {
             // Match on enqueued_at so a row the user edited after the
             // snapshot keeps its fresh entry and gets its own attempt.
@@ -231,6 +261,8 @@ async fn run_engine(
     // Set after a transient push failure; automatic pushes wait it out.
     // User-initiated actions (Sync now, re-enable) clear it.
     let mut backoff_until: Option<tokio::time::Instant> = None;
+    // Current push batch size; see `do_push`.
+    let mut push_row_limit = PUSH_BATCH_ROW_CAP;
 
     if enabled {
         emit_status(&app, &db, SyncStatus::Idle, None).await;
@@ -245,7 +277,7 @@ async fn run_engine(
                 Some(SyncCommand::SyncNow) => {
                     if enabled {
                         client.retry_user_action();
-                        backoff_until = do_push(&app, &db, &mut client).await.next_backoff();
+                        backoff_until = do_push(&app, &db, &mut client, &mut push_row_limit).await.next_backoff();
                         do_pull(&app, &db, &mut client).await;
                     }
                 }
@@ -262,7 +294,7 @@ async fn run_engine(
                     if e {
                         client.retry_user_action();
                         emit_status(&app, &db, SyncStatus::Idle, None).await;
-                        backoff_until = do_push(&app, &db, &mut client).await.next_backoff();
+                        backoff_until = do_push(&app, &db, &mut client, &mut push_row_limit).await.next_backoff();
                         do_pull(&app, &db, &mut client).await;
                     } else {
                         emit_status(&app, &db, SyncStatus::Paused, None).await;
@@ -291,7 +323,7 @@ async fn run_engine(
                 let backing_off = backoff_until.is_some_and(|t| tokio::time::Instant::now() < t);
                 if let Some(since) = dirty_since {
                     if !backing_off && since.elapsed() >= std::time::Duration::from_millis(DEBOUNCE_MS) {
-                        backoff_until = do_push(&app, &db, &mut client).await.next_backoff();
+                        backoff_until = do_push(&app, &db, &mut client, &mut push_row_limit).await.next_backoff();
                         dirty_since = None;
                     }
                 }
@@ -322,10 +354,14 @@ impl PushOutcome {
     }
 }
 
+/// `row_limit` is the engine's current batch size: halved while bisecting a
+/// rejected batch (`PushFailureAction::Split`), doubled back after each
+/// accepted push.
 async fn do_push(
     app: &tauri::AppHandle,
     db: &Arc<std::sync::Mutex<Database>>,
     client: &mut sync_client::SyncClient,
+    row_limit: &mut usize,
 ) -> PushOutcome {
     // Keep the actionable paused status and queue intact until the user resumes.
     if let Some(error) = client.blocked_error() {
@@ -336,29 +372,43 @@ async fn do_push(
 
     // Snapshot queue + resolve row JSON, all under one blocking-lock pass.
     let db_arc = db.clone();
+    let limit = (*row_limit).clamp(1, PUSH_BATCH_ROW_CAP);
     let snapshot = tokio::task::spawn_blocking(move || {
         let db_guard = db_arc.lock().unwrap_or_else(|p| p.into_inner());
-        let queue = db_guard.peek_sync_queue(PUSH_BATCH_ROW_CAP).unwrap_or_default();
-        let mut profiles = Vec::new();
-        let mut custom_agents = Vec::new();
-        let mut workspaces = Vec::new();
+        let mut queue = db_guard.peek_sync_queue(limit).unwrap_or_default();
+        let mut resolved = Vec::with_capacity(queue.len());
         for row in &queue {
             match db_guard.read_syncable_row_json(&row.table_name, &row.row_key) {
-                Ok(Some(v)) => match row.table_name.as_str() {
-                    "profiles" => profiles.push((row.row_key.clone(), v)),
-                    "custom_agents" => custom_agents.push((row.row_key.clone(), v)),
-                    "workspaces" => workspaces.push((row.row_key.clone(), v)),
-                    _ => {}
-                },
-                Ok(None) => {
-                    // Row was deleted before we got to push it. Drop the queue entry.
-                }
+                Ok(v) => resolved.push(v),
                 Err(e) => {
                     crate::error_reporter::report_bg(
                         "sync_push_read",
                         format!("{}/{}: {e}", row.table_name, row.row_key),
                     );
+                    resolved.push(None);
                 }
+            }
+        }
+        // Rows past the byte budget stay queued for the next push; they must
+        // also leave the snapshot so they are neither acked nor dropped here.
+        let sizes: Vec<usize> = resolved
+            .iter()
+            .map(|v| v.as_ref().map_or(0, |v| serde_json::to_vec(v).map_or(0, |b| b.len())))
+            .collect();
+        let keep = rows_within_byte_cap(&sizes, PUSH_BATCH_BYTE_CAP);
+        queue.truncate(keep);
+        resolved.truncate(keep);
+        let mut profiles = Vec::new();
+        let mut custom_agents = Vec::new();
+        let mut workspaces = Vec::new();
+        for (row, value) in queue.iter().zip(resolved) {
+            // None: row was deleted before we got to push it. Drop the queue entry.
+            let Some(v) = value else { continue };
+            match row.table_name.as_str() {
+                "profiles" => profiles.push((row.row_key.clone(), v)),
+                "custom_agents" => custom_agents.push((row.row_key.clone(), v)),
+                "workspaces" => workspaces.push((row.row_key.clone(), v)),
+                _ => {}
             }
         }
         (queue, profiles, custom_agents, workspaces)
@@ -436,6 +486,7 @@ async fn do_push(
                 emit_status(app, db, SyncStatus::Error, Some(error)).await;
                 return PushOutcome::Done;
             }
+            *row_limit = row_limit.saturating_mul(2).min(PUSH_BATCH_ROW_CAP);
             emit_status(app, db, SyncStatus::Idle, None).await;
             PushOutcome::Done
         }
@@ -465,6 +516,12 @@ async fn do_push(
                     let detail = format!("{n} change{plural} rejected by server and dropped: {msg}");
                     emit_status(app, db, SyncStatus::Error, Some(detail)).await;
                     PushOutcome::Done
+                }
+                Ok((PushFailureAction::Split(next_limit), _)) => {
+                    // Retry the first half straight away; at most log2(500)
+                    // rounds before the bad row is alone and dropped by itself.
+                    *row_limit = next_limit;
+                    Box::pin(do_push(app, db, client, row_limit)).await
                 }
                 Ok((PushFailureAction::RetryAfter(delay), msg)) => {
                     if report_transient {
@@ -775,16 +832,45 @@ mod tests {
     }
 
     #[test]
-    fn poison_response_drops_the_snapshotted_queue_rows() {
+    fn poison_response_on_a_multi_row_batch_splits_instead_of_dropping() {
         let db = Database::new_in_memory().unwrap();
         db.enqueue_sync("profiles", "p1").unwrap();
         db.enqueue_sync("workspaces", "w1").unwrap();
+        db.enqueue_sync("workspaces", "w2").unwrap();
         let queue = db.peek_sync_queue(10).unwrap();
 
         let action = handle_push_failure(&db, &queue, &sync_client::SyncError::Server(422, "bad row".into()), 0.5).unwrap();
+        assert!(matches!(action, PushFailureAction::Split(1)));
+        let too_large = handle_push_failure(&db, &queue, &sync_client::SyncError::Server(413, "payload_too_large".into()), 0.5).unwrap();
+        assert!(matches!(too_large, PushFailureAction::Split(1)));
+        assert_eq!(db.sync_queue_depth().unwrap(), 3, "valid rows in a rejected batch must stay queued");
+    }
 
-        assert!(matches!(action, PushFailureAction::Dropped(2)));
-        assert_eq!(db.sync_queue_depth().unwrap(), 0);
+    #[test]
+    fn poison_response_on_a_single_row_drops_only_that_row() {
+        let db = Database::new_in_memory().unwrap();
+        db.enqueue_sync("profiles", "p1").unwrap();
+        db.enqueue_sync("workspaces", "w1").unwrap();
+        let queue = db.peek_sync_queue(1).unwrap();
+
+        let action = handle_push_failure(&db, &queue, &sync_client::SyncError::Server(422, "bad row".into()), 0.5).unwrap();
+
+        assert!(matches!(action, PushFailureAction::Dropped(1)));
+        assert_eq!(db.sync_queue_depth().unwrap(), 1);
+    }
+
+    #[test]
+    fn batches_are_cut_by_serialized_size() {
+        let kib = 1024;
+        assert_eq!(rows_within_byte_cap(&[], 3 * kib), 0);
+        assert_eq!(rows_within_byte_cap(&[kib, kib, kib], 3 * kib), 3);
+        assert_eq!(rows_within_byte_cap(&[kib, kib, kib, 1], 3 * kib), 3);
+        // A single row larger than the cap still goes out alone.
+        assert_eq!(rows_within_byte_cap(&[10 * kib, kib], 3 * kib), 1);
+        // 500 rows of ~10 KiB (a 4.9 MB body) no longer fit in one push.
+        let sizes = vec![10 * kib; 500];
+        let n = rows_within_byte_cap(&sizes, PUSH_BATCH_BYTE_CAP);
+        assert!(n < 500 && n * 10 * kib <= PUSH_BATCH_BYTE_CAP);
     }
 
     #[test]

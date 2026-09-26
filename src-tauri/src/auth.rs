@@ -406,7 +406,17 @@ async fn finish_signin(
         save_cached_auth_user(&db, &user)?;
         run_guest_migration(&db)
     }).await.map_err(|e| e.to_string())??;
-    if let Some(refresh) = refresh { credentials::store_refresh_token(&refresh)?; }
+    if let Some(refresh) = refresh {
+        credentials::store_refresh_token(&refresh)?;
+        // The keychain now holds this sign-in's token, not a leftover from a
+        // failed sign-out, so the next launch may restore it.
+        let db = app_state.db.clone();
+        tokio::task::spawn_blocking(move || {
+            db.lock().unwrap_or_else(|p| p.into_inner()).delete_user_meta(PENDING_SIGNOUT_META)
+        })
+        .await
+        .map_err(|e| e.to_string())??;
+    }
     *engine = Some(crate::sync::start_engine(app.clone(), app_state.db.clone(), token.clone()));
     if counts.total() > 0 { let _ = app.emit("guest-migration-completed", counts); }
     if let Some(state) = event_state {
@@ -565,33 +575,105 @@ pub async fn fetch_current_user(access_token: String) -> Result<AuthUser, String
     .await
 }
 
-/// Clear local credentials and revoke the server session. False means the
-/// local logout succeeded but server revocation could not be confirmed.
+/// user_meta flag set when a sign-out could not delete the keychain refresh
+/// token. While set, `rehydrate_auth` refuses to restore the session and
+/// retries the delete; a fresh sign-in clears it.
+const PENDING_SIGNOUT_META: &str = "pending_signout";
+
+/// What `logout` managed to do. The frontend clears its signed-in state for
+/// any `Ok`; an `Err` means the stored session is still restorable.
+#[derive(Debug, Serialize, PartialEq, Eq)]
+pub struct LogoutOutcome {
+    /// The broker confirmed the refresh token is revoked (or none was stored).
+    pub server_revoked: bool,
+    /// A local cleanup step failed but the session cannot come back: either
+    /// the server revoked it or the restart guard is in place.
+    pub local_error: Option<String>,
+}
+
+/// Decide the logout result from each step's outcome. The stored session is
+/// only still usable when the keychain delete failed, the restart guard
+/// could not be written, and the broker did not revoke the token.
+fn logout_outcome(
+    read_err: Option<String>,
+    clear_err: Option<String>,
+    guard_err: Option<String>,
+    db_err: Option<String>,
+    server_revoked: bool,
+) -> Result<LogoutOutcome, String> {
+    if let Some(clear) = &clear_err {
+        if guard_err.is_some() && !server_revoked {
+            return Err(format!(
+                "Couldn't remove your saved sign-in from the system keychain ({clear}), so it would be restored on next launch"
+            ));
+        }
+    }
+    Ok(LogoutOutcome { server_revoked, local_error: clear_err.or(db_err).or(read_err) })
+}
+
+/// Clear local credentials and revoke the server session. Every step runs
+/// even when an earlier one fails: stopping at the first error used to leave
+/// the keychain token in place while the UI showed the user signed out.
 #[command]
-pub async fn logout(state: tauri::State<'_, AppState>) -> Result<bool, String> {
+pub async fn logout(state: tauri::State<'_, AppState>) -> Result<LogoutOutcome, String> {
     let db_arc = state.db.clone();
     // Stop the sync engine first so no more push/pull happens after logout.
     let mut engine = state.sync_handle.lock().await;
     if let Some(handle) = engine.take() { handle.shutdown().await; }
     wrap_cmd("logout", async move {
         let _session = SESSION_LOCK.lock().await;
-        let refresh = credentials::read_refresh_token()?;
+        let refresh = credentials::read_refresh_token();
         // Clear locally even when the network is unavailable. Never persist a
         // token for retry after the user requested removal from this device.
-        credentials::clear_refresh_token()?;
-        tokio::task::spawn_blocking(move || {
+        let cleared = credentials::clear_refresh_token();
+        let keychain_failed = cleared.is_err();
+        let (guard, db_cleared) = tokio::task::spawn_blocking(move || {
             let db = db_arc.lock().unwrap_or_else(|p| p.into_inner());
-            clear_cached_auth_user(&db)?;
-            db.delete_user_meta("logged_in_user_id")
+            let guard = if keychain_failed { db.set_user_meta(PENDING_SIGNOUT_META, Some("1")) } else { Ok(()) };
+            let db_cleared = clear_cached_auth_user(&db).and_then(|_| db.delete_user_meta("logged_in_user_id"));
+            (guard, db_cleared)
         })
         .await
-        .map_err(|e| format!("DB task failed: {e}"))??;
-        let revoked = if let Some(refresh) = refresh {
-            revoke_session(API_BASE, &refresh).await
-        } else { true };
-        Ok(revoked)
+        .unwrap_or_else(|e| (Err(format!("DB task failed: {e}")), Err(format!("DB task failed: {e}"))));
+        let revoked = match &refresh {
+            Ok(Some(token)) => revoke_session(API_BASE, token).await,
+            Ok(None) => true,
+            Err(_) => false,
+        };
+        let outcome = logout_outcome(refresh.err(), cleared.err(), guard.err(), db_cleared.err(), revoked);
+        if let Ok(LogoutOutcome { local_error: Some(e), .. }) = &outcome {
+            crate::error_reporter::report_bg("logout_local_cleanup", e.clone());
+        }
+        outcome
     })
     .await
+}
+
+/// Finish a sign-out that could not delete the keychain token last time.
+/// Returns true when one was pending, in which case the caller must not
+/// restore the session from whatever is still in the keychain.
+async fn finish_pending_signout(db_arc: Arc<std::sync::Mutex<database::Database>>) -> bool {
+    let db_read = db_arc.clone();
+    let pending = tokio::task::spawn_blocking(move || {
+        db_read.lock().unwrap_or_else(|p| p.into_inner()).get_user_meta(PENDING_SIGNOUT_META)
+    })
+    .await
+    .ok()
+    .and_then(|r| r.ok())
+    .flatten()
+    .is_some();
+    if !pending { return false; }
+    let _session = SESSION_LOCK.lock().await;
+    if let Ok(Some(token)) = credentials::read_refresh_token() {
+        let _ = revoke_session(API_BASE, &token).await;
+    }
+    if credentials::clear_refresh_token().is_ok() {
+        let _ = tokio::task::spawn_blocking(move || {
+            db_arc.lock().unwrap_or_else(|p| p.into_inner()).delete_user_meta(PENDING_SIGNOUT_META)
+        })
+        .await;
+    }
+    true
 }
 
 async fn revoke_session(api_base: &str, refresh: &str) -> bool {
@@ -714,6 +796,9 @@ pub async fn rehydrate_auth(
 ) -> Result<RehydrateOutcome, String> {
     let db_arc = state.db.clone();
     wrap_cmd("rehydrate_auth", async move {
+        if finish_pending_signout(db_arc.clone()).await {
+            return Ok(RehydrateOutcome::NoSession);
+        }
         let cached = tokio::task::spawn_blocking(move || {
             let db = db_arc.lock().unwrap_or_else(|p| p.into_inner());
             load_cached_auth_user(&db)
@@ -963,6 +1048,36 @@ mod tests {
             stream.write_all(resp.as_bytes()).unwrap();
         });
         (format!("http://{addr}"), rx)
+    }
+
+    #[test]
+    fn logout_outcome_is_ok_when_everything_succeeds() {
+        assert_eq!(
+            logout_outcome(None, None, None, None, true),
+            Ok(LogoutOutcome { server_revoked: true, local_error: None })
+        );
+    }
+
+    #[test]
+    fn logout_outcome_errs_only_when_the_stored_session_stays_usable() {
+        let e = || Some("keyring delete: denied".to_string());
+        // Keychain delete failed, no restart guard, server did not revoke:
+        // the next launch would sign straight back in. Must not report success.
+        assert!(logout_outcome(None, e(), e(), None, false).unwrap_err().contains("keychain"));
+        // Server revoked the token: the leftover copy is dead.
+        let revoked = logout_outcome(None, e(), e(), None, true).unwrap();
+        assert!(revoked.server_revoked && revoked.local_error.is_some());
+        // Restart guard written: rehydrate will refuse and retry the delete.
+        let guarded = logout_outcome(None, e(), None, None, false).unwrap();
+        assert!(!guarded.server_revoked && guarded.local_error.is_some());
+    }
+
+    #[test]
+    fn logout_outcome_surfaces_db_and_read_failures_without_failing() {
+        let out = logout_outcome(Some("keyring get: x".into()), None, None, Some("db: y".into()), false).unwrap();
+        assert_eq!(out.local_error.as_deref(), Some("db: y"));
+        let out = logout_outcome(Some("keyring get: x".into()), None, None, None, false).unwrap();
+        assert_eq!(out.local_error.as_deref(), Some("keyring get: x"));
     }
 
     #[test]

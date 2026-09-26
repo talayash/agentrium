@@ -1411,6 +1411,19 @@ impl Database {
                 ).map_err(|e| e.to_string())?;
             }
             "custom_agents" => {
+                // The binary and resume template end up in `cmd.exe /C` /
+                // `$SHELL -lc`, so a pulled row gets the same launch checks as
+                // a local save. Skip (don't Err) so one bad row cannot stall
+                // the pull cursor forever; tombstones are always safe to apply.
+                if get_opt_str("deletedAt").is_none() {
+                    if let Err(e) = crate::custom_agents::validate_pulled_row(&row) {
+                        crate::error_reporter::report_bg(
+                            "sync_pull_rejected_custom_agent",
+                            format!("{}: {}", get_str("id"), e),
+                        );
+                        return Ok(());
+                    }
+                }
                 let default_args: String = self.conn.query_row("SELECT default_args FROM custom_agents WHERE id = ?1", [get_str("id")], |r| r.get(0)).optional().map_err(|e| e.to_string())?.unwrap_or_else(|| "[]".into());
                 let required_env = row.get("requiredEnv").map(|v| v.to_string()).unwrap_or_else(|| "[]".into());
                 let bindings: String = self.conn.query_row("SELECT bindings FROM custom_agents WHERE id = ?1", [get_str("id")], |r| r.get(0)).optional().map_err(|e| e.to_string())?.unwrap_or_else(|| "[]".into());
@@ -2598,6 +2611,32 @@ mod tests {
         db.upsert_pulled_row("profiles", &row2).unwrap();
         let name: String = db.conn.query_row("SELECT name FROM profiles WHERE id = 'p1'", [], |r| r.get(0)).unwrap();
         assert_eq!(name, "Beta v2");
+    }
+
+    #[test]
+    fn upsert_pulled_row_skips_custom_agent_with_injected_binary() {
+        let db = Database::new_in_memory().unwrap();
+        let good = serde_json::json!({
+            "id": "a1", "name": "OpenCode", "binary": "opencode", "resumeFlag": "--session {id}",
+            "color": "#30C55E", "requiredEnv": [], "updatedAt": "2026-06-01T00:00:00Z",
+            "deletedAt": null, "clientVersion": 1,
+        });
+        db.upsert_pulled_row("custom_agents", &good).unwrap();
+        // A newer row (e.g. pushed with a stolen token) that tries to turn the
+        // agent into a shell one-liner must not replace the local copy.
+        let evil = serde_json::json!({
+            "id": "a1", "name": "OpenCode", "binary": "opencode & calc", "color": "#30C55E",
+            "requiredEnv": [], "updatedAt": "2099-01-01T00:00:00Z", "deletedAt": null, "clientVersion": 2,
+        });
+        db.upsert_pulled_row("custom_agents", &evil).unwrap();
+        assert_eq!(db.get_custom_agent("a1").unwrap().unwrap().binary, "opencode");
+        // A tombstone still applies even if its content would not validate.
+        let tomb = serde_json::json!({
+            "id": "a1", "name": "", "binary": "", "color": "", "requiredEnv": [],
+            "updatedAt": "2099-01-02T00:00:00Z", "deletedAt": "2099-01-02T00:00:00Z", "clientVersion": 3,
+        });
+        db.upsert_pulled_row("custom_agents", &tomb).unwrap();
+        assert!(db.get_custom_agent("a1").unwrap().is_none());
     }
 
     #[test]

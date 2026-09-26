@@ -63,17 +63,35 @@ export async function getAuthPromptSeen(): Promise<boolean> {
   return await invoke<boolean>('get_auth_prompt_seen');
 }
 
-/** Clear local state and report whether server revocation succeeded. */
+/** Mirrors `auth::LogoutOutcome` in src-tauri/src/auth.rs. */
+export interface LogoutOutcome {
+  server_revoked: boolean;
+  local_error: string | null;
+}
+
+/**
+ * Sign out and tell the user exactly how far it got. A rejected invoke means
+ * Rust could not remove the saved sign-in and could not neutralise it either,
+ * so the session would come back on restart: keep the signed-in state instead
+ * of showing a sign-out that did not happen.
+ */
 export async function logout(): Promise<void> {
+  let outcome: LogoutOutcome;
   try {
-    const revoked = await invoke<boolean>('logout');
-    if (revoked === false) toast.warning('Signed out on this device', 'Server sign-out could not be confirmed. The server session may remain valid until revoked or expired.');
+    outcome = await invoke<LogoutOutcome>('logout');
   } catch (err) {
-    // Surface for telemetry but don't rethrow — we still want to clear the
-    // frontend state so the user sees the sign-out take effect visually.
+    toast.error('Sign-out failed', `${err instanceof Error ? err.message : String(err)}. Try signing out again.`);
     reportInvokeFailure('logout', err);
-  } finally {
-    useAuthStore.getState().clear();
+    return;
+  }
+  useAuthStore.getState().clear();
+  if (!outcome.server_revoked) {
+    toast.warning(
+      'Signed out on this device',
+      outcome.local_error
+        ? 'Your saved sign-in could not be removed from the system keychain yet. Agentrium will finish removing it on next launch.'
+        : 'Server sign-out could not be confirmed. The server session may remain valid until revoked or expired.',
+    );
   }
 }
 
