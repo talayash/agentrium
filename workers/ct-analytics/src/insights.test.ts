@@ -263,10 +263,15 @@ function trackRowsRead(target: D1Database): { db: D1Database; rowsRead: () => nu
 }
 
 it(
-  'rows_read for a 90-day compute: warm (cached first-seen map) stays well under a full 400-day x 200-install table scan',
+  'rows_read for a 90-day compute: warm (cached first-seen map) stays well under a full 400-day x 60-install table scan',
   async () => {
     const NUM_DAYS = 400;
-    const NUM_INSTALLS = 200;
+    // Kept at 60 installs/day (not 200) so this test's 24,000-row seed
+    // doesn't overload Miniflare's D1 proxy when all 8 spec files run
+    // concurrently under `npm run test:run`; the day count (and thus the
+    // ratio this test proves - full-table scan vs. windowed query) is
+    // unchanged. See the "warm reads only" comment below.
+    const NUM_INSTALLS = 60;
     const rows: Array<[string, string]> = [];
     const dayMs = 86_400_000;
     const start = Date.parse(`${TODAY}T00:00:00Z`) - (NUM_DAYS - 1) * dayMs;
@@ -279,8 +284,9 @@ it(
     // One round trip per test run against Miniflare's D1 proxy is expensive,
     // so pack many rows into each statement instead of one statement per row.
     // D1 caps bound parameters per statement at 100, well under SQLite's own
-    // ~999 limit; and batches of statements are chunked so a single
-    // `db.batch` call doesn't have to hold all 80,000 rows' worth at once.
+    // ~999 limit; and batches of statements are chunked (<=500 statements per
+    // `db.batch` call, D1's own batch-size ceiling) so a single call doesn't
+    // have to hold all 24,000 rows' worth at once.
     const rowsPerStatement = 45;
     const statements: D1PreparedStatement[] = [];
     for (let i = 0; i < rows.length; i += rowsPerStatement) {
@@ -288,7 +294,7 @@ it(
       const sql = `INSERT OR IGNORE INTO daily_dau (date, installation_id) VALUES ${chunk.map(() => '(?, ?)').join(', ')}`;
       statements.push(db.prepare(sql).bind(...chunk.flat()));
     }
-    const statementsPerBatch = 200;
+    const statementsPerBatch = 500;
     for (let i = 0; i < statements.length; i += statementsPerBatch) {
       await db.batch(statements.slice(i, i + statementsPerBatch));
     }
@@ -313,12 +319,13 @@ it(
 
     expect(Number.isFinite(coldRowsRead)).toBe(true);
     expect(Number.isFinite(warmRowsRead)).toBe(true);
-    // Warm reads only the ~209-day window (fetchStart..today) at 200
-    // installs/day (~41,800 rows) instead of the full 400-day x 200-install
-    // table (80,000 rows) the cold path's first-seen scan reads on top of
-    // that same window query.
-    expect(warmRowsRead).toBeLessThan(60_000);
+    // Warm reads only the ~209-day window (fetchStart..today) at 60
+    // installs/day (~12,540 rows) instead of the full 400-day x 60-install
+    // table (24,000 rows) the cold path's first-seen scan reads on top of
+    // that same window query. Ceiling is scaled down from the original
+    // 200-install version's 60,000 by the same 60/200 install ratio.
+    expect(warmRowsRead).toBeLessThan(18_000);
     expect(warmRowsRead).toBeLessThan(coldRowsRead);
   },
-  30_000,
+  45_000,
 );
