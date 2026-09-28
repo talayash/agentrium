@@ -8,6 +8,43 @@ use tauri::{command, AppHandle, Emitter, State};
 use tokio::sync::mpsc;
 use crate::error_reporter::{self, ErrorSource};
 
+/// Give EOF a short grace period to race with process termination. Never block
+/// on child.wait() while holding the shared terminal manager lock.
+pub(crate) async fn finish_terminal(
+    terminals: &std::sync::Arc<tokio::sync::Mutex<crate::terminal::TerminalManager>>,
+    id: &str,
+) -> Option<u32> {
+    let mut exit_code = None;
+    for _ in 0..20 {
+        let result = {
+            let mut manager = terminals.lock().await;
+            if !manager.terminals.contains_key(id) {
+                return None;
+            }
+            manager.try_exit_code(id)
+        };
+        match result {
+            Ok(Some(code)) => {
+                exit_code = Some(code);
+                break;
+            }
+            Ok(None) => {}
+            Err(err) => {
+                error_reporter::report_bg("terminal_exit_status", err);
+                break;
+            }
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
+    let status = if exit_code.is_some_and(|code| code != 0) {
+        crate::terminal::TerminalStatus::Error
+    } else {
+        crate::terminal::TerminalStatus::Stopped
+    };
+    let _ = terminals.lock().await.update_status(id, status);
+    exit_code
+}
+
 /// Wrap a Tauri command body so any `Err(String)` it returns is also reported
 /// to the error_reporter (fire-and-forget). The command's behavior is unchanged.
 pub async fn wrap_cmd<T, F>(name: &'static str, fut: F) -> Result<T, String>
@@ -648,10 +685,7 @@ pub async fn create_terminal(
             // Await the lock unbounded: no caller in this codebase holds the manager guard across
             // an .await, so this can only queue behind bounded sync work (matching every other
             // .terminals.lock().await site).
-            {
-                let mut manager = terminals_arc.lock().await;
-                let _ = manager.update_status(&terminal_id, crate::terminal::TerminalStatus::Stopped);
-            }
+            let exit_code = finish_terminal(&terminals_arc, &terminal_id).await;
             // Drop accumulated telemetry on the natural process-exit path too -
             // close_terminal() handles the user-close path, but a terminal that
             // exits on its own would otherwise leak its aggregator entry until
@@ -677,6 +711,7 @@ pub async fn create_terminal(
 
             if let Err(e) = app_clone.emit("terminal-finished", serde_json::json!({
                 "id": terminal_id,
+                "exit_code": exit_code,
             })) {
                 eprintln!("Failed to emit terminal-finished: {}", e);
                 error_reporter::report_bg(
@@ -5098,10 +5133,7 @@ pub async fn create_script_terminal(
                     break;
                 }
             }
-            {
-                let mut manager = terminals_arc.lock().await;
-                let _ = manager.update_status(&terminal_id, crate::terminal::TerminalStatus::Stopped);
-            }
+            let exit_code = finish_terminal(&terminals_arc, &terminal_id).await;
             // Match create_terminal's exit path: drop any aggregator entry so it
             // doesn't outlive the terminal id. Script terminals don't currently
             // emit OTEL, but keeping the cleanup consistent prevents a silent
@@ -5109,7 +5141,7 @@ pub async fn create_script_terminal(
             if let Ok(mut agg) = otel_agg.lock() {
                 agg.forget(&terminal_id);
             }
-            if let Err(e) = app_clone.emit("terminal-finished", serde_json::json!({ "id": terminal_id })) {
+            if let Err(e) = app_clone.emit("terminal-finished", serde_json::json!({ "id": terminal_id, "exit_code": exit_code })) {
                 eprintln!("Failed to emit terminal-finished: {}", e);
                 error_reporter::report_bg(
                     "emit_terminal_finished",
@@ -5163,15 +5195,12 @@ pub async fn create_shell_terminal(
                     break;
                 }
             }
-            {
-                let mut manager = terminals_arc.lock().await;
-                let _ = manager.update_status(&terminal_id, crate::terminal::TerminalStatus::Stopped);
-            }
+            let exit_code = finish_terminal(&terminals_arc, &terminal_id).await;
             // Same defensive cleanup as create_script_terminal - see comment there.
             if let Ok(mut agg) = otel_agg.lock() {
                 agg.forget(&terminal_id);
             }
-            if let Err(e) = app_clone.emit("terminal-finished", serde_json::json!({ "id": terminal_id })) {
+            if let Err(e) = app_clone.emit("terminal-finished", serde_json::json!({ "id": terminal_id, "exit_code": exit_code })) {
                 eprintln!("Failed to emit terminal-finished: {}", e);
                 error_reporter::report_bg(
                     "emit_terminal_finished",

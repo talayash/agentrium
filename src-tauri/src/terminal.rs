@@ -808,7 +808,7 @@ impl TerminalManager {
         let Some(terminal) = self.terminals.get_mut(id) else {
             return Ok(());
         };
-        if terminal.config.status == TerminalStatus::Stopped {
+        if matches!(terminal.config.status, TerminalStatus::Stopped | TerminalStatus::Error) {
             return Ok(());
         }
         terminal.last_input_at = Some(std::time::Instant::now());
@@ -844,7 +844,7 @@ impl TerminalManager {
         let Some(terminal) = self.terminals.get_mut(id) else {
             return Ok(());
         };
-        if terminal.config.status == TerminalStatus::Stopped {
+        if matches!(terminal.config.status, TerminalStatus::Stopped | TerminalStatus::Error) {
             return Ok(());
         }
         // DIAG(pty-size): remove after burn-in bug is resolved.
@@ -912,6 +912,17 @@ impl TerminalManager {
     }
 
     // (See `reap_terminal` free function below.)
+
+    /// Nonblocking exit observation. EOF can precede process termination, so
+    /// callers may retry without holding the manager lock between attempts.
+    pub fn try_exit_code(&mut self, id: &str) -> Result<Option<u32>, String> {
+        match self.terminals.get_mut(id) {
+            Some(terminal) => terminal.child.try_wait()
+                .map(|status| status.map(|status| status.exit_code()))
+                .map_err(|err| err.to_string()),
+            None => Ok(None), // The user may have closed the tab already.
+        }
+    }
 
     pub fn update_status(&mut self, id: &str, status: TerminalStatus) -> Result<(), String> {
         if let Some(terminal) = self.terminals.get_mut(id) {
@@ -1032,24 +1043,43 @@ mod tests {
         status: TerminalStatus,
         writer: Box<dyn Write + Send>,
     ) {
+        insert_test_terminal_with_exit_code(mgr, id, status, writer, 0);
+    }
+
+    fn insert_test_terminal_with_exit_code(
+        mgr: &mut TerminalManager,
+        id: &str,
+        status: TerminalStatus,
+        writer: Box<dyn Write + Send>,
+        exit_code: u32,
+    ) {
         let pty_pair = native_pty_system()
             .openpty(PtySize { rows: 30, cols: 120, pixel_width: 0, pixel_height: 0 })
             .expect("openpty failed in test");
-        // The Terminal struct owns its child handle (close() kills it); spawn
-        // a trivial short-lived process to fill the field.
+        // Use a real exited process without a ConPTY handshake. The PTY pair
+        // still exercises resize behavior, while exit-status tests don't need
+        // a terminal emulator to answer Windows cursor-position requests.
         #[cfg(target_os = "windows")]
         let cmd = {
-            let mut c = CommandBuilder::new("cmd.exe");
+            use std::os::windows::process::CommandExt;
+            let mut c = std::process::Command::new("cmd.exe");
+            c.creation_flags(0x08000000); // CREATE_NO_WINDOW
+            c.arg("/D");
             c.arg("/C");
-            c.arg("exit");
+            c.arg(format!("exit {}", exit_code));
             c
         };
         #[cfg(not(target_os = "windows"))]
-        let cmd = CommandBuilder::new("true");
-        let child = pty_pair
-            .slave
-            .spawn_command(cmd)
-            .expect("spawn test child failed");
+        let cmd = {
+            let mut c = std::process::Command::new("sh");
+            c.arg("-c");
+            c.arg(format!("exit {}", exit_code));
+            c
+        };
+        let mut cmd = cmd;
+        let mut child = cmd.spawn().expect("spawn test child failed");
+        child.wait().expect("wait for test child failed");
+        let child: Box<dyn Child + Send + Sync> = Box::new(child);
         mgr.terminals.insert(
             id.to_string(),
             Terminal {
@@ -1098,6 +1128,29 @@ mod tests {
         // Stopped guard skipped the write entirely.
         insert_test_terminal(&mut mgr, "t", TerminalStatus::Stopped, Box::new(BrokenPipeWriter));
         assert_eq!(mgr.write("t", b"hello"), Ok(()));
+    }
+
+    #[tokio::test]
+    async fn finished_process_preserves_nonzero_exit_and_ignores_further_input() {
+        for code in [0, 7] {
+            let mut manager = TerminalManager::new();
+            insert_test_terminal_with_exit_code(
+                &mut manager, "exit-test", TerminalStatus::Running, Box::new(BrokenPipeWriter), code,
+            );
+            let manager = std::sync::Arc::new(tokio::sync::Mutex::new(manager));
+            assert_eq!(crate::commands::finish_terminal(&manager, "exit-test").await, Some(code));
+            let mut manager = manager.lock().await;
+            assert_eq!(manager.terminals["exit-test"].config.status,
+                if code == 0 { TerminalStatus::Stopped } else { TerminalStatus::Error });
+            assert_eq!(manager.write("exit-test", b"ignored"), Ok(()));
+            assert_eq!(manager.resize("exit-test", 80, 24), Ok(()));
+        }
+    }
+
+    #[tokio::test]
+    async fn finished_process_missing_after_close_has_no_exit_code() {
+        let manager = std::sync::Arc::new(tokio::sync::Mutex::new(TerminalManager::new()));
+        assert_eq!(crate::commands::finish_terminal(&manager, "closed").await, None);
     }
 
     #[test]
