@@ -1,7 +1,9 @@
 /**
  * Route wiring for `GET /stats/insights` (spec [03] 3.1). Kept out of
  * index.ts so the growing insights surface doesn't bloat the main dispatch
- * file; the pure aggregate math itself lives in insights.ts.
+ * file; the pure aggregate math itself lives in insights.ts. `json` /
+ * `todayUTC` come from the shared, one-way `./http` module rather than from
+ * index.ts, so this file never imports back into the file that imports it.
  *
  * Cache: the full payload is cached under `insights:v1:<days>` for 15
  * minutes (900s) - it's cheap to recompute but not free, and the dashboard
@@ -11,7 +13,7 @@
  * `days` value instead of being recomputed - and re-cached - on every miss.
  */
 
-import { json, todayUTC } from './index';
+import { json, todayUTC } from './http';
 import { computeActivity, computeErrors, computeReleases, computeRetention, type InsightsPayload } from './insights';
 
 const PAYLOAD_CACHE_TTL_SECONDS = 900;

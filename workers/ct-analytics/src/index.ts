@@ -29,6 +29,7 @@ import { admitErrorReport, admitIngest, boundedJson, validDimensions, versionWit
 import { constantTimeEqual, checkLoginAttempt, parseMatchBody, matchInstallations } from './admin';
 import { parseResolveBody, isGroupResolved } from './errors';
 import { handleInsights } from './insights-route';
+import { CORS_HEADERS, json, todayUTC } from './http';
 
 interface Env {
   KV_BINDING: KVNamespace;
@@ -88,16 +89,6 @@ interface LiveMetadata {
   country: string;
 }
 
-const CORS_HEADERS: Record<string, string> = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  // x-ct-token remains available for the protected administrative stats
-  // endpoints. Public ingestion routes deliberately do not authenticate with
-  // a secret embedded in the desktop client.
-  'Access-Control-Allow-Headers': 'Content-Type, x-ct-token',
-  'Access-Control-Max-Age': '86400',
-};
-
 const LIVE_TTL_SECONDS = 900;
 const MAX_HISTORY_DAYS = 365;
 const RATE_LIMIT_TTL_SECONDS = 60;
@@ -139,23 +130,8 @@ async function rateLimitIngest(request: Request, env: Env, installationId: unkno
   return null;
 }
 
-export function todayUTC(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
 function secondsUntilNextUtcDay(now = Date.now()): number {
   return Math.max(1, Math.ceil((86_400_000 - (now % 86_400_000)) / 1000));
-}
-
-export function json(body: unknown, status = 200, extraHeaders: Record<string, string> = {}): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: {
-      'content-type': 'application/json; charset=utf-8',
-      ...CORS_HEADERS,
-      ...extraHeaders,
-    },
-  });
 }
 
 /**

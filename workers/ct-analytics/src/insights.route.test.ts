@@ -1,7 +1,8 @@
-import { afterAll, beforeAll, beforeEach, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest';
 import { Miniflare } from 'miniflare';
 import worker from './index';
 import { clampInsightDays } from './insights-route';
+import { computeActivity, computeRetention } from './insights';
 
 // Route-level pins for GET /stats/insights: auth parity with /stats/history,
 // days clamping, the two-tier KV cache (payload + range-independent
@@ -42,6 +43,16 @@ beforeEach(async () => {
   await db.exec('DELETE FROM errors');
   const listed = await kv.list();
   for (const k of listed.keys) await kv.delete(k.name);
+});
+
+// The two cache tests below seed daily_dau rows relative to TODAY and rely
+// on handleInsights's real-clock `todayUTC()` landing on that same date, so
+// the query window actually includes the seeded rows. Pin the clock (Date
+// only - Miniflare's own timers/promises must keep running on the real
+// clock) instead of letting this drift out of the query window as real time
+// passes TODAY.
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 function baseEnv(overrides: { DB?: D1Database } = {}) {
@@ -87,6 +98,9 @@ it.each([
 });
 
 it('serves a repeat call within TTL from KV instead of recomputing', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date(`${TODAY}T12:00:00Z`));
+
   const first = await worker.fetch(get('/stats/insights?days=30', { 'x-ct-token': TOKEN }), baseEnv(), {} as any);
   expect(first.status).toBe(200);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -94,6 +108,14 @@ it('serves a repeat call within TTL from KV instead of recomputing', async () =>
   expect(firstBody.activity.series.every((p: { dau: number }) => p.dau === 0)).toBe(true);
 
   await seedDau(TODAY, 'fresh-install');
+
+  // Sanity: an uncached compute over this same seeded data must show the
+  // install that was just inserted. Without this, the "still zero" assertion
+  // below would pass just as well if the cache were broken and the query
+  // simply failed to see the seeded row for an unrelated reason (e.g. a
+  // clock/window bug) - this pins that the data really is there and visible.
+  const uncached = await computeActivity(db, 30, TODAY);
+  expect(uncached.series[uncached.series.length - 1].dau).toBeGreaterThan(0);
 
   const second = await worker.fetch(get('/stats/insights?days=30', { 'x-ct-token': TOKEN }), baseEnv(), {} as any);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -104,6 +126,9 @@ it('serves a repeat call within TTL from KV instead of recomputing', async () =>
 });
 
 it('caches retention cohorts separately from the days-keyed payload cache', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date(`${TODAY}T12:00:00Z`));
+
   await seedDau('2026-08-31', 'x1');
 
   const first = await worker.fetch(get('/stats/insights?days=7', { 'x-ct-token': TOKEN }), baseEnv(), {} as any);
@@ -116,6 +141,14 @@ it('caches retention cohorts separately from the days-keyed payload cache', asyn
   // recomputes activity/releases/errors, but must still read the cohorts
   // cache rather than recomputing retention from the newly seeded row.
   await seedDau('2026-09-07', 'x2');
+
+  // Sanity: an uncached compute over this same seeded data must surface the
+  // new cohort, so the "identical to first" assertion below is actually
+  // discriminating between "cohorts were cached" and "cohorts cache is a
+  // no-op that happens to match" (e.g. because the new row was never seen).
+  const uncachedRetention = await computeRetention(db, TODAY);
+  expect(uncachedRetention.cohorts.some((c) => c.week_start === '2026-09-07')).toBe(true);
+
   const second = await worker.fetch(get('/stats/insights?days=14', { 'x-ct-token': TOKEN }), baseEnv(), {} as any);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const secondBody = (await second.json()) as any;
@@ -137,4 +170,22 @@ it('returns 500 insights_failed on a D1 failure and writes no cache key', async 
   expect(res.status).toBe(500);
   expect(await res.json()).toEqual({ error: 'insights_failed' });
   expect(await kv.get('insights:v1:45')).toBeNull();
+});
+
+it('still computes and returns 200 when KV_BINDING.get throws', async () => {
+  const throwingKv = {
+    get: async () => {
+      throw new Error('kv down');
+    },
+    put: kv.put.bind(kv),
+  } as unknown as KVNamespace;
+
+  const res = await worker.fetch(
+    get('/stats/insights?days=21', { 'x-ct-token': TOKEN }),
+    { DB: db, KV_BINDING: throwingKv, STATS_TOKEN: TOKEN } as any,
+    {} as any
+  );
+  expect(res.status).toBe(200);
+  const body = (await res.json()) as { days: number };
+  expect(body.days).toBe(21);
 });
