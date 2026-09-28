@@ -1,5 +1,18 @@
 [
   {
+    "version": "1.34.7",
+    "date": "2026-09-26",
+    "features": [
+      { "title": "Fix bugs & performance" },
+      { "title": "Terminal links open again", "description": "Links printed by Codex and Claude Code, including sign-in links, open in your browser when clicked." },
+      { "title": "Safer cloud sync", "description": "Synced agents and profiles are checked before use, risky environment variables are dropped, and API keys are never uploaded." },
+      { "title": "More reliable sync uploads", "description": "Large batches are split instead of dropped, and a system clock that runs ahead is explained instead of retried silently." },
+      { "title": "Dependable sign-out", "description": "Signing out finishes every cleanup step, and sign-in no longer spins when loading your account fails." },
+      { "title": "Safer Memory Editor", "description": "Unsaved edits are kept until you choose to discard them, and saves go to the file you opened." },
+      { "title": "Escape closes one dialog at a time", "description": "Pressing Escape in a dialog opened over another only closes the top one." }
+    ]
+  },
+  {
     "version": "1.34.6",
     "date": "2026-09-25",
     "features": [

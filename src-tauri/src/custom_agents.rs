@@ -58,9 +58,7 @@ pub fn is_valid_env_name(s: &str) -> bool {
 }
 
 pub fn is_blocked_env(name: &str) -> bool {
-    crate::terminal::TerminalManager::BLOCKED_ENV_VARS
-        .iter()
-        .any(|b| b.eq_ignore_ascii_case(name))
+    crate::terminal::TerminalManager::is_blocked_env_name(name)
 }
 
 pub fn validate_binary(binary: &str) -> Result<(), String> {

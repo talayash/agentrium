@@ -15,5 +15,11 @@ export default defineConfig({
     // longer shipped, so use the default minifier (true) instead.
     minify: !process.env.TAURI_DEBUG,
     sourcemap: !!process.env.TAURI_DEBUG,
+    // The polyfill only runs on WebKit without native modulepreload (macOS 13
+    // and older) and fires fetch() with no .catch, so any failed preload lands
+    // in the global unhandledrejection handler as "TypeError: Load failed".
+    // Assets are served from local disk over tauri://, so preloading gains
+    // nothing; the real import() still loads each module.
+    modulePreload: { polyfill: false },
   },
 });
