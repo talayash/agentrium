@@ -48,6 +48,27 @@ local session metadata do not receive automatic subtitles. Context is saved
 locally and restored with recognized sessions; existing saved descriptions remain
 readable. Use **Refresh context** in the session menu to re-extract the local text.
 
+## Agent handoff and attention inbox
+
+Right-click an open session and choose **Continue with another agent...** to
+prepare a handoff. The editable brief includes the saved task context and current
+Git changes, with sections for decisions and remaining work. Select the receiving
+agent and choose **Open agent with brief**. The new session opens in the same
+directory with the brief in its prompt editor; send it once the agent is ready.
+The receiving agent uses its own default arguments and credential bindings.
+Let the source session finish before sending work to the new session.
+
+The sidebar bell opens the **Attention inbox**. It collects input prompts,
+responses ready for review, process exits, and failed agent or script processes.
+Click an entry to open its session, or dismiss it with the close button. Entries
+clear when work resumes or the session closes. The inbox is local to the current
+window and is not saved across restarts.
+
+Input and review states are inferred from terminal activity and visible output;
+they do not establish that a task or its tests passed. Failure entries use the
+exit status of processes launched by Agentrium; commands run internally by an
+agent do not expose separate exit statuses to the inbox.
+
 ## Supported Agents
 
 Each terminal you spawn can target any of the four agents below. Switch between them with a picker in the New Terminal dialog; the icon on each tab and grid cell tells you which agent is running.

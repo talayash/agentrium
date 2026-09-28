@@ -40,12 +40,15 @@ Add a new entry at the **top** of the `src/changelog.json` array for this versio
   "version": "X.Y.Z",
   "date": "YYYY-MM-DD",
   "features": [
+    { "title": "Fix bugs & performance" },
     { "title": "Feature name", "description": "Optional description" }
   ]
 }
 ```
 
-Use today's date. The features list should be based on what the user tells you (or inferred from recent commits since the last release tag).
+**The first item of every release's `features` array is always exactly `{ "title": "Fix bugs & performance" }`** - that title spelled that way, with no description. It is the standing general note. Put the release-specific items after it. Add it even when the user's summary already mentions fixes, and even when it would be the only item. Never reword it, merge it into another item, or move it down.
+
+Use today's date. The rest of the features list should be based on what the user tells you (or inferred from recent commits since the last release tag). Do not use em-dash characters in any title or description: the website's content-lint rejects them after the tag is already pushed.
 
 ## Step 3: Update Cargo.lock
 

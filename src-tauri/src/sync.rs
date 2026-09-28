@@ -86,8 +86,18 @@ pub fn status_for_failure(err: &sync_client::SyncError) -> SyncStatus {
         sync_client::SyncError::Network(_) => SyncStatus::Offline,
         sync_client::SyncError::Server(502 | 503 | 504, _) => SyncStatus::Offline,
         sync_client::SyncError::Refresh(msg) if msg.starts_with(crate::auth::NETWORK_ERROR_PREFIX) => SyncStatus::Offline,
+        sync_client::SyncError::Refresh(msg) if is_keychain_asleep(msg) => SyncStatus::Offline,
         _ => SyncStatus::Error,
     }
+}
+
+/// macOS keychain refusals that only mean "cannot prompt right now": Power
+/// Nap (errSecInDarkWake) or a session that cannot show UI
+/// (errSecInteractionNotAllowed). Both clear on a full wake, so the regular
+/// pull timer retries them like a dropped connection.
+fn is_keychain_asleep(msg: &str) -> bool {
+    msg.starts_with("keyring ")
+        && (msg.contains("In dark wake, no UI possible") || msg.contains("User interaction is not allowed"))
 }
 
 /// Telemetry gate for a failed sync request, and the counterpart to
@@ -857,6 +867,31 @@ mod tests {
             assert!(!should_report_failure(&SyncError::Server(code, String::new())), "{code}");
         }
         assert!(!should_report_failure(&SyncError::Refresh(format!("{} timed out", crate::auth::NETWORK_ERROR_PREFIX))));
+    }
+
+    /// macOS refuses keychain reads it would have to prompt for while the Mac
+    /// is in Power Nap ("dark wake") or the session cannot show UI. That is
+    /// sleep, not a defect: the next pull after a full wake succeeds, so it
+    /// reads as Offline (auto-retry, no report) rather than Paused (which would
+    /// wait for a click the user never needed to make).
+    #[test]
+    fn keychain_unavailable_during_sleep_is_offline_and_unreported() {
+        use sync_client::SyncError;
+        for msg in [
+            "keyring get: Platform secure storage failure: In dark wake, no UI possible",
+            "keyring get: Platform secure storage failure: User interaction is not allowed.",
+        ] {
+            let err = SyncError::Refresh(msg.into());
+            assert_eq!(status_for_failure(&err), SyncStatus::Offline, "{msg}");
+            assert!(!should_report_failure(&err), "{msg}");
+            assert_eq!(classify_push_failure(&err), PushFailure::Transient, "{msg}");
+        }
+        // A keychain failure that is not about sleep is still a real error.
+        let denied = SyncError::Refresh(
+            "keyring get: Platform secure storage failure: Unable to obtain authorization for this operation.".into(),
+        );
+        assert_eq!(status_for_failure(&denied), SyncStatus::Error);
+        assert!(should_report_failure(&denied));
     }
 
     #[test]

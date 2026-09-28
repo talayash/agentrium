@@ -20,7 +20,7 @@ export const DEFAULT_TERMINAL_FONT_SIZE = 14;
 export type UiDensity = 'compact' | 'comfortable' | 'spacious';
 export type TabHeight = 'small' | 'medium' | 'large';
 /** Which navigator the unified sidebar shows (Apple/Xcode-style single column). */
-export type SidebarNav = 'sessions' | 'files' | 'history';
+export type SidebarNav = 'sessions' | 'files' | 'history' | 'attention';
 export type ThemeMode = 'dark' | 'light' | 'auto';
 export type AutoStageMode = 'none' | 'tracked' | 'all';
 export type MergeStrategy = 'merge' | 'rebase' | 'ff-only';

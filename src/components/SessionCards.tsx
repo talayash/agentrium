@@ -15,6 +15,7 @@ import type { AgentKind, BuiltinAgentKind } from '../lib/agents';
 import { isCustomAgent } from '../lib/agents';
 import { resolveRenameCommit } from '../lib/renameTab';
 import { contextTooltip, refreshSessionContext, sessionDisplayName } from '../lib/sessionContext';
+import { HandoffModal } from './HandoffModal';
 
 // Soft per-agent tint for the card badge (Apple-clean, theme-aware via /alpha).
 const AGENT_TINT: Record<BuiltinAgentKind, string> = {
@@ -81,6 +82,7 @@ export function SessionCards() {
   const [contextMenu, setContextMenu] = useState<CardContextMenuState | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
+  const [handoffId, setHandoffId] = useState<string | null>(null);
 
   // Exclude script-child runners and plain shell terminals - they render
   // elsewhere (BottomTerminalPane), never in the session list.
@@ -179,7 +181,7 @@ export function SessionCards() {
     // the right-click lands near the window edges.
     const margin = 4;
     const menuWidth = 220;
-    const menuHeight = 300;
+    const menuHeight = 340;
     const x = Math.min(e.clientX, window.innerWidth - menuWidth - margin);
     const y = Math.min(e.clientY, window.innerHeight - menuHeight - margin);
     setContextMenu({ x: Math.max(margin, x), y: Math.max(margin, y), terminalId });
@@ -206,6 +208,7 @@ export function SessionCards() {
 
   return (
     <>
+    {handoffId && <HandoffModal sourceId={handoffId} onClose={() => setHandoffId(null)} />}
     <Reorder.Group
       axis="y"
       as="div"
@@ -375,6 +378,11 @@ export function SessionCards() {
             icon={<Pencil size={13} strokeWidth={1.75} />}
             label="Rename..."
             onClick={() => { setContextMenu(null); setRenamingId(ctxId); }}
+          />
+          <CardMenuItem
+            icon={<Copy size={13} strokeWidth={1.75} />}
+            label="Continue with another agent..."
+            onClick={() => { setContextMenu(null); setHandoffId(ctxId); }}
           />
           <CardMenuItem
             icon={<Pencil size={13} strokeWidth={1.75} />}

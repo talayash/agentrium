@@ -36,32 +36,40 @@ Three separate collisions, all of which must be solved at once:
 | --- | --- | --- |
 | App never launches, exits code 0 | `tauri-plugin-single-instance` (`src-tauri/src/main.rs`) keys on the app identifier; a second launch just focuses the first and quits | override `identifier` |
 | Port in use / hijacks their dev server | `vite.config.ts` pins `port: 5173, strictPort: true` | override port AND `build.devUrl` |
-| Shares the production SQLite DB | `ProjectDirs::from("com","claudeterminal","ClaudeTerminal")` is hardcoded in Rust | **unsolved on Windows - see below** |
+| Shares the production SQLite DB and keychain sign-in | data dir and keychain service default to the prod names | set `AGENTRIUM_INSTANCE_ID=.qa` |
 
 Fixing only one of the first two is what causes the damage. Fix both.
 
-### The shared database (know this before you QA)
+### Isolating the database (know this before you QA)
 
-**On Windows the QA instance reads and writes the user's real
-`claudeterminal.db`.** There is currently no way around it from the outside:
-`directories = "6"` resolves the data dir through the Win32
-`SHGetKnownFolderPath` API, which **ignores the `APPDATA` / `LOCALAPPDATA`
-environment variables**. Setting them looks like it works - the scratch folder
-is even created - but the app never reads it. This was verified: a QA instance
-launched with both vars redirected still loaded the user's real profiles, and
-the scratch folder stayed empty.
+**Always export `AGENTRIUM_INSTANCE_ID=.qa` before launching.** Rust reads it
+through `crate::instance_suffix()` (`src-tauri/src/main.rs`) and appends it to:
 
-So while QAing, in the QA window:
+- the SQLite data dir: `ClaudeTerminal.qa\claudeterminal.db` instead of the
+  prod `ClaudeTerminal\claudeterminal.db` (`database.rs`), so profiles,
+  workspaces, agents and session history start empty and stay separate;
+- the keychain service: `com.claudeterminal.agentrium.auth.qa`
+  (`credentials.rs`), so signing in or out in QA never touches the prod
+  refresh token.
 
-- Treat all data as live production data.
-- Do NOT delete or edit profiles, workspaces, credentials or agents.
-- Do NOT run destructive flows (worktree removal, force push, session purge).
-- Read-only interaction plus the DevTools store-driving below is safe.
+Without the variable the QA window opens on the user's real database. If you
+forget it, close the QA window you launched and relaunch with it.
 
-Isolating it properly would need a Rust-side override (e.g. honour an
-`AGENTRIUM_DATA_DIR` env var in `database.rs`) or a separate Windows user
-account. If repeated QA of data-mutating features is needed, propose the env
-var as a real change rather than pretending the redirect works.
+Do NOT use `APPDATA` / `LOCALAPPDATA` redirection instead. `directories`
+resolves folders through `SHGetKnownFolderPath`, which ignores those
+variables, so the redirect silently does nothing.
+
+What is still shared with prod even with the suffix (all low risk, but know it):
+
+- **Terminal log files** in `ClaudeTerminal\logs` (`commands.rs` hard-codes the
+  unsuffixed dir). QA writes new, uniquely named files there and only deletes
+  paths that its own DB points at, so prod logs are not touched.
+- **`error_reporter` / `feedback` queues** and the **LSP download cache** also use
+  the unsuffixed dir.
+- **Real outside state**: git repos, worktrees, files on disk, and Claude Code's
+  own `~/.claude` sessions. A QA terminal pointed at a real repo is a real
+  terminal. Use a scratch folder for destructive flows (worktree removal,
+  force push, session purge).
 
 ## The recipe
 
@@ -70,16 +78,22 @@ choice; step up if it is taken).
 
 ```bash
 QA_PORT=5174
+export AGENTRIUM_INSTANCE_ID=.qa
 
 npm run tauri dev -- \
   --features devtools \
   --config "{\"identifier\":\"com.claudeterminal.desktop.qa\",\"productName\":\"Agentrium QA\",\"build\":{\"devUrl\":\"http://localhost:$QA_PORT\",\"beforeDevCommand\":\"npm run dev -- --port $QA_PORT --strictPort\"}}"
 ```
 
-Do NOT bother setting `APPDATA`/`LOCALAPPDATA` - it does nothing here (see
-"The shared database" above).
+Before picking the port, confirm nothing is listening on it:
+`Get-NetTCPConnection -LocalPort 5174 -State Listen -ErrorAction SilentlyContinue`
+returning nothing means it is free. If it is taken, use 5175, 5176, and so on.
+Never 5173.
 
 What each override buys you:
+
+- `AGENTRIUM_INSTANCE_ID=.qa` - own SQLite DB and own keychain entry (see
+  "Isolating the database" above).
 
 - `identifier` -> `...desktop.qa` - single-instance no longer hands off, so a
   second window actually opens beside theirs.

@@ -51,7 +51,7 @@ export function useSessionStateDetection(): void {
         if (inst.scriptParentId || inst.isShellTerminal) continue;
 
         // Exited process: pin to stopped and re-arm notifications.
-        if (inst.config.status === 'Stopped') {
+        if (inst.config.status === 'Stopped' || inst.config.status === 'Error') {
           store.setTerminalState(id, 'stopped');
           notifiedRef.current.delete(id);
           continue;

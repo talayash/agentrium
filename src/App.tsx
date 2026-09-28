@@ -62,6 +62,7 @@ import { usePreventWebviewReload } from './hooks/usePreventWebviewReload';
 import { InputContextMenu } from './components/InputContextMenu';
 import { useNotification } from './hooks/useNotification';
 import { useSessionStateDetection } from './hooks/useSessionStateDetection';
+import { useAttentionInbox } from './hooks/useAttentionInbox';
 import {
   applyAccentColor,
   applyThemeMode,
@@ -179,6 +180,7 @@ function App() {
   useKeyboardShortcuts();
   usePreventWebviewReload();
   useSessionStateDetection();
+  useAttentionInbox();
 
   // v1.22.0 - apply theme/density/accent/motion/scale on store change.
   const themeMode = useAppStore((s) => s.themeMode);
@@ -699,7 +701,7 @@ function App() {
     // Same listen()/cleanup race guard as the other event listeners above.
     let cancelled = false;
     let unlistenFn: (() => void) | undefined;
-    listen<{ id: string }>('terminal-finished', (event) => {
+    listen<{ id: string; exit_code?: number | null }>('terminal-finished', (event) => {
       if (cancelled) return;
       const { id } = event.payload;
 
@@ -712,9 +714,10 @@ function App() {
       const label = config?.nickname && config.label && config.nickname !== config.label
         ? `${name} (${config.label})`
         : name;
-      const message = `"${label}" has finished running.`;
+      const failed = event.payload.exit_code != null && event.payload.exit_code !== 0;
+      const message = failed ? `"${label}" exited with code ${event.payload.exit_code}.` : `"${label}" has finished running.`;
 
-      updateTerminalStatus(id, 'Stopped');
+      updateTerminalStatus(id, failed ? 'Error' : 'Stopped');
       triggerChangesRefresh();
 
       // Notifications + summarization are owned by the main window so torn-off
@@ -722,7 +725,8 @@ function App() {
       if (isDetached) return;
 
       // Always show in-app toast
-      toast.info('Terminal Finished', message);
+      if (failed) toast.error('Terminal Failed', message);
+      else toast.info('Terminal Finished', message);
 
       // Status-bar unread dot when the user isn't watching.
       if (document.hidden) {
@@ -730,7 +734,7 @@ function App() {
       }
 
       if (notifyOnFinish) {
-        notify('Terminal Finished', message);
+        notify(failed ? 'Terminal Failed' : 'Terminal Finished', message);
       }
 
       // Summarize only after explicit consent in Privacy settings.
