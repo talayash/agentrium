@@ -116,6 +116,12 @@ it('computeActivity: previous period isolates installs outside the current windo
   expect(activity.previous.wau).toBe(1);
   expect(activity.previous.new_installs).toBe(1);
   expect(activity.current.new_installs).toBe(0);
+
+  // p is active every day of the previous period and nowhere else, so its
+  // dau_avg, mau, and stickiness are all exactly 1.
+  expect(activity.previous.dau_avg).toBe(1);
+  expect(activity.previous.mau).toBe(1);
+  expect(activity.previous.stickiness).toBe(1);
 });
 
 // --- computeRetention ----------------------------------------------------
@@ -145,13 +151,41 @@ it('computeRetention: cohort weeks with correct nulls past today', async () => {
   expect(retention.cohorts.length).toBeLessThanOrEqual(12);
 });
 
+function mondayMinusWeeks(base: string, weeksAgo: number): string {
+  const d = new Date(`${base}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - weeksAgo * 7);
+  return d.toISOString().slice(0, 10);
+}
+
+it('computeRetention: caps at 12 cohorts, oldest first, when data spans more weeks', async () => {
+  // TODAY (2026-09-28) is itself a Monday. Seed 14 weekly cohorts, one
+  // install each, so weeks 12 and 13 fall outside the 12-cohort window and
+  // must be dropped.
+  for (let weeksAgo = 13; weeksAgo >= 0; weeksAgo--) {
+    await seedDau([[mondayMinusWeeks(TODAY, weeksAgo), `w${weeksAgo}`]]);
+  }
+
+  const retention = await computeRetention(db, TODAY);
+  expect(retention.cohorts).toHaveLength(12);
+  expect(retention.cohorts[0].week_start).toBe('2026-07-13'); // weeksAgo = 11, the oldest kept cohort
+  expect(retention.cohorts[retention.cohorts.length - 1].week_start).toBe(TODAY); // weeksAgo = 0, newest last
+  for (let i = 1; i < retention.cohorts.length; i++) {
+    expect(retention.cohorts[i].week_start > retention.cohorts[i - 1].week_start).toBe(true);
+  }
+});
+
 // --- computeReleases -------------------------------------------------------
 
-it('computeReleases: latest version, share, sorting, error rate, first_seen', async () => {
+it('computeReleases: latest version, share, sorting, error rates, first_seen', async () => {
   await seedStat(TODAY, 'version', '1.34.6', 60);
   await seedStat(TODAY, 'version', '1.34.5', 30);
   await seedStat(TODAY, 'version', 'unknown', 10);
   await seedStat('2026-09-20', 'version', '1.34.5', 100);
+  // version buckets are pinged by both /heartbeat and /update_check, so the
+  // heartbeats-only total (used for overall_errors_per_1k) legitimately
+  // differs from the version-bucket ping total (100, used for share and
+  // overall_errors_per_1k_pings).
+  await seedStat(TODAY, 'heartbeats', '', 500);
   await seedError(`${TODAY}T10:00:00Z`, '1.34.6');
   await seedError(`${TODAY}T11:00:00Z`, '1.34.6');
   await seedError(`${TODAY}T12:00:00Z`, '1.34.6');
@@ -161,9 +195,14 @@ it('computeReleases: latest version, share, sorting, error rate, first_seen', as
   expect(releases.latest_share_today).toBe(0.6);
   expect(releases.versions.map((v) => v.version)).toEqual(['1.34.6', '1.34.5', 'unknown']);
   const v6 = releases.versions.find((v) => v.version === '1.34.6')!;
-  expect(v6.errors_per_1k).toBe(50);
+  expect(v6.pings).toBe(60);
+  expect(v6.share).toBe(0.6); // 60 / 100 total pings in period
+  expect(v6.errors_per_1k_pings).toBe(50); // 3 / 60 * 1000
   const v5 = releases.versions.find((v) => v.version === '1.34.5')!;
   expect(v5.first_seen).toBe('2026-09-20');
+
+  expect(releases.overall_errors_per_1k).toBe(6); // 3 errors / 500 heartbeats * 1000
+  expect(releases.overall_errors_per_1k_pings).toBe(30); // 3 errors / 100 total pings * 1000
 });
 
 it('compareSemverDesc: semver desc, prerelease below release, non-semver last', () => {
@@ -186,6 +225,12 @@ it('computeErrors: per_1k per day, zero-heartbeat day is 0 not NaN, and previous
   expect(day26.errors).toBe(1);
   expect(day26.heartbeats).toBe(0);
   expect(day26.per_1k).toBe(0);
+
+  // Current period (2026-09-22..28) holds all 3 seeded errors and the one
+  // heartbeats row (1000 on 09-27); previous (09-15..21) has neither.
+  expect(errors.current).toEqual({ errors: 3, per_1k: 3 });
+  expect(errors.previous).not.toBeNull();
+  expect(errors.previous).toEqual({ errors: 0, per_1k: 0 });
 
   expect((await computeErrors(db, 60, TODAY)).previous).toBeNull();
   expect((await computeErrors(db, 30, TODAY)).previous).not.toBeNull();

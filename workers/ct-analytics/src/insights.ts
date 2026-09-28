@@ -30,10 +30,10 @@ export interface Cohort {
 }
 export interface VersionRow {
   version: string;
-  heartbeats: number;
+  pings: number;
   share: number;
   errors: number;
-  errors_per_1k: number;
+  errors_per_1k_pings: number;
   first_seen: string;
 }
 export interface ErrorDay {
@@ -47,7 +47,13 @@ export interface InsightsPayload {
   generated_at: string;
   activity: { series: ActivityPoint[]; current: ActivitySummary; previous: ActivitySummary };
   retention: { cohorts: Cohort[] };
-  releases: { latest_version: string | null; latest_share_today: number; versions: VersionRow[]; overall_errors_per_1k: number };
+  releases: {
+    latest_version: string | null;
+    latest_share_today: number;
+    versions: VersionRow[];
+    overall_errors_per_1k: number;
+    overall_errors_per_1k_pings: number;
+  };
   errors: { per_day: ErrorDay[]; current: { errors: number; per_1k: number }; previous: { errors: number; per_1k: number } | null };
 }
 
@@ -117,21 +123,50 @@ interface NewRow {
   date: string;
   n: number;
 }
+interface DauRow {
+  date: string;
+  installation_id: string;
+}
+
+/**
+ * Distinct-count per date over a trailing `windowSize`-day window (current
+ * date inclusive), for every date in `datesAsc` (ascending, contiguous).
+ * Maintains a sliding deque of per-date ID sets plus an occurrence count per
+ * ID, so the whole pass is O(rows + dates) instead of rescanning the raw
+ * rows once per date (the previous correlated-subquery version read ~870k
+ * rows for a 90-day window over 200 seeded installs).
+ */
+function rollingDistinctCounts(datesAsc: string[], setByDate: Map<string, Set<string>>, windowSize: number): Map<string, number> {
+  const occurrences = new Map<string, number>(); // installation_id -> days present in the current window
+  const windowDates: string[] = [];
+  const result = new Map<string, number>();
+  for (const d of datesAsc) {
+    const set = setByDate.get(d);
+    if (set) for (const id of set) occurrences.set(id, (occurrences.get(id) ?? 0) + 1);
+    windowDates.push(d);
+    if (windowDates.length > windowSize) {
+      const dropped = windowDates.shift()!;
+      const droppedSet = setByDate.get(dropped);
+      if (droppedSet) {
+        for (const id of droppedSet) {
+          const next = (occurrences.get(id) ?? 0) - 1;
+          if (next <= 0) occurrences.delete(id);
+          else occurrences.set(id, next);
+        }
+      }
+    }
+    result.set(d, occurrences.size);
+  }
+  return result;
+}
 
 export async function computeActivity(db: D1Database, days: number, today: string): Promise<InsightsPayload['activity']> {
   const span = 2 * days;
-  const prevStart = addDays(today, -(span - 1));
+  const windowStart = addDays(today, -(span - 1));
+  // 29 days of lead-in so the mau window (30 days incl. current) is complete
+  // even for windowStart's own point, without re-querying per date.
+  const fetchStart = addDays(windowStart, -29);
 
-  const calSql = `
-    WITH RECURSIVE cal(d) AS (
-      SELECT date(?1, '-' || (?2 - 1) || ' days')
-      UNION ALL SELECT date(d, '+1 day') FROM cal WHERE d < ?1
-    )
-    SELECT c.d AS date,
-      (SELECT COUNT(*) FROM daily_dau WHERE date = c.d) AS dau,
-      (SELECT COUNT(DISTINCT installation_id) FROM daily_dau WHERE date BETWEEN date(c.d, '-6 days') AND c.d) AS wau,
-      (SELECT COUNT(DISTINCT installation_id) FROM daily_dau WHERE date BETWEEN date(c.d, '-29 days') AND c.d) AS mau
-    FROM cal c ORDER BY c.d`;
   // The 400-day daily_dau horizon (see cron in index.ts) matches the
   // `seen:` KV TTL, so "first ever seen" here agrees with the installation
   // counter fed by that same KV key - an install first seen more than 400
@@ -141,14 +176,35 @@ export async function computeActivity(db: D1Database, days: number, today: strin
       SELECT MIN(date) AS first FROM daily_dau GROUP BY installation_id
     ) WHERE first >= ?1 GROUP BY first`;
 
-  const [calRes, newRes] = await db.batch([
-    db.prepare(calSql).bind(today, span),
-    db.prepare(newSql).bind(prevStart),
+  const [dauRes, newRes] = await db.batch([
+    db.prepare('SELECT date, installation_id FROM daily_dau WHERE date BETWEEN ?1 AND ?2').bind(fetchStart, today),
+    db.prepare(newSql).bind(windowStart),
   ]);
 
-  const calRows = (calRes.results ?? []) as unknown as CalRow[];
+  const dauRows = (dauRes.results ?? []) as unknown as DauRow[];
   const newRows = (newRes.results ?? []) as unknown as NewRow[];
   const newMap = new Map(newRows.map((r) => [r.date, r.n]));
+
+  const setByDate = new Map<string, Set<string>>();
+  for (const r of dauRows) {
+    let set = setByDate.get(r.date);
+    if (!set) {
+      set = new Set();
+      setByDate.set(r.date, set);
+    }
+    set.add(r.installation_id);
+  }
+
+  const extendedDates: string[] = [];
+  for (let i = 0; i < span + 29; i++) extendedDates.push(addDays(fetchStart, i));
+  const wauByDate = rollingDistinctCounts(extendedDates, setByDate, 7);
+  const mauByDate = rollingDistinctCounts(extendedDates, setByDate, 30);
+
+  const calRows: CalRow[] = [];
+  for (let i = 0; i < span; i++) {
+    const d = addDays(windowStart, i);
+    calRows.push({ date: d, dau: setByDate.get(d)?.size ?? 0, wau: wauByDate.get(d) ?? 0, mau: mauByDate.get(d) ?? 0 });
+  }
 
   const previousRows = calRows.slice(0, days);
   const currentRows = calRows.slice(days);
@@ -249,32 +305,44 @@ interface AppVersionErrRow {
 export async function computeReleases(db: D1Database, days: number, today: string): Promise<InsightsPayload['releases']> {
   const start = addDays(today, -(days - 1));
 
-  const [hbRes, firstRes, todayRes, errRes] = await db.batch([
+  const [pingRes, firstRes, todayRes, errRes, hbRes] = await db.batch([
     db.prepare("SELECT bucket, SUM(count) AS hb FROM daily_stats WHERE dimension = 'version' AND date >= ?1 GROUP BY bucket").bind(start),
     db.prepare("SELECT bucket, MIN(date) AS first_seen FROM daily_stats WHERE dimension = 'version' GROUP BY bucket"),
     db.prepare("SELECT bucket, count FROM daily_stats WHERE dimension = 'version' AND date = ?1").bind(today),
     db.prepare('SELECT app_version, COUNT(*) AS n FROM errors WHERE ts >= ?1 GROUP BY app_version').bind(`${start}T00:00:00`),
+    // `daily_stats` version buckets are bumped by BOTH /heartbeat and
+    // /update_check (see handleHeartbeat in index.ts), so they count
+    // "pings", not heartbeats. `overall_errors_per_1k` still needs the true
+    // heartbeats-only denominator (same one computeErrors uses) to stay
+    // comparable across the dashboard; `overall_errors_per_1k_pings` /
+    // `errors_per_1k_pings` use the version-bucket ping total instead.
+    db.prepare("SELECT SUM(count) AS hb FROM daily_stats WHERE dimension = 'heartbeats' AND bucket = '' AND date >= ?1").bind(start),
   ]);
 
-  const hbRows = (hbRes.results ?? []) as unknown as BucketHbRow[];
+  const pingRows = (pingRes.results ?? []) as unknown as BucketHbRow[];
   const firstRows = (firstRes.results ?? []) as unknown as BucketFirstRow[];
   const todayRows = (todayRes.results ?? []) as unknown as BucketCountRow[];
   const errRows = (errRes.results ?? []) as unknown as AppVersionErrRow[];
+  const heartbeatTotal = ((hbRes.results?.[0] as unknown as { hb: number | null } | undefined)?.hb) ?? 0;
 
   const firstSeenMap = new Map(firstRows.map((r) => [r.bucket, r.first_seen]));
   const errMap = new Map(errRows.map((r) => [r.app_version, r.n]));
-  const totalHb = hbRows.reduce((s, r) => s + r.hb, 0);
+  const totalPings = pingRows.reduce((s, r) => s + r.hb, 0);
+  // Errors count toward both overall rates below even when their
+  // app_version has no matching `daily_stats` version bucket in the period
+  // (e.g. a version that only ever errored and never pinged) - they just
+  // don't get a version row, since there's no bucket to attach one to.
   const totalErrors = errRows.reduce((s, r) => s + r.n, 0);
 
-  const versions: VersionRow[] = hbRows
+  const versions: VersionRow[] = pingRows
     .map((r) => {
       const errors = errMap.get(r.bucket) ?? 0;
       return {
         version: r.bucket,
-        heartbeats: r.hb,
-        share: round3(ratio(r.hb, totalHb)),
+        pings: r.hb,
+        share: round3(ratio(r.hb, totalPings)),
         errors,
-        errors_per_1k: round2(ratio(errors, r.hb) * 1000),
+        errors_per_1k_pings: round2(ratio(errors, r.hb) * 1000),
         first_seen: firstSeenMap.get(r.bucket) ?? '',
       };
     })
@@ -290,7 +358,8 @@ export async function computeReleases(db: D1Database, days: number, today: strin
     latest_version,
     latest_share_today: round3(ratio(latestTodayCount, todayTotal)),
     versions,
-    overall_errors_per_1k: round2(ratio(totalErrors, totalHb) * 1000),
+    overall_errors_per_1k: round2(ratio(totalErrors, heartbeatTotal) * 1000),
+    overall_errors_per_1k_pings: round2(ratio(totalErrors, totalPings) * 1000),
   };
 }
 
