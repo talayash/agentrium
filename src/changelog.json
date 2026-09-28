@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.35.0",
+    "date": "2026-09-28",
+    "features": [
+      { "title": "Fix bugs & performance" },
+      { "title": "Attention inbox", "description": "The bell in the sidebar collects sessions waiting for your input, responses ready for review, and processes that exited or failed. Click an entry to jump to its session." },
+      { "title": "Hand off to another agent", "description": "Right-click a session and choose Continue with another agent to open a different agent in the same folder with an editable brief of the task and current Git changes." },
+      { "title": "Calmer sync after sleep", "description": "On macOS, sync now waits quietly and retries after the Mac wakes instead of showing an error." }
+    ]
+  },
+  {
     "version": "1.34.7",
     "date": "2026-09-26",
     "features": [
