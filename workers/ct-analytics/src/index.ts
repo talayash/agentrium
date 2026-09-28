@@ -18,6 +18,7 @@ import { admitErrorReport, admitIngest, boundedJson, validDimensions, versionWit
  *   GET  /stats                  legacy dashboard payload (back-compat)
  *   GET  /stats/live             active in last 15 min, by version/os/country
  *   GET  /stats/history?days=30&metric=dau|heartbeats|update_checks|version|os|country
+ *   GET  /stats/insights?days=30  growth/retention/release/error aggregates for /admin (token, KV-cached 15 min)
  *   GET  /errors/summary?days=7&limit=20   top error groups + by source/version/os/day
  *   POST /errors/resolve         mark fingerprints resolved / un-resolved (token)
  *   POST /feedback/delete        soft-delete / restore inbox messages (token)
@@ -27,6 +28,7 @@ import { admitErrorReport, admitIngest, boundedJson, validDimensions, versionWit
 
 import { constantTimeEqual, checkLoginAttempt, parseMatchBody, matchInstallations } from './admin';
 import { parseResolveBody, isGroupResolved } from './errors';
+import { handleInsights } from './insights-route';
 
 interface Env {
   KV_BINDING: KVNamespace;
@@ -137,7 +139,7 @@ async function rateLimitIngest(request: Request, env: Env, installationId: unkno
   return null;
 }
 
-function todayUTC(): string {
+export function todayUTC(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
@@ -145,7 +147,7 @@ function secondsUntilNextUtcDay(now = Date.now()): number {
   return Math.max(1, Math.ceil((86_400_000 - (now % 86_400_000)) / 1000));
 }
 
-function json(body: unknown, status = 200, extraHeaders: Record<string, string> = {}): Response {
+export function json(body: unknown, status = 200, extraHeaders: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
@@ -849,6 +851,11 @@ export default {
         const denied = requireToken(request, env.STATS_TOKEN);
         if (denied) return denied;
         return await handleStatsHistory(url, env);
+      }
+      if (request.method === 'GET' && url.pathname === '/stats/insights') {
+        const denied = requireToken(request, env.STATS_TOKEN);
+        if (denied) return denied;
+        return await handleInsights(url, env);
       }
       if (request.method === 'GET' && url.pathname === '/errors/summary') {
         const denied = requireToken(request, env.STATS_TOKEN);
