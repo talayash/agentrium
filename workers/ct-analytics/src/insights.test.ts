@@ -4,6 +4,7 @@ import {
   compareSemverDesc,
   computeActivity,
   computeErrors,
+  computeFirstSeenByDate,
   computeReleases,
   computeRetention,
 } from './insights';
@@ -142,7 +143,9 @@ it('computeRetention: cohort weeks with correct nulls past today', async () => {
   expect(cohort!.weeks[0]).toBe(0.5);
   expect(cohort!.weeks[1]).toBe(0.5);
   expect(cohort!.weeks[2]).toBe(0);
-  expect(cohort!.weeks[3]).toBe(0);
+  // k=4's week_start (2026-09-28) is TODAY's own Monday - the current week,
+  // still in progress - so it is `null` like a future week, not a partial 0.
+  expect(cohort!.weeks[3]).toBeNull();
   expect(cohort!.weeks[4]).toBeNull();
   expect(cohort!.weeks[5]).toBeNull();
   expect(cohort!.weeks[6]).toBeNull();
@@ -238,48 +241,84 @@ it('computeErrors: per_1k per day, zero-heartbeat day is 0 not NaN, and previous
 
 // --- Step 5: rows_read budget check --------------------------------------
 
-it('reports rows read for a 90-day compute', async () => {
-  const rows: Array<[string, string]> = [];
-  const dayMs = 86_400_000;
-  const start = Date.parse(`${TODAY}T00:00:00Z`) - 119 * dayMs;
-  for (let day = 0; day < 120; day++) {
-    const date = new Date(start + day * dayMs).toISOString().slice(0, 10);
-    for (let inst = 0; inst < 200; inst++) {
-      rows.push([date, `inst-${inst}`]);
-    }
-  }
-  // One round trip per test run against Miniflare's D1 proxy is expensive,
-  // so pack many rows into each statement instead of one statement per row,
-  // and send every statement in a single db.batch call. D1 caps bound
-  // parameters per statement at 100, well under SQLite's own ~999 limit.
-  const rowsPerStatement = 45;
-  const statements: D1PreparedStatement[] = [];
-  for (let i = 0; i < rows.length; i += rowsPerStatement) {
-    const chunk = rows.slice(i, i + rowsPerStatement);
-    const sql = `INSERT OR IGNORE INTO daily_dau (date, installation_id) VALUES ${chunk.map(() => '(?, ?)').join(', ')}`;
-    statements.push(db.prepare(sql).bind(...chunk.flat()));
-  }
-  await db.batch(statements);
-
-  // Wrap `batch` via a real Proxy trap - assigning `db.batch` directly does
-  // not stick, since Miniflare's D1 stub is itself a proxy object.
+// Wraps `db.batch` in a real Proxy trap (assigning `db.batch` directly does
+// not stick, since Miniflare's D1 stub is itself a proxy object) and totals
+// `meta.rows_read` across every statement in every batch call made through
+// the returned handle.
+function trackRowsRead(target: D1Database): { db: D1Database; rowsRead: () => number } {
   let rowsRead = 0;
-  const tracked = new Proxy(db, {
-    get(target, prop, receiver) {
+  const proxy = new Proxy(target, {
+    get(t, prop, receiver) {
       if (prop === 'batch') {
         return async (stmts: D1PreparedStatement[]) => {
-          const results = await target.batch(stmts);
+          const results = await t.batch(stmts);
           for (const r of results) rowsRead += r.meta.rows_read ?? 0;
           return results;
         };
       }
-      return Reflect.get(target, prop, receiver);
+      return Reflect.get(t, prop, receiver);
     },
   });
+  return { db: proxy as unknown as D1Database, rowsRead: () => rowsRead };
+}
 
-  await computeActivity(tracked as unknown as D1Database, 90, TODAY);
+it(
+  'rows_read for a 90-day compute: warm (cached first-seen map) stays well under a full 400-day x 200-install table scan',
+  async () => {
+    const NUM_DAYS = 400;
+    const NUM_INSTALLS = 200;
+    const rows: Array<[string, string]> = [];
+    const dayMs = 86_400_000;
+    const start = Date.parse(`${TODAY}T00:00:00Z`) - (NUM_DAYS - 1) * dayMs;
+    for (let day = 0; day < NUM_DAYS; day++) {
+      const date = new Date(start + day * dayMs).toISOString().slice(0, 10);
+      for (let inst = 0; inst < NUM_INSTALLS; inst++) {
+        rows.push([date, `inst-${inst}`]);
+      }
+    }
+    // One round trip per test run against Miniflare's D1 proxy is expensive,
+    // so pack many rows into each statement instead of one statement per row.
+    // D1 caps bound parameters per statement at 100, well under SQLite's own
+    // ~999 limit; and batches of statements are chunked so a single
+    // `db.batch` call doesn't have to hold all 80,000 rows' worth at once.
+    const rowsPerStatement = 45;
+    const statements: D1PreparedStatement[] = [];
+    for (let i = 0; i < rows.length; i += rowsPerStatement) {
+      const chunk = rows.slice(i, i + rowsPerStatement);
+      const sql = `INSERT OR IGNORE INTO daily_dau (date, installation_id) VALUES ${chunk.map(() => '(?, ?)').join(', ')}`;
+      statements.push(db.prepare(sql).bind(...chunk.flat()));
+    }
+    const statementsPerBatch = 200;
+    for (let i = 0; i < statements.length; i += statementsPerBatch) {
+      await db.batch(statements.slice(i, i + statementsPerBatch));
+    }
 
-  console.log(`computeActivity(90) rows_read: ${rowsRead}`);
-  expect(Number.isFinite(rowsRead)).toBe(true);
-  expect(rowsRead).toBeGreaterThan(0);
-});
+    // Cold: no precomputed map, so computeActivity falls back to the old
+    // inline MIN(date)-per-installation scan of the whole table, same as
+    // before this change.
+    const cold = trackRowsRead(db);
+    await computeActivity(cold.db, 90, TODAY);
+    const coldRowsRead = cold.rowsRead();
+
+    // Warm: the first-seen map is precomputed once (as insights-route.ts's
+    // hourly-cached `computeCohorts` would do) and handed in, so this
+    // measurement only covers computeActivity's own windowed dau query.
+    const firstSeenByDate = await computeFirstSeenByDate(db, TODAY);
+    const warm = trackRowsRead(db);
+    await computeActivity(warm.db, 90, TODAY, firstSeenByDate);
+    const warmRowsRead = warm.rowsRead();
+
+    // eslint-disable-next-line no-console
+    console.log(`computeActivity(90) rows_read - cold: ${coldRowsRead}, warm (cached first-seen map): ${warmRowsRead}`);
+
+    expect(Number.isFinite(coldRowsRead)).toBe(true);
+    expect(Number.isFinite(warmRowsRead)).toBe(true);
+    // Warm reads only the ~209-day window (fetchStart..today) at 200
+    // installs/day (~41,800 rows) instead of the full 400-day x 200-install
+    // table (80,000 rows) the cold path's first-seen scan reads on top of
+    // that same window query.
+    expect(warmRowsRead).toBeLessThan(60_000);
+    expect(warmRowsRead).toBeLessThan(coldRowsRead);
+  },
+  30_000,
+);

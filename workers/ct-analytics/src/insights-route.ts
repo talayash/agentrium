@@ -14,7 +14,7 @@
  */
 
 import { json, todayUTC } from './http';
-import { computeActivity, computeErrors, computeReleases, computeRetention, type InsightsPayload } from './insights';
+import { computeActivity, computeCohorts, computeErrors, computeReleases, type CohortsCache, type InsightsPayload } from './insights';
 
 const PAYLOAD_CACHE_TTL_SECONDS = 900;
 const COHORTS_CACHE_TTL_SECONDS = 3600;
@@ -72,24 +72,24 @@ export async function handleInsights(url: URL, env: InsightsEnv): Promise<Respon
 
   try {
     const today = todayUTC();
-    const cachedRetention = await getCached<InsightsPayload['retention']>(env.KV_BINDING, COHORTS_CACHE_KEY);
+    const cachedCohorts = await getCached<CohortsCache>(env.KV_BINDING, COHORTS_CACHE_KEY);
+    const cohorts = cachedCohorts ?? (await computeCohorts(env.DB, today));
 
-    const [activity, releases, errors, retention] = await Promise.all([
-      computeActivity(env.DB, days, today),
+    if (!cachedCohorts) {
+      await putCached(env.KV_BINDING, COHORTS_CACHE_KEY, cohorts, COHORTS_CACHE_TTL_SECONDS);
+    }
+
+    const [activity, releases, errors] = await Promise.all([
+      computeActivity(env.DB, days, today, cohorts.first_seen_by_date),
       computeReleases(env.DB, days, today),
       computeErrors(env.DB, days, today),
-      cachedRetention ?? computeRetention(env.DB, today),
     ]);
-
-    if (!cachedRetention) {
-      await putCached(env.KV_BINDING, COHORTS_CACHE_KEY, retention, COHORTS_CACHE_TTL_SECONDS);
-    }
 
     const payload: InsightsPayload = {
       days,
       generated_at: nowISO(),
       activity,
-      retention,
+      retention: cohorts.retention,
       releases,
       errors,
     };

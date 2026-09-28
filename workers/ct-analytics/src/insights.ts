@@ -160,30 +160,72 @@ function rollingDistinctCounts(datesAsc: string[], setByDate: Map<string, Set<st
   return result;
 }
 
-export async function computeActivity(db: D1Database, days: number, today: string): Promise<InsightsPayload['activity']> {
+/**
+ * `MIN(date)` per `installation_id` over the whole `daily_dau` table has no
+ * usable index (the table's only key is `(date, installation_id)`), so it is
+ * a full-table scan - expensive at 400 days x every install, and wasted work
+ * to repeat per `days` value on every insights payload cache miss, since the
+ * per-install "first ever seen" date does not depend on `days` at all. The
+ * route computes this once per hour (see `computeCohorts` / `COHORTS_CACHE_KEY`
+ * in insights-route.ts) and `computeActivity` below just looks up dates in
+ * that cached map instead of re-scanning. `FIRST_SEEN_LOOKBACK_DAYS` (180)
+ * covers the widest possible current+previous window (`days` maxes at 90, so
+ * `span` maxes at 180).
+ */
+export const FIRST_SEEN_LOOKBACK_DAYS = 180;
+
+export async function computeFirstSeenByDate(db: D1Database, today: string): Promise<Record<string, number>> {
+  const start = addDays(today, -(FIRST_SEEN_LOOKBACK_DAYS - 1));
+  // The 400-day daily_dau horizon (see cron in index.ts) matches the
+  // `seen:` KV TTL, so "first ever seen" here agrees with the installation
+  // counter fed by that same KV key - an install first seen more than 400
+  // days ago and seen again would double-count as "new" in both places.
+  const sql = `
+    SELECT first AS date, COUNT(*) AS n FROM (
+      SELECT MIN(date) AS first FROM daily_dau GROUP BY installation_id
+    ) WHERE first >= ?1 GROUP BY first`;
+  const res = await db.prepare(sql).bind(start).all();
+  const rows = (res.results ?? []) as unknown as NewRow[];
+  const out: Record<string, number> = {};
+  for (const r of rows) out[r.date] = r.n;
+  return out;
+}
+
+export async function computeActivity(
+  db: D1Database,
+  days: number,
+  today: string,
+  // Precomputed via `computeFirstSeenByDate`, cached for up to an hour and
+  // shared across every `days` value. When omitted (direct callers, and most
+  // of this file's own tests), falls back to running that full scan inline
+  // so behaviour - just not cost - is identical either way.
+  firstSeenByDate?: Record<string, number>,
+): Promise<InsightsPayload['activity']> {
   const span = 2 * days;
   const windowStart = addDays(today, -(span - 1));
   // 29 days of lead-in so the mau window (30 days incl. current) is complete
   // even for windowStart's own point, without re-querying per date.
   const fetchStart = addDays(windowStart, -29);
 
-  // The 400-day daily_dau horizon (see cron in index.ts) matches the
-  // `seen:` KV TTL, so "first ever seen" here agrees with the installation
-  // counter fed by that same KV key - an install first seen more than 400
-  // days ago and seen again would double-count as "new" in both places.
-  const newSql = `
-    SELECT first AS date, COUNT(*) AS n FROM (
-      SELECT MIN(date) AS first FROM daily_dau GROUP BY installation_id
-    ) WHERE first >= ?1 GROUP BY first`;
+  const dauQuery = db.prepare('SELECT date, installation_id FROM daily_dau WHERE date BETWEEN ?1 AND ?2').bind(fetchStart, today);
 
-  const [dauRes, newRes] = await db.batch([
-    db.prepare('SELECT date, installation_id FROM daily_dau WHERE date BETWEEN ?1 AND ?2').bind(fetchStart, today),
-    db.prepare(newSql).bind(windowStart),
-  ]);
+  let dauRows: DauRow[];
+  let newMap: Map<string, number>;
 
-  const dauRows = (dauRes.results ?? []) as unknown as DauRow[];
-  const newRows = (newRes.results ?? []) as unknown as NewRow[];
-  const newMap = new Map(newRows.map((r) => [r.date, r.n]));
+  if (firstSeenByDate) {
+    const [dauRes] = await db.batch([dauQuery]);
+    dauRows = (dauRes.results ?? []) as unknown as DauRow[];
+    newMap = new Map(Object.entries(firstSeenByDate).filter(([date]) => date >= windowStart));
+  } else {
+    const newSql = `
+      SELECT first AS date, COUNT(*) AS n FROM (
+        SELECT MIN(date) AS first FROM daily_dau GROUP BY installation_id
+      ) WHERE first >= ?1 GROUP BY first`;
+    const [dauRes, newRes] = await db.batch([dauQuery, db.prepare(newSql).bind(windowStart)]);
+    dauRows = (dauRes.results ?? []) as unknown as DauRow[];
+    const newRows = (newRes.results ?? []) as unknown as NewRow[];
+    newMap = new Map(newRows.map((r) => [r.date, r.n]));
+  }
 
   const setByDate = new Map<string, Set<string>>();
   for (const r of dauRows) {
@@ -271,7 +313,11 @@ export async function computeRetention(db: D1Database, today: string): Promise<I
       const weeks: Array<number | null> = [];
       for (let k = 1; k <= 8; k++) {
         const weekStart = addDays(cw, 7 * k);
-        if (weekStart > todayMonday) {
+        // The current week (weekStart === todayMonday) is still in progress -
+        // its retained count so far is a partial, misleadingly-low number,
+        // not the week's real retention - so it is `null` just like a future
+        // week, not a number.
+        if (weekStart >= todayMonday) {
           weeks.push(null);
           continue;
         }
@@ -283,6 +329,23 @@ export async function computeRetention(db: D1Database, today: string): Promise<I
     .slice(-12); // the WHERE clause above already bounds this to ~12 cohorts; belt and suspenders.
 
   return { cohorts };
+}
+
+/** Range-independent (same for every `days` value) and the two most
+ * expensive full-table scans in this file, so `insights-route.ts` computes
+ * both together and caches the pair for an hour under one KV key instead of
+ * caching (and re-scanning) them separately. */
+export interface CohortsCache {
+  retention: InsightsPayload['retention'];
+  first_seen_by_date: Record<string, number>;
+}
+
+export async function computeCohorts(db: D1Database, today: string): Promise<CohortsCache> {
+  const [retention, first_seen_by_date] = await Promise.all([
+    computeRetention(db, today),
+    computeFirstSeenByDate(db, today),
+  ]);
+  return { retention, first_seen_by_date };
 }
 
 interface BucketHbRow {
