@@ -19,8 +19,11 @@ export default {
         'elevation-4': 'var(--elevation-4)', // Menus, popovers, modal base
         // Accent - follows the user's accent via CSS vars (applyAccentColor).
         // Defaults are Apple system blue, set in index.css :root.
-        'accent-primary': 'var(--accent-primary)',
-        'accent-secondary': 'var(--accent-secondary)',
+        // color-mix + <alpha-value> keeps /opacity modifiers (bg-accent-primary/10)
+        // working: a bare var() gives Tailwind nowhere to put the alpha, so those
+        // utilities used to emit no CSS at all.
+        'accent-primary': 'color-mix(in srgb, var(--accent-primary) calc(<alpha-value> * 100%), transparent)',
+        'accent-secondary': 'color-mix(in srgb, var(--accent-secondary) calc(<alpha-value> * 100%), transparent)',
         // Borders / seams - translucent separation, not opaque lines. The
         // legacy `border` alias now points at the seam hairline: the old
         // opaque --ij-divider line is retired everywhere at once.
@@ -74,6 +77,11 @@ export default {
         'elevation-2': 'var(--shadow-float-sm)',
         'elevation-3': 'var(--shadow-float-md)',
         'elevation-4': 'var(--shadow-float-lg)',
+      },
+      // Off-scale steps used by accent selection fills (bg-accent-primary/12, /18).
+      opacity: {
+        '12': '0.12',
+        '18': '0.18',
       },
       borderRadius: {
         // Apple's softer, continuous-feel corners (tokens in index.css)

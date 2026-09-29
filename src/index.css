@@ -161,6 +161,18 @@
      applyThemeMode() pushes this near-white. */
   --edge-light: rgba(255, 255, 255, 0.14);
 
+  /* Liquid Glass finish for FLOATING layers only (popover/overlay/sheet/thin -
+     never chrome). Painted as background layers, not ::before, so the many
+     position:fixed popovers need no positioning change. Light values below. */
+  --glass-rim: rgba(255, 255, 255, 0.30);          /* specular hot-spot centred on the top edge */
+  --glass-sheen: rgba(255, 255, 255, 0.055);       /* soft top-down light falloff */
+  --glass-edge-inner: rgba(255, 255, 255, 0.04);   /* inner lens edge, all round */
+  --glass-edge-low: rgba(0, 0, 0, 0.24);           /* lower edge in shadow */
+  --glass-layers:
+    linear-gradient(90deg, transparent 6%, var(--glass-rim) 50%, transparent 94%) top / 100% 1px no-repeat,
+    linear-gradient(180deg, var(--glass-sheen) 0%, transparent 48%);
+  --glass-edges: inset 0 1px 0 var(--edge-light), inset 0 0 0 1px var(--glass-edge-inner), inset 0 -1px 0 var(--glass-edge-low);
+
   /* Float shadows - layered ambient+key. Light-mode overrides in
      applyThemeMode(). Bundled into the .material-* classes (which own
      box-shadow) and mirrored by Tailwind's shadow-elevation-3/4. */
@@ -285,27 +297,27 @@
    background with backdrop blur+saturate and a light-catch top edge.
    Never stack two thin/light materials - legibility collapses. */
 .material-overlay {
-  background: var(--material-overlay-bg);
+  background: var(--glass-layers), var(--material-overlay-bg);
   backdrop-filter: blur(var(--material-blur)) saturate(var(--material-saturate));
   -webkit-backdrop-filter: blur(var(--material-blur)) saturate(var(--material-saturate));
-  /* Owns box-shadow: light-catch edge + hairline + float. Don't add Tailwind
+  /* Owns box-shadow: light-catch edges + hairline + float. Don't add Tailwind
      ring-/shadow- utilities on the same element - they'd fight this. */
-  box-shadow: inset 0 1px 0 var(--edge-light), 0 0 0 1px var(--seam), var(--shadow-float-lg);
+  box-shadow: var(--glass-edges), 0 0 0 1px var(--seam), var(--shadow-float-lg);
 }
 .material-popover {
-  background: var(--material-popover-bg);
-  backdrop-filter: blur(24px) saturate(160%);
-  -webkit-backdrop-filter: blur(24px) saturate(160%);
-  box-shadow: inset 0 1px 0 var(--edge-light), 0 0 0 1px var(--seam), var(--shadow-float-md);
+  background: var(--glass-layers), var(--material-popover-bg);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  box-shadow: var(--glass-edges), 0 0 0 1px var(--seam), var(--shadow-float-md);
 }
 /* Task modal surface - near-opaque frosted sheet. Unlike material-overlay
    (Spotlight/palette), a focused-task dialog must be fully legible, so the
    content behind never bleeds through. */
 .material-sheet {
-  background: var(--material-sheet-bg);
+  background: var(--glass-layers), var(--material-sheet-bg);
   backdrop-filter: blur(40px) saturate(180%);
   -webkit-backdrop-filter: blur(40px) saturate(180%);
-  box-shadow: inset 0 1px 0 var(--edge-light), 0 0 0 1px var(--seam), var(--shadow-float-lg);
+  box-shadow: var(--glass-edges), 0 0 0 1px var(--seam), var(--shadow-float-lg);
 }
 @media (prefers-reduced-transparency: reduce) {
   .material-sheet { backdrop-filter: none; -webkit-backdrop-filter: none; }
@@ -315,10 +327,10 @@
   :root { --material-sheet-bg: var(--elevation-0); }
 }
 .material-thin {
-  background: var(--material-thin-bg);
+  background: var(--glass-layers), var(--material-thin-bg);
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
-  box-shadow: inset 0 1px 0 var(--edge-light);
+  box-shadow: var(--glass-edges);
 }
 /* Chrome material: frosted glass in BOTH themes. It blurs the in-app pastel
    (light) / night (dark) gradient painted on .app-root - real content always
@@ -381,12 +393,24 @@
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
   }
+  /* Solid surfaces carry no sheen/rim - glass optics without glass read as a smudge. */
+  .material-overlay, .material-popover, .material-sheet, .material-thin {
+    background-image: none;
+  }
   :root {
     --material-overlay-bg: var(--elevation-2);
     --material-popover-bg: var(--elevation-4);
     --material-thin-bg: var(--elevation-3);
     --material-chrome-bg: var(--elevation-1);
   }
+}
+
+/* Light: white glass catches far more light; the lower edge barely darkens. */
+:root[data-theme="light"] {
+  --glass-rim: rgba(255, 255, 255, 1);
+  --glass-sheen: rgba(255, 255, 255, 0.5);
+  --glass-edge-inner: rgba(255, 255, 255, 0.55);
+  --glass-edge-low: rgba(30, 40, 80, 0.06);
 }
 
 /* Increased contrast: defined borders on floating surfaces. */
