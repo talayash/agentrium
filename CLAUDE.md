@@ -96,6 +96,7 @@ Key Tauri commands exposed to the frontend:
 - `get_claude_version` / `check_claude_update` / `update_claude_code`
 - `get_hints` / `send_notification` / `open_external_url`
 - `start_task` / `get_task_status` / `commit_task_changes` / `finish_task` / `list_task_worktrees` / `prune_task_worktrees` (New Task flow, `tasks.rs`: one worktree per task on `agentrium/<slug>` under `<repo-parent>/.agentrium-worktrees/<repo>/`; every command after `start_task` only acts on worktrees recorded in the `tasks` table)
+- `get_remote_info` / `get_default_branch` / `get_pr_context` / `create_pull_request` / `get_pull_request_status` / `get_failing_check_logs` / `build_pr_compare_url` (Create Pull Request flow, `pull_requests.rs`: drives the user's own `gh` / `glab` CLI, spawned from its resolved `.exe` on Windows and never through `cmd /C`, else builds a browser compare URL. No tokens are stored and no broker endpoint is involved. Remote URLs are parsed without credentials and all CLI output passes through `strip_credentials`.)
 - `probe_binary` / `list_custom_agents` / `save_custom_agent` / `delete_custom_agent` / `list_credentials` / `save_credential` / `delete_credential` / `test_credential` / `get_agent_bindings` / `set_agent_bindings` / `strip_profile_env_var` / `plaintext_key_profiles_to_prompt`
 
 ## Development

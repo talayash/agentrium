@@ -2819,7 +2819,7 @@ pub(crate) fn spawn_err(what: &str, e: std::io::Error) -> String {
     error_reporter::user_err(format!("Failed to run {what}: {e}.{hint}"))
 }
 
-async fn run_git(path: &str, args: &[&str]) -> Result<String, String> {
+pub(crate) async fn run_git(path: &str, args: &[&str]) -> Result<String, String> {
     // tokio::process::Command runs the child on the async reactor so the
     // handler doesn't stall a runtime worker while git is thinking. On big
     // repos or slow disks a sync .output() would block every other IPC
@@ -3103,7 +3103,7 @@ pub enum PushMode {
 
 /// Reject inputs that could break the refspec or shell out - used for `remote`
 /// and `remote_branch` arguments coming from the frontend.
-fn validate_ref_token(value: &str, label: &str) -> Result<(), String> {
+pub(crate) fn validate_ref_token(value: &str, label: &str) -> Result<(), String> {
     let v = value.trim();
     if v.is_empty() {
         return Err(format!("{} cannot be empty", label));
