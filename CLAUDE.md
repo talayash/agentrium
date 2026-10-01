@@ -95,6 +95,7 @@ Key Tauri commands exposed to the frontend:
 - `check_system_requirements` / `install_claude_code`
 - `get_claude_version` / `check_claude_update` / `update_claude_code`
 - `get_hints` / `send_notification` / `open_external_url`
+- `start_task` / `get_task_status` / `commit_task_changes` / `finish_task` / `list_task_worktrees` / `prune_task_worktrees` (New Task flow, `tasks.rs`: one worktree per task on `agentrium/<slug>` under `<repo-parent>/.agentrium-worktrees/<repo>/`; every command after `start_task` only acts on worktrees recorded in the `tasks` table)
 - `probe_binary` / `list_custom_agents` / `save_custom_agent` / `delete_custom_agent` / `list_credentials` / `save_credential` / `delete_credential` / `test_credential` / `get_agent_bindings` / `set_agent_bindings` / `strip_profile_env_var` / `plaintext_key_profiles_to_prompt`
 
 ## Development

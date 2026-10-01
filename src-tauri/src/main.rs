@@ -25,6 +25,7 @@ mod auth;
 mod sync_client;
 mod sync;
 mod sync_privacy;
+mod tasks;
 
 use tauri::Manager;
 use std::sync::Arc;
@@ -272,6 +273,12 @@ fn main() {
             commands::git_stash_drop,
             commands::create_worktree,
             commands::remove_worktree,
+            tasks::start_task,
+            tasks::get_task_status,
+            tasks::commit_task_changes,
+            tasks::finish_task,
+            tasks::list_task_worktrees,
+            tasks::prune_task_worktrees,
             commands::get_session_history,
             commands::get_session_history_folders,
             commands::validate_session_directory,
