@@ -31,10 +31,13 @@ function shownState(ref: PrRef, status: PullRequestStatus | undefined): Shown {
 }
 
 export function tooltipFor(ref: PrRef, status: PullRequestStatus | undefined): string {
-  const lines = [`Pull request #${ref.number} · ${STATE_STYLE[shownState(ref, status)].label}`];
-  if (status?.review_decision) lines.push(REVIEW[status.review_decision]);
-  if (status?.mergeable === 'conflicting') lines.push('Has merge conflicts');
-  const ci = status?.ci.state ?? ref.lastCi;
+  const shown = shownState(ref, status);
+  const live = shown === 'open' || shown === 'draft';
+  const lines = [`Pull request #${ref.number} · ${STATE_STYLE[shown].label}`];
+  if (live && status?.review_decision) lines.push(REVIEW[status.review_decision]);
+  if (live && status?.mergeable === 'conflicting') lines.push('Has merge conflicts');
+  // Review and CI only matter while the PR can still change.
+  const ci = live ? status?.ci.state ?? ref.lastCi : undefined;
   if (ci && ci !== 'none') {
     const failing = status?.ci.failing ?? [];
     lines.push(ci === 'failure' && failing.length

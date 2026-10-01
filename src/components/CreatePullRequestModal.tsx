@@ -149,11 +149,12 @@ export function CreatePullRequestModal() {
     const branch = git?.current_branch ?? preview?.local_branch;
     if (!branch) return;
     const key = prKey(git?.worktree_root ?? repoPath, branch);
+    // Copy only the ref fields: callers pass whole CLI results, and extras
+    // would be persisted with the ref.
+    const ref = { url: pr.url, number: pr.number, provider: pr.provider };
     // A PR we just opened starts from a known baseline so its first CI
     // failure raises an attention item; one found elsewhere is a baseline.
-    usePrStore.getState().setRef(key, fresh
-      ? { ...pr, lastState: 'open', lastCi: 'none' }
-      : pr);
+    usePrStore.getState().setRef(key, fresh ? { ...ref, lastState: 'open', lastCi: 'none' } : ref);
   }, [terminalId, preview?.local_branch, repoPath]);
 
   useEffect(() => {

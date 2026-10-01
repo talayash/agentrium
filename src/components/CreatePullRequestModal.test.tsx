@@ -96,9 +96,10 @@ it('creates the PR through gh as a draft and tracks it on the tab', async () => 
   fireEvent.click(screen.getByRole('button', { name: 'Create Pull Request' }));
   await screen.findByText('Pull request #7 created');
   expect(callsTo('create_pull_request')[0]).toMatchObject({ path: task.worktreePath, base: 'develop', head: task.branch, title: 'Add search', draft: true });
-  expect(usePrStore.getState().refs[prKey(task.worktreePath, task.branch)]).toMatchObject({
-    url: 'https://github.com/o/r/pull/7', number: 7, lastState: 'open', lastCi: 'none',
-  });
+  const { updatedAt, ...ref } = usePrStore.getState().refs[prKey(task.worktreePath, task.branch)];
+  expect(typeof updatedAt).toBe('number');
+  // Exactly the ref fields: nothing else from the CLI result is persisted.
+  expect(ref).toEqual({ url: 'https://github.com/o/r/pull/7', number: 7, provider: 'github', lastState: 'open', lastCi: 'none' });
 });
 
 it('falls back to the browser: copies the full body, opens the compare URL and closes', async () => {

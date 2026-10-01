@@ -387,6 +387,9 @@ pub fn rollup_checks(entries: &[serde_json::Value]) -> CiRollup {
     for e in entries {
         let (name, url, outcome) = classify_check(e);
         match outcome {
+            // A workflow on both `push` and `pull_request` reports the same
+            // check twice; name it once (the first URL is enough to open it).
+            CheckOutcome::Failure if failing.iter().any(|f: &FailingCheck| f.name == name) => {}
             CheckOutcome::Failure => failing.push(FailingCheck { name, url }),
             CheckOutcome::Pending => pending = true,
             CheckOutcome::Success => {}
@@ -1067,6 +1070,36 @@ pub fn actions_run_ids(failing: &[FailingCheck]) -> Vec<String> {
     ids
 }
 
+/// Make `gh run view --log-failed` output readable for an agent. Each line is
+/// `<job>\t<step>\t<timestamp> <text>`; keep the text, name each step once,
+/// and drop the BOM plus color codes (real ESC sequences and the literal
+/// `^[[36;1m` caret form GitHub stores in its logs).
+pub fn clean_failed_log(raw: &str) -> String {
+    static CARET: OnceLock<Regex> = OnceLock::new();
+    static STAMP: OnceLock<Regex> = OnceLock::new();
+    let caret = CARET.get_or_init(|| Regex::new(r"\^\[\[[0-9;]*[A-Za-z]").expect("valid regex"));
+    let stamp = STAMP.get_or_init(|| Regex::new(r"^\d{4}-\d{2}-\d{2}T[0-9:.]+Z ?").expect("valid regex"));
+    // strip_ansi_escapes also deletes tabs, so split the fields first.
+    let strip = |s: &str| String::from_utf8_lossy(&strip_ansi_escapes::strip(s.as_bytes())).replace('\u{feff}', "");
+    let mut out: Vec<String> = Vec::new();
+    let mut current_step: Option<(String, String)> = None;
+    for line in raw.lines() {
+        let parts: Vec<&str> = line.splitn(3, '\t').collect();
+        let text = if let [job, step, rest] = parts.as_slice() {
+            let key = (strip(job).trim().to_string(), strip(step).trim().to_string());
+            if current_step.as_ref() != Some(&key) {
+                out.push(format!("--- {} / {} ---", key.0, key.1));
+                current_step = Some(key);
+            }
+            stamp.replace(&strip(rest), "").into_owned()
+        } else {
+            strip(line)
+        };
+        out.push(caret.replace_all(&text, "").into_owned());
+    }
+    out.join("\n")
+}
+
 /// Keep the end of a log (failures print last), cut at a char boundary.
 pub fn tail_chars(text: &str, max: usize) -> (String, bool) {
     let count = text.chars().count();
@@ -1098,7 +1131,7 @@ pub async fn get_failing_check_logs(
             if !out.success || out.stdout.trim().is_empty() {
                 continue;
             }
-            let plain = String::from_utf8_lossy(&strip_ansi_escapes::strip(out.stdout.as_bytes())).to_string();
+            let plain = clean_failed_log(&out.stdout);
             let (tail, cut) = tail_chars(plain.trim(), MAX_LOG_CHARS_PER_RUN);
             sections.push(format!(
                 "### Run {id}{}\n```\n{}\n```",
@@ -1384,6 +1417,35 @@ mod tests {
         let msg = cli_failure_message(Cli::Gh, "github.com", "main", "x", "origin", "HTTP 401");
         assert!(crate::error_reporter::is_user_error(&msg));
         assert!(msg.contains("gh auth login"));
+    }
+
+    #[test]
+    fn dedupes_a_check_reported_by_push_and_pull_request_runs() {
+        let a = json!({"__typename":"CheckRun","name":"check","status":"COMPLETED","conclusion":"FAILURE","detailsUrl":"https://github.com/o/r/actions/runs/1/job/1"});
+        let b = json!({"__typename":"CheckRun","name":"check","status":"COMPLETED","conclusion":"FAILURE","detailsUrl":"https://github.com/o/r/actions/runs/2/job/2"});
+        let r = rollup_checks(&[a, b]);
+        assert_eq!(r.state, CiState::Failure);
+        assert_eq!(r.total, 2);
+        assert_eq!(r.failing.len(), 1);
+        assert_eq!(r.failing[0].url.as_deref(), Some("https://github.com/o/r/actions/runs/1/job/1"));
+    }
+
+    #[test]
+    fn cleans_real_gh_log_failed_output() {
+        // Shape captured from `gh run view --log-failed` during QA.
+        let raw = "check\tFail when fail.txt exists\t\u{feff}2026-10-01T16:19:31.6685888Z ##[group]Run if [ -f fail.txt ]; then exit 1; fi\n\
+                   check\tFail when fail.txt exists\t2026-10-01T16:19:31.6687341Z ^[[36;1mecho ok^[[0m\n\
+                   check\tFail when fail.txt exists\t2026-10-01T16:19:31.7087084Z \u{1b}[31mfail.txt is present\u{1b}[0m\n\
+                   check\tOther step\t2026-10-01T16:19:31.7101580Z ##[error]Process completed with exit code 1.";
+        assert_eq!(clean_failed_log(raw), [
+            "--- check / Fail when fail.txt exists ---",
+            "##[group]Run if [ -f fail.txt ]; then exit 1; fi",
+            "echo ok",
+            "fail.txt is present",
+            "--- check / Other step ---",
+            "##[error]Process completed with exit code 1.",
+        ].join("\n"));
+        assert_eq!(clean_failed_log("plain line"), "plain line");
     }
 
     #[test]
