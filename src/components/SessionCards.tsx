@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Reorder } from 'framer-motion';
-import { X, Copy, Grid3X3, AppWindow, Pin, PinOff, SplitSquareHorizontal, GitBranch, GitFork, Pencil } from 'lucide-react';
+import { X, Copy, Grid3X3, AppWindow, Pin, PinOff, SplitSquareHorizontal, GitBranch, GitFork, GitMerge, Pencil } from 'lucide-react';
 import { useTerminalStore } from '../store/terminalStore';
 import { toast } from '../store/toastStore';
 import { reportInvokeFailure } from '../lib/errorReporter';
@@ -82,6 +82,7 @@ export function SessionCards() {
   const pinnedTabIds = useAppStore((s) => s.pinnedTabIds);
   const toggleTabPin = useAppStore((s) => s.toggleTabPin);
   const sessionFilter = useAppStore((s) => s.sessionFilter);
+  const openFinishTask = useAppStore((s) => s.openFinishTask);
   const [contextMenu, setContextMenu] = useState<CardContextMenuState | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
@@ -410,6 +411,13 @@ export function SessionCards() {
             label="Continue with another agent..."
             onClick={() => { setContextMenu(null); setHandoffId(ctxId); }}
           />
+          {byId.get(ctxId)?.config.task && (
+            <CardMenuItem
+              icon={<GitMerge size={13} strokeWidth={1.75} />}
+              label="Finish task..."
+              onClick={() => { setContextMenu(null); openFinishTask(ctxId, false); }}
+            />
+          )}
           <CardMenuItem
             icon={<Pencil size={13} strokeWidth={1.75} />}
             label={refreshingId === ctxId ? 'Updating context...' : 'Refresh context'}
