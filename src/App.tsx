@@ -19,6 +19,7 @@ import { WorktreeModal } from './components/WorktreeModal';
 import { NewTaskModal } from './components/NewTaskModal';
 import { FinishTaskDialog } from './components/FinishTaskDialog';
 import { PushModal } from './components/PushModal';
+import { CreatePullRequestModal } from './components/CreatePullRequestModal';
 import { SessionHistory } from './components/SessionHistory';
 import { SnippetsModal } from './components/SnippetsModal';
 import { PasteAsFileDrawer } from './components/PasteAsFileDrawer';
@@ -149,7 +150,7 @@ function App() {
   useSessionContext();
   const newTaskModalOpen = useAppStore((s) => s.newTaskModalOpen);
   const finishTaskTerminalId = useAppStore((s) => s.finishTaskTerminalId);
-  const { sidebarOpen, sidebarCollapsed, hintsOpen, changesOpen, workspacesOpen, settingsOpen, profileModalOpen, newTerminalModalOpen, workspaceModalOpen, worktreeModalOpen, pushModalOpen, sessionHistoryOpen, snippetsModalOpen, commandPaletteOpen, globalSearchOpen, whatsNewOpen, claudeConfigOpen, sessionTimelineOpen, memoryEditorOpen, showStatusBar, notifyOnFinish, restoreSession, triggerChangesRefresh, showRestoreBanner, pendingRestoreConfigs, setShowRestoreBanner, setPendingRestoreConfigs, lastSeenVersion, setLastSeenVersion, openWhatsNew } = useAppStore();
+  const { sidebarOpen, sidebarCollapsed, hintsOpen, changesOpen, workspacesOpen, settingsOpen, profileModalOpen, newTerminalModalOpen, workspaceModalOpen, worktreeModalOpen, pushModalOpen, createPrModalOpen, sessionHistoryOpen, snippetsModalOpen, commandPaletteOpen, globalSearchOpen, whatsNewOpen, claudeConfigOpen, sessionTimelineOpen, memoryEditorOpen, showStatusBar, notifyOnFinish, restoreSession, triggerChangesRefresh, showRestoreBanner, pendingRestoreConfigs, setShowRestoreBanner, setPendingRestoreConfigs, lastSeenVersion, setLastSeenVersion, openWhatsNew } = useAppStore();
   const { handleTerminalOutput, updateTerminalStatus, setLoopMode, setSessionSummary, createTerminal, createShellTerminalTab, applyTerminalMetrics, adoptTerminal, detachTerminals, closeTerminal, terminals } = useTerminalStore();
 
   // Window identity. A torn-off ("detached") window renders the SAME full
@@ -1077,6 +1078,7 @@ function App() {
             {newTaskModalOpen && <NewTaskModal key="new-task" />}
             {finishTaskTerminalId && <FinishTaskDialog key={`finish-${finishTaskTerminalId}`} />}
             {pushModalOpen && <PushModal />}
+            {createPrModalOpen && <CreatePullRequestModal />}
             {sessionHistoryOpen && <SessionHistory />}
             {snippetsModalOpen && <SnippetsModal />}
             {!isDetached && whatsNewOpen && <WhatsNewModal />}

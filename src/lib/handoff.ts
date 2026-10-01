@@ -5,6 +5,7 @@ import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
 import { useAgentRegistryStore } from '../store/agentRegistryStore';
 import { launchTask } from './tasks';
+import { handoffLatestText, handoffTaskText } from './sessionNarrative';
 
 export interface HandoffChanges {
   changes: { path: string; status: string; staged: boolean }[];
@@ -17,14 +18,14 @@ export interface HandoffChanges {
 export function buildHandoffBrief(id: string, changes: HandoffChanges | null): string {
   const terminal = useTerminalStore.getState().terminals.get(id);
   if (!terminal) throw new Error('The source session is no longer open.');
-  const { config, sessionContext, sessionSummary } = terminal;
+  const { config } = terminal;
   const files = changes?.changes ?? [];
   return [
     `# Handoff: ${sessionDisplayName(terminal)}`,
     `Working directory: ${config.working_directory}`,
     changes?.branch ? `Branch: ${changes.branch}` : '',
-    '', '## Task', sessionContext?.goal || '[Describe the task and acceptance criteria.]',
-    '', '## Latest context', sessionContext?.latest || sessionSummary || '[Add progress so far.]',
+    '', '## Task', handoffTaskText(terminal) || '[Describe the task and acceptance criteria.]',
+    '', '## Latest context', handoffLatestText(terminal) || '[Add progress so far.]',
     '', '## Changed files (current working tree, may include other work)',
     changes?.repo_root ? `Paths relative to: ${changes.repo_root}` : '',
     !changes || changes.error ? '[File changes unavailable. Inspect the working tree.]'

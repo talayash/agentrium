@@ -461,6 +461,11 @@ describe('appStore - persist partialize', () => {
     'taskWorktreeRoot',
     'taskSetupFiles',
     'sessionFilter',
+
+    // Create Pull Request (Settings > Git)
+    'prMethod',
+    'prDraftByDefault',
+    'prBodyTemplate',
   ].sort();
 
   it('persists exactly the allow-listed keys, and no transient ones', () => {
@@ -493,6 +498,9 @@ describe('appStore - persist partialize', () => {
       'promptEditorTargetId',
       'promptEditorSeed',
       'promptDrafts',
+      'createPrModalOpen',
+      'createPrRepoPath',
+      'createPrTerminalId',
     ]) {
       expect(stored).not.toHaveProperty(key);
     }

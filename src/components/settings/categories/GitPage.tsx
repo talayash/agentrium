@@ -7,12 +7,16 @@ import { confirmAction } from '../../../lib/confirmDialog';
 import {
   DEFAULT_SETUP_FILES, finishTask, knownRepoPaths, setupFilesFor, type ManagedTaskWorktree,
 } from '../../../lib/tasks';
-import { PageHeader, PageSection, SettingRow, Segmented } from '../SettingRow';
+import { PageHeader, PageSection, SettingRow, Segmented, Toggle } from '../SettingRow';
+import { DEFAULT_PR_BODY_TEMPLATE } from '../../../lib/pullRequests';
 import { registerSetting } from '../index';
 
 const cat = { group: 'vcs', page: 'git' } as const;
 ['commit-template', 'auto-stage', 'merge-strategy'].forEach((id) =>
   registerSetting({ category: cat, id, label: id.replace(/-/g, ' '), keywords: ['git', 'commit', 'merge'] })
+);
+['pr-method', 'pr-draft-default', 'pr-body-template'].forEach((id) =>
+  registerSetting({ category: cat, id, label: id.replace(/-/g, ' '), keywords: ['git', 'pull request', 'pr', 'gh', 'glab', 'merge request'] })
 );
 ['task-isolation', 'task-worktree-folder', 'task-setup-files', 'task-orphaned-worktrees'].forEach((id) =>
   registerSetting({ category: cat, id, label: id.replace(/-/g, ' '), keywords: ['git', 'task', 'worktree', 'isolation'] })
@@ -27,9 +31,13 @@ export default function GitPage() {
   const newTerminalIsolation = useAppStore((s) => s.newTerminalIsolation);
   const taskWorktreeRoot = useAppStore((s) => s.taskWorktreeRoot);
   const taskSetupFiles = useAppStore((s) => s.taskSetupFiles);
+  const prMethod = useAppStore((s) => s.prMethod);
+  const prDraftByDefault = useAppStore((s) => s.prDraftByDefault);
+  const prBodyTemplate = useAppStore((s) => s.prBodyTemplate);
   const {
     setVcsCommitMessageTemplate, setVcsDefaultAutoStage, setVcsDefaultMergeStrategy,
     setNewTerminalIsolation, setTaskWorktreeRoot, setTaskSetupFiles,
+    setPrMethod, setPrDraftByDefault, setPrBodyTemplate,
   } = useAppStore.getState();
 
   return (
@@ -77,6 +85,46 @@ export default function GitPage() {
               { value: 'ff-only', label: 'FF only' },
             ]}
           />
+        </SettingRow>
+      </PageSection>
+
+      <PageSection title="Pull requests">
+        <SettingRow
+          label="Create pull requests"
+          description="Auto uses a signed-in gh (GitHub) or glab (GitLab) CLI and otherwise opens the create page in your browser. Agentrium never stores a token."
+        >
+          <Segmented
+            value={prMethod}
+            onChange={setPrMethod}
+            options={[
+              { value: 'auto',    label: 'Auto' },
+              { value: 'gh',      label: 'gh / glab CLI' },
+              { value: 'browser', label: 'Browser' },
+            ]}
+          />
+        </SettingRow>
+        <SettingRow label="Create as draft by default" description="Draft applies when the CLI creates the PR.">
+          <Toggle value={prDraftByDefault} onChange={setPrDraftByDefault} label="Create as draft by default" />
+        </SettingRow>
+        <SettingRow
+          label="Description template"
+          description="Prefills the PR description. Supports {title}, {summary}, {files} and {commits}."
+          align="start"
+        >
+          <div className="flex flex-col gap-1.5 w-72">
+            <textarea
+              rows={6}
+              value={prBodyTemplate}
+              onChange={(e) => setPrBodyTemplate(e.target.value)}
+              aria-label="Pull request description template"
+              className="bg-elevation-0 text-text-primary text-[12px] px-2 py-1 rounded ring-1 ring-border-light font-mono resize-y"
+            />
+            {prBodyTemplate !== DEFAULT_PR_BODY_TEMPLATE && (
+              <button type="button" onClick={() => setPrBodyTemplate(DEFAULT_PR_BODY_TEMPLATE)} className="self-start text-[11.5px] text-accent-primary hover:underline">
+                Reset to default
+              </button>
+            )}
+          </div>
         </SettingRow>
       </PageSection>
 

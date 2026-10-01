@@ -7,6 +7,7 @@ import { addPin, removePin, togglePin } from '../lib/pinnedTabs';
 import type { AgentKind, BuiltinAgentKind } from '../lib/agents';
 import type { CredentialBinding } from '../lib/credentials';
 import type { NewTerminalIsolation } from '../lib/tasks';
+import { DEFAULT_PR_BODY_TEMPLATE, type PrMethodPreference } from '../lib/pullRequests';
 
 export type TerminalCursorStyle = 'bar' | 'block' | 'underline';
 export type TerminalScrollbarMode = 'auto-hide' | 'always' | 'hidden';
@@ -178,6 +179,14 @@ interface AppState {
   /** Per-repo allow-list of gitignored files copied into new task worktrees.
    *  Missing key = DEFAULT_SETUP_FILES. */
   taskSetupFiles: Record<string, string[]>;
+  // Create Pull Request (Settings > Git)
+  prMethod: PrMethodPreference;
+  prDraftByDefault: boolean;
+  /** Supports {title}, {summary}, {files}, {commits}. */
+  prBodyTemplate: string;
+  createPrModalOpen: boolean;
+  createPrRepoPath: string | null;
+  createPrTerminalId: string | null;
   newTaskModalOpen: boolean;
   newTaskRepoPath: string | null;
   finishTaskTerminalId: string | null;
@@ -331,6 +340,8 @@ interface AppState {
   closeWorktreeModal: () => void;
   openPushModal: (repoPath: string) => void;
   closePushModal: () => void;
+  openCreatePrModal: (repoPath: string, terminalId: string | null) => void;
+  closeCreatePrModal: () => void;
   setDefaultClaudeArgs: (args: string[]) => void;
   setNotifyOnFinish: (enabled: boolean) => void;
   setRestoreSession: (enabled: boolean) => void;
@@ -389,6 +400,9 @@ interface AppState {
   setVcsDefaultAutoStage: (mode: AutoStageMode) => void;
   setVcsDefaultMergeStrategy: (strategy: MergeStrategy) => void;
   setNewTerminalIsolation: (mode: NewTerminalIsolation) => void;
+  setPrMethod: (method: PrMethodPreference) => void;
+  setPrDraftByDefault: (draft: boolean) => void;
+  setPrBodyTemplate: (template: string) => void;
   setTaskWorktreeRoot: (path: string) => void;
   setTaskSetupFiles: (repoPath: string, files: string[] | null) => void;
   openNewTaskModal: (repoPath?: string | null) => void;
@@ -633,6 +647,12 @@ export const useAppStore = create<AppState>()(
       newTerminalIsolation: 'ask' as NewTerminalIsolation,
       taskWorktreeRoot: '',
       taskSetupFiles: {},
+      prMethod: 'auto' as PrMethodPreference,
+      prDraftByDefault: false,
+      prBodyTemplate: DEFAULT_PR_BODY_TEMPLATE,
+      createPrModalOpen: false,
+      createPrRepoPath: null,
+      createPrTerminalId: null,
       newTaskModalOpen: false,
       newTaskRepoPath: null,
       finishTaskTerminalId: null,
@@ -759,6 +779,8 @@ export const useAppStore = create<AppState>()(
       closeWorktreeModal: () => set({ worktreeModalOpen: false, worktreeModalRepoPath: null }),
       openPushModal: (repoPath) => set({ pushModalOpen: true, pushModalRepoPath: repoPath }),
       closePushModal: () => set({ pushModalOpen: false, pushModalRepoPath: null }),
+      openCreatePrModal: (repoPath, terminalId) => set({ createPrModalOpen: true, createPrRepoPath: repoPath, createPrTerminalId: terminalId }),
+      closeCreatePrModal: () => set({ createPrModalOpen: false, createPrRepoPath: null, createPrTerminalId: null }),
       setDefaultClaudeArgs: (args) =>
         // Mirror into defaultAgentArgs.claude so both the legacy and the
         // per-agent readers stay in sync from any writer.
@@ -843,6 +865,9 @@ export const useAppStore = create<AppState>()(
       setVcsDefaultAutoStage: (mode) => set({ vcsDefaultAutoStage: mode }),
       setVcsDefaultMergeStrategy: (strategy) => set({ vcsDefaultMergeStrategy: strategy }),
       setNewTerminalIsolation: (mode) => set({ newTerminalIsolation: mode }),
+      setPrMethod: (method) => set({ prMethod: method }),
+      setPrDraftByDefault: (draft) => set({ prDraftByDefault: draft }),
+      setPrBodyTemplate: (template) => set({ prBodyTemplate: template }),
       setTaskWorktreeRoot: (path) => set({ taskWorktreeRoot: path }),
       setTaskSetupFiles: (repoPath, files) => set((state) => {
         const next = { ...state.taskSetupFiles };
@@ -1390,6 +1415,9 @@ export const useAppStore = create<AppState>()(
         newTerminalIsolation: state.newTerminalIsolation,
         taskWorktreeRoot: state.taskWorktreeRoot,
         taskSetupFiles: state.taskSetupFiles,
+        prMethod: state.prMethod,
+        prDraftByDefault: state.prDraftByDefault,
+        prBodyTemplate: state.prBodyTemplate,
         sessionFilter: state.sessionFilter,
         vcsChangelistsConfirmDelete: state.vcsChangelistsConfirmDelete,
 

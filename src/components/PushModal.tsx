@@ -8,6 +8,8 @@ import {
   AlertTriangle,
   Info,
   Zap,
+  CheckCircle2,
+  GitPullRequestCreate,
 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from '../store/appStore';
@@ -55,6 +57,8 @@ export function PushModal() {
   const [remoteMenuOpen, setRemoteMenuOpen] = useState(false);
   const [pushMenuOpen, setPushMenuOpen] = useState(false);
   const [forceConfirmOpen, setForceConfirmOpen] = useState(false);
+  // Success state: offers "Create PR" instead of closing straight away.
+  const [pushed, setPushed] = useState<{ target: string; count: number } | null>(null);
 
   const remoteMenuRef = useRef<HTMLDivElement>(null);
   const pushMenuRef = useRef<HTMLDivElement>(null);
@@ -122,7 +126,7 @@ export function PushModal() {
           `Pushed ${preview.ahead} commit${preview.ahead === 1 ? '' : 's'} to ${remote}/${remoteBranch}`
         );
         refreshGitInfoForPath(repoPath);
-        closePushModal();
+        setPushed({ target: `${remote}/${remoteBranch}`, count: preview.ahead });
       } catch (err) {
         const msg = typeof err === 'string' ? err : 'Push failed';
         setPushError(msg);
@@ -131,8 +135,18 @@ export function PushModal() {
         setBusy(false);
       }
     },
-    [preview, repoPath, remote, remoteBranch, pushTags, refreshGitInfoForPath, closePushModal]
+    [preview, repoPath, remote, remoteBranch, pushTags, refreshGitInfoForPath]
   );
+
+  // The session the PR chip should land on: the active tab when it is in
+  // this repo, otherwise any tab working there.
+  const openCreatePr = useCallback(() => {
+    const { terminals, activeTerminalId } = useTerminalStore.getState();
+    const inRepo = [...terminals.values()].filter((t) => t.config.working_directory === repoPath);
+    const id = inRepo.find((t) => t.config.id === activeTerminalId)?.config.id ?? inRepo[0]?.config.id ?? null;
+    closePushModal();
+    useAppStore.getState().openCreatePrModal(repoPath, id);
+  }, [repoPath, closePushModal]);
 
   const canPush =
     !!preview &&
@@ -247,7 +261,17 @@ export function PushModal() {
             </div>
           )}
 
-          {!loading && !loadError && preview && (
+          {!loading && !loadError && pushed && (
+            <div className="flex flex-col items-center justify-center h-full px-6 text-center gap-2">
+              <CheckCircle2 size={28} className="text-emerald-400" />
+              <div className="text-text-primary text-[13px] font-medium">
+                Pushed {pushed.count} commit{pushed.count === 1 ? '' : 's'} to <span className="font-mono">{pushed.target}</span>
+              </div>
+              <div className="text-text-tertiary text-[12px]">Open a pull request for this branch next?</div>
+            </div>
+          )}
+
+          {!loading && !loadError && preview && !pushed && (
             <div className="p-3 space-y-2">
               {!preview.has_upstream && (
                 <div className="flex items-start gap-2 px-3 py-2 rounded-md bg-sky-500/10 border border-sky-500/30 text-[12px] text-sky-200">
@@ -351,6 +375,14 @@ export function PushModal() {
         )}
 
         {/* Footer */}
+        {pushed ? (
+        <div className="flex items-center justify-end gap-2 px-3 bg-elevation-1 border-t border-seam">
+          <Button variant="primary" icon={<GitPullRequestCreate size={14} />} onClick={openCreatePr}>
+            Create PR
+          </Button>
+          <Button variant="secondary" onClick={closePushModal}>Close</Button>
+        </div>
+        ) : (
         <div className="flex items-center justify-between px-3 bg-elevation-1 border-t border-seam">
           <label className="flex items-center gap-2 text-[12px] text-text-secondary cursor-pointer select-none">
             <input
@@ -405,6 +437,7 @@ export function PushModal() {
             </Button>
           </div>
         </div>
+        )}
     </Modal>
   );
 }
