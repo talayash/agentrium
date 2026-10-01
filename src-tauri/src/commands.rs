@@ -407,6 +407,9 @@ pub struct CreateTerminalRequest {
     /// Credentials to inject, by id. Resolved from the OS store at spawn.
     #[serde(default)]
     pub credential_bindings: Vec<crate::config::CredentialBinding>,
+    /// Task metadata for terminals started by the New Task flow.
+    #[serde(default)]
+    pub task: Option<crate::tasks::TaskInfo>,
 }
 
 /// Built-ins resolve statically; `Custom(id)` reads the `custom_agents` row.
@@ -507,7 +510,8 @@ pub async fn create_terminal(
             None
         };
 
-        let config = {
+        let task = request.task.clone();
+        let mut config = {
             let mut terminals = state.terminals.lock().await;
             terminals.create_terminal(
                 request.label.clone(),
@@ -526,6 +530,10 @@ pub async fn create_terminal(
                 otel_endpoint,
             )?
         };
+        if task.is_some() {
+            state.terminals.lock().await.set_task(&config.id, task.clone());
+            config.task = task;
+        }
 
         // Detect the session id Claude assigned to this terminal. We don't
         // know when the user will send their first message (Claude only
@@ -2474,7 +2482,7 @@ pub struct WorktreeDetectResult {
 
 /// Validate that a path belongs to (or is under) an active terminal's working directory.
 /// Prevents arbitrary filesystem access via git commands.
-async fn validate_path_is_trusted(state: &State<'_, AppState>, path: &str) -> Result<(), String> {
+pub(crate) async fn validate_path_is_trusted(state: &State<'_, AppState>, path: &str) -> Result<(), String> {
     let canonical_path = std::path::Path::new(path)
         .canonicalize()
         .map_err(|e| error_reporter::user_err(format!("Invalid path '{}': {}", path, e)))?;
@@ -2811,7 +2819,7 @@ pub(crate) fn spawn_err(what: &str, e: std::io::Error) -> String {
     error_reporter::user_err(format!("Failed to run {what}: {e}.{hint}"))
 }
 
-async fn run_git(path: &str, args: &[&str]) -> Result<String, String> {
+pub(crate) async fn run_git(path: &str, args: &[&str]) -> Result<String, String> {
     // tokio::process::Command runs the child on the async reactor so the
     // handler doesn't stall a runtime worker while git is thinking. On big
     // repos or slow disks a sync .output() would block every other IPC
@@ -3095,7 +3103,7 @@ pub enum PushMode {
 
 /// Reject inputs that could break the refspec or shell out - used for `remote`
 /// and `remote_branch` arguments coming from the frontend.
-fn validate_ref_token(value: &str, label: &str) -> Result<(), String> {
+pub(crate) fn validate_ref_token(value: &str, label: &str) -> Result<(), String> {
     let v = value.trim();
     if v.is_empty() {
         return Err(format!("{} cannot be empty", label));

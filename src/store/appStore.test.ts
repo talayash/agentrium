@@ -455,6 +455,17 @@ describe('appStore - persist partialize', () => {
     // Pinned tabs (Phase 4a)
     'pinnedTabIds',
     'pinnedProfileIds',
+
+    // New Task flow
+    'newTerminalIsolation',
+    'taskWorktreeRoot',
+    'taskSetupFiles',
+    'sessionFilter',
+
+    // Create Pull Request (Settings > Git)
+    'prMethod',
+    'prDraftByDefault',
+    'prBodyTemplate',
   ].sort();
 
   it('persists exactly the allow-listed keys, and no transient ones', () => {
@@ -471,6 +482,8 @@ describe('appStore - persist partialize', () => {
     for (const key of [
       'settingsOpen',
       'newTerminalModalOpen',
+      'newTaskModalOpen',
+      'finishTaskTerminalId',
       'gridMode',
       'gridTerminalIds',
       'splitMode',
@@ -485,6 +498,9 @@ describe('appStore - persist partialize', () => {
       'promptEditorTargetId',
       'promptEditorSeed',
       'promptDrafts',
+      'createPrModalOpen',
+      'createPrRepoPath',
+      'createPrTerminalId',
     ]) {
       expect(stored).not.toHaveProperty(key);
     }

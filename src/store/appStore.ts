@@ -6,6 +6,8 @@ import { MAX_GRID_TERMINALS } from '../lib/gridEmptyCells';
 import { addPin, removePin, togglePin } from '../lib/pinnedTabs';
 import type { AgentKind, BuiltinAgentKind } from '../lib/agents';
 import type { CredentialBinding } from '../lib/credentials';
+import type { NewTerminalIsolation } from '../lib/tasks';
+import { DEFAULT_PR_BODY_TEMPLATE, type PrMethodPreference } from '../lib/pullRequests';
 
 export type TerminalCursorStyle = 'bar' | 'block' | 'underline';
 export type TerminalScrollbarMode = 'auto-hide' | 'always' | 'hidden';
@@ -24,6 +26,7 @@ export type SidebarNav = 'sessions' | 'files' | 'history' | 'attention';
 export type ThemeMode = 'dark' | 'light' | 'auto';
 export type AutoStageMode = 'none' | 'tracked' | 'all';
 export type MergeStrategy = 'merge' | 'rebase' | 'ff-only';
+export type SessionFilter = 'all' | 'tasks';
 export const DEFAULT_ACCENT_COLOR = '#007AFF'; // Apple system blue (vibrant, light-mode)
 
 /** Sentinel for openProfileModal: open the focused editor in CREATE mode
@@ -169,6 +172,27 @@ interface AppState {
   vcsCommitMessageTemplate: string;
   vcsDefaultAutoStage: AutoStageMode;
   vcsDefaultMergeStrategy: MergeStrategy;
+  // New Task flow (Settings > Git)
+  newTerminalIsolation: NewTerminalIsolation;
+  /** Managed folder for task worktrees; '' = <repo-parent>/.agentrium-worktrees. */
+  taskWorktreeRoot: string;
+  /** Per-repo allow-list of gitignored files copied into new task worktrees.
+   *  Missing key = DEFAULT_SETUP_FILES. */
+  taskSetupFiles: Record<string, string[]>;
+  // Create Pull Request (Settings > Git)
+  prMethod: PrMethodPreference;
+  prDraftByDefault: boolean;
+  /** Supports {title}, {summary}, {files}, {commits}. */
+  prBodyTemplate: string;
+  createPrModalOpen: boolean;
+  createPrRepoPath: string | null;
+  createPrTerminalId: string | null;
+  newTaskModalOpen: boolean;
+  newTaskRepoPath: string | null;
+  finishTaskTerminalId: string | null;
+  /** Close the terminal after the finish dialog completes (close-triggered). */
+  finishTaskCloseAfter: boolean;
+  sessionFilter: SessionFilter;
   vcsChangelistsConfirmDelete: boolean;
 
   // Claude Code defaults (NEW v1.22.0).
@@ -316,6 +340,8 @@ interface AppState {
   closeWorktreeModal: () => void;
   openPushModal: (repoPath: string) => void;
   closePushModal: () => void;
+  openCreatePrModal: (repoPath: string, terminalId: string | null) => void;
+  closeCreatePrModal: () => void;
   setDefaultClaudeArgs: (args: string[]) => void;
   setNotifyOnFinish: (enabled: boolean) => void;
   setRestoreSession: (enabled: boolean) => void;
@@ -373,6 +399,17 @@ interface AppState {
   setVcsCommitMessageTemplate: (template: string) => void;
   setVcsDefaultAutoStage: (mode: AutoStageMode) => void;
   setVcsDefaultMergeStrategy: (strategy: MergeStrategy) => void;
+  setNewTerminalIsolation: (mode: NewTerminalIsolation) => void;
+  setPrMethod: (method: PrMethodPreference) => void;
+  setPrDraftByDefault: (draft: boolean) => void;
+  setPrBodyTemplate: (template: string) => void;
+  setTaskWorktreeRoot: (path: string) => void;
+  setTaskSetupFiles: (repoPath: string, files: string[] | null) => void;
+  openNewTaskModal: (repoPath?: string | null) => void;
+  closeNewTaskModal: () => void;
+  openFinishTask: (terminalId: string, closeAfter: boolean) => void;
+  closeFinishTask: () => void;
+  setSessionFilter: (filter: SessionFilter) => void;
   setVcsChangelistsConfirmDelete: (enabled: boolean) => void;
 
   // Claude setters (NEW v1.22.0)
@@ -491,6 +528,8 @@ export interface SavedTerminalConfig {
   claude_session_id?: string | null;
   agent: AgentKind;
   credential_bindings?: CredentialBinding[];
+  /** Raw task JSON from the saved row; run through `normalizeTask`. */
+  task?: unknown;
 }
 
 // Helper to determine optimal layout based on terminal count
@@ -605,6 +644,20 @@ export const useAppStore = create<AppState>()(
       vcsCommitMessageTemplate: '',
       vcsDefaultAutoStage: 'none' as AutoStageMode,
       vcsDefaultMergeStrategy: 'merge' as MergeStrategy,
+      newTerminalIsolation: 'ask' as NewTerminalIsolation,
+      taskWorktreeRoot: '',
+      taskSetupFiles: {},
+      prMethod: 'auto' as PrMethodPreference,
+      prDraftByDefault: false,
+      prBodyTemplate: DEFAULT_PR_BODY_TEMPLATE,
+      createPrModalOpen: false,
+      createPrRepoPath: null,
+      createPrTerminalId: null,
+      newTaskModalOpen: false,
+      newTaskRepoPath: null,
+      finishTaskTerminalId: null,
+      finishTaskCloseAfter: false,
+      sessionFilter: 'all' as SessionFilter,
       vcsChangelistsConfirmDelete: true,
 
       // Claude defaults (NEW v1.22.0)
@@ -726,6 +779,8 @@ export const useAppStore = create<AppState>()(
       closeWorktreeModal: () => set({ worktreeModalOpen: false, worktreeModalRepoPath: null }),
       openPushModal: (repoPath) => set({ pushModalOpen: true, pushModalRepoPath: repoPath }),
       closePushModal: () => set({ pushModalOpen: false, pushModalRepoPath: null }),
+      openCreatePrModal: (repoPath, terminalId) => set({ createPrModalOpen: true, createPrRepoPath: repoPath, createPrTerminalId: terminalId }),
+      closeCreatePrModal: () => set({ createPrModalOpen: false, createPrRepoPath: null, createPrTerminalId: null }),
       setDefaultClaudeArgs: (args) =>
         // Mirror into defaultAgentArgs.claude so both the legacy and the
         // per-agent readers stay in sync from any writer.
@@ -809,6 +864,22 @@ export const useAppStore = create<AppState>()(
       setVcsCommitMessageTemplate: (template) => set({ vcsCommitMessageTemplate: template }),
       setVcsDefaultAutoStage: (mode) => set({ vcsDefaultAutoStage: mode }),
       setVcsDefaultMergeStrategy: (strategy) => set({ vcsDefaultMergeStrategy: strategy }),
+      setNewTerminalIsolation: (mode) => set({ newTerminalIsolation: mode }),
+      setPrMethod: (method) => set({ prMethod: method }),
+      setPrDraftByDefault: (draft) => set({ prDraftByDefault: draft }),
+      setPrBodyTemplate: (template) => set({ prBodyTemplate: template }),
+      setTaskWorktreeRoot: (path) => set({ taskWorktreeRoot: path }),
+      setTaskSetupFiles: (repoPath, files) => set((state) => {
+        const next = { ...state.taskSetupFiles };
+        if (files === null) delete next[repoPath];
+        else next[repoPath] = files;
+        return { taskSetupFiles: next };
+      }),
+      openNewTaskModal: (repoPath) => set({ newTaskModalOpen: true, newTaskRepoPath: repoPath ?? null }),
+      closeNewTaskModal: () => set({ newTaskModalOpen: false, newTaskRepoPath: null }),
+      openFinishTask: (terminalId, closeAfter) => set({ finishTaskTerminalId: terminalId, finishTaskCloseAfter: closeAfter }),
+      closeFinishTask: () => set({ finishTaskTerminalId: null, finishTaskCloseAfter: false }),
+      setSessionFilter: (filter) => set({ sessionFilter: filter }),
       setVcsChangelistsConfirmDelete: (enabled) => set({ vcsChangelistsConfirmDelete: enabled }),
 
       // Claude setters (NEW v1.22.0)
@@ -1341,6 +1412,13 @@ export const useAppStore = create<AppState>()(
         vcsCommitMessageTemplate: state.vcsCommitMessageTemplate,
         vcsDefaultAutoStage: state.vcsDefaultAutoStage,
         vcsDefaultMergeStrategy: state.vcsDefaultMergeStrategy,
+        newTerminalIsolation: state.newTerminalIsolation,
+        taskWorktreeRoot: state.taskWorktreeRoot,
+        taskSetupFiles: state.taskSetupFiles,
+        prMethod: state.prMethod,
+        prDraftByDefault: state.prDraftByDefault,
+        prBodyTemplate: state.prBodyTemplate,
+        sessionFilter: state.sessionFilter,
         vcsChangelistsConfirmDelete: state.vcsChangelistsConfirmDelete,
 
         // Claude (NEW v1.22.0)

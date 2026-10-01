@@ -16,7 +16,10 @@ import { AddApiKeyModal } from './components/AddApiKeyModal';
 import { AddAgentModal } from './components/AddAgentModal';
 import { WorkspaceModal } from './components/WorkspaceModal';
 import { WorktreeModal } from './components/WorktreeModal';
+import { NewTaskModal } from './components/NewTaskModal';
+import { FinishTaskDialog } from './components/FinishTaskDialog';
 import { PushModal } from './components/PushModal';
+import { CreatePullRequestModal } from './components/CreatePullRequestModal';
 import { SessionHistory } from './components/SessionHistory';
 import { SnippetsModal } from './components/SnippetsModal';
 import { PasteAsFileDrawer } from './components/PasteAsFileDrawer';
@@ -43,6 +46,7 @@ import { installTransferReceiver, requestTransfer, restoreDetachedWindow } from 
 import { filterLivePins } from './lib/pinnedTabs';
 import { keyOf, restoreLayoutKeys, upsertEntry, removeEntry, getDetachedEntries, currentGeometry } from './lib/windowLayout';
 import { planRestoreModes } from './lib/restorePlan';
+import { restoreTargetFor } from './lib/tasks';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import type { TerminalConfig } from './store/terminalStore';
 import { useAppStore } from './store/appStore';
@@ -63,6 +67,7 @@ import { InputContextMenu } from './components/InputContextMenu';
 import { useNotification } from './hooks/useNotification';
 import { useSessionStateDetection } from './hooks/useSessionStateDetection';
 import { useAttentionInbox } from './hooks/useAttentionInbox';
+import { usePullRequestPoller } from './hooks/usePullRequestPoller';
 import {
   applyAccentColor,
   applyThemeMode,
@@ -144,7 +149,9 @@ async function tryRehydrateAuth(): Promise<boolean> {
 
 function App() {
   useSessionContext();
-  const { sidebarOpen, sidebarCollapsed, hintsOpen, changesOpen, workspacesOpen, settingsOpen, profileModalOpen, newTerminalModalOpen, workspaceModalOpen, worktreeModalOpen, pushModalOpen, sessionHistoryOpen, snippetsModalOpen, commandPaletteOpen, globalSearchOpen, whatsNewOpen, claudeConfigOpen, sessionTimelineOpen, memoryEditorOpen, showStatusBar, notifyOnFinish, restoreSession, triggerChangesRefresh, showRestoreBanner, pendingRestoreConfigs, setShowRestoreBanner, setPendingRestoreConfigs, lastSeenVersion, setLastSeenVersion, openWhatsNew } = useAppStore();
+  const newTaskModalOpen = useAppStore((s) => s.newTaskModalOpen);
+  const finishTaskTerminalId = useAppStore((s) => s.finishTaskTerminalId);
+  const { sidebarOpen, sidebarCollapsed, hintsOpen, changesOpen, workspacesOpen, settingsOpen, profileModalOpen, newTerminalModalOpen, workspaceModalOpen, worktreeModalOpen, pushModalOpen, createPrModalOpen, sessionHistoryOpen, snippetsModalOpen, commandPaletteOpen, globalSearchOpen, whatsNewOpen, claudeConfigOpen, sessionTimelineOpen, memoryEditorOpen, showStatusBar, notifyOnFinish, restoreSession, triggerChangesRefresh, showRestoreBanner, pendingRestoreConfigs, setShowRestoreBanner, setPendingRestoreConfigs, lastSeenVersion, setLastSeenVersion, openWhatsNew } = useAppStore();
   const { handleTerminalOutput, updateTerminalStatus, setLoopMode, setSessionSummary, createTerminal, createShellTerminalTab, applyTerminalMetrics, adoptTerminal, detachTerminals, closeTerminal, terminals } = useTerminalStore();
 
   // Window identity. A torn-off ("detached") window renders the SAME full
@@ -181,6 +188,7 @@ function App() {
   usePreventWebviewReload();
   useSessionStateDetection();
   useAttentionInbox();
+  usePullRequestPoller();
 
   // v1.22.0 - apply theme/density/accent/motion/scale on store change.
   const themeMode = useAppStore((s) => s.themeMode);
@@ -796,6 +804,18 @@ function App() {
     // running against the mount-time snapshot.
   }, [showSetup, restoreSession, isDetached]);
 
+  // Task worktree cleanup: `git worktree prune` in every repo with tasks and
+  // forget registry rows whose folder is gone. Orphans that still exist are
+  // listed in Settings > Git.
+  useEffect(() => {
+    if (isDetached) return; // main window owns startup maintenance
+    if (showSetup !== false) return;
+    invoke<number>('prune_task_worktrees').catch(() => {
+      // Best-effort maintenance; internal failures are already reported by
+      // the backend's wrap_cmd, and nothing user-visible depends on it.
+    });
+  }, [showSetup, isDetached]);
+
   // Auto-save session every 30 seconds
   useEffect(() => {
     if (isDetached) return; // main owns session persistence
@@ -864,10 +884,16 @@ function App() {
           //   - fresh:    plain `claude` + painted log. Used for duplicate
           //     session claims - visual context stays, but the terminal gets
           //     its own new conversation instead of hijacking another tab's.
-          const mode = restoreModes[i];
+          const target = await restoreTargetFor(config);
+          // Agent sessions are keyed by cwd, so a task whose worktree is gone
+          // cannot resume its conversation from the repo root: start fresh.
+          const mode = target.worktreeMissing ? { kind: 'fresh' as const } : restoreModes[i];
+          if (target.worktreeMissing) {
+            toast.info('Task worktree missing', `"${config.label}" reopened in the repository instead.`);
+          }
           const newId = await createTerminal(
             config.label,
-            config.working_directory,
+            target.cwd,
             config.claude_args,
             config.env_vars,
             config.color_tag ?? undefined,
@@ -878,6 +904,7 @@ function App() {
             undefined,
             config.agent,
             config.credential_bindings ?? [],
+            target.task,
           );
           for (const key of layoutKeys[i]) keyToNewId[key] = newId;
         }
@@ -1050,7 +1077,10 @@ function App() {
             {addKeyOpen && <AddApiKeyModal key="add-key" />}
             {workspaceModalOpen && <WorkspaceModal />}
             {worktreeModalOpen && <WorktreeModal />}
+            {newTaskModalOpen && <NewTaskModal key="new-task" />}
+            {finishTaskTerminalId && <FinishTaskDialog key={`finish-${finishTaskTerminalId}`} />}
             {pushModalOpen && <PushModal />}
+            {createPrModalOpen && <CreatePullRequestModal />}
             {sessionHistoryOpen && <SessionHistory />}
             {snippetsModalOpen && <SnippetsModal />}
             {!isDetached && whatsNewOpen && <WhatsNewModal />}

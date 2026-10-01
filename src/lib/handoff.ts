@@ -4,6 +4,8 @@ import { sessionDisplayName } from './sessionContext';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
 import { useAgentRegistryStore } from '../store/agentRegistryStore';
+import { launchTask } from './tasks';
+import { handoffLatestText, handoffTaskText } from './sessionNarrative';
 
 export interface HandoffChanges {
   changes: { path: string; status: string; staged: boolean }[];
@@ -16,14 +18,14 @@ export interface HandoffChanges {
 export function buildHandoffBrief(id: string, changes: HandoffChanges | null): string {
   const terminal = useTerminalStore.getState().terminals.get(id);
   if (!terminal) throw new Error('The source session is no longer open.');
-  const { config, sessionContext, sessionSummary } = terminal;
+  const { config } = terminal;
   const files = changes?.changes ?? [];
   return [
     `# Handoff: ${sessionDisplayName(terminal)}`,
     `Working directory: ${config.working_directory}`,
     changes?.branch ? `Branch: ${changes.branch}` : '',
-    '', '## Task', sessionContext?.goal || '[Describe the task and acceptance criteria.]',
-    '', '## Latest context', sessionContext?.latest || sessionSummary || '[Add progress so far.]',
+    '', '## Task', handoffTaskText(terminal) || '[Describe the task and acceptance criteria.]',
+    '', '## Latest context', handoffLatestText(terminal) || '[Add progress so far.]',
     '', '## Changed files (current working tree, may include other work)',
     changes?.repo_root ? `Paths relative to: ${changes.repo_root}` : '',
     !changes || changes.error ? '[File changes unavailable. Inspect the working tree.]'
@@ -42,18 +44,34 @@ export async function loadHandoffBrief(id: string): Promise<string> {
   return buildHandoffBrief(id, changes);
 }
 
-export async function launchHandoff(sourceId: string, agent: AgentKind, brief: string): Promise<string> {
+/** Where the receiving agent works when the source is a task session:
+ *  `same` shares the task worktree, `fork` starts a new task worktree whose
+ *  base is the source task's branch (committed work only). */
+export type HandoffWorktree = 'same' | 'fork';
+
+export async function launchHandoff(sourceId: string, agent: AgentKind, brief: string, worktree: HandoffWorktree = 'same'): Promise<string> {
   const source = useTerminalStore.getState().terminals.get(sourceId);
   if (!source) throw new Error('The source session is no longer open.');
   if (!brief.trim()) throw new Error('Add a handoff brief before continuing.');
   if (!allAgentSpecs().some(spec => spec.kind === agent)) throw new Error('The selected agent is no longer available.');
-  const app = useAppStore.getState();
-  const id = await useTerminalStore.getState().createTerminal(
-    `Handoff: ${sessionDisplayName(source)}`, source.config.working_directory,
-    defaultArgsFor(agent, app.defaultAgentArgs), {},
-    undefined, undefined, undefined, undefined, false, undefined, agent,
-    useAgentRegistryStore.getState().defaultBindingsFor(agent),
-  );
+  const sourceTask = source.config.task ?? null;
+  let id: string;
+  if (worktree === 'fork' && sourceTask) {
+    // launchTask stages the brief in the prompt editor itself.
+    id = await launchTask({
+      repoPath: sourceTask.repoPath, title: `${sourceTask.title} (fork)`, baseBranch: sourceTask.branch,
+      agent, titleAsPrompt: false, promptText: brief,
+    });
+  } else {
+    const app = useAppStore.getState();
+    id = await useTerminalStore.getState().createTerminal(
+      `Handoff: ${sessionDisplayName(source)}`, source.config.working_directory,
+      defaultArgsFor(agent, app.defaultAgentArgs), {},
+      undefined, undefined, undefined, undefined, false, undefined, agent,
+      useAgentRegistryStore.getState().defaultBindingsFor(agent),
+      sourceTask,
+    );
+  }
   // Stage text in the prompt editor: a new CLI may still be showing a trust or
   // login prompt. Never inject a brief into an unknown terminal input state.
   useAppStore.getState().setPromptDraft(id, brief);

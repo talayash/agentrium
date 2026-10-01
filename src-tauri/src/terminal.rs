@@ -34,6 +34,10 @@ pub struct TerminalConfig {
     /// restore re-resolves them from the OS store; values are never stored.
     #[serde(default)]
     pub credential_bindings: Vec<crate::config::CredentialBinding>,
+    /// Set when the terminal works in a task worktree (New Task flow).
+    /// Persisted with session restore so the task survives a restart.
+    #[serde(default)]
+    pub task: Option<crate::tasks::TaskInfo>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -461,6 +465,7 @@ impl TerminalManager {
             claude_session_id: resume_session_id,
             agent: spec.kind.clone(),
             credential_bindings,
+            task: None,
         };
 
         let mut reader = pty_pair.master.try_clone_reader()
@@ -633,6 +638,7 @@ impl TerminalManager {
             claude_session_id: None,
             agent: crate::config::AgentKind::Claude,
             credential_bindings: Vec::new(),
+            task: None,
         };
 
         let mut reader = pty_pair.master.try_clone_reader()
@@ -755,6 +761,7 @@ impl TerminalManager {
             claude_session_id: None,
             agent: crate::config::AgentKind::Claude,
             credential_bindings: Vec::new(),
+            task: None,
         };
 
         let mut reader = pty_pair.master.try_clone_reader()
@@ -960,6 +967,12 @@ impl TerminalManager {
     /// Attach the detected Claude session id to a live terminal. Silent
     /// no-op when the terminal has already been closed - detection races
     /// the user, and a stale write here shouldn't surface as an error.
+    pub fn set_task(&mut self, id: &str, task: Option<crate::tasks::TaskInfo>) {
+        if let Some(terminal) = self.terminals.get_mut(id) {
+            terminal.config.task = task;
+        }
+    }
+
     pub fn update_claude_session_id(&mut self, id: &str, session_id: String) {
         if let Some(terminal) = self.terminals.get_mut(id) {
             terminal.config.claude_session_id = Some(session_id);
@@ -1126,6 +1139,7 @@ mod tests {
                     claude_session_id: None,
                     agent: crate::config::AgentKind::Claude,
                     credential_bindings: Vec::new(),
+                    task: None,
                 },
                 pty_pair,
                 writer,
@@ -1457,6 +1471,7 @@ mod tests {
                 env: "ANTHROPIC_API_KEY".into(),
                 credential_id: "c1".into(),
             }],
+            task: None,
         };
         let json = serde_json::to_string(&cfg).unwrap();
         assert!(json.contains("\"credential_bindings\""));

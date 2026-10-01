@@ -25,6 +25,8 @@ mod auth;
 mod sync_client;
 mod sync;
 mod sync_privacy;
+mod tasks;
+mod pull_requests;
 
 use tauri::Manager;
 use std::sync::Arc;
@@ -272,6 +274,20 @@ fn main() {
             commands::git_stash_drop,
             commands::create_worktree,
             commands::remove_worktree,
+            tasks::start_task,
+            tasks::list_task_base_branches,
+            tasks::get_task_status,
+            tasks::commit_task_changes,
+            tasks::finish_task,
+            tasks::list_task_worktrees,
+            tasks::prune_task_worktrees,
+            pull_requests::get_remote_info,
+            pull_requests::get_default_branch,
+            pull_requests::get_pr_context,
+            pull_requests::create_pull_request,
+            pull_requests::get_pull_request_status,
+            pull_requests::get_failing_check_logs,
+            pull_requests::build_pr_compare_url,
             commands::get_session_history,
             commands::get_session_history_folders,
             commands::validate_session_directory,

@@ -10,6 +10,7 @@ import type { WorktreeInfo, WorktreeDetectResult } from '../types/git';
 import { reportInvokeFailure } from '../lib/errorReporter';
 import { toast } from '../store/toastStore';
 import { defaultArgsFor, filterArgsForAgent, isCustomAgent, specFor, type AgentKind } from '../lib/agents';
+import { finishTask, startTask, taskFromStart, type TaskInfo } from '../lib/tasks';
 import { useAgentRegistryStore } from '../store/agentRegistryStore';
 import type { CredentialBinding } from '../lib/credentials';
 import {
@@ -103,6 +104,10 @@ export function NewTerminalModal() {
   const [error, setError] = useState<string | null>(null);
   const [defaultDirectory, setDefaultDirectory] = useState('');
   const [useWorktree, setUseWorktree] = useState(false);
+  // Agent-agnostic isolation (New Task backend). Offered only when the folder
+  // is a detected repo; 'always' pre-checks it, 'never' hides it.
+  const isolationSetting = useAppStore((s) => s.newTerminalIsolation);
+  const [isolateInTask, setIsolateInTask] = useState(isolationSetting === 'always');
   // Model picker is two-tier: family row selects the model group, variant row
   // (only shown when the family has >1 variant) picks the specific alias.
   // 'default' is a synthetic family/alias meaning "don't pass --model".
@@ -378,6 +383,9 @@ export function NewTerminalModal() {
     }
   };
 
+  const offerIsolation = isolationSetting !== 'never' && !plainShell
+    && !!worktreeDetect?.is_git_repo && !worktreeDetect.is_worktree;
+
   const handleCreateTerminal = async () => {
     setError(null);
 
@@ -442,7 +450,7 @@ export function NewTerminalModal() {
           if (selectedEffort !== 'default') {
             finalArgs.unshift('--effort', selectedEffort);
           }
-          if (useWorktree) {
+          if (useWorktree && !(offerIsolation && isolateInTask)) {
             finalArgs.unshift('--worktree');
           }
         }
@@ -465,20 +473,37 @@ export function NewTerminalModal() {
         const envForSpawn = { ...envVars };
         for (const b of bindingsToSend) delete envForSpawn[b.env];
 
-        newTerminalId = await createTerminal(
-          label,
-          workingDirectory,
-          finalArgs,
-          envForSpawn,
-          colorTag,
-          nickname || undefined,
-          undefined,
-          undefined,
-          undefined,
-          previewInit,
-          selectedAgent,
-          bindingsToSend,
-        );
+        // Same backend as New Task: own branch + worktree, any agent. The
+        // session name (or the generated label) becomes the task title.
+        let task: TaskInfo | null = null;
+        if (offerIsolation && isolateInTask) {
+          const title = nickname.trim() || label;
+          task = taskFromStart(title, await startTask({ repoPath: workingDirectory, title }));
+        }
+        try {
+          newTerminalId = await createTerminal(
+            label,
+            task?.worktreePath ?? workingDirectory,
+            finalArgs,
+            envForSpawn,
+            colorTag,
+            nickname || undefined,
+            undefined,
+            undefined,
+            undefined,
+            previewInit,
+            selectedAgent,
+            bindingsToSend,
+            task,
+          );
+        } catch (err) {
+          if (task) {
+            // Fresh branch with no commits: rolling it back loses nothing.
+            await finishTask(task.worktreePath, { kind: 'discard', confirm_unmerged: false })
+              .catch((e) => reportInvokeFailure('finish_task', e));
+          }
+          throw err;
+        }
       }
 
       // Created from grid view → place the new terminal in the grid so it's
@@ -710,6 +735,16 @@ export function NewTerminalModal() {
               </button>
             </div>
           </div>
+
+          {offerIsolation && (
+            <div className="flex items-center justify-between rounded-lg ring-1 ring-seam px-3 py-2">
+              <div>
+                <label className="text-text-secondary text-[12px]">Run in a new task worktree</label>
+                <p className="text-text-tertiary text-[11px]">Own branch (agentrium/...) and folder, so parallel sessions never collide.</p>
+              </div>
+              <Toggle checked={isolateInTask} onChange={setIsolateInTask} ariaLabel="Run in a new task worktree" />
+            </div>
+          )}
 
           {/* Git Worktrees */}
           <AnimatePresence>
@@ -1028,8 +1063,9 @@ export function NewTerminalModal() {
                     </div>
                     )}
 
-                    {/* Isolated Worktree - Claude-only flag */}
-                    {!plainShell && selectedAgent === 'claude' && (
+                    {/* Isolated Worktree - Claude-only flag. Hidden while the
+                        agent-agnostic task worktree is selected. */}
+                    {!plainShell && selectedAgent === 'claude' && !(offerIsolation && isolateInTask) && (
                     <div className="flex items-center justify-between">
                       <div>
                         <label className="text-text-secondary text-[12px]">Isolated Worktree</label>

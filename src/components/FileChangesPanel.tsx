@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef, createContext, useContext } from 'react';
-import { RefreshCw, GitBranch, GitFork, ChevronRight, ChevronDown, CircleDot, ArrowUp, ArrowDown, Upload, Archive, Package, Loader2, Trash2, Download, Plus, Check, Search as SearchIcon, Pin, PinOff, GitPullRequestArrow, TerminalSquare, MoreVertical, Undo2, FileDiff, Expand, Shrink, Minus, FolderGit2 } from 'lucide-react';
+import { RefreshCw, GitBranch, GitFork, ChevronRight, ChevronDown, CircleDot, ArrowUp, ArrowDown, Upload, Archive, Package, Loader2, Trash2, Download, Plus, Check, Search as SearchIcon, Pin, PinOff, GitPullRequestArrow, TerminalSquare, MoreVertical, Undo2, FileDiff, Expand, Shrink, Minus, FolderGit2, GitPullRequestCreate } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { confirmAction } from '../lib/confirmDialog';
 import { useTerminalStore } from '../store/terminalStore';
@@ -9,6 +9,7 @@ import { Button } from './ui/Button';
 import { Tooltip } from './ui/Tooltip';
 import { ChangelistSection, joinRepoPath, type MergedChange } from './ChangelistSection';
 import { reportInvokeFailure } from '../lib/errorReporter';
+import { openCreatePrForTerminal } from '../lib/pullRequestActions';
 import type { WorktreeInfo, PushPreview } from '../types/git';
 
 const DIRTY_TREE_PREFIX = 'Working tree has uncommitted changes';
@@ -613,6 +614,11 @@ export function FileChangesPanel() {
             onClick={() => { if (activePath) useAppStore.getState().openPushModal(activePath); }}
             disabled={!activePath || !result?.is_git_repo} className="text-error">
             <Upload size={13} strokeWidth={2} />
+          </ToolbarButton>
+          <ToolbarButton label="Create pull request for the current branch"
+            onClick={() => openCreatePrForTerminal(activeTerminalId ?? null)}
+            disabled={!activePath || !result?.is_git_repo} className="text-accent-primary">
+            <GitPullRequestCreate size={13} strokeWidth={2} />
           </ToolbarButton>
           <ToolbarButton label="Stash Changes" onClick={handleStash}
             disabled={stashing || committing || pushing || !result?.is_git_repo || (result?.changes.length ?? 0) === 0}

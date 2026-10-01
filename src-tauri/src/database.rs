@@ -226,6 +226,17 @@ impl Database {
                 bindings TEXT NOT NULL
             );
 
+            -- Registry of task worktrees created by `start_task`. Later task
+            -- commands only act on rows here (see tasks.rs trust model).
+            CREATE TABLE IF NOT EXISTS tasks (
+                worktree_path TEXT PRIMARY KEY,
+                repo_path TEXT NOT NULL,
+                branch TEXT NOT NULL,
+                base_branch TEXT NOT NULL,
+                title TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
+
             CREATE INDEX IF NOT EXISTS idx_changelist_files_repo ON changelist_files(repo_path);
             CREATE INDEX IF NOT EXISTS idx_changelist_files_list ON changelist_files(changelist_id);
             ",
@@ -907,6 +918,35 @@ impl Database {
             "UPDATE session_history SET ended_at = ?1 WHERE terminal_id = ?2 AND ended_at IS NULL",
             params![ended_at, terminal_id],
         ).map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn insert_task(&self, task: &crate::tasks::TaskInfo) -> Result<(), String> {
+        self.conn.execute(
+            "INSERT OR REPLACE INTO tasks (worktree_path, repo_path, branch, base_branch, title, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![task.worktree_path, task.repo_path, task.branch, task.base_branch, task.title, chrono::Utc::now().to_rfc3339()],
+        ).map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn list_tasks(&self) -> Result<Vec<crate::tasks::TaskInfo>, String> {
+        let mut stmt = self.conn.prepare(
+            "SELECT title, branch, base_branch, worktree_path, repo_path FROM tasks ORDER BY created_at DESC"
+        ).map_err(|e| e.to_string())?;
+        let rows = stmt.query_map([], |row| Ok(crate::tasks::TaskInfo {
+            title: row.get(0)?,
+            branch: row.get(1)?,
+            base_branch: row.get(2)?,
+            worktree_path: row.get(3)?,
+            repo_path: row.get(4)?,
+        })).map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    }
+
+    pub fn delete_task(&self, worktree_path: &str) -> Result<(), String> {
+        self.conn.execute("DELETE FROM tasks WHERE worktree_path = ?1", params![worktree_path])
+            .map_err(|e| e.to_string())?;
         Ok(())
     }
 
@@ -1813,6 +1853,7 @@ mod tests {
             claude_session_id: None,
             agent: crate::config::AgentKind::Claude,
             credential_bindings: Vec::new(),
+            task: None,
         }
     }
 

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Reorder } from 'framer-motion';
-import { X, Copy, Grid3X3, AppWindow, Pin, PinOff, SplitSquareHorizontal, GitBranch, GitFork, Pencil } from 'lucide-react';
+import { X, Copy, Grid3X3, AppWindow, Pin, PinOff, SplitSquareHorizontal, GitBranch, GitFork, GitMerge, Pencil, GitPullRequestCreate, ExternalLink, Wrench } from 'lucide-react';
 import { useTerminalStore } from '../store/terminalStore';
 import { toast } from '../store/toastStore';
 import { reportInvokeFailure } from '../lib/errorReporter';
@@ -16,6 +16,11 @@ import { isCustomAgent } from '../lib/agents';
 import { resolveRenameCommit } from '../lib/renameTab';
 import { contextTooltip, refreshSessionContext, sessionDisplayName } from '../lib/sessionContext';
 import { HandoffModal } from './HandoffModal';
+import { TaskBadge } from './TaskBadge';
+import { requestCloseTerminal } from '../lib/tasks';
+import { usePrStore } from '../store/prStore';
+import { openCreatePrForTerminal, openPullRequestUrl, sendFailingChecksToAgent, terminalPrTarget } from '../lib/pullRequestActions';
+import { PrChip } from './PrChip';
 
 // Soft per-agent tint for the card badge (Apple-clean, theme-aware via /alpha).
 const AGENT_TINT: Record<BuiltinAgentKind, string> = {
@@ -79,7 +84,12 @@ export function SessionCards() {
   const { addToGrid, gridMode, toggleGridMode, gridTerminalIds, setSplitTerminals, setSplitMode } = useAppStore();
   const pinnedTabIds = useAppStore((s) => s.pinnedTabIds);
   const toggleTabPin = useAppStore((s) => s.toggleTabPin);
+  const sessionFilter = useAppStore((s) => s.sessionFilter);
+  const openFinishTask = useAppStore((s) => s.openFinishTask);
   const [contextMenu, setContextMenu] = useState<CardContextMenuState | null>(null);
+  // Subscribed so the context menu's PR entries track the latest poll.
+  const prRefs = usePrStore((s) => s.refs);
+  const prStatuses = usePrStore((s) => s.statuses);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
   const [handoffId, setHandoffId] = useState<string | null>(null);
@@ -89,9 +99,10 @@ export function SessionCards() {
   const list = useMemo(
     () =>
       Array.from(terminals.values()).filter(
-        (t) => !t.scriptName && !t.scriptParentId && !t.isShellTerminal,
+        (t) => !t.scriptName && !t.scriptParentId && !t.isShellTerminal
+          && (sessionFilter !== 'tasks' || !!t.config.task),
       ),
-    [terminals],
+    [terminals, sessionFilter],
   );
 
   // Pinned-first render order (render-only; store insertion order is the
@@ -121,7 +132,17 @@ export function SessionCards() {
     };
   }, [contextMenu]);
 
+  // Single closes go through requestCloseTerminal so task sessions get the
+  // finish dialog. Bulk closes skip it: one dialog per session would be
+  // unusable, and their worktrees stay listed in Settings > Git.
   const closeWithReport = (id: string) => {
+    requestCloseTerminal(id).catch((err) => {
+      toast.error('Close failed', 'Could not close the session.');
+      reportInvokeFailure('close_terminal', err);
+    });
+  };
+
+  const closeDirect = (id: string) => {
     closeTerminal(id).catch((err) => {
       toast.error('Close failed', 'Could not close the session.');
       reportInvokeFailure('close_terminal', err);
@@ -131,13 +152,13 @@ export function SessionCards() {
   const duplicate = (id: string) => {
     const instance = terminals.get(id);
     if (!instance) return;
-    const { label, working_directory, claude_args, env_vars, color_tag, nickname, agent } = instance.config;
+    const { label, working_directory, claude_args, env_vars, color_tag, nickname, agent, task } = instance.config;
     // createTerminal rethrows on spawn failure - catch or the duplicate
     // silently never appears and the rejection goes unhandled.
     createTerminal(
       label, working_directory, claude_args, env_vars,
       color_tag ?? undefined, nickname ?? undefined,
-      undefined, undefined, undefined, undefined, agent,
+      undefined, undefined, undefined, undefined, agent, undefined, task,
     ).catch((err) => {
       toast.error('Duplicate failed', 'Could not start the new session.');
       reportInvokeFailure('create_terminal', err);
@@ -193,6 +214,16 @@ export function SessionCards() {
     // reapplies on render, keeping pins glued to the top.
     reorderTerminals(newOrder);
   };
+
+  if (list.length === 0 && sessionFilter === 'tasks') {
+    return (
+      <EmptyState
+        title="No task sessions"
+        description="Start a New Task to give an agent its own branch and worktree."
+        compact
+      />
+    );
+  }
 
   if (list.length === 0) {
     // No action button here - the sidebar's prominent New Session button sits
@@ -344,7 +375,9 @@ export function SessionCards() {
             )}
             <div className="mt-1 flex items-center gap-2 text-[11px] text-text-tertiary">
               {dir && <span className="truncate">{dir}</span>}
-              {gitInfo?.is_git_repo && gitInfo.current_branch && (
+              {t.config.task ? (
+                <TaskBadge terminalId={id} task={t.config.task} compact />
+              ) : gitInfo?.is_git_repo && gitInfo.current_branch && (
                 <span
                   className="flex items-center gap-0.5 max-w-[100px] flex-shrink-0"
                   title={gitInfo.is_worktree ? `Worktree · ${gitInfo.current_branch}` : gitInfo.current_branch}
@@ -355,6 +388,7 @@ export function SessionCards() {
                   <span className="truncate">{gitInfo.current_branch}</span>
                 </span>
               )}
+              <PrChip terminalId={id} compact />
               {cost && <span className="ml-auto text-emerald-500 font-medium tabular-nums">{cost}</span>}
             </div>
           </Reorder.Item>
@@ -384,6 +418,43 @@ export function SessionCards() {
             label="Continue with another agent..."
             onClick={() => { setContextMenu(null); setHandoffId(ctxId); }}
           />
+          {byId.get(ctxId)?.config.task && (
+            <CardMenuItem
+              icon={<GitMerge size={13} strokeWidth={1.75} />}
+              label="Finish task..."
+              onClick={() => { setContextMenu(null); openFinishTask(ctxId, false); }}
+            />
+          )}
+          {(() => {
+            const target = terminalPrTarget(ctxId);
+            if (!target) return null;
+            const ref = prRefs[target.key];
+            const failing = prStatuses[target.key]?.ci.state === 'failure';
+            return (
+              <>
+                {ref ? (
+                  <CardMenuItem
+                    icon={<ExternalLink size={13} strokeWidth={1.75} />}
+                    label={`Open pull request #${ref.number}`}
+                    onClick={() => { setContextMenu(null); openPullRequestUrl(prStatuses[target.key]?.url ?? ref.url); }}
+                  />
+                ) : (
+                  <CardMenuItem
+                    icon={<GitPullRequestCreate size={13} strokeWidth={1.75} />}
+                    label="Create pull request..."
+                    onClick={() => { setContextMenu(null); openCreatePrForTerminal(ctxId); }}
+                  />
+                )}
+                {failing && (
+                  <CardMenuItem
+                    icon={<Wrench size={13} strokeWidth={1.75} />}
+                    label="Send failing checks to agent"
+                    onClick={() => { setContextMenu(null); void sendFailingChecksToAgent(ctxId); }}
+                  />
+                )}
+              </>
+            );
+          })()}
           <CardMenuItem
             icon={<Pencil size={13} strokeWidth={1.75} />}
             label={refreshingId === ctxId ? 'Updating context...' : 'Refresh context'}
@@ -427,7 +498,7 @@ export function SessionCards() {
             disabled={allIds.length <= 1}
             onClick={() => {
               setContextMenu(null);
-              idsToCloseForOthers(allIds, ctxId).forEach(closeWithReport);
+              idsToCloseForOthers(allIds, ctxId).forEach(closeDirect);
             }}
           />
           <CardMenuItem
@@ -436,7 +507,7 @@ export function SessionCards() {
             disabled={idsToCloseForAllButPinned(allIds, pinnedTabIds).length === 0}
             onClick={() => {
               setContextMenu(null);
-              idsToCloseForAllButPinned(allIds, pinnedTabIds).forEach(closeWithReport);
+              idsToCloseForAllButPinned(allIds, pinnedTabIds).forEach(closeDirect);
             }}
           />
         </div>
