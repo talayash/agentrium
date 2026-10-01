@@ -67,6 +67,7 @@ import { InputContextMenu } from './components/InputContextMenu';
 import { useNotification } from './hooks/useNotification';
 import { useSessionStateDetection } from './hooks/useSessionStateDetection';
 import { useAttentionInbox } from './hooks/useAttentionInbox';
+import { usePullRequestPoller } from './hooks/usePullRequestPoller';
 import {
   applyAccentColor,
   applyThemeMode,
@@ -187,6 +188,7 @@ function App() {
   usePreventWebviewReload();
   useSessionStateDetection();
   useAttentionInbox();
+  usePullRequestPoller();
 
   // v1.22.0 - apply theme/density/accent/motion/scale on store change.
   const themeMode = useAppStore((s) => s.themeMode);

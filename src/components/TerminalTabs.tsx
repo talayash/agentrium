@@ -23,6 +23,7 @@ import { specFor } from '../lib/agents';
 import { getAnyModelBadgeClasses, getModelBadgeLabel } from '../lib/agentModels';
 import { Tooltip } from './ui/Tooltip';
 import { TaskBadge } from './TaskBadge';
+import { PrChip } from './PrChip';
 import { requestCloseTerminal } from '../lib/tasks';
 import type { SessionState } from '../lib/terminalState';
 
@@ -216,6 +217,7 @@ export function TerminalTabs() {
                   <GitBranch size={11} className="text-purple-400 flex-shrink-0" />
                 </Tooltip>
               )}
+              <PrChip terminalId={activeConfig.id} />
               {activeInst?.model && (
                 <span className={`text-[9px] px-1.5 h-[16px] flex items-center rounded-md font-medium flex-shrink-0 ${getAnyModelBadgeClasses(activeInst.model)}`}>
                   {getModelBadgeLabel(activeInst.model)}

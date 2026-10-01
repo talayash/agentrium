@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Reorder } from 'framer-motion';
-import { X, Copy, Grid3X3, AppWindow, Pin, PinOff, SplitSquareHorizontal, GitBranch, GitFork, GitMerge, Pencil } from 'lucide-react';
+import { X, Copy, Grid3X3, AppWindow, Pin, PinOff, SplitSquareHorizontal, GitBranch, GitFork, GitMerge, Pencil, GitPullRequestCreate, ExternalLink, Wrench } from 'lucide-react';
 import { useTerminalStore } from '../store/terminalStore';
 import { toast } from '../store/toastStore';
 import { reportInvokeFailure } from '../lib/errorReporter';
@@ -18,6 +18,9 @@ import { contextTooltip, refreshSessionContext, sessionDisplayName } from '../li
 import { HandoffModal } from './HandoffModal';
 import { TaskBadge } from './TaskBadge';
 import { requestCloseTerminal } from '../lib/tasks';
+import { usePrStore } from '../store/prStore';
+import { openCreatePrForTerminal, openPullRequestUrl, sendFailingChecksToAgent, terminalPrTarget } from '../lib/pullRequestActions';
+import { PrChip } from './PrChip';
 
 // Soft per-agent tint for the card badge (Apple-clean, theme-aware via /alpha).
 const AGENT_TINT: Record<BuiltinAgentKind, string> = {
@@ -84,6 +87,9 @@ export function SessionCards() {
   const sessionFilter = useAppStore((s) => s.sessionFilter);
   const openFinishTask = useAppStore((s) => s.openFinishTask);
   const [contextMenu, setContextMenu] = useState<CardContextMenuState | null>(null);
+  // Subscribed so the context menu's PR entries track the latest poll.
+  const prRefs = usePrStore((s) => s.refs);
+  const prStatuses = usePrStore((s) => s.statuses);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
   const [handoffId, setHandoffId] = useState<string | null>(null);
@@ -382,6 +388,7 @@ export function SessionCards() {
                   <span className="truncate">{gitInfo.current_branch}</span>
                 </span>
               )}
+              <PrChip terminalId={id} compact />
               {cost && <span className="ml-auto text-emerald-500 font-medium tabular-nums">{cost}</span>}
             </div>
           </Reorder.Item>
@@ -418,6 +425,36 @@ export function SessionCards() {
               onClick={() => { setContextMenu(null); openFinishTask(ctxId, false); }}
             />
           )}
+          {(() => {
+            const target = terminalPrTarget(ctxId);
+            if (!target) return null;
+            const ref = prRefs[target.key];
+            const failing = prStatuses[target.key]?.ci.state === 'failure';
+            return (
+              <>
+                {ref ? (
+                  <CardMenuItem
+                    icon={<ExternalLink size={13} strokeWidth={1.75} />}
+                    label={`Open pull request #${ref.number}`}
+                    onClick={() => { setContextMenu(null); openPullRequestUrl(prStatuses[target.key]?.url ?? ref.url); }}
+                  />
+                ) : (
+                  <CardMenuItem
+                    icon={<GitPullRequestCreate size={13} strokeWidth={1.75} />}
+                    label="Create pull request..."
+                    onClick={() => { setContextMenu(null); openCreatePrForTerminal(ctxId); }}
+                  />
+                )}
+                {failing && (
+                  <CardMenuItem
+                    icon={<Wrench size={13} strokeWidth={1.75} />}
+                    label="Send failing checks to agent"
+                    onClick={() => { setContextMenu(null); void sendFailingChecksToAgent(ctxId); }}
+                  />
+                )}
+              </>
+            );
+          })()}
           <CardMenuItem
             icon={<Pencil size={13} strokeWidth={1.75} />}
             label={refreshingId === ctxId ? 'Updating context...' : 'Refresh context'}
