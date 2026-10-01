@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.36.0",
+    "date": "2026-10-01",
+    "features": [
+      { "title": "Fix bugs & performance" },
+      { "title": "New Task: one worktree per agent", "description": "Start a task from the sidebar, the command palette or Ctrl+Shift+T. Each task gets its own branch and git worktree, so agents running in parallel never touch each other's files. Gitignored setup files such as .env are copied in for you." },
+      { "title": "Finish a task", "description": "When you close a task session, merge it back by fast-forward or squash, keep the branch, or discard it. Agentrium refuses to merge into a branch with uncommitted changes and offers to commit the task's own changes first." },
+      { "title": "Task badges and filter", "description": "Sessions show the task branch and how far it is ahead of or behind its base. The Tasks filter in the Sessions list shows only task sessions." },
+      { "title": "Worktree isolation setting", "description": "Settings, Git lets new sessions in a repository ask, always or never create their own worktree, choose the worktree folder, and clean up task worktrees that no session uses." }
+    ]
+  },
+  {
     "version": "1.35.0",
     "date": "2026-09-28",
     "features": [
