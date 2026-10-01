@@ -58,6 +58,7 @@ export const KEYMAP: KeymapEntry[] = [
   { id: 'terminal-zoom-out',    label: 'Terminal Zoom Out',    shortcut: `${MOD}+-`,       group: 'Editing' },
   { id: 'terminal-zoom-reset',  label: 'Terminal Zoom Reset',  shortcut: `${MOD}+0`,       group: 'Editing' },
   { id: 'worktree-manager',     label: 'Worktree Manager',     shortcut: `${MOD}+Shift+W`, group: 'Git' },
+  { id: 'new-task',             label: 'New Task (own worktree)', shortcut: `${MOD}+Shift+T`, group: 'Git' },
 ];
 
 export function keymapByGroup(): Record<KeymapEntry['group'], KeymapEntry[]> {

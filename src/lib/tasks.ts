@@ -198,6 +198,31 @@ export async function commitTaskChanges(worktreePath: string, message: string): 
   await invoke('commit_task_changes', { worktreePath, message });
 }
 
+/** Repository root a terminal belongs to: its task's repo, else the main
+ *  repo of its git checkout (a linked worktree resolves to the main repo). */
+export function repoPathForTerminal(id: string | null): string | null {
+  if (!id) return null;
+  const { terminals, gitInfoCache } = useTerminalStore.getState();
+  const t = terminals.get(id);
+  if (t?.config.task) return t.config.task.repoPath;
+  const info = gitInfoCache.get(id);
+  if (!info?.is_git_repo) return null;
+  return (info.is_worktree ? info.main_repo_path : info.worktree_root) ?? null;
+}
+
+/** Distinct repos of all open sessions, active session first. */
+export function knownRepoPaths(): string[] {
+  const { terminals, activeTerminalId } = useTerminalStore.getState();
+  const ids = [activeTerminalId, ...terminals.keys()];
+  const key = (p: string) => p.replace(/\\/g, '/').toLowerCase();
+  const out: string[] = [];
+  for (const id of ids) {
+    const repo = repoPathForTerminal(id);
+    if (repo && !out.some(r => key(r) === key(repo))) out.push(repo);
+  }
+  return out;
+}
+
 /** Where a saved terminal should respawn. A task terminal reopens in its
  *  worktree with its task; if the worktree is gone (finished elsewhere,
  *  deleted by hand) it falls back to the repo root without the task. */

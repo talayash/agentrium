@@ -69,3 +69,36 @@ describe('agent handoff', () => {
     expect(useAppStore.getState().promptEditorOpen).toBe(false);
   });
 });
+
+describe('agent handoff from a task session', () => {
+  const task = { title: 'Login', branch: 'agentrium/login', baseBranch: 'main', worktreePath: '/wt/login', repoPath: '/project' };
+  beforeEach(() => {
+    useTerminalStore.setState({ terminals: new Map([['source', { config: { ...config, working_directory: task.worktreePath, task }, xterm: null, isWorktree: false }]]) });
+  });
+
+  it('defaults to the same worktree and carries the task', async () => {
+    await launchHandoff('source', 'codex', 'brief');
+    expect(invoke).toHaveBeenCalledWith('create_terminal', expect.objectContaining({ request: expect.objectContaining({
+      working_directory: task.worktreePath, task,
+    }) }));
+    expect(invoke).not.toHaveBeenCalledWith('start_task', expect.anything());
+  });
+
+  it('forks into a new task worktree based on the source task branch', async () => {
+    vi.mocked(invoke).mockImplementation(async (command, args) => {
+      if (command === 'start_task') return { worktree_path: '/wt/login-fork', branch: 'agentrium/login-fork', base_branch: 'agentrium/login', repo_path: '/project', copied_files: [] };
+      if (command === 'create_terminal') return { ...config, id: 'fork', agent: 'codex', task: (args as { request: { task: unknown } }).request.task };
+      return null;
+    });
+    const id = await launchHandoff('source', 'codex', 'fork brief', 'fork');
+    expect(invoke).toHaveBeenCalledWith('start_task', { request: expect.objectContaining({
+      repo_path: '/project', title: 'Login (fork)', base_branch: 'agentrium/login',
+    }) });
+    expect(invoke).toHaveBeenCalledWith('create_terminal', expect.objectContaining({ request: expect.objectContaining({
+      working_directory: '/wt/login-fork',
+      task: { title: 'Login (fork)', branch: 'agentrium/login-fork', baseBranch: 'agentrium/login', worktreePath: '/wt/login-fork', repoPath: '/project' },
+    }) }));
+    expect(useAppStore.getState().promptDrafts[id]).toBe('fork brief');
+    expect(vi.mocked(invoke).mock.calls.some(([cmd]) => cmd === 'write_to_terminal')).toBe(false);
+  });
+});

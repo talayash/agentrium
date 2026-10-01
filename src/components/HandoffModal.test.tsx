@@ -18,7 +18,7 @@ it('sends the edited brief to the selected agent', async () => {
   fireEvent.change(input, { target: { value: 'My decisions and next steps' } });
   fireEvent.click(screen.getByRole('button', { name: 'Codex' }));
   fireEvent.click(screen.getByRole('button', { name: 'Open agent with brief' }));
-  await waitFor(() => expect(launchHandoff).toHaveBeenCalledWith('one', 'codex', 'My decisions and next steps'));
+  await waitFor(() => expect(launchHandoff).toHaveBeenCalledWith('one', 'codex', 'My decisions and next steps', 'same'));
   await waitFor(() => expect(close).toHaveBeenCalledOnce());
 });
 

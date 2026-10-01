@@ -455,6 +455,12 @@ describe('appStore - persist partialize', () => {
     // Pinned tabs (Phase 4a)
     'pinnedTabIds',
     'pinnedProfileIds',
+
+    // New Task flow
+    'newTerminalIsolation',
+    'taskWorktreeRoot',
+    'taskSetupFiles',
+    'sessionFilter',
   ].sort();
 
   it('persists exactly the allow-listed keys, and no transient ones', () => {
@@ -471,6 +477,8 @@ describe('appStore - persist partialize', () => {
     for (const key of [
       'settingsOpen',
       'newTerminalModalOpen',
+      'newTaskModalOpen',
+      'finishTaskTerminalId',
       'gridMode',
       'gridTerminalIds',
       'splitMode',

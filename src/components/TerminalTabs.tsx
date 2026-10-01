@@ -22,6 +22,8 @@ import { BrandIcon } from './BrandIcon';
 import { specFor } from '../lib/agents';
 import { getAnyModelBadgeClasses, getModelBadgeLabel } from '../lib/agentModels';
 import { Tooltip } from './ui/Tooltip';
+import { TaskBadge } from './TaskBadge';
+import { requestCloseTerminal } from '../lib/tasks';
 import type { SessionState } from '../lib/terminalState';
 
 function fileBasename(p: string): string {
@@ -45,7 +47,7 @@ function formatCost(usd: number): string {
  * the whole area when active.
  */
 export function TerminalTabs() {
-  const { terminals, activeTerminalId, scriptChildren, closeScript, closeTerminal } = useTerminalStore();
+  const { terminals, activeTerminalId, scriptChildren, closeScript } = useTerminalStore();
   const { gridMode, toggleGridMode, gridTerminalIds, splitMode, splitTerminalIds, splitOrientation, splitRatio, setSplitOrientation, setSplitRatio, clearSplit, openFiles, activeFilePath, setActiveFilePath, closeFileTab, showFileTree, showTabActivity } = useAppStore();
   const now = useNowTick();
   const terminalStates = useTerminalStore((s) => s.terminalStates);
@@ -72,11 +74,11 @@ export function TerminalTabs() {
   const closeActiveSession = useCallback(() => {
     const id = activeTerminalId;
     if (!id) return;
-    closeTerminal(id).catch((err) => {
+    requestCloseTerminal(id).catch((err) => {
       toast.error('Close failed', 'Could not close the session.');
       reportInvokeFailure('close_terminal', err);
     });
-  }, [activeTerminalId, closeTerminal]);
+  }, [activeTerminalId]);
 
   // Script-child terminals are rendered below their parent and bottom-pane
   // shells are rendered in BottomTerminalPane - neither belongs in the main
@@ -207,7 +209,9 @@ export function TerminalTabs() {
                   carries the rich chip (dirty/ahead/behind) - a third static
                   copy here was duplication. Worktree sessions still get a
                   subtle fork glyph. */}
-              {headerGit?.is_worktree && (
+              {activeConfig.task ? (
+                <TaskBadge terminalId={activeConfig.id} task={activeConfig.task} />
+              ) : headerGit?.is_worktree && (
                 <Tooltip label={`Worktree · ${headerGit.current_branch ?? ''}`}>
                   <GitBranch size={11} className="text-purple-400 flex-shrink-0" />
                 </Tooltip>

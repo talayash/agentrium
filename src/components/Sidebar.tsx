@@ -1,4 +1,4 @@
-import { Terminal, FolderTree, History, Plus, ChevronsRight, ChevronsLeft, Settings, Bell } from 'lucide-react';
+import { Terminal, FolderTree, History, Plus, ChevronsRight, ChevronsLeft, Settings, Bell, GitBranch } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useAppStore } from '../store/appStore';
 import type { SidebarNav } from '../store/appStore';
@@ -36,6 +36,14 @@ export function Sidebar() {
   const nav = useAppStore((s) => s.sidebarNav);
   const setNav = useAppStore((s) => s.setSidebarNav);
   const openNewTerminalModal = useAppStore((s) => s.openNewTerminalModal);
+  const openNewTaskModal = useAppStore((s) => s.openNewTaskModal);
+  const sessionFilter = useAppStore((s) => s.sessionFilter);
+  const setSessionFilter = useAppStore((s) => s.setSessionFilter);
+  const taskCount = useTerminalStore((s) => {
+    let n = 0;
+    for (const t of s.terminals.values()) if (t.config.task) n++;
+    return n;
+  });
   const openSettings = useAppStore((s) => s.openSettings);
   const sessionCount = useTerminalStore((s) => s.terminals.size);
   const attentionCount = useAttentionStore((s) => s.items.length);
@@ -125,6 +133,21 @@ export function Sidebar() {
                   {sessionCount}
                 </span>
               )}
+              <div className="ml-auto flex gap-0.5 normal-case tracking-normal font-medium" role="radiogroup" aria-label="Session filter">
+                {(['all', 'tasks'] as const).map((f) => (
+                  <button
+                    key={f}
+                    role="radio"
+                    aria-checked={sessionFilter === f}
+                    onClick={() => setSessionFilter(f)}
+                    className={`px-1.5 h-[18px] rounded-md text-[10.5px] transition-colors ${
+                      sessionFilter === f ? 'bg-fill-active text-text-primary' : 'text-text-tertiary hover:text-text-secondary'
+                    }`}
+                  >
+                    {f === 'all' ? 'All' : `Tasks${taskCount > 0 ? ` ${taskCount}` : ''}`}
+                  </button>
+                ))}
+              </div>
             </div>
             <SessionCards />
           </>
@@ -162,6 +185,14 @@ export function Sidebar() {
         >
           <Plus size={15} strokeWidth={2.5} />
           New Session
+        </button>
+        <button
+          onClick={(e) => { e.currentTarget.blur(); openNewTaskModal(); }}
+          aria-keyshortcuts="Control+Shift+T"
+          className="w-full h-9 rounded-xl ring-1 ring-seam text-text-primary hover:bg-fill-hover text-[12.5px] font-medium flex items-center justify-center gap-2 active:scale-[0.98] transition-[background-color,transform] duration-100"
+        >
+          <GitBranch size={14} strokeWidth={1.9} />
+          New Task
         </button>
         <button
           onClick={openSettings}

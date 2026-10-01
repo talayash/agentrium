@@ -16,6 +16,7 @@ import { AddApiKeyModal } from './components/AddApiKeyModal';
 import { AddAgentModal } from './components/AddAgentModal';
 import { WorkspaceModal } from './components/WorkspaceModal';
 import { WorktreeModal } from './components/WorktreeModal';
+import { NewTaskModal } from './components/NewTaskModal';
 import { PushModal } from './components/PushModal';
 import { SessionHistory } from './components/SessionHistory';
 import { SnippetsModal } from './components/SnippetsModal';
@@ -145,6 +146,7 @@ async function tryRehydrateAuth(): Promise<boolean> {
 
 function App() {
   useSessionContext();
+  const newTaskModalOpen = useAppStore((s) => s.newTaskModalOpen);
   const { sidebarOpen, sidebarCollapsed, hintsOpen, changesOpen, workspacesOpen, settingsOpen, profileModalOpen, newTerminalModalOpen, workspaceModalOpen, worktreeModalOpen, pushModalOpen, sessionHistoryOpen, snippetsModalOpen, commandPaletteOpen, globalSearchOpen, whatsNewOpen, claudeConfigOpen, sessionTimelineOpen, memoryEditorOpen, showStatusBar, notifyOnFinish, restoreSession, triggerChangesRefresh, showRestoreBanner, pendingRestoreConfigs, setShowRestoreBanner, setPendingRestoreConfigs, lastSeenVersion, setLastSeenVersion, openWhatsNew } = useAppStore();
   const { handleTerminalOutput, updateTerminalStatus, setLoopMode, setSessionSummary, createTerminal, createShellTerminalTab, applyTerminalMetrics, adoptTerminal, detachTerminals, closeTerminal, terminals } = useTerminalStore();
 
@@ -797,6 +799,18 @@ function App() {
     // running against the mount-time snapshot.
   }, [showSetup, restoreSession, isDetached]);
 
+  // Task worktree cleanup: `git worktree prune` in every repo with tasks and
+  // forget registry rows whose folder is gone. Orphans that still exist are
+  // listed in Settings > Git.
+  useEffect(() => {
+    if (isDetached) return; // main window owns startup maintenance
+    if (showSetup !== false) return;
+    invoke<number>('prune_task_worktrees').catch(() => {
+      // Best-effort maintenance; internal failures are already reported by
+      // the backend's wrap_cmd, and nothing user-visible depends on it.
+    });
+  }, [showSetup, isDetached]);
+
   // Auto-save session every 30 seconds
   useEffect(() => {
     if (isDetached) return; // main owns session persistence
@@ -1058,6 +1072,7 @@ function App() {
             {addKeyOpen && <AddApiKeyModal key="add-key" />}
             {workspaceModalOpen && <WorkspaceModal />}
             {worktreeModalOpen && <WorktreeModal />}
+            {newTaskModalOpen && <NewTaskModal key="new-task" />}
             {pushModalOpen && <PushModal />}
             {sessionHistoryOpen && <SessionHistory />}
             {snippetsModalOpen && <SnippetsModal />}

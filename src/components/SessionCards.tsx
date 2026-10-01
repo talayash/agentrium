@@ -16,6 +16,8 @@ import { isCustomAgent } from '../lib/agents';
 import { resolveRenameCommit } from '../lib/renameTab';
 import { contextTooltip, refreshSessionContext, sessionDisplayName } from '../lib/sessionContext';
 import { HandoffModal } from './HandoffModal';
+import { TaskBadge } from './TaskBadge';
+import { requestCloseTerminal } from '../lib/tasks';
 
 // Soft per-agent tint for the card badge (Apple-clean, theme-aware via /alpha).
 const AGENT_TINT: Record<BuiltinAgentKind, string> = {
@@ -79,6 +81,7 @@ export function SessionCards() {
   const { addToGrid, gridMode, toggleGridMode, gridTerminalIds, setSplitTerminals, setSplitMode } = useAppStore();
   const pinnedTabIds = useAppStore((s) => s.pinnedTabIds);
   const toggleTabPin = useAppStore((s) => s.toggleTabPin);
+  const sessionFilter = useAppStore((s) => s.sessionFilter);
   const [contextMenu, setContextMenu] = useState<CardContextMenuState | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
@@ -89,9 +92,10 @@ export function SessionCards() {
   const list = useMemo(
     () =>
       Array.from(terminals.values()).filter(
-        (t) => !t.scriptName && !t.scriptParentId && !t.isShellTerminal,
+        (t) => !t.scriptName && !t.scriptParentId && !t.isShellTerminal
+          && (sessionFilter !== 'tasks' || !!t.config.task),
       ),
-    [terminals],
+    [terminals, sessionFilter],
   );
 
   // Pinned-first render order (render-only; store insertion order is the
@@ -121,7 +125,17 @@ export function SessionCards() {
     };
   }, [contextMenu]);
 
+  // Single closes go through requestCloseTerminal so task sessions get the
+  // finish dialog. Bulk closes skip it: one dialog per session would be
+  // unusable, and their worktrees stay listed in Settings > Git.
   const closeWithReport = (id: string) => {
+    requestCloseTerminal(id).catch((err) => {
+      toast.error('Close failed', 'Could not close the session.');
+      reportInvokeFailure('close_terminal', err);
+    });
+  };
+
+  const closeDirect = (id: string) => {
     closeTerminal(id).catch((err) => {
       toast.error('Close failed', 'Could not close the session.');
       reportInvokeFailure('close_terminal', err);
@@ -131,13 +145,13 @@ export function SessionCards() {
   const duplicate = (id: string) => {
     const instance = terminals.get(id);
     if (!instance) return;
-    const { label, working_directory, claude_args, env_vars, color_tag, nickname, agent } = instance.config;
+    const { label, working_directory, claude_args, env_vars, color_tag, nickname, agent, task } = instance.config;
     // createTerminal rethrows on spawn failure - catch or the duplicate
     // silently never appears and the rejection goes unhandled.
     createTerminal(
       label, working_directory, claude_args, env_vars,
       color_tag ?? undefined, nickname ?? undefined,
-      undefined, undefined, undefined, undefined, agent,
+      undefined, undefined, undefined, undefined, agent, undefined, task,
     ).catch((err) => {
       toast.error('Duplicate failed', 'Could not start the new session.');
       reportInvokeFailure('create_terminal', err);
@@ -193,6 +207,16 @@ export function SessionCards() {
     // reapplies on render, keeping pins glued to the top.
     reorderTerminals(newOrder);
   };
+
+  if (list.length === 0 && sessionFilter === 'tasks') {
+    return (
+      <EmptyState
+        title="No task sessions"
+        description="Start a New Task to give an agent its own branch and worktree."
+        compact
+      />
+    );
+  }
 
   if (list.length === 0) {
     // No action button here - the sidebar's prominent New Session button sits
@@ -344,7 +368,9 @@ export function SessionCards() {
             )}
             <div className="mt-1 flex items-center gap-2 text-[11px] text-text-tertiary">
               {dir && <span className="truncate">{dir}</span>}
-              {gitInfo?.is_git_repo && gitInfo.current_branch && (
+              {t.config.task ? (
+                <TaskBadge terminalId={id} task={t.config.task} compact />
+              ) : gitInfo?.is_git_repo && gitInfo.current_branch && (
                 <span
                   className="flex items-center gap-0.5 max-w-[100px] flex-shrink-0"
                   title={gitInfo.is_worktree ? `Worktree · ${gitInfo.current_branch}` : gitInfo.current_branch}
@@ -427,7 +453,7 @@ export function SessionCards() {
             disabled={allIds.length <= 1}
             onClick={() => {
               setContextMenu(null);
-              idsToCloseForOthers(allIds, ctxId).forEach(closeWithReport);
+              idsToCloseForOthers(allIds, ctxId).forEach(closeDirect);
             }}
           />
           <CardMenuItem
@@ -436,7 +462,7 @@ export function SessionCards() {
             disabled={idsToCloseForAllButPinned(allIds, pinnedTabIds).length === 0}
             onClick={() => {
               setContextMenu(null);
-              idsToCloseForAllButPinned(allIds, pinnedTabIds).forEach(closeWithReport);
+              idsToCloseForAllButPinned(allIds, pinnedTabIds).forEach(closeDirect);
             }}
           />
         </div>

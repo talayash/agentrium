@@ -8,6 +8,7 @@ import { reportInvokeFailure } from '../lib/errorReporter';
 import { readClipboardText } from '../lib/clipboard';
 import { cyclableTabIds, nextTabId } from '../lib/tabCycle';
 import { matchesKeyCode } from '../lib/keymap';
+import { requestCloseTerminal } from '../lib/tasks';
 
 /**
  * Return true when the focused element is an editable surface that is NOT
@@ -161,11 +162,17 @@ export function useKeyboardShortcuts() {
         e.preventDefault();
         const activeId = activeIdRef.current;
         if (activeId) {
-          useTerminalStore.getState().closeTerminal(activeId).catch((err) => {
+          requestCloseTerminal(activeId).catch((err) => {
             toast.error('Close failed', 'Could not close the terminal.');
             reportInvokeFailure('close_terminal', err);
           });
         }
+      }
+
+      // New Task (own worktree): Ctrl+Shift+T
+      if (ctrl && shift && matchesKeyCode(e, 'T')) {
+        e.preventDefault();
+        useAppStore.getState().openNewTaskModal();
       }
 
       // Duplicate active terminal: Ctrl+Shift+D
