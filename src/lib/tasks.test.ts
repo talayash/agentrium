@@ -118,6 +118,8 @@ describe('launchTask', () => {
     }) }));
     expect(useTerminalStore.getState().terminals.get(id)?.config.task).toEqual(task);
     expect(useAppStore.getState().promptDrafts[id]).toBe('Fix login bug');
+    // Staged only: the editor stays closed until the user opens it.
+    expect(useAppStore.getState().promptEditorOpen).toBe(false);
     expect(vi.mocked(invoke).mock.calls.some(([cmd]) => cmd === 'write_to_terminal')).toBe(false);
   });
 

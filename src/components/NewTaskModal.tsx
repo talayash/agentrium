@@ -112,7 +112,9 @@ export function NewTaskModal() {
       app.setSplitMode(false);
       if (app.gridMode) app.toggleGridMode();
       close();
-      toast.success('Task started', `Working on ${title.trim()} in its own worktree.`);
+      toast.success('Task started', titleAsPrompt
+        ? `${title.trim()} is in its own worktree. The title is staged: press Ctrl+Shift+E when the agent is ready.`
+        : `${title.trim()} is in its own worktree.`);
     } catch (err) {
       // Validation and git refusals arrive as plain messages (user_err); the
       // inline error is the feedback. Internal failures are already reported
@@ -225,7 +227,7 @@ export function NewTaskModal() {
         </div>
         <label className="flex items-center gap-2 text-[12px] text-text-primary">
           <input type="checkbox" checked={titleAsPrompt} onChange={(e) => setTitleAsPrompt(e.target.checked)} disabled={busy} />
-          Put the title in the prompt editor as the first prompt
+          Stage the title as the first prompt (review and send with Ctrl+Shift+E)
         </label>
         {error && <p role="alert" className="text-[12px] text-error whitespace-pre-wrap">{error}</p>}
         <div className="flex justify-end gap-2 pt-1">

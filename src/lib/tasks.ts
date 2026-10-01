@@ -224,9 +224,10 @@ export async function launchTask(p: LaunchTaskParams): Promise<string> {
   const prompt = p.promptText ?? (p.titleAsPrompt ? task.title : '');
   if (prompt) {
     // A new CLI may still be showing a trust or login prompt: stage the text
-    // in the prompt editor instead of writing it into the PTY.
+    // as the terminal's prompt-editor draft instead of writing it into the
+    // PTY. The editor is not opened here; the user opens it (Ctrl+Shift+E or
+    // the status-bar pencil) once the agent is ready. Handoff opens it itself.
     useAppStore.getState().setPromptDraft(id, prompt);
-    useAppStore.getState().openPromptEditor(id, prompt);
   }
   return id;
 }
