@@ -486,6 +486,31 @@ async fn divergence(repo: &Path, base: &str, branch: &str) -> Result<(u32, u32),
 // Core operations (tested against temp repos; no Tauri state)
 // ---------------------------------------------------------------------------
 
+/// Base-branch choices for the New Task modal.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct TaskBaseBranches {
+    /// Checked-out branch, `None` on a detached HEAD.
+    pub current: Option<String>,
+    /// Local branches, minus generated `agentrium/*` task branches.
+    pub branches: Vec<String>,
+}
+
+pub async fn task_base_branches_impl(repo: &Path) -> Result<TaskBaseBranches, String> {
+    let out = git_user(repo, &["branch", "--format=%(refname:short)"]).await?;
+    let branches = out
+        .lines()
+        .map(str::trim)
+        .filter(|b| !b.is_empty() && !b.starts_with(BRANCH_PREFIX))
+        .map(String::from)
+        .collect();
+    let current = git(repo, &["symbolic-ref", "--quiet", "--short", "HEAD"])
+        .await
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    Ok(TaskBaseBranches { current, branches })
+}
+
 pub async fn start_task_impl(
     req: &StartTaskRequest,
 ) -> Result<(StartTaskResult, TaskInfo), String> {
@@ -891,6 +916,20 @@ pub async fn start_task(
     .await
 }
 
+/// Same trust rule as `start_task`, so every repo the modal can launch in
+/// also gets its branch list (a saved profile with no open session included).
+#[command]
+pub async fn list_task_base_branches(
+    state: State<'_, AppState>,
+    repo_path: String,
+) -> Result<TaskBaseBranches, String> {
+    wrap_cmd("list_task_base_branches", async move {
+        ensure_repo_trusted(&state, &repo_path).await?;
+        task_base_branches_impl(&native_path(&repo_path)).await
+    })
+    .await
+}
+
 #[command]
 pub async fn get_task_status(
     state: State<'_, AppState>,
@@ -1190,6 +1229,21 @@ mod tests {
             worktree_root: None,
             setup_files: vec![".env".into(), ".env.local".into()],
         }
+    }
+
+    #[tokio::test]
+    async fn base_branches_lists_local_and_hides_task_branches() {
+        let (_tmp, repo) = temp_repo();
+        sh(&repo, &["branch", "develop"]);
+        sh(&repo, &["branch", "agentrium/old-task"]);
+        let b = task_base_branches_impl(&repo).await.unwrap();
+        assert_eq!(b.current.as_deref(), Some("main"));
+        assert_eq!(b.branches, vec!["develop".to_string(), "main".to_string()]);
+
+        // Detached HEAD has no current branch name.
+        sh(&repo, &["checkout", "-q", "--detach"]);
+        let b = task_base_branches_impl(&repo).await.unwrap();
+        assert_eq!(b.current, None);
     }
 
     fn commit_in(wt: &Path, file: &str, body: &str, msg: &str) {

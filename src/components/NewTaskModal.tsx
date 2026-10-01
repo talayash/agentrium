@@ -34,6 +34,7 @@ export function NewTaskModal() {
   });
   const [baseBranch, setBaseBranch] = useState('');
   const [branches, setBranches] = useState<string[]>([]);
+  const [currentBranch, setCurrentBranch] = useState<string | null>(null);
   const [branchName, setBranchName] = useState('');
   const [titleAsPrompt, setTitleAsPrompt] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -76,17 +77,22 @@ export function NewTaskModal() {
     if (allAgentSpecs().some((s) => s.kind === profile.agent)) setAgent(profile.agent);
   }, [source, profile]);
 
-  // Branch suggestions only resolve for repos with an open session (the
-  // backend trust check). Otherwise the field stays free text, and empty
-  // means "the repo's current branch".
+  // Uses start_task's trust rule, so any repo the modal can launch in lists
+  // its branches. Empty baseBranch means "the repo's current branch".
   useEffect(() => {
     let cancelled = false;
     setBranches([]);
+    setCurrentBranch(null);
+    setBaseBranch('');
     if (!repoPath) return;
-    invoke<string[]>('get_repo_branches', { path: repoPath })
-      .then((b) => { if (!cancelled) setBranches(b.filter((x) => !x.startsWith('agentrium/'))); })
-      .catch(() => { /* untrusted or not a repo: suggestions are optional */ });
-    return () => { cancelled = true; };
+    const handle = setTimeout(() => {
+      invoke<{ current: string | null; branches: string[] }>('list_task_base_branches', { repoPath })
+        .then((b) => { if (!cancelled) { setBranches(b.branches); setCurrentBranch(b.current); } })
+        // Untrusted or not a repo yet (e.g. mid-typing a path): start_task
+        // reports the real reason on submit, and "Current branch" still works.
+        .catch(() => {});
+    }, 250);
+    return () => { cancelled = true; clearTimeout(handle); };
   }, [repoPath]);
 
   const browse = async () => {
@@ -202,17 +208,15 @@ export function NewTaskModal() {
         <div className="grid grid-cols-2 gap-3">
           <label className="flex flex-col gap-1 text-[12px] text-text-secondary">
             Base branch
-            <input
-              list="new-task-branches"
+            <select
               value={baseBranch}
               onChange={(e) => setBaseBranch(e.target.value)}
-              placeholder="Current branch"
-              className={INPUT}
+              className={`${INPUT} font-mono text-[12px]`}
               disabled={busy}
-            />
-            <datalist id="new-task-branches">
-              {branches.map((b) => <option key={b} value={b} />)}
-            </datalist>
+            >
+              <option value="">{currentBranch ? `Current branch (${currentBranch})` : 'Current branch'}</option>
+              {branches.filter((b) => b !== currentBranch).map((b) => <option key={b} value={b}>{b}</option>)}
+            </select>
           </label>
           <label className="flex flex-col gap-1 text-[12px] text-text-secondary">
             Branch name (optional)

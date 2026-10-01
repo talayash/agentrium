@@ -274,6 +274,7 @@ fn main() {
             commands::create_worktree,
             commands::remove_worktree,
             tasks::start_task,
+            tasks::list_task_base_branches,
             tasks::get_task_status,
             tasks::commit_task_changes,
             tasks::finish_task,
