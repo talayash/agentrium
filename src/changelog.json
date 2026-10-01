@@ -7,7 +7,9 @@
       { "title": "New Task: one worktree per agent", "description": "Start a task from the sidebar, the command palette or Ctrl+Shift+T. Each task gets its own branch and git worktree, so agents running in parallel never touch each other's files. Gitignored setup files such as .env are copied in for you." },
       { "title": "Finish a task", "description": "When you close a task session, merge it back by fast-forward or squash, keep the branch, or discard it. Agentrium refuses to merge into a branch with uncommitted changes and offers to commit the task's own changes first." },
       { "title": "Task badges and filter", "description": "Sessions show the task branch and how far it is ahead of or behind its base. The Tasks filter in the Sessions list shows only task sessions." },
-      { "title": "Worktree isolation setting", "description": "Settings, Git lets new sessions in a repository ask, always or never create their own worktree, choose the worktree folder, and clean up task worktrees that no session uses." }
+      { "title": "Worktree isolation setting", "description": "Settings, Git lets new sessions in a repository ask, always or never create their own worktree, choose the worktree folder, and clean up task worktrees that no session uses." },
+      { "title": "Create pull requests", "description": "Go from commit to push to pull request without leaving Agentrium. Create PR appears after a push, in the Git panel toolbar, in the session menu and in the command palette. The title and description are prefilled from the task, the changed files and the commits, and an agent can draft them for you. Agentrium uses your signed-in gh or glab CLI and otherwise opens the create page in your browser. It never stores a token." },
+      { "title": "Pull request status on tabs", "description": "Sessions show their pull request number, whether it is open, draft, merged or closed, and a CI status dot. When CI fails or the pull request is merged, the attention inbox and a desktop notification tell you, and one click sends the failing checks to the agent." }
     ]
   },
   {
