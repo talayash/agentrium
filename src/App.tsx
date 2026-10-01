@@ -43,6 +43,7 @@ import { installTransferReceiver, requestTransfer, restoreDetachedWindow } from 
 import { filterLivePins } from './lib/pinnedTabs';
 import { keyOf, restoreLayoutKeys, upsertEntry, removeEntry, getDetachedEntries, currentGeometry } from './lib/windowLayout';
 import { planRestoreModes } from './lib/restorePlan';
+import { restoreTargetFor } from './lib/tasks';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import type { TerminalConfig } from './store/terminalStore';
 import { useAppStore } from './store/appStore';
@@ -864,10 +865,16 @@ function App() {
           //   - fresh:    plain `claude` + painted log. Used for duplicate
           //     session claims - visual context stays, but the terminal gets
           //     its own new conversation instead of hijacking another tab's.
-          const mode = restoreModes[i];
+          const target = await restoreTargetFor(config);
+          // Agent sessions are keyed by cwd, so a task whose worktree is gone
+          // cannot resume its conversation from the repo root: start fresh.
+          const mode = target.worktreeMissing ? { kind: 'fresh' as const } : restoreModes[i];
+          if (target.worktreeMissing) {
+            toast.info('Task worktree missing', `"${config.label}" reopened in the repository instead.`);
+          }
           const newId = await createTerminal(
             config.label,
-            config.working_directory,
+            target.cwd,
             config.claude_args,
             config.env_vars,
             config.color_tag ?? undefined,
@@ -878,6 +885,7 @@ function App() {
             undefined,
             config.agent,
             config.credential_bindings ?? [],
+            target.task,
           );
           for (const key of layoutKeys[i]) keyToNewId[key] = newId;
         }

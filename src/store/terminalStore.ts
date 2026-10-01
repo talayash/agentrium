@@ -5,6 +5,7 @@ import { Terminal } from '@xterm/xterm';
 import type { WorktreeDetectResult } from '../types/git';
 import type { AgentKind } from '../lib/agents';
 import type { CredentialBinding } from '../lib/credentials';
+import type { TaskInfo, TaskStatus } from '../lib/tasks';
 import { markTerminalActive, clearTerminalActivity } from '../lib/terminalActivity';
 import { reportInvokeFailure } from '../lib/errorReporter';
 import { chunkUtf8Bytes } from '../lib/chunkUtf8';
@@ -118,6 +119,9 @@ export interface TerminalConfig {
    *  spawned. Optional so older persisted rows (Rust `#[serde(default)]`)
    *  deserialize to `[]`. */
   credential_bindings?: CredentialBinding[];
+  /** Set for terminals started by the New Task flow. Persisted by the backend
+   *  with session restore (Rust `#[serde(default)]`). */
+  task?: TaskInfo | null;
 }
 
 export interface LoopInfo {
@@ -167,6 +171,9 @@ interface TerminalState {
   budgetWarnedIds: Set<string>;
   markBudgetWarned: (id: string) => void;
   gitInfoCache: Map<string, WorktreeDetectResult>;
+  // Task terminals: commits ahead/behind the task's base branch. Refreshed
+  // alongside gitInfoCache by fetchGitInfo.
+  taskDivergence: Map<string, { ahead: number; behind: number }>;
   // Parent terminal ID → script child terminal ID (one child per parent).
   scriptChildren: Map<string, string>;
   // Bottom pane (interactive shells the user opens from the Repositories list).
@@ -186,6 +193,7 @@ interface TerminalState {
     previewInit?: Partial<PreviewState>,
     agent?: AgentKind,
     credentialBindings?: CredentialBinding[],
+    task?: TaskInfo | null,
   ) => Promise<string>;
   createShellTerminalTab: (
     label: string,
@@ -249,11 +257,12 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
   terminalMetrics: new Map(),
   budgetWarnedIds: new Set(),
   gitInfoCache: new Map(),
+  taskDivergence: new Map(),
   scriptChildren: new Map(),
   bottomTerminalIds: [],
   activeBottomTerminalId: null,
 
-  createTerminal: async (label, workingDirectory, claudeArgs, envVars, colorTag, nickname, restoredOutput, resumeSessionId, continueRecent, previewInit, agent: AgentKind = 'claude', credentialBindings) => {
+  createTerminal: async (label, workingDirectory, claudeArgs, envVars, colorTag, nickname, restoredOutput, resumeSessionId, continueRecent, previewInit, agent: AgentKind = 'claude', credentialBindings, task) => {
     try {
       const { useAppStore } = await import('./appStore');
       const costTracking = useAppStore.getState().costTrackingEnabled;
@@ -270,6 +279,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
           cost_tracking: costTracking,
           agent,
           credential_bindings: credentialBindings ?? [],
+          task: task ?? null,
         },
       });
       // Parse model, effort, worktree from claude_args
@@ -426,6 +436,8 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
 
       const newGitCache = new Map(state.gitInfoCache);
       newGitCache.delete(id);
+      const newTaskDivergence = new Map(state.taskDivergence);
+      newTaskDivergence.delete(id);
 
       const newStates = new Map(state.terminalStates);
       newStates.delete(id);
@@ -457,6 +469,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
         terminals: newTerminals,
         unreadTerminalIds: newUnread,
         gitInfoCache: newGitCache,
+        taskDivergence: newTaskDivergence,
         terminalStates: newStates,
         scriptChildren: newChildren,
         terminalMetrics: newMetrics,
@@ -742,6 +755,20 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       });
     } catch {
       // Silently ignore - non-git dirs or git not installed
+    }
+
+    const task = instance.config.task;
+    if (!task) return;
+    try {
+      const status = await invoke<TaskStatus>('get_task_status', { worktreePath: task.worktreePath });
+      set((state) => {
+        const next = new Map(state.taskDivergence);
+        next.set(terminalId, { ahead: status.ahead, behind: status.behind });
+        return { taskDivergence: next };
+      });
+    } catch {
+      // Badge refresh is best-effort: a finished or hand-deleted task worktree
+      // simply keeps its last known counts until the terminal closes.
     }
   },
 
