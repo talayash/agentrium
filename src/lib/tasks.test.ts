@@ -3,7 +3,7 @@ vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 import { invoke } from '@tauri-apps/api/core';
 import {
   buildSquashMessage, defaultMergeMode, finishActionFor, launchTask, mergeBlockReason, normalizeTask,
-  requestCloseTerminal, restoreTargetFor, setupFilesFor, type TaskInfo, type TaskStatus,
+  requestCloseTerminal, resolveLaunchConfig, restoreTargetFor, setupFilesFor, type TaskInfo, type TaskProfile, type TaskStatus,
 } from './tasks';
 import { useTerminalStore, type TerminalConfig } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
@@ -195,5 +195,41 @@ describe('task divergence badges', () => {
     expect(useTerminalStore.getState().taskDivergence.get('t1')).toEqual({ ahead: 3, behind: 1 });
     expect(useTerminalStore.getState().taskDivergence.has('p')).toBe(false);
     expect(vi.mocked(invoke).mock.calls.filter(([c]) => c === 'get_task_status')).toHaveLength(1);
+  });
+});
+
+describe('starting a task from a profile', () => {
+  const defaults = { claude: ['--c'], codex: ['--model', 'm'], cursor: [], antigravity: [] };
+  const profile: TaskProfile = {
+    id: 'p1', name: 'App', working_directory: '/src/app', agent: 'claude', claude_args: ['--legacy'],
+    env_vars: { FOO: '1', OPENAI_API_KEY: 'plaintext' },
+    agent_args: { codex: ['--x-codex-flag'] },
+    credential_bindings: [{ env: 'OPENAI_API_KEY', credential_id: 'pinned' }],
+  };
+
+  it('resolves args, env and key pins like New Session', () => {
+    const agentDefault = [{ env: 'OPENAI_API_KEY', credential_id: 'agent-default' }, { env: 'OTHER', credential_id: 'o' }];
+    const codex = resolveLaunchConfig('codex', profile, defaults, agentDefault);
+    expect(codex.args).toEqual(['--x-codex-flag']);
+    expect(codex.bindings).toEqual([{ env: 'OPENAI_API_KEY', credential_id: 'pinned' }, { env: 'OTHER', credential_id: 'o' }]);
+    // A bound variable is never also passed as plaintext.
+    expect(codex.envVars).toEqual({ FOO: '1' });
+    expect(resolveLaunchConfig('claude', profile, defaults, []).args).toEqual(['--legacy']);
+    expect(resolveLaunchConfig('cursor', profile, defaults, []).args).toEqual([]);
+    expect(resolveLaunchConfig('codex', null, defaults, [])).toEqual({ args: ['--model', 'm'], envVars: {}, bindings: [] });
+  });
+
+  it('launches in the profile folder with its config', async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd) => {
+      if (cmd === 'start_task') return { worktree_path: task.worktreePath, branch: task.branch, base_branch: 'main', repo_path: '/src/app', copied_files: [] };
+      if (cmd === 'create_terminal') return baseConfig;
+      return null;
+    });
+    await launchTask({ repoPath: profile.working_directory, title: 'Fix login bug', agent: 'codex', titleAsPrompt: false, profile });
+    expect(invoke).toHaveBeenCalledWith('start_task', { request: expect.objectContaining({ repo_path: '/src/app' }) });
+    expect(invoke).toHaveBeenCalledWith('create_terminal', expect.objectContaining({ request: expect.objectContaining({
+      working_directory: task.worktreePath, claude_args: ['--x-codex-flag'], env_vars: { FOO: '1' },
+      credential_bindings: [{ env: 'OPENAI_API_KEY', credential_id: 'pinned' }],
+    }) }));
   });
 });

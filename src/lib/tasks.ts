@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
-import { allAgentSpecs, defaultArgsFor, type AgentKind } from './agents';
+import { allAgentSpecs, defaultArgsFor, filterArgsForAgent, type AgentKind, type BuiltinAgentKind } from './agents';
+import type { CredentialBinding } from './credentials';
 import { reportInvokeFailure } from './errorReporter';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore, type MergeStrategy } from '../store/appStore';
@@ -124,6 +125,47 @@ export function finishActionFor(
   return { kind: 'discard', confirm_unmerged: opts.ahead > 0 };
 }
 
+/** The subset of a saved profile (`get_profiles`) a task launch uses. */
+export interface TaskProfile {
+  id: string;
+  name: string;
+  working_directory: string;
+  agent: AgentKind;
+  claude_args: string[];
+  env_vars: Record<string, string>;
+  agent_args?: Partial<Record<AgentKind, string[]>>;
+  credential_bindings?: CredentialBinding[];
+  is_default?: boolean;
+}
+
+export interface LaunchConfig {
+  args: string[];
+  envVars: Record<string, string>;
+  bindings: CredentialBinding[];
+}
+
+/** Same resolution as New Session: args are profile.agent_args[agent], else
+ *  the legacy claude_args when the agent is the profile's own, else the
+ *  global defaults; profile key pins win over agent defaults, and a bound
+ *  env var is never also passed as plaintext. Without a profile, defaults. */
+export function resolveLaunchConfig(
+  agent: AgentKind,
+  profile: TaskProfile | null | undefined,
+  defaultAgentArgs: Record<BuiltinAgentKind, string[]>,
+  agentDefaultBindings: CredentialBinding[],
+): LaunchConfig {
+  if (!profile) return { args: defaultArgsFor(agent, defaultAgentArgs), envVars: {}, bindings: agentDefaultBindings };
+  const saved = profile.agent_args?.[agent];
+  const legacy = agent === profile.agent && profile.claude_args.length > 0 ? profile.claude_args : undefined;
+  const args = filterArgsForAgent(agent, saved && saved.length > 0 ? saved : legacy ?? defaultArgsFor(agent, defaultAgentArgs));
+  const merged = new Map<string, CredentialBinding>();
+  for (const b of agentDefaultBindings) merged.set(b.env, b);
+  for (const b of profile.credential_bindings ?? []) merged.set(b.env, b);
+  const envVars = { ...(profile.env_vars ?? {}) };
+  for (const env of merged.keys()) delete envVars[env];
+  return { args, envVars, bindings: [...merged.values()] };
+}
+
 export interface StartTaskParams {
   repoPath: string;
   title: string;
@@ -151,6 +193,8 @@ export interface LaunchTaskParams extends StartTaskParams {
   titleAsPrompt: boolean;
   /** Extra text staged instead of the title (handoff brief on fork). */
   promptText?: string;
+  /** Launch with this saved profile's args, env vars and key pins. */
+  profile?: TaskProfile | null;
 }
 
 /** Create the task worktree, then a terminal working in it. If the terminal
@@ -160,15 +204,16 @@ export async function launchTask(p: LaunchTaskParams): Promise<string> {
   if (!allAgentSpecs().some(spec => spec.kind === p.agent)) throw new Error('The selected agent is no longer available.');
   const result = await startTask(p);
   const task = taskFromStart(p.title, result);
-  const app = useAppStore.getState();
+  const launch = resolveLaunchConfig(
+    p.agent, p.profile, useAppStore.getState().defaultAgentArgs,
+    useAgentRegistryStore.getState().defaultBindingsFor(p.agent),
+  );
   let id: string;
   try {
     id = await useTerminalStore.getState().createTerminal(
-      task.title, task.worktreePath,
-      defaultArgsFor(p.agent, app.defaultAgentArgs), {},
+      task.title, task.worktreePath, launch.args, launch.envVars,
       undefined, task.title, undefined, undefined, false, undefined, p.agent,
-      useAgentRegistryStore.getState().defaultBindingsFor(p.agent),
-      task,
+      launch.bindings, task,
     );
   } catch (err) {
     // Fresh branch, no commits: discarding loses nothing.

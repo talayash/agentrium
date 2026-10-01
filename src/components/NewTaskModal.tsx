@@ -4,7 +4,7 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { FolderOpen, GitBranch } from 'lucide-react';
 import { allAgentSpecs, type AgentKind } from '../lib/agents';
 import { reportInvokeFailure } from '../lib/errorReporter';
-import { knownRepoPaths, launchTask, repoPathForTerminal } from '../lib/tasks';
+import { knownRepoPaths, launchTask, repoPathForTerminal, type TaskProfile } from '../lib/tasks';
 import { useAppStore } from '../store/appStore';
 import { useAgentRegistryStore } from '../store/agentRegistryStore';
 import { useTerminalStore } from '../store/terminalStore';
@@ -39,6 +39,42 @@ export function NewTaskModal() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const launching = useRef(false);
+  // Source of the repo (and launch config): a saved profile, or a folder.
+  const [source, setSource] = useState<'profile' | 'folder'>(presetRepo ? 'folder' : 'profile');
+  const [profiles, setProfiles] = useState<TaskProfile[] | null>(null);
+  const [profileId, setProfileId] = useState<string>('');
+  const profile = profiles?.find((p) => p.id === profileId) ?? null;
+
+  useEffect(() => {
+    let cancelled = false;
+    invoke<TaskProfile[]>('get_profiles')
+      .then((list) => {
+        if (cancelled) return;
+        const usable = list.filter((p) => p.working_directory.trim() !== '');
+        setProfiles(usable);
+        if (usable.length === 0) { setSource('folder'); return; }
+        // Prefer the profile for the active session's repo, then the default.
+        const key = (s: string) => s.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+        const pick = usable.find((p) => repoPath && key(p.working_directory) === key(repoPath))
+          ?? usable.find((p) => p.is_default) ?? usable[0];
+        setProfileId(pick.id);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setProfiles([]);
+        setSource('folder');
+        reportInvokeFailure('get_profiles', err);
+      });
+    return () => { cancelled = true; };
+    // Load once per open; repoPath is only the initial preference.
+  }, []);
+
+  // Choosing a profile points the task at its folder and its agent.
+  useEffect(() => {
+    if (source !== 'profile' || !profile) return;
+    setRepoPath(profile.working_directory);
+    if (allAgentSpecs().some((s) => s.kind === profile.agent)) setAgent(profile.agent);
+  }, [source, profile]);
 
   // Branch suggestions only resolve for repos with an open session (the
   // backend trust check). Otherwise the field stays free text, and empty
@@ -68,7 +104,10 @@ export function NewTaskModal() {
     setBusy(true);
     setError('');
     try {
-      await launchTask({ repoPath, title, agent, baseBranch, branchName, titleAsPrompt });
+      await launchTask({
+        repoPath, title, agent, baseBranch, branchName, titleAsPrompt,
+        profile: source === 'profile' ? profile : null,
+      });
       const app = useAppStore.getState();
       app.setSplitMode(false);
       if (app.gridMode) app.toggleGridMode();
@@ -85,7 +124,7 @@ export function NewTaskModal() {
     }
   };
 
-  const canSubmit = !busy && repoPath.trim() !== '' && title.trim() !== '';
+  const canSubmit = !busy && repoPath.trim() !== '' && title.trim() !== '' && (source === 'folder' || !!profile);
 
   return (
     <Modal title="New Task" showHeader onClose={() => { if (!busy) close(); }} panelClassName="w-full max-w-lg">
@@ -108,7 +147,32 @@ export function NewTaskModal() {
           />
         </label>
         <div className="flex flex-col gap-1 text-[12px] text-text-secondary">
-          <span>Repository</span>
+          <div className="flex items-center justify-between">
+            <span>Start from</span>
+            <div className="flex gap-0.5" role="radiogroup" aria-label="Start from">
+              {(['profile', 'folder'] as const).map((s) => (
+                <button key={s} type="button" role="radio" aria-checked={source === s} disabled={busy || (s === 'profile' && !profiles?.length)}
+                  onClick={() => setSource(s)}
+                  className={`px-2 h-[22px] rounded-md text-[11.5px] disabled:opacity-40 ${source === s ? 'bg-fill-active text-text-primary' : 'text-text-tertiary hover:text-text-secondary'}`}>
+                  {s === 'profile' ? 'Profile' : 'Folder'}
+                </button>
+              ))}
+            </div>
+          </div>
+          {source === 'profile' ? (
+            <>
+              <select aria-label="Profile" value={profileId} onChange={(e) => setProfileId(e.target.value)} disabled={busy || profiles === null}
+                className={INPUT}>
+                {profiles === null && <option value="">Loading profiles...</option>}
+                {profiles?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+              {profile && (
+                <span className="font-mono text-[11px] text-text-tertiary truncate" title={profile.working_directory}>
+                  {profile.working_directory}
+                </span>
+              )}
+            </>
+          ) : (
           <div className="flex gap-2">
             <input
               aria-label="Repository"
@@ -127,6 +191,7 @@ export function NewTaskModal() {
               <FolderOpen size={14} />
             </button>
           </div>
+          )}
         </div>
         <fieldset disabled={busy} className="flex flex-col gap-1 text-[12px] text-text-secondary">
           <legend className="mb-1">Agent</legend>

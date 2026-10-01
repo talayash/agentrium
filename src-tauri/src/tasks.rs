@@ -836,7 +836,19 @@ async fn ensure_repo_trusted(state: &State<'_, AppState>, repo_path: &str) -> Re
     let canon = Path::new(repo_path)
         .canonicalize()
         .map_err(|e| user_err(format!("Invalid path '{repo_path}': {e}")))?;
-    let folders = db_op(&state.db, |db| db.get_session_history_folders()).await?;
+    // Saved profile folders are user-chosen config read from our own DB (not
+    // from the renderer), so they are as trustworthy as session history.
+    let folders = db_op(&state.db, |db| {
+        let mut f = db.get_session_history_folders()?;
+        f.extend(
+            db.get_profiles()?
+                .into_iter()
+                .map(|p| p.working_directory)
+                .filter(|d| !d.trim().is_empty()),
+        );
+        Ok(f)
+    })
+    .await?;
     let known = folders.iter().any(|f| {
         Path::new(f)
             .canonicalize()
