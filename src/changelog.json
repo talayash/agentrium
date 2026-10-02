@@ -1,7 +1,7 @@
 [
   {
     "version": "1.36.0",
-    "date": "2026-10-01",
+    "date": "2026-10-03",
     "features": [
       { "title": "Fix bugs & performance" },
       { "title": "New Task: one worktree per agent", "description": "Start a task from the sidebar, the command palette or Ctrl+Shift+T. Each task gets its own branch and git worktree, so agents running in parallel never touch each other's files. Gitignored setup files such as .env are copied in for you." },
