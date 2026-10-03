@@ -6,6 +6,7 @@ import { FileTreePanel } from './FileTreePanel';
 import { SessionsPanel } from './SessionsPanel';
 import { SessionCards } from './SessionCards';
 import { RaceSidebarGroups } from './RaceSidebarGroups';
+import { RaceHistory } from './RaceHistory';
 import { useTerminalStore } from '../store/terminalStore';
 import { Tooltip } from './ui/Tooltip';
 import { AttentionInbox } from './AttentionInbox';
@@ -166,7 +167,12 @@ export function Sidebar() {
             </div>
           )
         )}
-        {nav === 'history' && <SessionsPanel />}
+        {nav === 'history' && (
+          <div className="flex-1 min-h-0 flex flex-col">
+            <RaceHistory />
+            <SessionsPanel />
+          </div>
+        )}
         {nav === 'attention' && <AttentionInbox />}
       </div>
 

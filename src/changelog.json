@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.37.0",
+    "date": "2026-10-03",
+    "features": [
+      { "title": "Race mode: best of N", "description": "Send one task to 2-4 agents or models at once from the sidebar, the command palette, Ctrl+Shift+R or the Race toggle in New Task. Every contender works in its own worktree from the same commit and opens in a grid. Agents that accept a first prompt get the task at start; the others have it staged until you click Send to all waiting." },
+      { "title": "Compare contenders", "description": "Watch each contender's state, time, cost and diff size in the race header and the sidebar. When all are done, the compare view shows a summary table, which files each contender touched, diffs against the base or between two contenders, and the results of your own check command (such as npm test) run in every worktree with a timeout." },
+      { "title": "Pick a winner", "description": "Merge the winner by squash or fast-forward, or keep it for a pull request with a Raced against table, and discard the rest. Unmerged work and running sessions are never discarded without asking. Ask a judge stages a comparison brief for any agent. The History panel lists past races and each agent's win rate, kept on this device only." },
+      { "title": "Initial prompt for custom agents", "description": "Custom agents can declare how their CLI takes a first prompt, so races can send it the task directly." }
+    ]
+  },
+  {
     "version": "1.36.0",
     "date": "2026-10-03",
     "features": [
