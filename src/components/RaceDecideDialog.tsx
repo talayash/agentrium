@@ -316,6 +316,9 @@ export function RaceDecideDialog() {
 
   return (
     <Modal title={abandon ? 'Abandon race' : 'Pick winner'} showHeader onClose={() => { if (!busy) close(); }}
+      // Choices and loss confirmations survive a stray click or Escape:
+      // only Cancel and the header X close this dialog.
+      closeOn="none" closeOnEscape={false}
       panelClassName="w-full max-w-xl max-h-[90vh] overflow-y-auto">
       <div className="p-4 flex flex-col gap-4 text-[13px]">
         {!statuses && <p role="status" className="text-text-secondary text-[12px]">Checking every worktree...</p>}

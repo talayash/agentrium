@@ -138,7 +138,11 @@ export function NewRaceModal() {
     && n >= MIN_CONTENDERS && n <= MAX_CONTENDERS;
 
   return (
-    <Modal title="New Race" showHeader onClose={() => { if (!busy) close(); }} panelClassName="w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+    <Modal title="New Race" showHeader onClose={() => { if (!busy) close(); }}
+      // Typed-in prompts and contender picks must survive a stray click or
+      // Escape: only Cancel and the header X close this dialog.
+      closeOn="none" closeOnEscape={false}
+      panelClassName="w-full max-w-2xl max-h-[90vh] overflow-y-auto">
       <form className="p-4 flex flex-col gap-3.5" onSubmit={(e) => { e.preventDefault(); if (canSubmit) void submit(); }}>
         <p className="text-[12px] text-text-secondary">
           Send one task to {MIN_CONTENDERS}-{MAX_CONTENDERS} agents at once. Each works in its own worktree from the same commit; compare the results and merge the winner.
