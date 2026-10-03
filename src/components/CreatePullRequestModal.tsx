@@ -34,6 +34,8 @@ export function CreatePullRequestModal() {
   const prMethodPref = useAppStore((s) => s.prMethod);
   const draftByDefault = useAppStore((s) => s.prDraftByDefault);
   const template = useAppStore((s) => s.prBodyTemplate);
+  // Race mode's "Raced against" table for a race winner.
+  const extraBody = useAppStore((s) => s.createPrExtraBody);
 
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -133,12 +135,13 @@ export function CreatePullRequestModal() {
     const nextTitle = titleTouched.current ? title : defaultPrTitle(task, ctx.commits);
     if (!titleTouched.current) setTitle(nextTitle);
     if (!bodyTouched.current) {
-      setBody(renderPrBody(template, {
+      const rendered = renderPrBody(template, {
         title: nextTitle,
         summary: prSummaryFor(terminal) || SUMMARY_PLACEHOLDER,
         files: formatPrFiles(ctx.files),
         commits: formatPrCommits(ctx.commits),
-      }));
+      });
+      setBody(extraBody?.trim() ? `${rendered}\n\n${extraBody.trim()}` : rendered);
     }
     // Prefill reacts to a new comparison only, not to every keystroke.
     // eslint-disable-next-line react-hooks/exhaustive-deps
