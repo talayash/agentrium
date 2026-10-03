@@ -36,7 +36,7 @@ beforeEach(() => {
     ['t0', { config: terminalConfig('t0', race.contenders[0]), xterm: null, isWorktree: false }],
     ['t1', { config: terminalConfig('t1', race.contenders[1]), xterm: null, isWorktree: false }],
   ]) });
-  useAppStore.setState({ decideRaceId: 'r1', decideRaceMode: 'decide', vcsDefaultMergeStrategy: 'merge', createPrModalOpen: false });
+  useAppStore.setState({ decideRaceId: 'r1', decideRaceMode: 'decide', vcsDefaultMergeStrategy: 'merge', createPrModalOpen: false, gridMode: true, gridTerminalIds: ['t0', 't1'] });
   vi.mocked(invoke).mockReset();
   vi.mocked(invoke).mockImplementation(async (cmd, args) => {
     if (cmd === 'get_task_status') return statuses[(args as { worktreePath: string }).worktreePath];
@@ -76,6 +76,9 @@ it('needs confirmation to discard a loser\'s unmerged commits and running sessio
     losers: [{ worktree_path: '/wt/race-fix-codex', keep_branch: false, confirm_unmerged: true }],
   });
   expect(Object.keys(request.stats as object)).toEqual(['/wt/race-fix-claude', '/wt/race-fix-codex']);
+  // Both sessions closed: the race grid is cleared and grid mode ends.
+  expect(useAppStore.getState().gridTerminalIds).toEqual([]);
+  expect(useAppStore.getState().gridMode).toBe(false);
 });
 
 it('keeps the winner for a pull request with a "Raced against" body', async () => {

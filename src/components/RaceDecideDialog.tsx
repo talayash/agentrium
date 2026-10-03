@@ -43,6 +43,16 @@ async function closeTerminals(ids: string[]) {
   }
 }
 
+/** Drop closed contenders from the grid; leave grid mode if none are left. */
+function tidyGrid() {
+  const app = useAppStore.getState();
+  const { terminals } = useTerminalStore.getState();
+  const live = app.gridTerminalIds.filter((id) => terminals.has(id));
+  if (live.length === app.gridTerminalIds.length) return;
+  app.setGridTerminals(live);
+  if (live.length === 0) app.setGridMode(false);
+}
+
 /** Default winner: a contender whose check passed, else the first with work. */
 function suggestedWinner(race: Race, statuses: Record<string, Status>): string {
   const checks = useRaceStore.getState().checks;
@@ -204,6 +214,7 @@ export function RaceDecideDialog() {
       if (failures.length) toast.warning('Some contenders were left in place', failures.join('\n'));
       else toast.success('Race abandoned', `All ${race.contenders.length} contenders were discarded.`);
       dismissRaceItem();
+      tidyGrid();
       await useRaceStore.getState().refresh(race.id);
       close();
     } catch (err) {
@@ -274,6 +285,7 @@ export function RaceDecideDialog() {
       }
       if (failures.length) toast.warning('Some contenders were left in place', failures.join('\n'));
       dismissRaceItem();
+      tidyGrid();
       await useRaceStore.getState().refresh(race.id);
       close();
     } catch (err) {
