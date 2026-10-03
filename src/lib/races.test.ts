@@ -237,6 +237,24 @@ describe('labels, args and history', () => {
   });
 });
 
+describe('reopenContender', () => {
+  it('reopens a session in the worktree, continuing the conversation, without re-sending the prompt', async () => {
+    vi.mocked(invoke).mockReset();
+    vi.mocked(invoke).mockImplementation(async (cmd) => (cmd === 'create_terminal'
+      ? { id: 'n1', label: 'x', nickname: null, profile_id: null, working_directory: '/', claude_args: [], env_vars: {}, created_at: '', status: 'Running', color_tag: null, agent: 'codex' }
+      : null));
+    const r = race();
+    const c = { ...r.contenders[1], args: ['--model', 'gpt-5.6-sol'] };
+    const { reopenContender } = await import('./races');
+    expect(await reopenContender(r, c)).toBe('n1');
+    expect(invoke).toHaveBeenCalledWith('create_terminal', { request: expect.objectContaining({
+      label: 'Race: Fix bug · Codex', working_directory: '/wt/race-fix-c1', claude_args: ['--model', 'gpt-5.6-sol'],
+      agent: 'codex', continue_recent: true, initial_prompt: null,
+      task: expect.objectContaining({ raceId: 'r1', worktreePath: '/wt/race-fix-c1' }),
+    }) });
+  });
+});
+
 describe('launchRace', () => {
   const baseConfig: TerminalConfig = {
     id: 'x', label: 'x', nickname: null, profile_id: null, working_directory: '/', claude_args: [], env_vars: {},

@@ -11,6 +11,10 @@ export const WAITING_PATTERNS: RegExp[] = [
   /Do you trust the files in this folder\??/i,
   /\(y\/n\)/i,
   /\[y\/n\]/i,
+  // Codex approval prompts (command, edits) and their footer.
+  /Would you like to run the following command\??/i,
+  /Would you like to make the following edits\??/i,
+  /Press enter to confirm or esc to cancel/i,
 ];
 
 /**
@@ -23,8 +27,9 @@ const IDLE_MARKERS: RegExp[] = [
   /^[│|]?\s*>\s*$/,
 ];
 
-/** A selectable option line, e.g. "❯ 1. Yes" or "2. No". */
-const OPTION_LINE = /^(?:❯\s*)?\d+\.\s+\S/;
+/** A selectable option line, e.g. "❯ 1. Yes" or "2. No". Codex draws its
+ *  cursor as `›` instead of Claude's `❯`. */
+const OPTION_LINE = /^(?:[❯›]\s*)?\d+\.\s+\S/;
 
 /**
  * Decide whether settled terminal output represents a blocking prompt
@@ -51,7 +56,7 @@ export function classifySettled(lines: string[]): 'waiting' | 'idle' {
   //    `❯` cursor. The cursor distinguishes an interactive picker from a plain
   //    numbered list left in a finished response.
   const optionLines = trimmed.filter((l) => OPTION_LINE.test(l));
-  const hasCursor = trimmed.some((l) => /^❯\s*\d+\.\s+\S/.test(l));
+  const hasCursor = trimmed.some((l) => /^[❯›]\s*\d+\.\s+\S/.test(l));
   if (optionLines.length >= 2 && hasCursor) return 'waiting';
 
   return 'idle';

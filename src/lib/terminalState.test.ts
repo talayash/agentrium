@@ -78,4 +78,20 @@ describe('classifySettled', () => {
   it('treats empty input as idle', () => {
     expect(classifySettled([])).toBe('idle');
   });
+
+  it('detects Codex approval prompts and its › selection cursor', () => {
+    // Captured from Codex v0.160 asking to run a git command.
+    expect(classifySettled([
+      'Would you like to run the following command?',
+      'Environment: local',
+      '$ git add -- slug.js; git commit -m "Fix slugify"',
+      '› 1. Yes, proceed (y)',
+      "  2. Yes, and don't ask again for commands that start with `git add`",
+      'Press enter to confirm or esc to cancel',
+    ])).toBe('waiting');
+    // Codex's folder trust prompt: options with the › cursor, no phrase.
+    expect(classifySettled(['Trust this folder?', '› 1. Trust and continue', '  2. Quit'])).toBe('waiting');
+    // A finished Codex answer with a numbered list and the idle input box.
+    expect(classifySettled(['1. Fixed slug.js', '2. Ran npm test', '› Ask Codex to do anything', '? for shortcuts'])).toBe('idle');
+  });
 });

@@ -268,7 +268,9 @@ export function RaceCompareView({ raceId }: { raceId: string }) {
   return (
     <div className="h-full flex flex-col bg-elevation-0">
       <RaceHeader race={race} inCompare />
-      <div className="flex-1 min-h-0 overflow-y-auto p-3 flex flex-col gap-3">
+      {/* Block flow, not a flex column: flex children would shrink into
+          tiny scroll boxes once the diff panel opens. */}
+      <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-3">
         <section className={`${SECTION} px-3 py-2`}>
           <button type="button" onClick={() => setShowPrompt((v) => !v)} aria-expanded={showPrompt}
             className="flex items-center gap-1.5 text-[12px] text-text-secondary hover:text-text-primary w-full">

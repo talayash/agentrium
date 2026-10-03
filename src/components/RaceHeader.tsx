@@ -1,12 +1,12 @@
 import { useState } from 'react';
-import { CheckCircle2, Flag, GitCompareArrows, Send, Square, Trophy, Undo2, XCircle } from 'lucide-react';
+import { CheckCircle2, Flag, GitCompareArrows, RotateCcw, Send, Square, Trophy, Undo2, XCircle } from 'lucide-react';
 import { useAppStore } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
 import { useRaceStore } from '../store/raceStore';
 import { toast } from '../store/toastStore';
 import { reportInvokeFailure } from '../lib/errorReporter';
 import { confirmAction } from '../lib/confirmDialog';
-import { writePromptToTerminal } from '../lib/promptSend';
+import { focusTerminal, reopenFromUi, sendToAllWaiting } from '../lib/raceActions';
 import {
   CONTENDER_STATE_LABEL, formatCost, formatElapsed, pathKey, type ContenderState, type Race,
 } from '../lib/races';
@@ -14,7 +14,7 @@ import { useRaceRows, type RaceRow } from '../hooks/useRaceRows';
 import { BrandIcon } from './BrandIcon';
 import { Tooltip } from './ui/Tooltip';
 
-export const STATE_DOT: Record<ContenderState, string> = {
+const STATE_DOT: Record<ContenderState, string> = {
   starting: 'bg-text-tertiary',
   working: 'bg-accent-primary animate-pulse',
   'needs-input': 'bg-warning',
@@ -25,33 +25,6 @@ export const STATE_DOT: Record<ContenderState, string> = {
 
 export function ContenderStateDot({ state }: { state: ContenderState }) {
   return <span aria-hidden className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${STATE_DOT[state]}`} />;
-}
-
-function focusTerminal(id: string) {
-  const app = useAppStore.getState();
-  app.setActiveFilePath(null);
-  useTerminalStore.getState().setActiveTerminal(id);
-}
-
-/** Send the staged task to every contender still waiting for it. The user
- *  confirms first: the CLIs must be past any trust/login prompt. */
-export async function sendToAllWaiting(race: Race, rows: RaceRow[]): Promise<void> {
-  const waiting = rows.filter((r) => r.waiting && r.terminal);
-  if (waiting.length === 0) return;
-  const ok = await confirmAction(
-    `Send the task to ${waiting.length} waiting contender(s)? Make sure each CLI is ready for input (past any trust or login prompt).`,
-    { okLabel: 'Send' },
-  );
-  if (!ok) return;
-  for (const r of waiting) {
-    const id = r.terminal!.config.id;
-    try {
-      await writePromptToTerminal(id, race.prompt, true);
-    } catch (err) {
-      toast.error('Could not send the task', `${r.contender.label}: ${String(err)}`);
-      reportInvokeFailure('write_to_terminal', err);
-    }
-  }
 }
 
 /** Race header: per-contender state, time, cost and diff size, plus the
@@ -126,6 +99,14 @@ export function RaceHeader({ race, inCompare = false }: { race: Race; inCompare?
                       className="p-1 rounded hover:bg-fill-hover text-text-tertiary hover:text-text-primary"
                       onClick={() => setManualDone(r.contender.worktreePath, true)}>
                       <CheckCircle2 size={11} />
+                    </button>
+                  </Tooltip>
+                )}
+                {!r.terminal && (
+                  <Tooltip label="Reopen a session in this contender's worktree">
+                    <button type="button" aria-label={`Reopen ${r.contender.label}`} onClick={() => void reopenFromUi(race, r.contender)}
+                      className="p-1 rounded hover:bg-fill-hover text-text-tertiary hover:text-text-primary">
+                      <RotateCcw size={11} />
                     </button>
                   </Tooltip>
                 )}

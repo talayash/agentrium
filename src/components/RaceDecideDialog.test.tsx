@@ -66,9 +66,9 @@ it('needs confirmation to discard a loser\'s unmerged commits and running sessio
   const calls = vi.mocked(invoke).mock.calls;
   const order = calls.map(([c, a]) => (c === 'close_terminal' ? `close:${(a as { id: string }).id}` : c))
     .filter((c) => c.startsWith('close:') || c === 'decide_race' || c === 'finish_task');
-  // Loser closes first, the winner stays open through the merge, then closes
-  // and its leftover worktree is removed.
-  expect(order).toEqual(['close:t1', 'decide_race', 'close:t0', 'finish_task']);
+  // Every session closes before git touches the worktrees (a live agent
+  // holds its folder on Windows); a leftover winner worktree is removed after.
+  expect(order).toEqual(['close:t1', 'close:t0', 'decide_race', 'finish_task']);
   const request = (calls.find(([c]) => c === 'decide_race')![1] as { request: Record<string, unknown> }).request;
   expect(request).toMatchObject({
     race_id: 'r1', winner_worktree: '/wt/race-fix-claude',
@@ -94,6 +94,20 @@ it('keeps the winner for a pull request with a "Raced against" body', async () =
   expect(request).toMatchObject({ winner_action: { kind: 'pull-request' }, losers: [{ keep_branch: true, confirm_unmerged: false }] });
   // The PR winner's session stays open.
   expect(vi.mocked(invoke).mock.calls.some(([c, a]) => c === 'close_terminal' && (a as { id: string }).id === 't0')).toBe(false);
+});
+
+it('re-checks the winner right before merging and closes nothing if it changed', async () => {
+  render(<RaceDecideDialog />);
+  await screen.findByText(/Squash-merge/);
+  fireEvent.click(screen.getByLabelText('Discard 1 unmerged commit(s)'));
+  fireEvent.click(screen.getByLabelText(/still running/));
+  // The agent writes a file after the dialog loaded.
+  statuses['/wt/race-fix-claude'].uncommitted = [{ path: 'late.ts', status: '??' }];
+  fireEvent.click(screen.getByRole('button', { name: 'Merge winner' }));
+  expect(await screen.findByRole('alert')).toBeTruthy();
+  const calls = vi.mocked(invoke).mock.calls.map(([c]) => c);
+  expect(calls).not.toContain('decide_race');
+  expect(calls).not.toContain('close_terminal');
 });
 
 it('blocks a winner with uncommitted changes until they are committed', async () => {

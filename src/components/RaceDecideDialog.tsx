@@ -226,14 +226,29 @@ export function RaceDecideDialog() {
         : { kind: 'pull-request' };
       const plan = planDecision(race.id, winnerContender.worktreePath, winnerAction, loserPlans, stats);
       if (!plan.ok) return;
-      // Losers' sessions close first (a live agent blocks worktree removal
-      // on Windows). The winner stays open until its merge succeeds, so a
-      // refused merge costs nothing.
+      if (action === 'merge') {
+        // Re-check the merge right before it runs: the agent may still have
+        // been writing while the dialog was open.
+        const fresh = await getTaskStatus(winnerContender.worktreePath);
+        const block = fresh.uncommitted.length > 0
+          ? 'The winner has uncommitted changes. Commit them first.'
+          : mergeBlockReason(fresh, mergeMode);
+        if (block) {
+          setError(block);
+          void load(false);
+          return;
+        }
+      }
+      // Close sessions before touching their worktrees: on Windows a live
+      // agent holds its folder, and git then unregisters the worktree but
+      // leaves the folder and branch behind. The merge was re-checked above;
+      // if git still refuses it, nothing was discarded and the winner's
+      // session can be reopened from the race.
       for (const c of loserContenders) await closeTerminals(terminalsIn(c.worktreePath));
+      if (action === 'merge') await closeTerminals(terminalsIn(winnerContender.worktreePath));
       const result = await decideRace(plan.request);
       const failures = summarizeFailures(result.losers, race);
       if (action === 'merge') {
-        await closeTerminals(terminalsIn(winnerContender.worktreePath));
         if (result.winner && !result.winner.worktree_removed) {
           // The merge is in; the live agent kept the folder. Remove it now
           // that the session is closed, but only if the agent did not write

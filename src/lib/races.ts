@@ -535,6 +535,24 @@ export function taskForContender(race: Race, c: RaceContender): TaskInfo {
 }
 
 /**
+ * Open a new session in a contender's worktree (its terminal was closed or
+ * the app restarted without restoring it). Continues the agent's most recent
+ * conversation in that worktree; the task prompt is never sent again.
+ */
+export async function reopenContender(race: Race, c: RaceContender): Promise<string> {
+  const { useTerminalStore } = await import('../store/terminalStore');
+  const { useAgentRegistryStore } = await import('../store/agentRegistryStore');
+  const name = raceTabName(race.title, c.label);
+  const id = await useTerminalStore.getState().createTerminal(
+    name, c.worktreePath, c.args, {}, undefined, name, undefined, undefined, true, undefined,
+    c.agent, useAgentRegistryStore.getState().defaultBindingsFor(c.agent), taskForContender(race, c),
+  );
+  updateRaceContender(race.id, c.worktreePath, { terminal_id: id })
+    .catch((err) => reportInvokeFailure('update_race_contender', err));
+  return id;
+}
+
+/**
  * Start a race: one backend call creates every worktree from the same base
  * SHA, then each contender gets a terminal. The task reaches each agent at
  * spawn when it supports an initial prompt, else it is staged in that

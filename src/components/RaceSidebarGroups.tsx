@@ -5,6 +5,7 @@ import { useTerminalStore } from '../store/terminalStore';
 import { CONTENDER_STATE_LABEL, formatCost, formatElapsed, type Race } from '../lib/races';
 import { useRaceRows } from '../hooks/useRaceRows';
 import { ContenderStateDot } from './RaceHeader';
+import { reopenFromUi } from '../lib/raceActions';
 import { BrandIcon } from './BrandIcon';
 import { Tooltip } from './ui/Tooltip';
 
@@ -30,14 +31,13 @@ function RaceGroup({ race }: { race: Race }) {
           <li key={r.contender.idx}>
             <button
               type="button"
-              disabled={!r.terminal}
               onClick={() => {
-                if (!r.terminal) return;
+                if (!r.terminal) { void reopenFromUi(race, r.contender); return; }
                 useAppStore.getState().setActiveFilePath(null);
                 useTerminalStore.getState().setActiveTerminal(r.terminal.config.id);
               }}
-              className="w-full flex items-center gap-1.5 px-2.5 h-6 text-left text-[11.5px] text-text-secondary hover:bg-fill-hover hover:text-text-primary disabled:hover:bg-transparent"
-              title={`${r.contender.label}: ${CONTENDER_STATE_LABEL[r.state]}`}
+              className="w-full flex items-center gap-1.5 px-2.5 h-6 text-left text-[11.5px] text-text-secondary hover:bg-fill-hover hover:text-text-primary"
+              title={r.terminal ? `${r.contender.label}: ${CONTENDER_STATE_LABEL[r.state]}` : `${r.contender.label}: no session. Click to reopen one in its worktree.`}
             >
               <ContenderStateDot state={r.state} />
               <BrandIcon kind={r.contender.agent} size={11} />
