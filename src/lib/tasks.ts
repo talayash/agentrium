@@ -14,6 +14,8 @@ export interface TaskInfo {
   baseBranch: string;
   worktreePath: string;
   repoPath: string;
+  /** Set when the task is one contender of a race (`races.rs`). */
+  raceId?: string | null;
 }
 
 export interface StartTaskResult {
@@ -70,8 +72,10 @@ export function normalizeTask(raw: unknown): TaskInfo | null {
   const t = raw as Record<string, unknown>;
   const keys = ['title', 'branch', 'baseBranch', 'worktreePath', 'repoPath'] as const;
   if (!keys.every(k => typeof t[k] === 'string' && (t[k] as string).length > 0)) return null;
-  return { title: t.title as string, branch: t.branch as string, baseBranch: t.baseBranch as string,
+  const task: TaskInfo = { title: t.title as string, branch: t.branch as string, baseBranch: t.baseBranch as string,
     worktreePath: t.worktreePath as string, repoPath: t.repoPath as string };
+  if (typeof t.raceId === 'string' && t.raceId) task.raceId = t.raceId;
+  return task;
 }
 
 export function taskFromStart(title: string, r: StartTaskResult): TaskInfo {

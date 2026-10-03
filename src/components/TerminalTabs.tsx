@@ -24,6 +24,7 @@ import { getAnyModelBadgeClasses, getModelBadgeLabel } from '../lib/agentModels'
 import { Tooltip } from './ui/Tooltip';
 import { TaskBadge } from './TaskBadge';
 import { PrChip } from './PrChip';
+import { RaceGridHeader } from './RaceHeader';
 import { requestCloseTerminal } from '../lib/tasks';
 import type { SessionState } from '../lib/terminalState';
 
@@ -155,7 +156,14 @@ export function TerminalTabs() {
 
   // If grid mode is active, show the grid
   if (gridMode) {
-    return <TerminalGrid />;
+    return (
+      <div className="h-full flex flex-col">
+        <RaceGridHeader />
+        <div className="flex-1 min-h-0">
+          <TerminalGrid />
+        </div>
+      </div>
+    );
   }
 
   const activeInst = activeTerminalId ? terminals.get(activeTerminalId) : null;

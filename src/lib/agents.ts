@@ -31,6 +31,10 @@ export interface AgentSpec {
   defaultArgs?: string[];
   resumeFlag?: string | null;
   requiredEnv?: string[];
+  /** The CLI accepts a first prompt at spawn (mirrors Rust
+   *  `AgentSpec::initial_prompt`). Race mode sends the task through argv
+   *  when true and stages it in the prompt editor otherwise. */
+  initialPrompt?: boolean;
 }
 
 export const AGENT_SPECS: readonly AgentSpec[] = [
@@ -41,6 +45,8 @@ export const AGENT_SPECS: readonly AgentSpec[] = [
     installUrl: 'https://docs.claude.com/claude-code',
     installHint: 'npm install -g @anthropic-ai/claude-code',
     defaultArgsHint: '--dangerously-skip-permissions\n--model opus',
+    // `claude [options] [command] [prompt]`
+    initialPrompt: true,
   },
   {
     kind: 'codex',
@@ -49,6 +55,8 @@ export const AGENT_SPECS: readonly AgentSpec[] = [
     installUrl: 'https://github.com/openai/codex',
     installHint: 'npm install -g @openai/codex',
     defaultArgsHint: '--dangerously-bypass-approvals-and-sandbox',
+    // `codex [OPTIONS] [PROMPT]`
+    initialPrompt: true,
   },
   {
     kind: 'cursor',
@@ -58,6 +66,8 @@ export const AGENT_SPECS: readonly AgentSpec[] = [
     installUrl: 'https://cursor.com/cli',
     installHint: "curl https://cursor.com/install -fsS | bash  (or  irm 'https://cursor.com/install?win32=true' | iex on Windows)",
     defaultArgsHint: '--print       # non-interactive mode',
+    // Not verified against `agent --help`: Race mode stages the prompt.
+    initialPrompt: false,
   },
   {
     kind: 'antigravity',
@@ -72,6 +82,8 @@ export const AGENT_SPECS: readonly AgentSpec[] = [
     // pairs from non-Claude agents (the picker injects it instead), so a
     // --model hint would suggest an arg that silently disappears.
     defaultArgsHint: '--sandbox       # terminal restrictions',
+    // `agy --prompt-interactive <prompt>`
+    initialPrompt: true,
   },
 ];
 

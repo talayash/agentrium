@@ -29,6 +29,7 @@ export function AddAgentModal() {
   const [binary, setBinary] = useState(editing?.binary ?? '');
   const [argsText, setArgsText] = useState(editing?.default_args.join('\n') ?? '');
   const [resumeFlag, setResumeFlag] = useState(editing?.resume_flag ?? '');
+  const [promptTemplate, setPromptTemplate] = useState(editing?.initial_prompt_template ?? '');
   const [color, setColor] = useState<AgentColor>((editing?.color as AgentColor) ?? AGENT_COLORS[0]);
   const [requiredEnv, setRequiredEnv] = useState<string[]>(editing?.required_env ?? []);
   const [bindings, setBindings] = useState<CredentialBinding[]>(editing?.bindings ?? []);
@@ -71,6 +72,8 @@ export function AddAgentModal() {
     if (!binary.trim()) return 'Command is required.';
     const rf = resumeFlag.trim();
     if (rf && (rf.match(/\{id\}/g) ?? []).length > 1) return 'Resume flag may contain {id} at most once.';
+    const pt = promptTemplate.trim();
+    if (pt && (pt.match(/\{prompt\}/g) ?? []).length !== 1) return 'Initial prompt must contain {prompt} exactly once.';
     for (const e of requiredEnv) if (!ENV_NAME_RE.test(e)) return `"${e}" is not a valid environment variable name.`;
     return null;
   };
@@ -87,6 +90,7 @@ export function AddAgentModal() {
         binary: binary.trim(),
         default_args: argsText.split('\n').map(s => s.trim()).filter(Boolean),
         resume_flag: resumeFlag.trim() || null,
+        initial_prompt_template: promptTemplate.trim() || null,
         color,
         required_env: requiredEnv,
         bindings: bindings.filter(b => requiredEnv.includes(b.env)),
@@ -206,6 +210,9 @@ export function AddAgentModal() {
               <label htmlFor="agent-resume" className="block text-text-secondary text-[12px] mb-1.5">Resume flag</label>
               <input id="agent-resume" value={resumeFlag} onChange={e => setResumeFlag(e.target.value)} placeholder="--session {id}" className={`${inputCls} font-mono`} spellCheck={false} />
               <p className="text-text-tertiary text-[11px] mt-1 leading-relaxed">Use {'{id}'} to resume by id, or a plain flag like --continue for "continue most recent". Leave empty if the CLI cannot resume.</p>
+              <label htmlFor="agent-initial-prompt" className="block text-text-secondary text-[12px] mt-2.5 mb-1.5">Initial prompt</label>
+              <input id="agent-initial-prompt" value={promptTemplate} onChange={e => setPromptTemplate(e.target.value)} placeholder="--prompt {prompt}" className={`${inputCls} font-mono`} spellCheck={false} />
+              <p className="text-text-tertiary text-[11px] mt-1 leading-relaxed">How the CLI takes a first prompt: {'{prompt}'}, --flag {'{prompt}'} or --flag={'{prompt}'}. Race mode sends the task this way; leave empty to stage it in the prompt editor instead.</p>
             </div>
             <div>
               <label className="block text-text-secondary text-[12px] mb-1.5">Tile colour</label>

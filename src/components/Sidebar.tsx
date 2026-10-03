@@ -1,10 +1,11 @@
-import { Terminal, FolderTree, History, Plus, ChevronsRight, ChevronsLeft, Settings, Bell, GitBranch } from 'lucide-react';
+import { Terminal, FolderTree, History, Plus, ChevronsRight, ChevronsLeft, Settings, Bell, GitBranch, Flag } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useAppStore } from '../store/appStore';
 import type { SidebarNav } from '../store/appStore';
 import { FileTreePanel } from './FileTreePanel';
 import { SessionsPanel } from './SessionsPanel';
 import { SessionCards } from './SessionCards';
+import { RaceSidebarGroups } from './RaceSidebarGroups';
 import { useTerminalStore } from '../store/terminalStore';
 import { Tooltip } from './ui/Tooltip';
 import { AttentionInbox } from './AttentionInbox';
@@ -37,6 +38,7 @@ export function Sidebar() {
   const setNav = useAppStore((s) => s.setSidebarNav);
   const openNewTerminalModal = useAppStore((s) => s.openNewTerminalModal);
   const openNewTaskModal = useAppStore((s) => s.openNewTaskModal);
+  const openNewRaceModal = useAppStore((s) => s.openNewRaceModal);
   const sessionFilter = useAppStore((s) => s.sessionFilter);
   const setSessionFilter = useAppStore((s) => s.setSessionFilter);
   const taskCount = useTerminalStore((s) => {
@@ -149,6 +151,7 @@ export function Sidebar() {
                 ))}
               </div>
             </div>
+            <RaceSidebarGroups />
             <SessionCards />
           </>
         )}
@@ -193,6 +196,14 @@ export function Sidebar() {
         >
           <GitBranch size={14} strokeWidth={1.9} />
           New Task
+        </button>
+        <button
+          onClick={(e) => { e.currentTarget.blur(); openNewRaceModal(); }}
+          aria-keyshortcuts="Control+Shift+R"
+          className="w-full h-9 rounded-xl ring-1 ring-seam text-text-primary hover:bg-fill-hover text-[12.5px] font-medium flex items-center justify-center gap-2 active:scale-[0.98] transition-[background-color,transform] duration-100"
+        >
+          <Flag size={14} strokeWidth={1.9} />
+          New Race
         </button>
         <button
           onClick={openSettings}

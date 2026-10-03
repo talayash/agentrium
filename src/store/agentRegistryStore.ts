@@ -23,6 +23,7 @@ export function toSpec(a: CustomAgent): AgentSpec {
     defaultArgs: a.default_args,
     resumeFlag: a.resume_flag,
     requiredEnv: a.required_env,
+    initialPrompt: !!a.initial_prompt_template?.trim(),
   };
 }
 

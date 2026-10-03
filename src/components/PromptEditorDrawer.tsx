@@ -9,11 +9,11 @@ import {
 import { useAppStore } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
 import { usePasteStore, type PasteEntry } from '../store/pasteStore';
-import { captureClaudeInput, looksLikePastePlaceholder } from '../lib/terminalInput';
+import { looksLikePastePlaceholder } from '../lib/terminalInput';
 import { detectKindClient, kindToExt } from '../lib/pasteKind';
 import { toast } from '../store/toastStore';
 import { drawerMotion } from '../lib/motionTokens';
-import { toBracketedPaste } from '../lib/bracketedPaste';
+import { writePromptToTerminal } from '../lib/promptSend';
 
 // Mirrors the backend Snippet shape (see SnippetsModal.tsx / commands.rs).
 interface Snippet {
@@ -47,7 +47,6 @@ export function PromptEditorDrawer() {
 
   const terminals = useTerminalStore((s) => s.terminals);
   const activeId = useTerminalStore((s) => s.activeTerminalId);
-  const writeToTerminal = useTerminalStore((s) => s.writeToTerminal);
 
   const [content, setContent] = useState('');
   const [targetId, setTargetId] = useState<string | null>(null);
@@ -227,23 +226,9 @@ export function PromptEditorDrawer() {
     if (!content.trim()) return;
     setBusy(true);
     try {
-      // Injecting must make the terminal hold *exactly* the editor content - a
-      // full replace, not an append. Re-capture the live input and clear it with
-      // Ctrl+U before writing. Ctrl+U on an empty line no-ops, so we send a few
-      // extra past the captured line count: this guards against under-counting
-      // (a line we failed to scrape) which would otherwise leave a remnant and
-      // turn the write into an append. Overcounting is always harmless.
-      const xterm = useTerminalStore.getState().terminals.get(targetId)?.xterm;
-      const current = xterm ? captureClaudeInput(xterm) : '';
-      const clearCount = Math.max(1, current.split('\n').length) + 3;
-      await writeToTerminal(targetId, '\x15'.repeat(clearCount));
-      await writeToTerminal(targetId, toBracketedPaste(content));
-      if (withEnter) {
-        // Send: the prompt is submitted and consumed, so drop the draft - the
-        // next open starts fresh.
-        await writeToTerminal(targetId, '\r');
-        useAppStore.getState().clearPromptDraft(targetId);
-      }
+      // Injecting must make the terminal hold *exactly* the editor content (see
+      // writePromptToTerminal). Send also submits and drops the draft.
+      await writePromptToTerminal(targetId, content, withEnter);
       // Insert (no Enter): keep the draft so reopening shows the real prompt
       // even though Claude now displays it as a "[Pasted text ...]" placeholder.
       closeEditor();
