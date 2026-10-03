@@ -320,14 +320,16 @@ export function RaceCompareView({ raceId }: { raceId: string }) {
                       <td className={TD}>{formatElapsed(r.elapsedMs ?? c.stats?.elapsedMs)}</td>
                       <td className={TD}>{formatCost(r.costUsd)}</td>
                       <td className={TD}>{formatTokens(r.tokens)}</td>
-                      <td className={TD}>{r.diff ? (r.diff.exists ? r.diff.files.length : '–') : (c.stats?.filesChanged ?? '–')}</td>
+                      {/* Live numbers while the worktree exists, else the snapshot
+                          recorded when the race was decided. */}
+                      <td className={TD}>{r.diff?.exists ? r.diff.files.length : (c.stats?.filesChanged ?? '–')}</td>
                       <td className={`${TD} whitespace-nowrap`}>
-                        <span className="text-success">+{r.diff?.added ?? c.stats?.added ?? 0}</span>{' '}
-                        <span className="text-error">-{r.diff?.removed ?? c.stats?.removed ?? 0}</span>
+                        <span className="text-success">+{r.diff?.exists ? r.diff.added : (c.stats?.added ?? 0)}</span>{' '}
+                        <span className="text-error">-{r.diff?.exists ? r.diff.removed : (c.stats?.removed ?? 0)}</span>
                       </td>
                       <td className={TD}><CheckCell row={r} expanded={expandedCheck === i} onToggle={() => setExpandedCheck(expandedCheck === i ? null : i)} /></td>
                       <td className={`${TD} text-text-secondary whitespace-nowrap`}>
-                        {r.diff?.exists ? `${r.diff.commits_ahead} ahead` : r.diff ? 'worktree gone' : '–'}
+                        {r.diff?.exists ? `${r.diff.commits_ahead} ahead` : r.diff ? (open ? 'worktree gone' : 'removed') : '–'}
                         {r.diff && r.diff.uncommitted > 0 && (
                           <span className="block text-warning text-[11px]">{r.diff.uncommitted} uncommitted</span>
                         )}

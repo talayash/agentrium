@@ -172,8 +172,15 @@ export function RaceDecideDialog() {
     }
   };
 
+  /** Fresh diff stats for the history snapshot (the compare view may never
+   *  have been opened). */
+  const snapshot = async () => {
+    await useRaceStore.getState().loadDiffs(race.id);
+    return statsSnapshot(race);
+  };
+
   const confirmAbandon = async () => {
-    const stats = statsSnapshot(race);
+    const stats = await snapshot();
     const plan = planDecision(race.id, '', { kind: 'pull-request' }, loserPlans, stats);
     if (!plan.ok) return;
     setBusy(true);
@@ -197,7 +204,7 @@ export function RaceDecideDialog() {
 
   const confirmDecide = async () => {
     if (!winnerContender) return;
-    const stats = statsSnapshot(race);
+    const stats = await snapshot();
     const winnerAction: WinnerAction = action === 'merge'
       ? { kind: 'merge', mode: mergeMode, message }
       : { kind: 'pull-request' };
