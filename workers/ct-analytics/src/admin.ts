@@ -96,3 +96,38 @@ export async function matchInstallations(
 
   return { active_today: activeToday, active_now: activeNow };
 }
+
+export interface LiveInstallation {
+  installation_id: string;
+  version: string | null;
+  os: string | null;
+  country: string | null;
+  /** Approximate time of the last heartbeat: key expiry minus the live TTL. */
+  last_heartbeat_at: string | null;
+}
+
+/**
+ * Every installation with a live: key, i.e. a heartbeat inside the TTL window.
+ * Capped at MATCH_MAX_IDS so the website can relay the ids to the broker in
+ * one bounded request.
+ */
+export async function listLiveInstallations(kv: KVNamespace, ttlSeconds: number): Promise<LiveInstallation[]> {
+  const out: LiveInstallation[] = [];
+  let cursor: string | undefined;
+  do {
+    const page = await kv.list<{ version?: string; os?: string; country?: string }>({ prefix: 'live:', cursor });
+    for (const key of page.keys) {
+      if (out.length >= MATCH_MAX_IDS) return out;
+      const meta = key.metadata ?? null;
+      out.push({
+        installation_id: key.name.slice('live:'.length),
+        version: meta?.version ?? null,
+        os: meta?.os ?? null,
+        country: meta?.country ?? null,
+        last_heartbeat_at: key.expiration ? new Date((key.expiration - ttlSeconds) * 1000).toISOString() : null,
+      });
+    }
+    cursor = page.list_complete ? undefined : page.cursor;
+  } while (cursor);
+  return out;
+}

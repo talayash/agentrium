@@ -3,6 +3,7 @@ import {
   checkLoginAttempt,
   parseMatchBody,
   matchInstallations,
+  listLiveInstallations,
   constantTimeEqual,
   LOGIN_LIMIT,
   LOGIN_WINDOW_SECONDS,
@@ -141,5 +142,35 @@ describe('constantTimeEqual', () => {
   });
   it('returns false comparing empty vs non-empty', () => {
     expect(constantTimeEqual('', 'x')).toBe(false);
+  });
+});
+
+describe('listLiveInstallations', () => {
+  function listKv(pages: Array<Array<{ name: string; expiration?: number; metadata?: unknown }>>) {
+    let i = 0;
+    return {
+      list: async () => {
+        const keys = pages[i] ?? [];
+        i += 1;
+        return { keys, list_complete: i >= pages.length, cursor: String(i) };
+      },
+    } as unknown as KVNamespace;
+  }
+
+  it('returns every live key across pages with metadata and heartbeat time', async () => {
+    const exp = Date.parse('2026-10-03T12:15:00Z') / 1000;
+    const kv = listKv([
+      [{ name: 'live:a', expiration: exp, metadata: { version: '1.36.0', os: 'windows', country: 'IL' } }],
+      [{ name: 'live:b' }],
+    ]);
+    expect(await listLiveInstallations(kv, 900)).toEqual([
+      { installation_id: 'a', version: '1.36.0', os: 'windows', country: 'IL', last_heartbeat_at: '2026-10-03T12:00:00.000Z' },
+      { installation_id: 'b', version: null, os: null, country: null, last_heartbeat_at: null },
+    ]);
+  });
+
+  it('caps the result at MATCH_MAX_IDS', async () => {
+    const keys = Array.from({ length: MATCH_MAX_IDS + 5 }, (_, n) => ({ name: `live:i${n}` }));
+    expect(await listLiveInstallations(listKv([keys]), 900)).toHaveLength(MATCH_MAX_IDS);
   });
 });

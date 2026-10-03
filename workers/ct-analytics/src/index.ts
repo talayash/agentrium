@@ -24,9 +24,10 @@ import { admitErrorReport, admitIngest, boundedJson, validDimensions, versionWit
  *   POST /feedback/delete        soft-delete / restore inbox messages (token)
  *   POST /admin/login_attempt    admin-dashboard login rate limit (token)
  *   POST /stats/match            count given installation ids active today / now (token)
+ *   GET  /stats/live/ids         every live installation id with its metadata, for /admin online users (token)
  */
 
-import { constantTimeEqual, checkLoginAttempt, parseMatchBody, matchInstallations } from './admin';
+import { constantTimeEqual, checkLoginAttempt, parseMatchBody, matchInstallations, listLiveInstallations } from './admin';
 import { parseResolveBody, isGroupResolved } from './errors';
 import { handleInsights } from './insights-route';
 import { CORS_HEADERS, json, todayUTC } from './http';
@@ -822,6 +823,12 @@ export default {
         const denied = requireToken(request, env.STATS_TOKEN);
         if (denied) return denied;
         return await handleStatsLive(env);
+      }
+      if (request.method === 'GET' && url.pathname === '/stats/live/ids') {
+        const denied = requireToken(request, env.STATS_TOKEN);
+        if (denied) return denied;
+        const items = await listLiveInstallations(env.KV_BINDING, LIVE_TTL_SECONDS);
+        return json({ ts: new Date().toISOString(), window_seconds: LIVE_TTL_SECONDS, items }, 200, { 'cache-control': 'no-store' });
       }
       if (request.method === 'GET' && url.pathname === '/stats/history') {
         const denied = requireToken(request, env.STATS_TOKEN);
