@@ -1,4 +1,4 @@
-import { Terminal, FolderTree, History, Plus, ChevronsRight, ChevronsLeft, Settings, Bell, GitBranch, Flag } from 'lucide-react';
+import { Terminal, FolderTree, History, Plus, ChevronsRight, ChevronsLeft, Settings, Bell, GitBranch, Flag, UserCog } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useAppStore } from '../store/appStore';
 import type { SidebarNav } from '../store/appStore';
@@ -48,6 +48,7 @@ export function Sidebar() {
     return n;
   });
   const openSettings = useAppStore((s) => s.openSettings);
+  const openProfileModal = useAppStore((s) => s.openProfileModal);
   const sessionCount = useTerminalStore((s) => s.terminals.size);
   const attentionCount = useAttentionStore((s) => s.items.length);
 
@@ -67,6 +68,15 @@ export function Sidebar() {
           </Tooltip>
         ))}
         <div className="mt-auto flex flex-col items-center gap-1">
+          <Tooltip label="Profiles" side="right">
+            <button
+              onClick={() => openProfileModal()}
+              aria-label="Profiles"
+              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-fill-hover text-text-tertiary hover:text-text-secondary transition-colors"
+            >
+              <UserCog size={15} strokeWidth={1.75} />
+            </button>
+          </Tooltip>
           <Tooltip label="Settings" side="right">
             <button
               onClick={openSettings}
@@ -176,7 +186,7 @@ export function Sidebar() {
         {nav === 'attention' && <AttentionInbox />}
       </div>
 
-      {/* Prominent primary action + settings */}
+      {/* Prominent primary action + profiles + settings */}
       <div className="p-2 flex flex-col gap-1.5">
         <button
           onClick={(e) => {
@@ -190,35 +200,52 @@ export function Sidebar() {
             e.currentTarget.blur();
             openNewTerminalModal();
           }}
-          className="w-full h-10 rounded-xl bg-accent-primary text-white text-[13px] font-semibold flex items-center justify-center gap-2 shadow-[0_4px_12px_var(--accent-glow-md)] hover:bg-accent-secondary active:scale-[0.98] transition-[background-color,transform] duration-100"
+          className="w-full h-9 rounded-xl bg-accent-primary text-white text-[13px] font-semibold flex items-center justify-center gap-2 shadow-[0_4px_12px_var(--accent-glow-md)] hover:bg-accent-secondary active:scale-[0.98] transition-[background-color,transform] duration-100"
         >
           <Plus size={15} strokeWidth={2.5} />
           New Session
         </button>
-        <button
-          onClick={(e) => { e.currentTarget.blur(); openNewTaskModal(); }}
-          aria-keyshortcuts="Control+Shift+T"
-          className="w-full h-9 rounded-xl ring-1 ring-seam text-text-primary hover:bg-fill-hover text-[12.5px] font-medium flex items-center justify-center gap-2 active:scale-[0.98] transition-[background-color,transform] duration-100"
-        >
-          <GitBranch size={14} strokeWidth={1.9} />
-          New Task
-        </button>
-        <button
-          onClick={(e) => { e.currentTarget.blur(); openNewRaceModal(); }}
-          aria-keyshortcuts="Control+Shift+R"
-          className="w-full h-9 rounded-xl ring-1 ring-seam text-text-primary hover:bg-fill-hover text-[12.5px] font-medium flex items-center justify-center gap-2 active:scale-[0.98] transition-[background-color,transform] duration-100"
-        >
-          <Flag size={14} strokeWidth={1.9} />
-          New Race
-        </button>
-        <button
-          onClick={openSettings}
-          aria-keyshortcuts="Control+,"
-          className="w-full h-9 rounded-xl text-text-secondary hover:text-text-primary hover:bg-fill-hover text-[12.5px] font-medium flex items-center justify-center gap-2 active:scale-[0.98] transition-[background-color,color,transform] duration-100"
-        >
-          <Settings size={14} strokeWidth={1.9} />
-          Settings
-        </button>
+        {/* One style per row: filled primary, ringed secondary creates, ghost navigation. */}
+        <div className="flex gap-1.5">
+          <button
+            onClick={(e) => { e.currentTarget.blur(); openNewTaskModal(); }}
+            aria-label="New Task"
+            aria-keyshortcuts="Control+Shift+T"
+            className="flex-1 min-w-0 h-[34px] rounded-xl ring-1 ring-seam text-text-primary hover:bg-fill-hover text-[12.5px] font-medium flex items-center justify-center gap-2 active:scale-[0.98] transition-[background-color,transform] duration-100"
+          >
+            <GitBranch size={14} strokeWidth={1.9} />
+            Task
+          </button>
+          <button
+            onClick={(e) => { e.currentTarget.blur(); openNewRaceModal(); }}
+            aria-label="New Race"
+            aria-keyshortcuts="Control+Shift+R"
+            className="flex-1 min-w-0 h-[34px] rounded-xl ring-1 ring-seam text-text-primary hover:bg-fill-hover text-[12.5px] font-medium flex items-center justify-center gap-2 active:scale-[0.98] transition-[background-color,transform] duration-100"
+          >
+            <Flag size={14} strokeWidth={1.9} />
+            Race
+          </button>
+        </div>
+        <div className="h-px bg-seam mx-1" aria-hidden="true" />
+        <div className="flex gap-1.5">
+          <button
+            // No-arg call opens the profile manager list; passing the click event
+            // through would be read as a profileId and open the focused editor.
+            onClick={(e) => { e.currentTarget.blur(); openProfileModal(); }}
+            className="flex-1 min-w-0 h-8 rounded-xl text-text-secondary hover:text-text-primary hover:bg-fill-hover text-[12.5px] font-medium flex items-center justify-center gap-2 active:scale-[0.98] transition-[background-color,color,transform] duration-100"
+          >
+            <UserCog size={14} strokeWidth={1.9} />
+            Profiles
+          </button>
+          <button
+            onClick={openSettings}
+            aria-keyshortcuts="Control+,"
+            className="flex-1 min-w-0 h-8 rounded-xl text-text-secondary hover:text-text-primary hover:bg-fill-hover text-[12.5px] font-medium flex items-center justify-center gap-2 active:scale-[0.98] transition-[background-color,color,transform] duration-100"
+          >
+            <Settings size={14} strokeWidth={1.9} />
+            Settings
+          </button>
+        </div>
       </div>
     </div>
   );
