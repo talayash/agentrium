@@ -112,6 +112,9 @@ export interface LoserChoice {
   worktree_path: string;
   keep_branch: boolean;
   confirm_unmerged: boolean;
+  /** The backend re-checks uncommitted work at discard time and refuses
+   *  without this, so changes written after the dialog looked survive. */
+  confirm_uncommitted: boolean;
 }
 
 export interface DecideRaceRequest {
@@ -408,6 +411,7 @@ export function planDecision(
         worktree_path: l.worktreePath,
         keep_branch: l.keepBranch,
         confirm_unmerged: !l.keepBranch && l.ahead > 0,
+        confirm_uncommitted: !l.keepBranch && l.uncommitted > 0,
       })),
       stats,
     },
@@ -597,7 +601,9 @@ export async function launchRace(p: LaunchRaceParams): Promise<LaunchRaceResult>
       await useTerminalStore.getState().closeTerminal(id).catch((e) => reportInvokeFailure('close_terminal', e));
     }
     // Fresh branches with no work: discarding loses nothing.
-    await abandonRace(race.id, race.contenders.map((c) => ({ worktree_path: c.worktreePath, keep_branch: false, confirm_unmerged: true })), {})
+    await abandonRace(race.id, race.contenders.map((c) => ({
+      worktree_path: c.worktreePath, keep_branch: false, confirm_unmerged: true, confirm_uncommitted: true,
+    })), {})
       .catch((e) => reportInvokeFailure('abandon_race', e));
     throw err;
   }

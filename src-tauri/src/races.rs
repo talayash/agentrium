@@ -898,6 +898,34 @@ fn running_checks() -> &'static std::sync::Mutex<HashMap<String, Arc<Notify>>> {
     RUNNING.get_or_init(Default::default)
 }
 
+/// Races with a decide/abandon in flight. A second request for the same race
+/// (double click, two windows) is refused instead of running two merges and
+/// two discards against the same worktrees.
+fn deciding() -> &'static std::sync::Mutex<HashSet<String>> {
+    static DECIDING: OnceLock<std::sync::Mutex<HashSet<String>>> = OnceLock::new();
+    DECIDING.get_or_init(Default::default)
+}
+
+struct DecideGuard(String);
+
+impl DecideGuard {
+    fn acquire(race_id: &str) -> Result<Self, String> {
+        let mut set = deciding().lock().map_err(|e| e.to_string())?;
+        if !set.insert(race_id.to_string()) {
+            return Err(user_err("This race is already being finished."));
+        }
+        Ok(DecideGuard(race_id.to_string()))
+    }
+}
+
+impl Drop for DecideGuard {
+    fn drop(&mut self) {
+        if let Ok(mut set) = deciding().lock() {
+            set.remove(&self.0);
+        }
+    }
+}
+
 /// Removes the cancel handle when the check finishes, however it finishes.
 struct CheckGuard(String);
 
@@ -934,6 +962,11 @@ pub struct LoserChoice {
     /// Required to discard a branch with commits the base lacks.
     #[serde(default)]
     pub confirm_unmerged: bool,
+    /// Required to discard a worktree with uncommitted changes. Checked
+    /// against the worktree at discard time, so work an agent wrote after
+    /// the dialog looked is never deleted unconfirmed.
+    #[serde(default)]
+    pub confirm_uncommitted: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -1008,6 +1041,31 @@ async fn finish_losers(tasks: &[TaskInfo], choices: &[LoserChoice]) -> Vec<Conte
             });
             continue;
         };
+        if !ch.keep_branch && !ch.confirm_uncommitted && Path::new(&task.worktree_path).is_dir() {
+            match tasks::uncommitted(Path::new(&task.worktree_path)).await {
+                Ok(changes) if !changes.is_empty() => {
+                    out.push(ContenderFinish {
+                        worktree_path: ch.worktree_path.clone(),
+                        result: None,
+                        error: Some(format!(
+                            "{} has {} uncommitted change(s). Confirm to discard them.",
+                            task.branch,
+                            changes.len()
+                        )),
+                    });
+                    continue;
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    out.push(ContenderFinish {
+                        worktree_path: ch.worktree_path.clone(),
+                        result: None,
+                        error: Some(crate::error_reporter::strip_user_prefix(&e).to_string()),
+                    });
+                    continue;
+                }
+            }
+        }
         let action = if ch.keep_branch {
             FinishAction::Keep
         } else {
@@ -1311,6 +1369,7 @@ pub async fn decide_race(
     request: DecideRaceRequest,
 ) -> Result<DecideRaceResult, String> {
     wrap_cmd("decide_race", async move {
+        let _guard = DecideGuard::acquire(&request.race_id)?;
         let race = load_race(&state, &request.race_id).await?;
         let tasks = race_tasks(&state, &race.id).await?;
         let result = decide_race_impl(&race, &tasks, &request).await?;
@@ -1368,6 +1427,7 @@ pub async fn abandon_race(
     request: AbandonRaceRequest,
 ) -> Result<Vec<ContenderFinish>, String> {
     wrap_cmd("abandon_race", async move {
+        let _guard = DecideGuard::acquire(&request.race_id)?;
         let race = load_race(&state, &request.race_id).await?;
         let tasks = race_tasks(&state, &race.id).await?;
         let results = abandon_race_impl(&race, &tasks, &request.contenders).await?;
@@ -1731,6 +1791,7 @@ mod tests {
                 worktree_path: a.worktree_path.clone(),
                 keep_branch: false,
                 confirm_unmerged: true,
+                confirm_uncommitted: false,
             }],
             stats: HashMap::new(),
         };
@@ -1741,6 +1802,7 @@ mod tests {
             worktree_path: b.worktree_path.clone(),
             keep_branch: false,
             confirm_unmerged: true,
+            confirm_uncommitted: false,
         });
         assert!(decide_race_impl(&race, &tasks, &request).await.is_err());
         request.losers.pop();
@@ -1751,6 +1813,7 @@ mod tests {
             worktree_path: c.worktree_path.clone(),
             keep_branch: true,
             confirm_unmerged: false,
+            confirm_uncommitted: false,
         });
         let result = decide_race_impl(&race, &tasks, &request).await.unwrap();
         let w = result.winner.unwrap();
@@ -1804,6 +1867,7 @@ mod tests {
                 worktree_path: b.worktree_path.clone(),
                 keep_branch: false,
                 confirm_unmerged: true,
+                confirm_uncommitted: false,
             }],
             stats: HashMap::new(),
         };
@@ -1820,6 +1884,7 @@ mod tests {
                 worktree_path: b.worktree_path.clone(),
                 keep_branch: false,
                 confirm_unmerged: false,
+                confirm_uncommitted: false,
             }],
             ..request
         };
@@ -1853,6 +1918,7 @@ mod tests {
                 worktree_path: c.worktree_path.clone(),
                 keep_branch: false,
                 confirm_unmerged: true,
+                confirm_uncommitted: false,
             })
             .collect();
         let results = abandon_race_impl(&race, &tasks, &choices).await.unwrap();
@@ -1984,5 +2050,54 @@ mod tests {
         assert!(validate_check_command("npm test -- --grep \"x\"").is_ok());
         assert!(validate_check_command("a\nb").is_err());
         assert!(validate_check_command(&"x".repeat(MAX_CHECK_COMMAND_LEN + 1)).is_err());
+    }
+
+    #[tokio::test]
+    async fn discarding_uncommitted_work_needs_its_own_confirmation() {
+        let (_tmp, repo) = temp_repo();
+        let (race, tasks) = start_race_impl(&req(&repo, "Dirty loser", claude_vs_codex()))
+            .await
+            .unwrap();
+        let [a, b] = [0, 1].map(|i| race.contenders[i].clone());
+        commit_in(
+            Path::new(&a.worktree_path),
+            "a.txt",
+            "a
+",
+            "a",
+        );
+        // The loser has no commits, only work written after any dialog looked.
+        std::fs::write(Path::new(&b.worktree_path).join("late.txt"), "late").unwrap();
+        let mut request = DecideRaceRequest {
+            race_id: race.id.clone(),
+            winner_worktree: a.worktree_path.clone(),
+            winner_action: WinnerAction::PullRequest,
+            losers: vec![LoserChoice {
+                worktree_path: b.worktree_path.clone(),
+                keep_branch: false,
+                confirm_unmerged: false,
+                confirm_uncommitted: false,
+            }],
+            stats: HashMap::new(),
+        };
+        let result = decide_race_impl(&race, &tasks, &request).await.unwrap();
+        let err = result.losers[0].error.clone().unwrap_or_default();
+        assert!(err.contains("1 uncommitted change"), "{err}");
+        assert!(Path::new(&b.worktree_path).join("late.txt").exists());
+
+        request.losers[0].confirm_uncommitted = true;
+        let result = decide_race_impl(&race, &tasks, &request).await.unwrap();
+        assert!(result.losers[0].error.is_none(), "{:?}", result.losers[0]);
+        assert!(!Path::new(&b.worktree_path).exists());
+    }
+
+    #[test]
+    fn a_race_can_only_be_finished_once_at_a_time() {
+        let g = DecideGuard::acquire("race-1").unwrap();
+        let e = DecideGuard::acquire("race-1").err().unwrap();
+        assert!(e.contains("already being finished"), "{e}");
+        assert!(DecideGuard::acquire("race-2").is_ok());
+        drop(g);
+        assert!(DecideGuard::acquire("race-1").is_ok());
     }
 }

@@ -23,7 +23,7 @@ const race: Race = {
 function terminal(id: string, c: RaceContender, status: TerminalConfig['status'] = 'Running'): [string, TerminalInstance] {
   const config: TerminalConfig = {
     id, label: id, nickname: null, profile_id: null, working_directory: c.worktreePath, claude_args: [], env_vars: {},
-    created_at: '', status, color_tag: null, agent: 'claude',
+    created_at: '2026-10-01T00:00:00.000Z', status, color_tag: null, agent: 'claude',
     // Forward slashes and different case: the store matches paths loosely.
     task: { title: 'Fix bug', branch: c.branch, baseBranch: 'main', worktreePath: c.worktreePath.replace(/\\/g, '/').toUpperCase(), repoPath: 'C:\\repo', raceId: 'r1' },
   };
@@ -33,7 +33,7 @@ function terminal(id: string, c: RaceContender, status: TerminalConfig['status']
 beforeEach(() => {
   vi.mocked(invoke).mockReset();
   vi.mocked(invoke).mockResolvedValue(undefined);
-  useRaceStore.setState({ races: { r1: race }, manualDone: {}, seenBusy: {}, settledAt: {}, readyNotified: {}, checks: {}, diffs: {} });
+  useRaceStore.setState({ races: { r1: race }, manualDone: {}, seenBusy: {}, seenTerminal: {}, readyNotified: {}, checks: {}, diffs: {} });
   useAttentionStore.setState({ items: [] });
   useTerminalStore.setState({
     terminals: new Map([terminal('t0', race.contenders[0]), terminal('t1', race.contenders[1])]),
@@ -67,7 +67,7 @@ describe('race store state derivation', () => {
     // t0 settles: finish time recorded once, no race item yet.
     useTerminalStore.setState({ terminalStates: new Map([['t0', 'idle'], ['t1', 'busy']]) });
     trackRaces(now);
-    expect(useRaceStore.getState().settledAt['c:/wt/race-x-c0']).toBe(now);
+    expect(useRaceStore.getState().races.r1.contenders[0].finishedAt).toBe('2026-10-01T00:05:00.000Z');
     expect(invoke).toHaveBeenCalledWith('update_race_contender', {
       raceId: 'r1', worktreePath: race.contenders[0].worktreePath, patch: { finished_at: '2026-10-01T00:05:00.000Z' },
     });
@@ -97,13 +97,46 @@ describe('race store state derivation', () => {
     expect(useAttentionStore.getState().items.map((i) => i.kind)).toEqual(['race']);
   });
 
-  it('measures elapsed time from start to first settle', () => {
+  it('measures elapsed time from start to the latest settle', () => {
     const c = race.contenders[0];
     const start = Date.parse(c.startedAt!);
-    expect(contenderElapsed(c, {}, start + 5000)).toBe(5000);
-    expect(contenderElapsed(c, { 'c:/wt/race-x-c0': start + 2000 }, start + 9000)).toBe(2000);
-    expect(contenderElapsed({ ...c, finishedAt: new Date(start + 1000).toISOString() }, {}, start + 9000)).toBe(1000);
-    expect(contenderElapsed({ ...c, startedAt: null }, {}, start)).toBeNull();
+    expect(contenderElapsed(c, start + 5000)).toBe(5000);
+    expect(contenderElapsed({ ...c, finishedAt: new Date(start + 1000).toISOString() }, start + 9000)).toBe(1000);
+    expect(contenderElapsed({ ...c, startedAt: null }, start)).toBeNull();
+  });
+
+  it('ignores the startup busy/idle blip (banner, trust prompt) and restarts the clock on new work', () => {
+    const t0 = Date.parse('2026-10-01T00:00:00.000Z');
+    // Busy then idle within the grace period: not done.
+    useTerminalStore.setState({ terminalStates: new Map([['t0', 'busy'], ['t1', 'busy']]) });
+    trackRaces(t0 + 2000);
+    useTerminalStore.setState({ terminalStates: new Map([['t0', 'idle'], ['t1', 'idle']]) });
+    trackRaces(t0 + 3000);
+    expect(useRaceStore.getState().races.r1.contenders.map((c) => c.finishedAt)).toEqual([null, null]);
+    expect(useAttentionStore.getState().items).toEqual([]);
+
+    // Real work after the grace period, then idle: done, clock stops.
+    useTerminalStore.setState({ terminalStates: new Map([['t0', 'busy'], ['t1', 'busy']]) });
+    trackRaces(t0 + 30_000);
+    useTerminalStore.setState({ terminalStates: new Map([['t0', 'idle'], ['t1', 'busy']]) });
+    trackRaces(t0 + 60_000);
+    expect(useRaceStore.getState().races.r1.contenders[0].finishedAt).toBe(new Date(t0 + 60_000).toISOString());
+
+    // A follow-up prompt: working again, the clock runs until the next settle.
+    useTerminalStore.setState({ terminalStates: new Map([['t0', 'busy'], ['t1', 'busy']]) });
+    trackRaces(t0 + 70_000);
+    expect(useRaceStore.getState().races.r1.contenders[0].finishedAt).toBeNull();
+    useTerminalStore.setState({ terminalStates: new Map([['t0', 'idle'], ['t1', 'busy']]) });
+    trackRaces(t0 + 90_000);
+    expect(useRaceStore.getState().races.r1.contenders[0].finishedAt).toBe(new Date(t0 + 90_000).toISOString());
+  });
+
+  it('does not settle a contender whose terminal was never seen (restart before restore)', () => {
+    useTerminalStore.setState({ terminals: new Map(), terminalStates: new Map() });
+    trackRaces(Date.parse('2026-10-01T01:00:00.000Z'));
+    expect(useRaceStore.getState().races.r1.contenders.map((c) => c.finishedAt)).toEqual([null, null]);
+    expect(useAttentionStore.getState().items).toEqual([]);
+    expect(invoke).not.toHaveBeenCalled();
   });
 });
 

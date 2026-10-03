@@ -17,7 +17,8 @@ import { useTerminalStore } from '../store/terminalStore';
 import { toast } from '../store/toastStore';
 import { Modal } from './ui/Modal';
 
-const INPUT = 'w-full bg-elevation-0 text-text-primary text-[13px] px-2.5 py-1.5 rounded-md ring-1 ring-border-light focus:ring-accent-primary outline-none';
+const FIELD = 'bg-elevation-0 text-text-primary text-[13px] px-2.5 py-1.5 rounded-md ring-1 ring-border-light focus:ring-accent-primary outline-none';
+const INPUT = `w-full ${FIELD}`;
 
 /** Model choices for an agent: '' = the CLI's default (no --model flag). */
 function modelOptions(kind: AgentKind): { value: string; label: string }[] {
@@ -184,21 +185,21 @@ export function NewRaceModal() {
             return (
               <div key={i} className="flex items-center gap-2">
                 <span className="w-5 text-[11px] text-text-tertiary tabular-nums">{String.fromCharCode(65 + i)}</span>
-                <select aria-label={`Contender ${i + 1} agent`} value={c.agent} className={`${INPUT} w-44`}
+                <select aria-label={`Contender ${i + 1} agent`} value={c.agent} className={`${FIELD} w-44 flex-shrink-0`}
                   onChange={(e) => updateContender(i, { agent: e.target.value as AgentKind, model: null })}>
                   {specs.map((s) => <option key={s.kind} value={s.kind}>{s.displayName}</option>)}
                 </select>
                 {isCustomAgent(c.agent) || models.length === 0 ? (
                   <input aria-label={`Contender ${i + 1} model`} value={c.model ?? ''} placeholder="Model (optional)"
-                    onChange={(e) => updateContender(i, { model: e.target.value || null })} className={`${INPUT} flex-1 font-mono text-[12px]`} />
+                    onChange={(e) => updateContender(i, { model: e.target.value || null })} className={`${FIELD} flex-1 min-w-0 font-mono text-[12px]`} />
                 ) : (
-                  <select aria-label={`Contender ${i + 1} model`} value={c.model ?? ''} className={`${INPUT} flex-1`}
+                  <select aria-label={`Contender ${i + 1} model`} value={c.model ?? ''} className={`${FIELD} flex-1 min-w-0`}
                     onChange={(e) => updateContender(i, { model: e.target.value || null })}>
                     <option value="">Default model</option>
                     {models.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
                   </select>
                 )}
-                <span className="w-36 text-[10.5px] text-text-tertiary leading-tight">
+                <span className="w-36 flex-shrink-0 text-[10.5px] text-text-tertiary leading-tight">
                   {rate ? `Won ${rate.wins}/${rate.races} past race(s)` : 'No past races'}
                   {staged && <span className="block text-warning">Task staged, send when ready</span>}
                 </span>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { GitMerge, GitPullRequestCreate, Trophy, XCircle } from 'lucide-react';
 import { useAppStore } from '../store/appStore';
 import { useRaceStore, statsSnapshot, terminalForContender } from '../store/raceStore';
@@ -83,6 +83,10 @@ export function RaceDecideDialog() {
   const [closeRunningOk, setCloseRunningOk] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  // Set synchronously on click so a double click cannot start two runs
+  // while the first is still awaiting the stats snapshot.
+  const running = useRef(false);
+  const seeded = useRef(false);
   const abandon = mode === 'abandon';
 
   const load = useCallback(async (seed: boolean) => {
@@ -111,7 +115,12 @@ export function RaceDecideDialog() {
     }
   }, [race, strategy]);
 
-  useEffect(() => { void load(true); }, [load]);
+  // Seed choices once per dialog: the race object is replaced when it turns
+  // "judging" or refreshes, and that must not reset the user's choices.
+  useEffect(() => {
+    void load(!seeded.current);
+    seeded.current = true;
+  }, [load]);
 
   const winnerContender = race?.contenders.find((c) => samePath(c.worktreePath, winner));
   const winnerStatus = winner && statuses ? statuses[pathKey(winner)] : undefined;
@@ -180,12 +189,14 @@ export function RaceDecideDialog() {
   };
 
   const confirmAbandon = async () => {
-    const stats = await snapshot();
-    const plan = planDecision(race.id, '', { kind: 'pull-request' }, loserPlans, stats);
-    if (!plan.ok) return;
+    if (running.current) return;
+    running.current = true;
     setBusy(true);
     setError('');
     try {
+      const stats = await snapshot();
+      const plan = planDecision(race.id, '', { kind: 'pull-request' }, loserPlans, stats);
+      if (!plan.ok) return;
       // A live agent holds its folder open on Windows: close sessions first.
       for (const c of race.contenders) await closeTerminals(terminalsIn(c.worktreePath));
       const results = await abandonRace(race.id, plan.request.losers, stats);
@@ -198,21 +209,23 @@ export function RaceDecideDialog() {
     } catch (err) {
       setError(String(err));
     } finally {
+      running.current = false;
       setBusy(false);
     }
   };
 
   const confirmDecide = async () => {
-    if (!winnerContender) return;
-    const stats = await snapshot();
-    const winnerAction: WinnerAction = action === 'merge'
-      ? { kind: 'merge', mode: mergeMode, message }
-      : { kind: 'pull-request' };
-    const plan = planDecision(race.id, winnerContender.worktreePath, winnerAction, loserPlans, stats);
-    if (!plan.ok) return;
+    if (!winnerContender || running.current) return;
+    running.current = true;
     setBusy(true);
     setError('');
     try {
+      const stats = await snapshot();
+      const winnerAction: WinnerAction = action === 'merge'
+        ? { kind: 'merge', mode: mergeMode, message }
+        : { kind: 'pull-request' };
+      const plan = planDecision(race.id, winnerContender.worktreePath, winnerAction, loserPlans, stats);
+      if (!plan.ok) return;
       // Losers' sessions close first (a live agent blocks worktree removal
       // on Windows). The winner stays open until its merge succeeds, so a
       // refused merge costs nothing.
@@ -222,13 +235,20 @@ export function RaceDecideDialog() {
       if (action === 'merge') {
         await closeTerminals(terminalsIn(winnerContender.worktreePath));
         if (result.winner && !result.winner.worktree_removed) {
-          // Same follow-up as FinishTaskDialog: the merge is in; remove the
-          // now-closed worktree and its (squashed, so "unmerged") branch.
-          await finishTask(winnerContender.worktreePath, { kind: 'discard', confirm_unmerged: true })
-            .catch((err) => {
-              toast.warning('Merged, but the worktree was kept', String(err));
-              reportInvokeFailure('finish_task', err);
-            });
+          // The merge is in; the live agent kept the folder. Remove it now
+          // that the session is closed, but only if the agent did not write
+          // anything after the merge: a forced discard would delete it.
+          const fresh = await getTaskStatus(winnerContender.worktreePath).catch(() => null);
+          if (fresh && fresh.uncommitted.length === 0) {
+            await finishTask(winnerContender.worktreePath, { kind: 'discard', confirm_unmerged: true })
+              .catch((err) => {
+                toast.warning('Merged, but the worktree was kept', String(err));
+                reportInvokeFailure('finish_task', err);
+              });
+          } else {
+            toast.warning('Merged, but the worktree was kept',
+              `${winnerContender.label} has changes made after the merge. Finish the task to review them.`);
+          }
         }
         toast.success('Winner merged', `${winnerContender.label} (${winnerContender.branch}) was merged into ${race.baseBranch}.`);
       } else {
@@ -247,6 +267,7 @@ export function RaceDecideDialog() {
       setError(String(err));
       void load(false);
     } finally {
+      running.current = false;
       setBusy(false);
     }
   };

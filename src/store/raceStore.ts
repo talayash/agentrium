@@ -20,10 +20,12 @@ interface RaceStoreState {
   loaded: boolean;
   /** Worktree keys the user marked done. */
   manualDone: Record<string, true>;
-  /** Terminal ids seen busy at least once. */
+  /** Terminal ids seen busy at least once after the startup grace period. */
   seenBusy: Record<string, true>;
-  /** Worktree key -> when the contender first settled (ms). */
-  settledAt: Record<string, number>;
+  /** Worktree keys whose terminal was seen in this app session. A contender
+   *  without one (app restarted, session not restored) is never recorded as
+   *  finished: "exited" there only means "not reopened yet". */
+  seenTerminal: Record<string, true>;
   /** Worktree key -> latest check run. */
   checks: Record<string, CheckRun>;
   /** Race id -> diffstat per contender (contender order). */
@@ -36,7 +38,9 @@ interface RaceStoreState {
   upsert: (race: Race) => void;
   setManualDone: (worktreePath: string, done: boolean) => void;
   markSeenBusy: (terminalId: string) => void;
-  markSettled: (worktreePath: string, at: number) => void;
+  markSeenTerminal: (worktreePath: string) => void;
+  /** Local finish time of a contender; null when it is working again. */
+  setFinishedAt: (raceId: string, worktreePath: string, finishedAt: string | null) => void;
   markReadyNotified: (raceId: string) => void;
   loadDiffs: (raceId: string) => Promise<ContenderDiff[] | null>;
   runChecks: (race: Race, timeoutMin: number) => Promise<void>;
@@ -50,7 +54,7 @@ export const useRaceStore = create<RaceStoreState>((set, get) => ({
   loaded: false,
   manualDone: {},
   seenBusy: {},
-  settledAt: {},
+  seenTerminal: {},
   checks: {},
   diffs: {},
   readyNotified: {},
@@ -95,9 +99,19 @@ export const useRaceStore = create<RaceStoreState>((set, get) => ({
 
   markSeenBusy: (terminalId) => set((s) => (s.seenBusy[terminalId] ? {} : { seenBusy: { ...s.seenBusy, [terminalId]: true } })),
 
-  markSettled: (worktreePath, at) => set((s) => {
+  markSeenTerminal: (worktreePath) => set((s) => {
     const key = pathKey(worktreePath);
-    return s.settledAt[key] ? {} : { settledAt: { ...s.settledAt, [key]: at } };
+    return s.seenTerminal[key] ? {} : { seenTerminal: { ...s.seenTerminal, [key]: true } };
+  }),
+
+  setFinishedAt: (raceId, worktreePath, finishedAt) => set((s) => {
+    const race = s.races[raceId];
+    if (!race) return {};
+    const key = pathKey(worktreePath);
+    return { races: { ...s.races, [raceId]: {
+      ...race,
+      contenders: race.contenders.map((c) => (pathKey(c.worktreePath) === key ? { ...c, finishedAt } : c)),
+    } } };
   }),
 
   markReadyNotified: (raceId) => set((s) => ({ readyNotified: { ...s.readyNotified, [raceId]: true } })),
@@ -182,14 +196,19 @@ export function contenderStateFor(
   });
 }
 
-/** Elapsed wall time: start to first settle (or now while running). */
-export function contenderElapsed(c: RaceContender, settledAt: Record<string, number>, now: number): number | null {
+/** Elapsed wall time: start to the latest settle (or now while working). */
+export function contenderElapsed(c: RaceContender, now: number): number | null {
   if (!c.startedAt) return null;
   const start = Date.parse(c.startedAt);
   if (Number.isNaN(start)) return null;
-  const end = c.finishedAt ? Date.parse(c.finishedAt) : settledAt[pathKey(c.worktreePath)] ?? now;
+  const end = c.finishedAt ? Date.parse(c.finishedAt) : now;
   return Math.max(0, end - start);
 }
+
+/** CLI startup (banner, trust and login prompts) renders output too, and a
+ *  busy-then-idle blip there must not count as having done the task. Busy
+ *  only counts once a terminal has been running this long. */
+export const BUSY_GRACE_MS = 10_000;
 
 /** Per-agent usage hook. Claude reports cost and tokens over OTLP; other
  *  agents have no usage source yet. TODO(race): read Codex/Cursor/Antigravity
@@ -212,7 +231,7 @@ export function statsSnapshot(race: Race, now = Date.now()): Record<string, Cont
     const usage = contenderUsage(c, t?.config.id);
     const d = diffs[i];
     out[c.worktreePath] = {
-      elapsedMs: contenderElapsed(c, s.settledAt, now),
+      elapsedMs: contenderElapsed(c, now),
       costUsd: usage.costUsd ?? c.stats?.costUsd ?? null,
       tokens: usage.tokens ?? c.stats?.tokens ?? null,
       filesChanged: d?.files.length ?? 0,
@@ -234,22 +253,37 @@ export function trackRaces(now = Date.now()): void {
   const { terminals, terminalStates } = useTerminalStore.getState();
   const attention = useAttentionStore.getState();
   for (const [id, state] of terminalStates) {
-    if (state === 'busy' && !rs.seenBusy[id]) rs.markSeenBusy(id);
+    if (state !== 'busy' || rs.seenBusy[id]) continue;
+    const created = Date.parse(terminals.get(id)?.config.created_at ?? '');
+    if (!Number.isNaN(created) && now - created >= BUSY_GRACE_MS) rs.markSeenBusy(id);
+  }
+  for (const race of Object.values(useRaceStore.getState().races)) {
+    if (race.status !== 'running') continue;
+    for (const c of race.contenders) {
+      if (terminalForContender(c, terminals)) rs.markSeenTerminal(c.worktreePath);
+    }
   }
   const fresh = useRaceStore.getState();
   for (const race of Object.values(fresh.races)) {
     if (race.status !== 'running') continue;
     const states = race.contenders.map((c) =>
       contenderStateFor(c, terminals, terminalStates, attention.items, fresh.manualDone, fresh.seenBusy));
+    const known = race.contenders.map((c) =>
+      !!fresh.seenTerminal[pathKey(c.worktreePath)] || !!fresh.manualDone[pathKey(c.worktreePath)]);
     race.contenders.forEach((c, i) => {
-      const settled = states[i] === 'done' || states[i] === 'exited' || states[i] === 'error';
-      if (settled && !fresh.settledAt[pathKey(c.worktreePath)] && !c.finishedAt) {
-        rs.markSettled(c.worktreePath, now);
-        updateRaceContender(race.id, c.worktreePath, { finished_at: new Date(now).toISOString() })
+      const settled = known[i] && (states[i] === 'done' || states[i] === 'exited' || states[i] === 'error');
+      if (settled && !c.finishedAt) {
+        const iso = new Date(now).toISOString();
+        rs.setFinishedAt(race.id, c.worktreePath, iso);
+        updateRaceContender(race.id, c.worktreePath, { finished_at: iso })
           .catch((err) => reportInvokeFailure('update_race_contender', err));
+      } else if (c.finishedAt && (states[i] === 'working' || states[i] === 'needs-input')) {
+        // Back at work (a follow-up prompt): the clock runs again and the
+        // next settle records a new finish time.
+        rs.setFinishedAt(race.id, c.worktreePath, null);
       }
     });
-    if (allSettled(states) && !fresh.readyNotified[race.id]) {
+    if (known.every(Boolean) && allSettled(states) && !fresh.readyNotified[race.id]) {
       rs.markReadyNotified(race.id);
       const anchor = race.contenders.map((c) => terminalForContender(c, terminals)).find(Boolean);
       if (anchor) {

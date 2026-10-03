@@ -29,7 +29,6 @@ export function useRaceRows(race: Race | undefined): RaceRow[] {
   const items = useAttentionStore((s) => s.items);
   const manualDone = useRaceStore((s) => s.manualDone);
   const seenBusy = useRaceStore((s) => s.seenBusy);
-  const settledAt = useRaceStore((s) => s.settledAt);
   const checks = useRaceStore((s) => s.checks);
   const diffs = useRaceStore((s) => (race ? s.diffs[race.id] : undefined));
   const drafts = useAppStore((s) => s.promptDrafts);
@@ -44,7 +43,7 @@ export function useRaceRows(race: Race | undefined): RaceRow[] {
       contender: c,
       terminal,
       state,
-      elapsedMs: contenderElapsed(c, settledAt, now),
+      elapsedMs: contenderElapsed(c, now),
       costUsd: usage.costUsd ?? c.stats?.costUsd ?? null,
       tokens: usage.tokens ?? c.stats?.tokens ?? null,
       diff: diffs?.[i],

@@ -31,7 +31,7 @@ beforeEach(() => {
     exists: true, uncommitted: [], ahead: i === 0 ? 2 : 1, behind: 0, changed_files: ['src/a.ts'],
     base_worktree: '/repo', base_dirty: false,
   }]));
-  useRaceStore.setState({ races: { r1: race }, checks: {}, diffs: {}, settledAt: {} });
+  useRaceStore.setState({ races: { r1: race }, checks: {}, diffs: {} });
   useTerminalStore.setState({ terminals: new Map([
     ['t0', { config: terminalConfig('t0', race.contenders[0]), xterm: null, isWorktree: false }],
     ['t1', { config: terminalConfig('t1', race.contenders[1]), xterm: null, isWorktree: false }],
@@ -121,9 +121,21 @@ it('abandon discards every contender after confirming running sessions', async (
   await waitFor(() => expect(invoke).toHaveBeenCalledWith('abandon_race', expect.objectContaining({ request: expect.objectContaining({
     race_id: 'r1',
     contenders: [
-      { worktree_path: '/wt/race-fix-claude', keep_branch: false, confirm_unmerged: false },
-      { worktree_path: '/wt/race-fix-codex', keep_branch: false, confirm_unmerged: false },
+      { worktree_path: '/wt/race-fix-claude', keep_branch: false, confirm_unmerged: false, confirm_uncommitted: false },
+      { worktree_path: '/wt/race-fix-codex', keep_branch: false, confirm_unmerged: false, confirm_uncommitted: false },
     ],
   }) })));
   expect(vi.mocked(invoke).mock.calls.filter(([c]) => c === 'close_terminal')).toHaveLength(2);
+});
+
+it('runs one decision even when the confirm button is clicked twice', async () => {
+  render(<RaceDecideDialog />);
+  await screen.findByText(/Squash-merge/);
+  fireEvent.click(screen.getByLabelText('Discard 1 unmerged commit(s)'));
+  fireEvent.click(screen.getByLabelText(/still running/));
+  const merge = screen.getByRole('button', { name: 'Merge winner' });
+  fireEvent.click(merge);
+  fireEvent.click(merge);
+  await waitFor(() => expect(useAppStore.getState().decideRaceId).toBeNull());
+  expect(vi.mocked(invoke).mock.calls.filter(([c]) => c === 'decide_race')).toHaveLength(1);
 });

@@ -215,20 +215,23 @@ export function RaceCompareView({ raceId }: { raceId: string }) {
     return <div className="h-full flex items-center justify-center text-[12px] text-text-secondary"><Loader2 size={14} className="animate-spin mr-2" /> Loading race...</div>;
   }
 
-  const saveCheckCommand = async () => {
+  const saveCheckCommand = async (): Promise<boolean> => {
     const cmd = checkCommand.trim();
     try {
       await setRaceCheckCommand(race.id, cmd || null);
       useAppStore.getState().setRaceCheckCommand(race.repoPath, cmd);
       useRaceStore.getState().upsert({ ...race, checkCommand: cmd || null });
+      return true;
     } catch (err) {
       toast.error('Could not save the check command', String(err));
       reportInvokeFailure('set_race_check_command', err);
+      return false;
     }
   };
 
   const startChecks = async () => {
-    if (checkCommand.trim() !== (race.checkCommand ?? '')) await saveCheckCommand();
+    // Never fall back to the previously stored command when the edit failed.
+    if (checkCommand.trim() !== (race.checkCommand ?? '') && !(await saveCheckCommand())) return;
     const latest = useRaceStore.getState().races[race.id] ?? race;
     if (!latest.checkCommand) {
       toast.error('No check command', 'Enter a command such as npm test first.');

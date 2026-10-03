@@ -139,7 +139,7 @@ describe('decide dialog choices', () => {
     expect(plan).toEqual({ ok: true, request: {
       race_id: 'r1', winner_worktree: '/wt/a',
       winner_action: { kind: 'merge', mode: 'squash', message: 'Fix bug' },
-      losers: [{ worktree_path: '/wt/b', keep_branch: false, confirm_unmerged: false }],
+      losers: [{ worktree_path: '/wt/b', keep_branch: false, confirm_unmerged: false, confirm_uncommitted: false }],
       stats: {},
     } });
   });
@@ -155,15 +155,15 @@ describe('decide dialog choices', () => {
 
     const confirmed = planDecision('r1', '/wt/a', { kind: 'pull-request' }, [{ ...ahead, confirmed: true }, { ...dirty, confirmed: true }], {});
     expect(confirmed.ok && confirmed.request.losers).toEqual([
-      { worktree_path: '/wt/b', keep_branch: false, confirm_unmerged: true },
-      { worktree_path: '/wt/c', keep_branch: false, confirm_unmerged: false },
+      { worktree_path: '/wt/b', keep_branch: false, confirm_unmerged: true, confirm_uncommitted: false },
+      { worktree_path: '/wt/c', keep_branch: false, confirm_unmerged: false, confirm_uncommitted: true },
     ]);
     expect(confirmed.ok && confirmed.request.winner_action).toEqual({ kind: 'pull-request' });
   });
 
   it('never asks when the loser keeps its branch', () => {
     const plan = planDecision('r1', '/wt/a', { kind: 'merge', mode: 'fast-forward', message: '' }, [loser({ ahead: 4, keepBranch: true })], {});
-    expect(plan.ok && plan.request.losers).toEqual([{ worktree_path: '/wt/b', keep_branch: true, confirm_unmerged: false }]);
+    expect(plan.ok && plan.request.losers).toEqual([{ worktree_path: '/wt/b', keep_branch: true, confirm_unmerged: false, confirm_uncommitted: false }]);
     expect(plan.ok && plan.request.winner_action).toEqual({ kind: 'merge', mode: 'fast-forward', message: null });
   });
 });
@@ -300,8 +300,8 @@ describe('launchRace', () => {
       .rejects.toBe('spawn failed');
     expect(invoke).toHaveBeenCalledWith('close_terminal', { id: 't1' });
     expect(invoke).toHaveBeenCalledWith('abandon_race', { request: { race_id: 'r1', stats: {}, contenders: [
-      { worktree_path: '/wt/race-fix-c0', keep_branch: false, confirm_unmerged: true },
-      { worktree_path: '/wt/race-fix-c1', keep_branch: false, confirm_unmerged: true },
+      { worktree_path: '/wt/race-fix-c0', keep_branch: false, confirm_unmerged: true, confirm_uncommitted: true },
+      { worktree_path: '/wt/race-fix-c1', keep_branch: false, confirm_unmerged: true, confirm_uncommitted: true },
     ] } });
   });
 
