@@ -166,7 +166,7 @@ pub fn list_pastes(cwd: &Path) -> Result<Vec<PasteEntry>, String> {
             },
         ));
     }
-    entries.sort_by(|a, b| b.0.cmp(&a.0));
+    entries.sort_by_key(|e| std::cmp::Reverse(e.0));
     Ok(entries.into_iter().map(|(_, e)| e).collect())
 }
 

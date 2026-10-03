@@ -178,7 +178,7 @@ pub fn list_sessions_for_cwd(cwd: &str) -> Vec<ClaudeSessionInfo> {
             ));
         }
     }
-    out.sort_by(|a, b| b.1.cmp(&a.1));
+    out.sort_by_key(|e| std::cmp::Reverse(e.1));
     out.into_iter().map(|(info, _)| info).collect()
 }
 

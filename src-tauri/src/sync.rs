@@ -84,7 +84,7 @@ pub fn status_for_failure(err: &sync_client::SyncError) -> SyncStatus {
     }
     match err {
         sync_client::SyncError::Network(_) => SyncStatus::Offline,
-        sync_client::SyncError::Server(502 | 503 | 504, _) => SyncStatus::Offline,
+        sync_client::SyncError::Server(502..=504, _) => SyncStatus::Offline,
         sync_client::SyncError::Refresh(msg) if msg.starts_with(crate::auth::NETWORK_ERROR_PREFIX) => SyncStatus::Offline,
         sync_client::SyncError::Refresh(msg) if is_keychain_asleep(msg) => SyncStatus::Offline,
         _ => SyncStatus::Error,

@@ -19,6 +19,7 @@ impl ErrorSource {
 /// rather than an internal bug. `wrap_cmd` detects this prefix and:
 ///   1. strips it before returning the error to the frontend (so UI is unchanged), and
 ///   2. skips telemetry reporting.
+///
 /// `\x01` (SOH) is a control character that does not appear in any error
 /// message we generate or any library `Display` impl we depend on. Do NOT
 /// build `user_err` strings from untrusted external input.
