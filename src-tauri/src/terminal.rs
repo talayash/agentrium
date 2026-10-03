@@ -108,24 +108,49 @@ pub(crate) fn render_initial_prompt(
         && text.contains(char::is_whitespace)
         && !text.contains('\0')
         && (!windows || is_cmd_safe(text));
+    // On Windows every rendered argument (the flag of a custom template
+    // included, which only passed the generic metacharacter rule) must pass
+    // `cmd /C` unchanged; anything else falls back to staging.
+    let all_safe = |args: &[String]| !windows || args.iter().all(|a| is_cmd_safe(a));
     if inline_ok {
-        return Ok((prompt_argv(cap, text), PromptDelivery::Argv));
+        let args = prompt_argv(cap, text);
+        if all_safe(&args) {
+            return Ok((args, PromptDelivery::Argv));
+        }
+        return Ok((Vec::new(), PromptDelivery::Staged));
     }
     let path = write_file(text)?;
     let instruction = format!("Read the task description in {path} and complete it.");
-    if windows && !is_cmd_safe(&instruction) {
+    let args = prompt_argv(cap, &instruction);
+    if !all_safe(&args) {
         return Ok((Vec::new(), PromptDelivery::Staged));
     }
-    Ok((prompt_argv(cap, &instruction), PromptDelivery::File { path }))
+    Ok((args, PromptDelivery::File { path }))
 }
 
-/// Write a prompt to `<temp>/agentrium-prompts/<uuid>.md` (outside every
+/// Per-user folder for prompt files: the app data dir (same per-instance
+/// naming as the database), never the shared system temp dir, where another
+/// local user could pre-create the folder or a symlink and read or swap a
+/// prompt before the agent reads it.
+fn prompt_dir() -> Result<std::path::PathBuf, String> {
+    let app_name = format!("ClaudeTerminal{}", crate::instance_suffix());
+    let base = directories::ProjectDirs::from("com", "claudeterminal", &app_name)
+        .ok_or("Failed to get project directories")?
+        .data_dir()
+        .to_path_buf();
+    Ok(base.join("race-prompts"))
+}
+
+/// Write a prompt to `<app data>/race-prompts/<uuid>.md` (outside every
 /// worktree, so it never shows up as a change). Files older than a week are
 /// cleaned up on the way.
 pub(crate) fn write_prompt_file(text: &str) -> Result<String, String> {
-    let dir = std::env::temp_dir().join("agentrium-prompts");
-    std::fs::create_dir_all(&dir).map_err(|e| format!("Cannot create {}: {e}", dir.display()))?;
-    if let Ok(entries) = std::fs::read_dir(&dir) {
+    write_prompt_file_in(&prompt_dir()?, text)
+}
+
+pub(crate) fn write_prompt_file_in(dir: &std::path::Path, text: &str) -> Result<String, String> {
+    std::fs::create_dir_all(dir).map_err(|e| format!("Cannot create {}: {e}", dir.display()))?;
+    if let Ok(entries) = std::fs::read_dir(dir) {
         let week = std::time::Duration::from_secs(7 * 24 * 3600);
         for entry in entries.flatten() {
             let old = entry
@@ -140,7 +165,19 @@ pub(crate) fn write_prompt_file(text: &str) -> Result<String, String> {
         }
     }
     let path = dir.join(format!("{}.md", Uuid::new_v4()));
-    std::fs::write(&path, text).map_err(|e| format!("Cannot write {}: {e}", path.display()))?;
+    // create_new: never follow or reuse an existing file or symlink.
+    let mut opts = std::fs::OpenOptions::new();
+    opts.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.mode(0o600);
+    }
+    let mut file = opts
+        .open(&path)
+        .map_err(|e| format!("Cannot write {}: {e}", path.display()))?;
+    file.write_all(text.as_bytes())
+        .map_err(|e| format!("Cannot write {}: {e}", path.display()))?;
     Ok(path.to_string_lossy().to_string())
 }
 
@@ -1769,10 +1806,32 @@ mod tests {
 
     #[test]
     fn prompt_file_round_trip() {
+        let dir = tempfile::tempdir().unwrap();
         let text = "Line \"one\"\nline 100% two";
-        let path = write_prompt_file(text).unwrap();
+        let path = write_prompt_file_in(dir.path(), text).unwrap();
         assert_eq!(std::fs::read_to_string(&path).unwrap(), text);
-        let _ = std::fs::remove_file(&path);
+        assert!(std::path::Path::new(&path).starts_with(dir.path()));
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+            assert_eq!(mode & 0o077, 0, "prompt file must be private");
+        }
+        // The real location is per user, not the shared temp dir.
+        assert!(!prompt_dir().unwrap().starts_with(std::env::temp_dir()));
+    }
+
+    #[test]
+    fn windows_unsafe_custom_flag_falls_back_to_staging() {
+        let (args, delivery) = render_initial_prompt(
+            &InitialPrompt::FlagEquals("--x=%PATH%".into()),
+            "Fix the bug",
+            true,
+            no_file,
+        )
+        .unwrap();
+        assert!(args.is_empty());
+        assert_eq!(delivery, PromptDelivery::Staged);
     }
 
     #[test]

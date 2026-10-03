@@ -219,9 +219,11 @@ fn validate_start(req: &StartRaceRequest) -> Result<(), String> {
         if let Some(m) = c.model.as_deref() {
             // `[`/`]` are allowed for Claude's `sonnet[1m]` style aliases; the
             // spawn path re-validates the final args anyway.
-            let bad = m
-                .chars()
-                .any(|ch| ch != '[' && ch != ']' && crate::terminal::TerminalManager::SHELL_METACHARACTERS.contains(&ch));
+            let bad = m.chars().any(|ch| {
+                ch != '['
+                    && ch != ']'
+                    && crate::terminal::TerminalManager::SHELL_METACHARACTERS.contains(&ch)
+            });
             if bad || m.len() > 120 {
                 return Err(user_err(format!("Invalid model name '{m}'.")));
             }
@@ -288,9 +290,17 @@ async fn resolve_base(repo: &Path, requested: Option<&str>) -> Result<(String, S
         }
     };
     validate_branch_name(&base)?;
-    let sha = git(repo, &["rev-parse", "--verify", "--quiet", &format!("{base}^{{commit}}")])
-        .await
-        .map_err(|_| user_err(format!("Base branch '{base}' does not exist.")))?;
+    let sha = git(
+        repo,
+        &[
+            "rev-parse",
+            "--verify",
+            "--quiet",
+            &format!("{base}^{{commit}}"),
+        ],
+    )
+    .await
+    .map_err(|_| user_err(format!("Base branch '{base}' does not exist.")))?;
     Ok((base, sha.trim().to_string()))
 }
 
@@ -501,18 +511,37 @@ pub async fn contender_diff_impl(base_sha: &str, worktree: &Path) -> Result<Cont
     let q = ["-c", "core.quotepath=off"];
     let numstat = git_user(
         worktree,
-        &[q[0], q[1], "diff", "--numstat", "--no-renames", "-z", base_sha],
+        &[
+            q[0],
+            q[1],
+            "diff",
+            "--numstat",
+            "--no-renames",
+            "-z",
+            base_sha,
+        ],
     )
     .await?;
     let name_status = git_user(
         worktree,
-        &[q[0], q[1], "diff", "--name-status", "--no-renames", "-z", base_sha],
+        &[
+            q[0],
+            q[1],
+            "diff",
+            "--name-status",
+            "--no-renames",
+            "-z",
+            base_sha,
+        ],
     )
     .await?;
     let mut status_of: HashMap<String, String> = HashMap::new();
     let mut parts = name_status.split('\0').filter(|s| !s.is_empty());
     while let (Some(st), Some(path)) = (parts.next(), parts.next()) {
-        status_of.insert(path.to_string(), st.chars().next().unwrap_or('M').to_string());
+        status_of.insert(
+            path.to_string(),
+            st.chars().next().unwrap_or('M').to_string(),
+        );
     }
     let mut files = Vec::new();
     for rec in numstat.split('\0').filter(|s| !s.is_empty()) {
@@ -529,7 +558,14 @@ pub async fn contender_diff_impl(base_sha: &str, worktree: &Path) -> Result<Cont
     }
     let untracked = git_user(
         worktree,
-        &[q[0], q[1], "ls-files", "--others", "--exclude-standard", "-z"],
+        &[
+            q[0],
+            q[1],
+            "ls-files",
+            "--others",
+            "--exclude-standard",
+            "-z",
+        ],
     )
     .await?;
     for path in untracked.split('\0').filter(|s| !s.is_empty()) {
@@ -574,7 +610,11 @@ fn decode_text(bytes: Vec<u8>, rel: &str) -> Result<String, String> {
 /// A file's text in the base commit (`source == "base"`) or in a contender's
 /// worktree (`source` = that worktree path). `None` when it does not exist
 /// there (added or deleted by the contender).
-pub async fn race_file_impl(race: &Race, source: &str, rel: &str) -> Result<Option<String>, String> {
+pub async fn race_file_impl(
+    race: &Race,
+    source: &str,
+    rel: &str,
+) -> Result<Option<String>, String> {
     let rel_path = validate_rel_path(rel)?;
     let git_rel = rel_path.to_string_lossy().replace('\\', "/");
     if source == "base" {
@@ -589,7 +629,9 @@ pub async fn race_file_impl(race: &Race, source: &str, rel: &str) -> Result<Opti
             .await
             .map_err(|e| crate::commands::spawn_err("git show", e))?;
         if !out.status.success() {
-            return Err(user_err(String::from_utf8_lossy(&out.stderr).trim().to_string()));
+            return Err(user_err(
+                String::from_utf8_lossy(&out.stderr).trim().to_string(),
+            ));
         }
         return decode_text(out.stdout, rel).map(Some);
     }
@@ -658,8 +700,16 @@ fn check_command_for(command: &str) -> tokio::process::Command {
     #[cfg(not(windows))]
     {
         const VALID_SHELLS: &[&str] = &[
-            "/bin/bash", "/bin/sh", "/bin/zsh", "/usr/bin/bash", "/usr/bin/sh", "/usr/bin/zsh",
-            "/usr/local/bin/bash", "/usr/local/bin/zsh", "/opt/homebrew/bin/bash", "/opt/homebrew/bin/zsh",
+            "/bin/bash",
+            "/bin/sh",
+            "/bin/zsh",
+            "/usr/bin/bash",
+            "/usr/bin/sh",
+            "/usr/bin/zsh",
+            "/usr/local/bin/bash",
+            "/usr/local/bin/zsh",
+            "/opt/homebrew/bin/bash",
+            "/opt/homebrew/bin/zsh",
         ];
         let shell = std::env::var("SHELL")
             .ok()
@@ -920,7 +970,9 @@ fn task_for<'a>(tasks: &'a [TaskInfo], worktree: &str) -> Option<&'a TaskInfo> {
 fn check_choices(race: &Race, choices: &[LoserChoice], except: Option<&str>) -> Result<(), String> {
     for ch in choices {
         if race.contender(&ch.worktree_path).is_none() {
-            return Err(user_err("A worktree in the request is not part of this race."));
+            return Err(user_err(
+                "A worktree in the request is not part of this race.",
+            ));
         }
         if except.is_some_and(|w| same_path(w, &ch.worktree_path)) {
             return Err(user_err("The winner cannot also be discarded."));
@@ -1056,7 +1108,10 @@ async fn race_tasks(state: &State<'_, AppState>, race_id: &str) -> Result<Vec<Ta
 }
 
 #[command]
-pub async fn start_race(state: State<'_, AppState>, request: StartRaceRequest) -> Result<Race, String> {
+pub async fn start_race(
+    state: State<'_, AppState>,
+    request: StartRaceRequest,
+) -> Result<Race, String> {
     wrap_cmd("start_race", async move {
         tasks::ensure_repo_trusted(&state, &request.repo_path).await?;
         let (race, infos) = start_race_impl(&request).await?;
@@ -1077,7 +1132,10 @@ pub async fn get_race(state: State<'_, AppState>, race_id: String) -> Result<Rac
 
 #[command]
 pub async fn list_races(state: State<'_, AppState>) -> Result<Vec<Race>, String> {
-    wrap_cmd("list_races", async move { db_op(&state.db, |db| db.list_races(200)).await }).await
+    wrap_cmd("list_races", async move {
+        db_op(&state.db, |db| db.list_races(200)).await
+    })
+    .await
 }
 
 /// Patch a contender's runtime fields (terminal id, timing). `None` leaves a
@@ -1105,7 +1163,10 @@ pub async fn update_race_contender(
             .contender(&worktree_path)
             .ok_or_else(|| user_err("That worktree is not part of this race."))?
             .idx;
-        db_op(&state.db, move |db| db.update_race_contender(&race_id, idx, &patch)).await
+        db_op(&state.db, move |db| {
+            db.update_race_contender(&race_id, idx, &patch)
+        })
+        .await
     })
     .await
 }
@@ -1119,7 +1180,9 @@ pub async fn set_race_status(
 ) -> Result<(), String> {
     wrap_cmd("set_race_status", async move {
         if !status.is_open() {
-            return Err(user_err("Use Pick winner or Abandon race to finish a race."));
+            return Err(user_err(
+                "Use Pick winner or Abandon race to finish a race.",
+            ));
         }
         let race = load_race(&state, &race_id).await?;
         if !race.status.is_open() {
@@ -1137,12 +1200,17 @@ pub async fn set_race_check_command(
     command: Option<String>,
 ) -> Result<(), String> {
     wrap_cmd("set_race_check_command", async move {
-        let command = command.map(|c| c.trim().to_string()).filter(|c| !c.is_empty());
+        let command = command
+            .map(|c| c.trim().to_string())
+            .filter(|c| !c.is_empty());
         if let Some(c) = command.as_deref() {
             validate_check_command(c)?;
         }
         load_race(&state, &race_id).await?;
-        db_op(&state.db, move |db| db.set_race_check_command(&race_id, command.as_deref())).await
+        db_op(&state.db, move |db| {
+            db.set_race_check_command(&race_id, command.as_deref())
+        })
+        .await
     })
     .await
 }
@@ -1313,7 +1381,10 @@ pub async fn abandon_race(
                 .contenders
                 .iter()
                 .find(|c| same_path(&c.worktree_path, &f.worktree_path));
-            outcomes.push((f.worktree_path.clone(), loser_outcome(f, choice).to_string()));
+            outcomes.push((
+                f.worktree_path.clone(),
+                loser_outcome(f, choice).to_string(),
+            ));
         }
         let race_for_db = race.clone();
         let stats = request.stats.clone();
@@ -1337,7 +1408,11 @@ mod tests {
     use std::process::Command;
 
     fn sh(dir: &Path, args: &[&str]) {
-        let out = Command::new("git").args(args).current_dir(dir).output().unwrap();
+        let out = Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .output()
+            .unwrap();
         assert!(
             out.status.success(),
             "git {:?}: {}",
@@ -1347,7 +1422,11 @@ mod tests {
     }
 
     fn sh_out(dir: &Path, args: &[&str]) -> String {
-        let out = Command::new("git").args(args).current_dir(dir).output().unwrap();
+        let out = Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .output()
+            .unwrap();
         String::from_utf8_lossy(&out.stdout).trim().to_string()
     }
 
@@ -1403,11 +1482,23 @@ mod tests {
     #[test]
     fn contender_slug_uses_model_then_label() {
         let c = contender(AgentKind::Codex, Some("gpt-5.6-sol"), "Codex");
-        assert_eq!(contender_slug("Fix login bug", &c), "race-fix-login-bug-gpt-5-6-sol");
+        assert_eq!(
+            contender_slug("Fix login bug", &c),
+            "race-fix-login-bug-gpt-5-6-sol"
+        );
         let c = contender(AgentKind::Claude, None, "Claude Code");
-        assert_eq!(contender_slug("Fix login bug", &c), "race-fix-login-bug-claude-code");
-        let long = contender_slug(&"word ".repeat(20), &contender(AgentKind::Claude, Some(&"m".repeat(40)), "x"));
-        assert!(long.len() <= 5 + TITLE_SLUG_LEN + 1 + PART_SLUG_LEN, "{long}");
+        assert_eq!(
+            contender_slug("Fix login bug", &c),
+            "race-fix-login-bug-claude-code"
+        );
+        let long = contender_slug(
+            &"word ".repeat(20),
+            &contender(AgentKind::Claude, Some(&"m".repeat(40)), "x"),
+        );
+        assert!(
+            long.len() <= 5 + TITLE_SLUG_LEN + 1 + PART_SLUG_LEN,
+            "{long}"
+        );
         assert!(validate_branch_name(&format!("{BRANCH_PREFIX}{long}")).is_ok());
     }
 
@@ -1417,7 +1508,9 @@ mod tests {
         let mut r = req(tmp.path(), "t", claude_vs_codex());
         r.contenders.truncate(1);
         assert!(validate_start(&r).unwrap_err().contains("2 to 4"));
-        r.contenders = (0..5).map(|_| contender(AgentKind::Claude, None, "c")).collect();
+        r.contenders = (0..5)
+            .map(|_| contender(AgentKind::Claude, None, "c"))
+            .collect();
         assert!(validate_start(&r).is_err());
         r = req(tmp.path(), "t", claude_vs_codex());
         r.prompt = "  ".into();
@@ -1435,11 +1528,15 @@ mod tests {
     async fn start_race_creates_n_worktrees_from_one_base_sha() {
         let (tmp, repo) = temp_repo();
         let base = sh_out(&repo, &["rev-parse", "HEAD"]);
-        let mut r = req(&repo, "Fix bug", vec![
-            contender(AgentKind::Claude, Some("opus"), "Claude · opus"),
-            contender(AgentKind::Claude, Some("sonnet"), "Claude · sonnet"),
-            contender(AgentKind::Codex, None, "Codex"),
-        ]);
+        let mut r = req(
+            &repo,
+            "Fix bug",
+            vec![
+                contender(AgentKind::Claude, Some("opus"), "Claude · opus"),
+                contender(AgentKind::Claude, Some("sonnet"), "Claude · sonnet"),
+                contender(AgentKind::Codex, None, "Codex"),
+            ],
+        );
         r.base_branch = Some("main".into());
         let (race, infos) = start_race_impl(&r).await.unwrap();
         assert_eq!(race.base_sha, base);
@@ -1447,11 +1544,14 @@ mod tests {
         assert_eq!(race.contenders.len(), 3);
         assert_eq!(infos.len(), 3);
         let branches: Vec<&str> = race.contenders.iter().map(|c| c.branch.as_str()).collect();
-        assert_eq!(branches, vec![
-            "agentrium/race-fix-bug-opus",
-            "agentrium/race-fix-bug-sonnet",
-            "agentrium/race-fix-bug-codex",
-        ]);
+        assert_eq!(
+            branches,
+            vec![
+                "agentrium/race-fix-bug-opus",
+                "agentrium/race-fix-bug-sonnet",
+                "agentrium/race-fix-bug-codex",
+            ]
+        );
         for (c, t) in race.contenders.iter().zip(&infos) {
             let wt = Path::new(&c.worktree_path);
             assert!(wt.starts_with(tmp.path().join(tasks::MANAGED_DIR).join("repo")));
@@ -1468,10 +1568,14 @@ mod tests {
     async fn same_contender_twice_and_existing_branches_get_suffixes() {
         let (_tmp, repo) = temp_repo();
         sh(&repo, &["branch", "agentrium/race-fix-claude"]);
-        let r = req(&repo, "Fix", vec![
-            contender(AgentKind::Claude, None, "Claude"),
-            contender(AgentKind::Claude, None, "Claude"),
-        ]);
+        let r = req(
+            &repo,
+            "Fix",
+            vec![
+                contender(AgentKind::Claude, None, "Claude"),
+                contender(AgentKind::Claude, None, "Claude"),
+            ],
+        );
         let (race, _) = start_race_impl(&r).await.unwrap();
         assert_eq!(race.contenders[0].branch, "agentrium/race-fix-claude-2");
         assert_eq!(race.contenders[1].branch, "agentrium/race-fix-claude-3");
@@ -1493,7 +1597,9 @@ mod tests {
         let wts = sh_out(&repo, &["worktree", "list", "--porcelain"]);
         assert_eq!(wts.matches("worktree ").count(), 1, "{wts}");
         let managed = repo.parent().unwrap().join(tasks::MANAGED_DIR).join("repo");
-        let left: Vec<_> = std::fs::read_dir(&managed).map(|d| d.flatten().collect()).unwrap_or_default();
+        let left: Vec<_> = std::fs::read_dir(&managed)
+            .map(|d| d.flatten().collect())
+            .unwrap_or_default();
         assert!(left.is_empty(), "{left:?}");
     }
 
@@ -1501,23 +1607,35 @@ mod tests {
     async fn refuses_mid_merge_and_detached_head() {
         let (_tmp, repo) = temp_repo();
         let git_dir = repo.join(".git");
-        std::fs::write(git_dir.join("MERGE_HEAD"), sh_out(&repo, &["rev-parse", "HEAD"])).unwrap();
-        let e = start_race_impl(&req(&repo, "x", claude_vs_codex())).await.unwrap_err();
+        std::fs::write(
+            git_dir.join("MERGE_HEAD"),
+            sh_out(&repo, &["rev-parse", "HEAD"]),
+        )
+        .unwrap();
+        let e = start_race_impl(&req(&repo, "x", claude_vs_codex()))
+            .await
+            .unwrap_err();
         assert!(e.contains("middle of a merge"), "{e}");
         std::fs::remove_file(git_dir.join("MERGE_HEAD")).unwrap();
         std::fs::create_dir_all(git_dir.join("rebase-merge")).unwrap();
-        let e = start_race_impl(&req(&repo, "x", claude_vs_codex())).await.unwrap_err();
+        let e = start_race_impl(&req(&repo, "x", claude_vs_codex()))
+            .await
+            .unwrap_err();
         assert!(e.contains("middle of a rebase"), "{e}");
         std::fs::remove_dir_all(git_dir.join("rebase-merge")).unwrap();
         sh(&repo, &["checkout", "-q", "--detach"]);
-        let e = start_race_impl(&req(&repo, "x", claude_vs_codex())).await.unwrap_err();
+        let e = start_race_impl(&req(&repo, "x", claude_vs_codex()))
+            .await
+            .unwrap_err();
         assert!(e.contains("detached HEAD"), "{e}");
     }
 
     #[tokio::test]
     async fn diffstat_counts_commits_edits_and_untracked_files() {
         let (_tmp, repo) = temp_repo();
-        let (race, _) = start_race_impl(&req(&repo, "Diff", claude_vs_codex())).await.unwrap();
+        let (race, _) = start_race_impl(&req(&repo, "Diff", claude_vs_codex()))
+            .await
+            .unwrap();
         let wt = PathBuf::from(&race.contenders[0].worktree_path);
         commit_in(&wt, "a.txt", "1\n2\n3\n", "add a");
         std::fs::write(wt.join("README.md"), "hello\nworld\n").unwrap();
@@ -1531,41 +1649,69 @@ mod tests {
             .iter()
             .map(|f| (f.path.clone(), f.status.clone(), f.added, f.removed))
             .collect();
-        assert_eq!(summary, vec![
-            ("README.md".into(), "M".into(), Some(1), Some(0)),
-            ("a.txt".into(), "A".into(), Some(3), Some(0)),
-            ("new.txt".into(), "??".into(), Some(2), Some(0)),
-        ]);
+        assert_eq!(
+            summary,
+            vec![
+                ("README.md".into(), "M".into(), Some(1), Some(0)),
+                ("a.txt".into(), "A".into(), Some(3), Some(0)),
+                ("new.txt".into(), "??".into(), Some(2), Some(0)),
+            ]
+        );
         assert_eq!((d.added, d.removed), (6, 0));
 
         let other = PathBuf::from(&race.contenders[1].worktree_path);
         let d2 = contender_diff_impl(&race.base_sha, &other).await.unwrap();
         assert!(d2.files.is_empty() && d2.commits_ahead == 0);
-        let gone = contender_diff_impl(&race.base_sha, Path::new("/no/such/dir")).await.unwrap();
+        let gone = contender_diff_impl(&race.base_sha, Path::new("/no/such/dir"))
+            .await
+            .unwrap();
         assert!(!gone.exists);
     }
 
     #[tokio::test]
     async fn race_file_reads_base_and_contender_versions() {
         let (_tmp, repo) = temp_repo();
-        let (race, _) = start_race_impl(&req(&repo, "Files", claude_vs_codex())).await.unwrap();
+        let (race, _) = start_race_impl(&req(&repo, "Files", claude_vs_codex()))
+            .await
+            .unwrap();
         let wt = race.contenders[0].worktree_path.clone();
         std::fs::write(Path::new(&wt).join("README.md"), "changed\n").unwrap();
-        assert_eq!(race_file_impl(&race, "base", "README.md").await.unwrap().as_deref(), Some("hello\n"));
-        assert_eq!(race_file_impl(&race, &wt, "README.md").await.unwrap().as_deref(), Some("changed\n"));
-        assert_eq!(race_file_impl(&race, "base", "missing.txt").await.unwrap(), None);
-        assert!(race_file_impl(&race, &wt, "../repo/README.md").await.is_err());
+        assert_eq!(
+            race_file_impl(&race, "base", "README.md")
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("hello\n")
+        );
+        assert_eq!(
+            race_file_impl(&race, &wt, "README.md")
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("changed\n")
+        );
+        assert_eq!(
+            race_file_impl(&race, "base", "missing.txt").await.unwrap(),
+            None
+        );
+        assert!(race_file_impl(&race, &wt, "../repo/README.md")
+            .await
+            .is_err());
         assert!(race_file_impl(&race, "/etc", "passwd").await.is_err());
     }
 
     #[tokio::test]
     async fn decide_race_merges_winner_and_discards_losers() {
         let (_tmp, repo) = temp_repo();
-        let (race, tasks) = start_race_impl(&req(&repo, "Pick one", vec![
-            contender(AgentKind::Claude, None, "Claude"),
-            contender(AgentKind::Codex, None, "Codex"),
-            contender(AgentKind::Cursor, None, "Cursor"),
-        ]))
+        let (race, tasks) = start_race_impl(&req(
+            &repo,
+            "Pick one",
+            vec![
+                contender(AgentKind::Claude, None, "Claude"),
+                contender(AgentKind::Codex, None, "Codex"),
+                contender(AgentKind::Cursor, None, "Cursor"),
+            ],
+        ))
         .await
         .unwrap();
         let [a, b, c] = [0, 1, 2].map(|i| race.contenders[i].clone());
@@ -1577,33 +1723,63 @@ mod tests {
         let mut request = DecideRaceRequest {
             race_id: race.id.clone(),
             winner_worktree: b.worktree_path.clone(),
-            winner_action: WinnerAction::Merge { mode: MergeMode::Squash, message: Some("Pick one".into()) },
-            losers: vec![LoserChoice { worktree_path: a.worktree_path.clone(), keep_branch: false, confirm_unmerged: true }],
+            winner_action: WinnerAction::Merge {
+                mode: MergeMode::Squash,
+                message: Some("Pick one".into()),
+            },
+            losers: vec![LoserChoice {
+                worktree_path: a.worktree_path.clone(),
+                keep_branch: false,
+                confirm_unmerged: true,
+            }],
             stats: HashMap::new(),
         };
         let e = decide_race_impl(&race, &tasks, &request).await.unwrap_err();
         assert!(e.contains("Cursor"), "{e}");
         // The winner cannot also be a loser.
-        request.losers.push(LoserChoice { worktree_path: b.worktree_path.clone(), keep_branch: false, confirm_unmerged: true });
+        request.losers.push(LoserChoice {
+            worktree_path: b.worktree_path.clone(),
+            keep_branch: false,
+            confirm_unmerged: true,
+        });
         assert!(decide_race_impl(&race, &tasks, &request).await.is_err());
         request.losers.pop();
 
         // Unconfirmed discard of unmerged work is refused per loser, while
         // keep_branch keeps the branch.
-        request.losers.push(LoserChoice { worktree_path: c.worktree_path.clone(), keep_branch: true, confirm_unmerged: false });
+        request.losers.push(LoserChoice {
+            worktree_path: c.worktree_path.clone(),
+            keep_branch: true,
+            confirm_unmerged: false,
+        });
         let result = decide_race_impl(&race, &tasks, &request).await.unwrap();
         let w = result.winner.unwrap();
         assert!(w.merged && w.worktree_removed && w.branch_deleted, "{w:?}");
         assert!(repo.join("b.txt").is_file());
         assert!(!repo.join("a.txt").exists() && !repo.join("c.txt").exists());
-        assert_eq!(sh_out(&repo, &["log", "--format=%s", "-n", "1"]), "Pick one");
-        assert!(result.losers.iter().all(|l| l.error.is_none()), "{:?}", result.losers);
+        assert_eq!(
+            sh_out(&repo, &["log", "--format=%s", "-n", "1"]),
+            "Pick one"
+        );
+        assert!(
+            result.losers.iter().all(|l| l.error.is_none()),
+            "{:?}",
+            result.losers
+        );
         assert!(!Path::new(&a.worktree_path).exists() && !branch_exists(&repo, &a.branch).await);
         assert!(!Path::new(&c.worktree_path).exists() && branch_exists(&repo, &c.branch).await);
         let outcomes: Vec<&str> = result
             .losers
             .iter()
-            .map(|f| loser_outcome(f, request.losers.iter().find(|l| same_path(&l.worktree_path, &f.worktree_path))))
+            .map(|f| {
+                loser_outcome(
+                    f,
+                    request
+                        .losers
+                        .iter()
+                        .find(|l| same_path(&l.worktree_path, &f.worktree_path)),
+                )
+            })
             .collect();
         assert_eq!(outcomes, vec!["discarded", "kept"]);
     }
@@ -1611,15 +1787,24 @@ mod tests {
     #[tokio::test]
     async fn decide_race_refused_merge_leaves_losers_alone() {
         let (_tmp, repo) = temp_repo();
-        let (race, tasks) = start_race_impl(&req(&repo, "Dirty", claude_vs_codex())).await.unwrap();
+        let (race, tasks) = start_race_impl(&req(&repo, "Dirty", claude_vs_codex()))
+            .await
+            .unwrap();
         let [a, b] = [0, 1].map(|i| race.contenders[i].clone());
         commit_in(Path::new(&a.worktree_path), "a.txt", "a\n", "a");
         std::fs::write(repo.join("README.md"), "dirty base\n").unwrap();
         let request = DecideRaceRequest {
             race_id: race.id.clone(),
             winner_worktree: a.worktree_path.clone(),
-            winner_action: WinnerAction::Merge { mode: MergeMode::Squash, message: None },
-            losers: vec![LoserChoice { worktree_path: b.worktree_path.clone(), keep_branch: false, confirm_unmerged: true }],
+            winner_action: WinnerAction::Merge {
+                mode: MergeMode::Squash,
+                message: None,
+            },
+            losers: vec![LoserChoice {
+                worktree_path: b.worktree_path.clone(),
+                keep_branch: false,
+                confirm_unmerged: true,
+            }],
             stats: HashMap::new(),
         };
         let e = decide_race_impl(&race, &tasks, &request).await.unwrap_err();
@@ -1631,27 +1816,50 @@ mod tests {
         commit_in(Path::new(&b.worktree_path), "b.txt", "b\n", "b");
         let request = DecideRaceRequest {
             winner_action: WinnerAction::PullRequest,
-            losers: vec![LoserChoice { worktree_path: b.worktree_path.clone(), keep_branch: false, confirm_unmerged: false }],
+            losers: vec![LoserChoice {
+                worktree_path: b.worktree_path.clone(),
+                keep_branch: false,
+                confirm_unmerged: false,
+            }],
             ..request
         };
         let result = decide_race_impl(&race, &tasks, &request).await.unwrap();
         assert!(result.winner.is_none());
-        assert!(Path::new(&a.worktree_path).exists(), "PR winner keeps its worktree");
-        assert!(result.losers[0].error.as_deref().unwrap_or("").contains("Confirm"));
-        assert_eq!(loser_outcome(&result.losers[0], Some(&request.losers[0])), "left");
+        assert!(
+            Path::new(&a.worktree_path).exists(),
+            "PR winner keeps its worktree"
+        );
+        assert!(result.losers[0]
+            .error
+            .as_deref()
+            .unwrap_or("")
+            .contains("Confirm"));
+        assert_eq!(
+            loser_outcome(&result.losers[0], Some(&request.losers[0])),
+            "left"
+        );
     }
 
     #[tokio::test]
     async fn abandon_discards_everything() {
         let (_tmp, repo) = temp_repo();
-        let (race, tasks) = start_race_impl(&req(&repo, "Abandon", claude_vs_codex())).await.unwrap();
+        let (race, tasks) = start_race_impl(&req(&repo, "Abandon", claude_vs_codex()))
+            .await
+            .unwrap();
         let choices: Vec<LoserChoice> = race
             .contenders
             .iter()
-            .map(|c| LoserChoice { worktree_path: c.worktree_path.clone(), keep_branch: false, confirm_unmerged: true })
+            .map(|c| LoserChoice {
+                worktree_path: c.worktree_path.clone(),
+                keep_branch: false,
+                confirm_unmerged: true,
+            })
             .collect();
         let results = abandon_race_impl(&race, &tasks, &choices).await.unwrap();
-        assert!(results.iter().all(|r| r.result.as_ref().is_some_and(|x| x.worktree_removed && x.branch_deleted)));
+        assert!(results.iter().all(|r| r
+            .result
+            .as_ref()
+            .is_some_and(|x| x.worktree_removed && x.branch_deleted)));
         for c in &race.contenders {
             assert!(!branch_exists(&repo, &c.branch).await);
         }
@@ -1686,12 +1894,21 @@ mod tests {
     #[tokio::test]
     async fn check_non_zero_exit_is_data() {
         let dir = tempfile::tempdir().unwrap();
-        let r = run_check(FAIL_CMD, dir.path(), Duration::from_secs(30), Arc::new(Notify::new()))
-            .await
-            .unwrap();
+        let r = run_check(
+            FAIL_CMD,
+            dir.path(),
+            Duration::from_secs(30),
+            Arc::new(Notify::new()),
+        )
+        .await
+        .unwrap();
         assert_eq!(r.exit_code, Some(3));
         assert!(!r.timed_out && !r.cancelled);
-        assert!(r.output_tail.contains("checking") && r.output_tail.contains("boom"), "{}", r.output_tail);
+        assert!(
+            r.output_tail.contains("checking") && r.output_tail.contains("boom"),
+            "{}",
+            r.output_tail
+        );
     }
 
     #[tokio::test]
@@ -1701,22 +1918,36 @@ mod tests {
         let cmd = "for /L %i in (1,1,3000) do @echo line %i";
         #[cfg(not(windows))]
         let cmd = "i=1; while [ $i -le 3000 ]; do echo line $i; i=$((i+1)); done";
-        let r = run_check(cmd, dir.path(), Duration::from_secs(60), Arc::new(Notify::new()))
-            .await
-            .unwrap();
+        let r = run_check(
+            cmd,
+            dir.path(),
+            Duration::from_secs(60),
+            Arc::new(Notify::new()),
+        )
+        .await
+        .unwrap();
         assert_eq!(r.exit_code, Some(0));
         assert!(r.truncated);
         assert!(r.output_tail.len() <= CHECK_TAIL_BYTES);
-        assert!(r.output_tail.trim_end().ends_with("line 3000"), "{}", &r.output_tail[r.output_tail.len().saturating_sub(40)..]);
+        assert!(
+            r.output_tail.trim_end().ends_with("line 3000"),
+            "{}",
+            &r.output_tail[r.output_tail.len().saturating_sub(40)..]
+        );
     }
 
     #[tokio::test]
     async fn check_timeout_kills_the_process_tree() {
         let dir = tempfile::tempdir().unwrap();
         let marker = dir.path().join("marker.txt");
-        let r = run_check(&slow_tree_cmd(&marker), dir.path(), Duration::from_secs(1), Arc::new(Notify::new()))
-            .await
-            .unwrap();
+        let r = run_check(
+            &slow_tree_cmd(&marker),
+            dir.path(),
+            Duration::from_secs(1),
+            Arc::new(Notify::new()),
+        )
+        .await
+        .unwrap();
         assert!(r.timed_out && !r.cancelled);
         assert_eq!(r.exit_code, None);
         assert!(r.duration_ms < 10_000, "{}", r.duration_ms);
@@ -1734,9 +1965,14 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(500)).await;
             c2.notify_one();
         });
-        let r = run_check(&slow_tree_cmd(&marker), dir.path(), Duration::from_secs(60), cancel)
-            .await
-            .unwrap();
+        let r = run_check(
+            &slow_tree_cmd(&marker),
+            dir.path(),
+            Duration::from_secs(60),
+            cancel,
+        )
+        .await
+        .unwrap();
         assert!(r.cancelled && !r.timed_out);
         assert!(r.duration_ms < 10_000, "{}", r.duration_ms);
         tokio::time::sleep(Duration::from_secs(5)).await;

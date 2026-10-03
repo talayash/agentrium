@@ -856,7 +856,10 @@ pub async fn finish_task_impl(
 // Tauri commands
 // ---------------------------------------------------------------------------
 
-pub(crate) async fn ensure_repo_trusted(state: &State<'_, AppState>, repo_path: &str) -> Result<(), String> {
+pub(crate) async fn ensure_repo_trusted(
+    state: &State<'_, AppState>,
+    repo_path: &str,
+) -> Result<(), String> {
     if crate::commands::validate_path_is_trusted(state, repo_path)
         .await
         .is_ok()
