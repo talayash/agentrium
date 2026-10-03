@@ -26,6 +26,7 @@ mod sync_client;
 mod sync;
 mod sync_privacy;
 mod tasks;
+mod races;
 mod pull_requests;
 
 use tauri::Manager;
@@ -177,7 +178,7 @@ fn main() {
                         if let Ok(core) = webview.controller().CoreWebView2() {
                             if let Ok(settings) = core.Settings() {
                                 let _ = settings
-                                    .SetAreDefaultContextMenusEnabled(false.into());
+                                    .SetAreDefaultContextMenusEnabled(false);
                             }
                         }
                     });
@@ -193,7 +194,7 @@ fn main() {
                 let handle = app.handle().clone();
                 app.deep_link().on_open_url(move |event| {
                     for url in event.urls() {
-                        crate::auth::handle_deep_link(&handle, &url.to_string());
+                        crate::auth::handle_deep_link(&handle, url.as_ref());
                     }
                 });
             }
@@ -281,6 +282,19 @@ fn main() {
             tasks::finish_task,
             tasks::list_task_worktrees,
             tasks::prune_task_worktrees,
+            races::start_race,
+            races::get_race,
+            races::list_races,
+            races::update_race_contender,
+            races::set_race_status,
+            races::set_race_check_command,
+            races::get_race_diffstat,
+            races::get_race_file,
+            races::run_race_check,
+            races::cancel_race_check,
+            races::decide_race,
+            races::abandon_race,
+            races::delete_race,
             pull_requests::get_remote_info,
             pull_requests::get_default_branch,
             pull_requests::get_pr_context,

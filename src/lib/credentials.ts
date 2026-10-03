@@ -30,6 +30,9 @@ export interface CustomAgent {
   bindings: CredentialBinding[];
   install_url: string | null;
   install_hint: string | null;
+  /** How the CLI takes a first prompt at spawn: `{prompt}`, `--flag {prompt}`
+   *  or `--flag={prompt}`. Device-local (never synced). */
+  initial_prompt_template?: string | null;
   created_at: string;
   updated_at: string;
 }

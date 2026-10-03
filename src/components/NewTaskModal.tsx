@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
-import { FolderOpen, GitBranch } from 'lucide-react';
+import { Flag, FolderOpen, GitBranch } from 'lucide-react';
 import { allAgentSpecs, type AgentKind } from '../lib/agents';
 import { reportInvokeFailure } from '../lib/errorReporter';
 import { knownRepoPaths, launchTask, repoPathForTerminal, type TaskProfile } from '../lib/tasks';
@@ -134,15 +134,29 @@ export function NewTaskModal() {
 
   const canSubmit = !busy && repoPath.trim() !== '' && title.trim() !== '' && (source === 'folder' || !!profile);
 
+  // Race toggle: hand the repo and title over to the New Race modal.
+  const switchToRace = () => {
+    const app = useAppStore.getState();
+    close();
+    app.openNewRaceModal(repoPath || null, title.trim() || null);
+  };
+
   return (
     <Modal title="New Task" showHeader onClose={() => { if (!busy) close(); }} panelClassName="w-full max-w-lg">
       <form
         className="p-4 flex flex-col gap-3.5"
         onSubmit={(e) => { e.preventDefault(); if (canSubmit) void submit(); }}
       >
-        <p className="text-[12px] text-text-secondary">
-          The agent works on a new branch in its own git worktree, so parallel tasks never touch each other's files.
-        </p>
+        <div className="flex items-start gap-3">
+          <p className="text-[12px] text-text-secondary flex-1">
+            The agent works on a new branch in its own git worktree, so parallel tasks never touch each other's files.
+          </p>
+          <button type="button" role="switch" aria-checked={false} onClick={switchToRace} disabled={busy}
+            title="Race: send this task to 2-4 agents or models and keep the best result"
+            className="flex items-center gap-1.5 px-2 h-[24px] rounded-md ring-1 ring-inset ring-seam text-[11.5px] text-text-secondary hover:text-text-primary hover:bg-fill-hover flex-shrink-0">
+            <Flag size={12} /> Race
+          </button>
+        </div>
         <label className="flex flex-col gap-1 text-[12px] text-text-secondary">
           Task title
           <input

@@ -79,3 +79,18 @@ describe('getModelBadgeLabel', () => {
     expect(getModelBadgeLabel('some-future-model')).toBe('some-future-model');
   });
 });
+
+describe('catalogs match the installed CLIs', () => {
+  it('offers the current Codex models from Codex\'s own list, newest first', () => {
+    const codex = modelsForAgent('codex').map((m) => m.alias);
+    expect(codex.slice(0, 4)).toEqual(['gpt-6.1-sol', 'gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna']);
+    expect(codex).toContain('gpt-5.6-sol');
+    // Labels stay unambiguous across generations.
+    const labels = modelsForAgent('codex').map((m) => m.label);
+    expect(new Set(labels).size).toBe(labels.length);
+  });
+
+  it('offers the newest Antigravity Gemini', () => {
+    expect(modelsForAgent('antigravity')[0].alias).toBe('gemini-3.8-flash-high');
+  });
+});

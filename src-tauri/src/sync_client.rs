@@ -218,6 +218,7 @@ impl SyncError {
         }
     }
 
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn is_unauthorized(&self) -> bool {
         matches!(self, SyncError::Server(401, _))
     }

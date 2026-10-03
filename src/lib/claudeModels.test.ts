@@ -104,13 +104,13 @@ describe('resolved-version display (issue #65)', () => {
 
   it('pins resolvedVersion for family-alias entries so users see which sub-version they get', () => {
     const byAlias = (a: string) => CLAUDE_MODELS.find(m => m.alias === a)!;
-    expect(byAlias('opus').resolvedVersion).toBe('4.7');
-    expect(byAlias('sonnet').resolvedVersion).toBe('4.6');
+    expect(byAlias('opus').resolvedVersion).toBe('5.5');
+    expect(byAlias('sonnet').resolvedVersion).toBe('5.5');
     expect(byAlias('haiku').resolvedVersion).toBe('4.5');
     // Variants inherit the family's resolved version.
-    expect(byAlias('opus[1m]').resolvedVersion).toBe('4.7');
-    expect(byAlias('opusplan').resolvedVersion).toBe('4.7');
-    expect(byAlias('sonnet[1m]').resolvedVersion).toBe('4.6');
+    expect(byAlias('opus[1m]').resolvedVersion).toBe('5.5');
+    expect(byAlias('opusplan').resolvedVersion).toBe('5.5');
+    expect(byAlias('sonnet[1m]').resolvedVersion).toBe('5.5');
   });
 
   it('leaves Default and Fable without a fixed version (their aliases don\'t map to one)', () => {
@@ -119,14 +119,14 @@ describe('resolved-version display (issue #65)', () => {
     expect(byAlias('fable').resolvedVersion).toBeUndefined();
   });
 
-  it('renders the base label with the version suffix so the family chip shows "Opus 4.7"', () => {
+  it('renders the base label with the version suffix so the family chip shows "Opus 5.5"', () => {
     const byAlias = (a: string) => CLAUDE_MODELS.find(m => m.alias === a)!;
-    expect(byAlias('opus').label).toBe('Opus 4.7');
-    expect(byAlias('sonnet').label).toBe('Sonnet 4.6');
+    expect(byAlias('opus').label).toBe('Opus 5.5');
+    expect(byAlias('sonnet').label).toBe('Sonnet 5.5');
     expect(byAlias('haiku').label).toBe('Haiku 4.5');
     // Base fullLabel matches label (no extra qualifier).
-    expect(byAlias('opus').fullLabel).toBe('Opus 4.7');
-    expect(byAlias('sonnet').fullLabel).toBe('Sonnet 4.6');
+    expect(byAlias('opus').fullLabel).toBe('Opus 5.5');
+    expect(byAlias('sonnet').fullLabel).toBe('Sonnet 5.5');
     expect(byAlias('haiku').fullLabel).toBe('Haiku 4.5');
   });
 
@@ -139,18 +139,18 @@ describe('resolved-version display (issue #65)', () => {
     expect(byAlias('sonnet[1m]').label).toBe('1M context');
     // fullLabel (title tooltip) gets the family+version so users see the
     // resolved version even when hovering a variant.
-    expect(byAlias('opus[1m]').fullLabel).toBe('Opus 4.7 · 1M context');
-    expect(byAlias('opusplan').fullLabel).toBe('Opus 4.7 · Plan');
-    expect(byAlias('sonnet[1m]').fullLabel).toBe('Sonnet 4.6 · 1M context');
+    expect(byAlias('opus[1m]').fullLabel).toBe('Opus 5.5 · 1M context');
+    expect(byAlias('opusplan').fullLabel).toBe('Opus 5.5 · Plan');
+    expect(byAlias('sonnet[1m]').fullLabel).toBe('Sonnet 5.5 · 1M context');
   });
 });
 
 describe('familyLabel', () => {
   it('returns the base entry label so the top-row family chip carries the version', () => {
     // Regression guard for the old `split(' ')[0]` behavior, which would
-    // silently truncate "Opus 4.7" back to "Opus".
-    expect(familyLabel('opus')).toBe('Opus 4.7');
-    expect(familyLabel('sonnet')).toBe('Sonnet 4.6');
+    // silently truncate "Opus 5.5" back to "Opus".
+    expect(familyLabel('opus')).toBe('Opus 5.5');
+    expect(familyLabel('sonnet')).toBe('Sonnet 5.5');
     expect(familyLabel('haiku')).toBe('Haiku 4.5');
     expect(familyLabel('fable')).toBe('Fable');
     expect(familyLabel('default')).toBe('Default');

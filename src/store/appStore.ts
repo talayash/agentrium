@@ -47,7 +47,9 @@ export interface FileTabState {
   saving: boolean;
   error: string | null;
   // 'edit' → plain Monaco editor. 'diff' → Monaco DiffEditor showing HEAD vs working copy.
-  mode: 'edit' | 'diff';
+  // 'race' → not a file: the Race compare view for race `path` = race:<id>
+  // (`content` holds the tab title). Never read from or written to disk.
+  mode: 'edit' | 'diff' | 'race';
   // HEAD version, used as the "original" side in diff mode. Empty string for
   // new/untracked files. Always present so the user can toggle into diff mode.
   headContent: string;
@@ -187,6 +189,19 @@ interface AppState {
   createPrModalOpen: boolean;
   createPrRepoPath: string | null;
   createPrTerminalId: string | null;
+  /** Appended to the prefilled PR body (Race mode's "Raced against" table). */
+  createPrExtraBody: string | null;
+  /** Race mode: per-repo check command (e.g. `npm test`), typed by the user. */
+  raceCheckCommands: Record<string, string>;
+  /** Race mode: per-contender check timeout in minutes. */
+  raceCheckTimeoutMin: number;
+  newRaceModalOpen: boolean;
+  newRaceRepoPath: string | null;
+  /** Prompt carried over from the New Task modal's Race toggle. */
+  newRacePrompt: string | null;
+  /** Race whose Pick winner / Abandon dialog is open. */
+  decideRaceId: string | null;
+  decideRaceMode: 'decide' | 'abandon';
   newTaskModalOpen: boolean;
   newTaskRepoPath: string | null;
   finishTaskTerminalId: string | null;
@@ -340,7 +355,7 @@ interface AppState {
   closeWorktreeModal: () => void;
   openPushModal: (repoPath: string) => void;
   closePushModal: () => void;
-  openCreatePrModal: (repoPath: string, terminalId: string | null) => void;
+  openCreatePrModal: (repoPath: string, terminalId: string | null, extraBody?: string | null) => void;
   closeCreatePrModal: () => void;
   setDefaultClaudeArgs: (args: string[]) => void;
   setNotifyOnFinish: (enabled: boolean) => void;
@@ -407,6 +422,14 @@ interface AppState {
   setTaskSetupFiles: (repoPath: string, files: string[] | null) => void;
   openNewTaskModal: (repoPath?: string | null) => void;
   closeNewTaskModal: () => void;
+  openNewRaceModal: (repoPath?: string | null, prompt?: string | null) => void;
+  closeNewRaceModal: () => void;
+  setRaceCheckCommand: (repoPath: string, command: string) => void;
+  setRaceCheckTimeoutMin: (minutes: number) => void;
+  /** Open (or focus) the Race compare tab. */
+  openRaceTab: (raceId: string, title: string) => void;
+  openDecideRace: (raceId: string, mode: 'decide' | 'abandon') => void;
+  closeDecideRace: () => void;
   openFinishTask: (terminalId: string, closeAfter: boolean) => void;
   closeFinishTask: () => void;
   setSessionFilter: (filter: SessionFilter) => void;
@@ -653,6 +676,14 @@ export const useAppStore = create<AppState>()(
       createPrModalOpen: false,
       createPrRepoPath: null,
       createPrTerminalId: null,
+      createPrExtraBody: null,
+      raceCheckCommands: {},
+      raceCheckTimeoutMin: 10,
+      newRaceModalOpen: false,
+      newRaceRepoPath: null,
+      newRacePrompt: null,
+      decideRaceId: null,
+      decideRaceMode: 'decide' as const,
       newTaskModalOpen: false,
       newTaskRepoPath: null,
       finishTaskTerminalId: null,
@@ -779,8 +810,8 @@ export const useAppStore = create<AppState>()(
       closeWorktreeModal: () => set({ worktreeModalOpen: false, worktreeModalRepoPath: null }),
       openPushModal: (repoPath) => set({ pushModalOpen: true, pushModalRepoPath: repoPath }),
       closePushModal: () => set({ pushModalOpen: false, pushModalRepoPath: null }),
-      openCreatePrModal: (repoPath, terminalId) => set({ createPrModalOpen: true, createPrRepoPath: repoPath, createPrTerminalId: terminalId }),
-      closeCreatePrModal: () => set({ createPrModalOpen: false, createPrRepoPath: null, createPrTerminalId: null }),
+      openCreatePrModal: (repoPath, terminalId, extraBody) => set({ createPrModalOpen: true, createPrRepoPath: repoPath, createPrTerminalId: terminalId, createPrExtraBody: extraBody ?? null }),
+      closeCreatePrModal: () => set({ createPrModalOpen: false, createPrRepoPath: null, createPrTerminalId: null, createPrExtraBody: null }),
       setDefaultClaudeArgs: (args) =>
         // Mirror into defaultAgentArgs.claude so both the legacy and the
         // per-agent readers stay in sync from any writer.
@@ -877,6 +908,29 @@ export const useAppStore = create<AppState>()(
       }),
       openNewTaskModal: (repoPath) => set({ newTaskModalOpen: true, newTaskRepoPath: repoPath ?? null }),
       closeNewTaskModal: () => set({ newTaskModalOpen: false, newTaskRepoPath: null }),
+      openNewRaceModal: (repoPath, prompt) => set({ newRaceModalOpen: true, newRaceRepoPath: repoPath ?? null, newRacePrompt: prompt ?? null }),
+      closeNewRaceModal: () => set({ newRaceModalOpen: false, newRaceRepoPath: null, newRacePrompt: null }),
+      setRaceCheckCommand: (repoPath, command) => set((state) => {
+        const next = { ...state.raceCheckCommands };
+        if (command.trim()) next[repoPath] = command.trim();
+        else delete next[repoPath];
+        return { raceCheckCommands: next };
+      }),
+      setRaceCheckTimeoutMin: (minutes) => set({ raceCheckTimeoutMin: Math.min(180, Math.max(1, Math.round(minutes) || 10)) }),
+      openRaceTab: (raceId, title) => set((state) => {
+        const path = `race:${raceId}`;
+        if (state.openFiles.some((t) => t.path === path)) return { activeFilePath: path };
+        return {
+          openFiles: [...state.openFiles, {
+            path, content: title, original: title, loading: false, saving: false, error: null,
+            mode: 'race' as const, headContent: '', repoRoot: null, relativePath: null,
+          }],
+          activeFilePath: path,
+          gridMode: false,
+        };
+      }),
+      openDecideRace: (raceId, mode) => set({ decideRaceId: raceId, decideRaceMode: mode }),
+      closeDecideRace: () => set({ decideRaceId: null }),
       openFinishTask: (terminalId, closeAfter) => set({ finishTaskTerminalId: terminalId, finishTaskCloseAfter: closeAfter }),
       closeFinishTask: () => set({ finishTaskTerminalId: null, finishTaskCloseAfter: false }),
       setSessionFilter: (filter) => set({ sessionFilter: filter }),
@@ -1415,6 +1469,8 @@ export const useAppStore = create<AppState>()(
         newTerminalIsolation: state.newTerminalIsolation,
         taskWorktreeRoot: state.taskWorktreeRoot,
         taskSetupFiles: state.taskSetupFiles,
+        raceCheckCommands: state.raceCheckCommands,
+        raceCheckTimeoutMin: state.raceCheckTimeoutMin,
         prMethod: state.prMethod,
         prDraftByDefault: state.prDraftByDefault,
         prBodyTemplate: state.prBodyTemplate,

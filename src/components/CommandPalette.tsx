@@ -28,6 +28,7 @@ import {
   Send,
   GitBranch,
   GitPullRequestCreate,
+  Flag,
   type LucideIcon,
 } from 'lucide-react';
 import { openCreatePrForTerminal } from '../lib/pullRequestActions';
@@ -163,6 +164,7 @@ export function CommandPalette() {
       const actions: { label: string; description: string; icon: LucideIcon; shortcut?: string; action: () => void }[] = [
         { label: 'New Terminal', description: 'Create a new terminal instance', icon: Plus, shortcut: 'Ctrl+Shift+N', action: () => { useAppStore.getState().openNewTerminalModal(); closeCommandPalette(); } },
         { label: 'New Task', description: 'Start an agent on a new branch in its own git worktree', icon: GitBranch, shortcut: 'Ctrl+Shift+T', action: () => { useAppStore.getState().openNewTaskModal(); closeCommandPalette(); } },
+        { label: 'New Race', description: 'Send one task to 2-4 agents or models at once, then compare and merge the best', icon: Flag, shortcut: 'Ctrl+Shift+R', action: () => { useAppStore.getState().openNewRaceModal(); closeCommandPalette(); } },
         { label: 'Create Pull Request', description: 'Open a pull request for the branch of the active session (gh, glab or browser)', icon: GitPullRequestCreate, action: () => { closeCommandPalette(); openCreatePrForTerminal(useTerminalStore.getState().activeTerminalId); } },
         { label: 'Toggle Sidebar', description: 'Show or hide the sidebar', icon: PanelLeft, shortcut: 'Ctrl+B', action: () => { useAppStore.getState().toggleSidebar(); closeCommandPalette(); } },
         { label: 'Open Settings', description: 'Open application settings', icon: Settings, shortcut: 'Ctrl+,', action: () => { useAppStore.getState().openSettings(); closeCommandPalette(); } },

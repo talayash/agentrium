@@ -17,6 +17,9 @@ import { AddAgentModal } from './components/AddAgentModal';
 import { WorkspaceModal } from './components/WorkspaceModal';
 import { WorktreeModal } from './components/WorktreeModal';
 import { NewTaskModal } from './components/NewTaskModal';
+import { NewRaceModal } from './components/NewRaceModal';
+import { RaceDecideDialog } from './components/RaceDecideDialog';
+import { subscribeRaceTracking } from './store/raceStore';
 import { FinishTaskDialog } from './components/FinishTaskDialog';
 import { PushModal } from './components/PushModal';
 import { CreatePullRequestModal } from './components/CreatePullRequestModal';
@@ -150,6 +153,8 @@ async function tryRehydrateAuth(): Promise<boolean> {
 function App() {
   useSessionContext();
   const newTaskModalOpen = useAppStore((s) => s.newTaskModalOpen);
+  const newRaceModalOpen = useAppStore((s) => s.newRaceModalOpen);
+  const decideRaceId = useAppStore((s) => s.decideRaceId);
   const finishTaskTerminalId = useAppStore((s) => s.finishTaskTerminalId);
   const { sidebarOpen, sidebarCollapsed, hintsOpen, changesOpen, workspacesOpen, settingsOpen, profileModalOpen, newTerminalModalOpen, workspaceModalOpen, worktreeModalOpen, pushModalOpen, createPrModalOpen, sessionHistoryOpen, snippetsModalOpen, commandPaletteOpen, globalSearchOpen, whatsNewOpen, claudeConfigOpen, sessionTimelineOpen, memoryEditorOpen, showStatusBar, notifyOnFinish, restoreSession, triggerChangesRefresh, showRestoreBanner, pendingRestoreConfigs, setShowRestoreBanner, setPendingRestoreConfigs, lastSeenVersion, setLastSeenVersion, openWhatsNew } = useAppStore();
   const { handleTerminalOutput, updateTerminalStatus, setLoopMode, setSessionSummary, createTerminal, createShellTerminalTab, applyTerminalMetrics, adoptTerminal, detachTerminals, closeTerminal, terminals } = useTerminalStore();
@@ -188,6 +193,8 @@ function App() {
   usePreventWebviewReload();
   useSessionStateDetection();
   useAttentionInbox();
+  // Races: load history, track contender states, raise "ready to compare".
+  useEffect(subscribeRaceTracking, []);
   usePullRequestPoller();
 
   // v1.22.0 - apply theme/density/accent/motion/scale on store change.
@@ -1078,6 +1085,8 @@ function App() {
             {workspaceModalOpen && <WorkspaceModal />}
             {worktreeModalOpen && <WorktreeModal />}
             {newTaskModalOpen && <NewTaskModal key="new-task" />}
+            {newRaceModalOpen && <NewRaceModal key="new-race" />}
+            {decideRaceId && <RaceDecideDialog key={`decide-${decideRaceId}`} />}
             {finishTaskTerminalId && <FinishTaskDialog key={`finish-${finishTaskTerminalId}`} />}
             {pushModalOpen && <PushModal />}
             {createPrModalOpen && <CreatePullRequestModal />}

@@ -175,6 +175,13 @@ export function useKeyboardShortcuts() {
         useAppStore.getState().openNewTaskModal();
       }
 
+      // New Race (best of N): Ctrl+Shift+R. preventDefault also keeps
+      // WebView2 from treating it as a hard reload.
+      if (ctrl && shift && matchesKeyCode(e, 'R')) {
+        e.preventDefault();
+        useAppStore.getState().openNewRaceModal();
+      }
+
       // Duplicate active terminal: Ctrl+Shift+D
       if (ctrl && shift && matchesKeyCode(e, 'D')) {
         e.preventDefault();

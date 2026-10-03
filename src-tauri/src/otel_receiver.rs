@@ -229,8 +229,8 @@ impl MetricsAggregator {
 /// The returned `Arc<Mutex<MetricsAggregator>>` lets close_terminal forget state.
 pub fn start(app: tauri::AppHandle) -> std::io::Result<(u16, Arc<Mutex<MetricsAggregator>>)> {
     let server = tiny_http::Server::http("127.0.0.1:0")
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
-    let port = server.server_addr().to_ip().map(|a| a.port()).ok_or_else(|| std::io::Error::new(std::io::ErrorKind::Other, "OTLP receiver bound a non-IP address"))?;
+        .map_err(|e| std::io::Error::other(e.to_string()))?;
+    let port = server.server_addr().to_ip().map(|a| a.port()).ok_or_else(|| std::io::Error::other("OTLP receiver bound a non-IP address"))?;
     let agg = Arc::new(Mutex::new(MetricsAggregator::new()));
     let agg_thread = agg.clone();
 

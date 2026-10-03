@@ -122,6 +122,21 @@ export interface TerminalConfig {
   /** Set for terminals started by the New Task flow. Persisted by the backend
    *  with session restore (Rust `#[serde(default)]`). */
   task?: TaskInfo | null;
+  /** How a spawn-time initial prompt reached the agent (Race mode). Only on
+   *  the config `create_terminal` returns; never restored. */
+  prompt_delivery?: PromptDelivery | null;
+}
+
+/** Mirrors Rust `terminal::PromptDelivery`. */
+export type PromptDelivery =
+  | { mode: 'argv' }
+  | { mode: 'file'; path: string }
+  | { mode: 'staged' };
+
+export interface CreateTerminalOptions {
+  /** Race mode: first prompt delivered at spawn through argv (or a prompt
+   *  file) when the agent supports it. */
+  initialPrompt?: string;
 }
 
 export interface LoopInfo {
@@ -129,7 +144,7 @@ export interface LoopInfo {
   prompt: string;
 }
 
-interface TerminalInstance {
+export interface TerminalInstance {
   config: TerminalConfig;
   xterm: Terminal | null;
   restoredOutput?: string;
@@ -194,6 +209,7 @@ interface TerminalState {
     agent?: AgentKind,
     credentialBindings?: CredentialBinding[],
     task?: TaskInfo | null,
+    options?: CreateTerminalOptions,
   ) => Promise<string>;
   createShellTerminalTab: (
     label: string,
@@ -262,7 +278,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
   bottomTerminalIds: [],
   activeBottomTerminalId: null,
 
-  createTerminal: async (label, workingDirectory, claudeArgs, envVars, colorTag, nickname, restoredOutput, resumeSessionId, continueRecent, previewInit, agent: AgentKind = 'claude', credentialBindings, task) => {
+  createTerminal: async (label, workingDirectory, claudeArgs, envVars, colorTag, nickname, restoredOutput, resumeSessionId, continueRecent, previewInit, agent: AgentKind = 'claude', credentialBindings, task, options) => {
     try {
       const { useAppStore } = await import('./appStore');
       const costTracking = useAppStore.getState().costTrackingEnabled;
@@ -280,6 +296,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
           agent,
           credential_bindings: credentialBindings ?? [],
           task: task ?? null,
+          initial_prompt: options?.initialPrompt ?? null,
         },
       });
       // Parse model, effort, worktree from claude_args

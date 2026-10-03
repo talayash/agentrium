@@ -460,6 +460,8 @@ describe('appStore - persist partialize', () => {
     'newTerminalIsolation',
     'taskWorktreeRoot',
     'taskSetupFiles',
+    'raceCheckCommands',
+    'raceCheckTimeoutMin',
     'sessionFilter',
 
     // Create Pull Request (Settings > Git)

@@ -53,6 +53,10 @@ keyring = { version = "3", features = ["windows-native", "apple-native", "sync-s
 [target.'cfg(target_os = "windows")'.dependencies]
 webview2-com = "0.38"
 windows-core = "0.61"
+# Race mode checks run in a Job Object so a timeout or cancel kills every
+# process the check started, including ones spawned mid-kill. Already in
+# the lock file transitively.
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_JobObjects"] }
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

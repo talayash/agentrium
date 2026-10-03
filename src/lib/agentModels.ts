@@ -2,7 +2,8 @@
 // modal exposes. Claude's catalog lives in `claudeModels.ts` (it has a
 // two-tier family/variant picker); the agents here get a single chip row,
 // so each list is a hand-picked subset of what the CLI actually accepts:
-// - Codex:       https://learn.chatgpt.com/docs/models (`codex --model <id>`)
+// - Codex:       the visible entries of ~/.codex/models_cache.json, in Codex's
+//                order (`codex --model <id>`)
 // - Cursor:      `agent --list-models` (~200 ids; we surface the headliners)
 // - Antigravity: `agy models`
 //
@@ -39,9 +40,13 @@ const OPUS = { badgeClasses: 'bg-purple-500/20 text-purple-400', ringClasses: 'r
 
 export const AGENT_MODELS: Record<Exclude<BuiltinAgentKind, 'claude'>, readonly AgentModel[]> = {
   codex: [
-    { alias: 'gpt-5.6-sol', label: 'Sol', fullLabel: 'GPT-5.6 Sol - flagship', ...OPENAI },
-    { alias: 'gpt-5.6-terra', label: 'Terra', fullLabel: 'GPT-5.6 Terra - everyday workhorse', ...OPENAI },
-    { alias: 'gpt-5.6-luna', label: 'Luna', fullLabel: 'GPT-5.6 Luna - fast and affordable', ...OPENAI },
+    { alias: 'gpt-6.1-sol', label: 'GPT-6.1 Sol', fullLabel: 'GPT-6.1 Sol - latest workhorse', ...OPENAI },
+    { alias: 'gpt-6-astra', label: 'GPT-6 Astra', fullLabel: 'GPT-6 Astra - frontier intelligence', ...OPENAI },
+    { alias: 'gpt-6-sol', label: 'GPT-6 Sol', fullLabel: 'GPT-6 Sol - previous workhorse', ...OPENAI },
+    { alias: 'gpt-6-luna', label: 'GPT-6 Luna', fullLabel: 'GPT-6 Luna - fast and affordable', ...OPENAI },
+    { alias: 'gpt-5.6-sol', label: 'GPT-5.6 Sol', fullLabel: 'GPT-5.6 Sol - older workhorse', ...OPENAI },
+    { alias: 'gpt-5.6-terra', label: 'GPT-5.6 Terra', fullLabel: 'GPT-5.6 Terra - everyday workhorse', ...OPENAI },
+    { alias: 'gpt-5.6-luna', label: 'GPT-5.6 Luna', fullLabel: 'GPT-5.6 Luna - fast and affordable', ...OPENAI },
     { alias: 'gpt-5.5', label: 'GPT-5.5', fullLabel: 'GPT-5.5 - previous-generation flagship', ...OPENAI },
   ],
   cursor: [
@@ -54,6 +59,7 @@ export const AGENT_MODELS: Record<Exclude<BuiltinAgentKind, 'claude'>, readonly 
     { alias: 'gemini-3.1-pro', label: 'Gemini 3.1 Pro', fullLabel: 'Gemini 3.1 Pro', ...GEMINI },
   ],
   antigravity: [
+    { alias: 'gemini-3.8-flash-high', label: 'Gemini 3.8 Flash', fullLabel: 'Gemini 3.8 Flash (High)', ...GEMINI },
     { alias: 'gemini-3.7-flash-high', label: 'Gemini 3.7 Flash', fullLabel: 'Gemini 3.7 Flash (High)', ...GEMINI },
     { alias: 'gemini-3.1-pro-high', label: 'Gemini 3.1 Pro', fullLabel: 'Gemini 3.1 Pro (High)', ...GEMINI },
     { alias: 'claude-sonnet-4-6', label: 'Sonnet 4.6', fullLabel: 'Claude Sonnet 4.6 (Thinking)', ...SONNET },

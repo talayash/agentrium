@@ -40,6 +40,9 @@ describe('task metadata helpers', () => {
     expect(normalizeTask(null)).toBeNull();
     expect(normalizeTask({ ...task, branch: '' })).toBeNull();
     expect(normalizeTask({ title: 'x' })).toBeNull();
+    // Race contenders keep their race across a restart; junk ids are dropped.
+    expect(normalizeTask({ ...task, raceId: 'r1' })).toEqual({ ...task, raceId: 'r1' });
+    expect(normalizeTask({ ...task, raceId: 7 })).toEqual(task);
   });
 
   it('uses the default setup files unless the repo has its own list', () => {

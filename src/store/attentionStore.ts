@@ -1,12 +1,14 @@
 import { create } from 'zustand';
 
-export type AttentionKind = 'input' | 'review' | 'error' | 'stopped' | 'ci' | 'merged';
+export type AttentionKind = 'input' | 'review' | 'error' | 'stopped' | 'ci' | 'merged' | 'race';
 /** Session items follow the agent's state and are replaced on every
  *  transition; PR items (CI failed, merged) must survive the agent getting
- *  busy again, so they live in their own slot per terminal. */
-export type AttentionChannel = 'session' | 'pr';
+ *  busy again, so they live in their own slot per terminal. Race items ("Race
+ *  ready to compare") sit on a contender's terminal in a slot of their own. */
+export type AttentionChannel = 'session' | 'pr' | 'race';
 
 export function channelOf(kind: AttentionKind): AttentionChannel {
+  if (kind === 'race') return 'race';
   return kind === 'ci' || kind === 'merged' ? 'pr' : 'session';
 }
 
@@ -18,6 +20,8 @@ export interface AttentionItem {
   detail: string;
   /** PR items: the pull request to open. */
   url?: string;
+  /** Race items: the race whose compare view to open. */
+  raceId?: string;
   createdAt: number;
 }
 

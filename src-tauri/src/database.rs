@@ -313,6 +313,9 @@ impl Database {
             "deleted_at TEXT",
             "client_version INTEGER NOT NULL DEFAULT 1",
             "sync_state TEXT NOT NULL DEFAULT 'local_only'",
+            // Race mode: device-local, never pushed (the sync row is built
+            // from an explicit column list in `read_syncable_row_json`).
+            "initial_prompt_template TEXT",
         ] {
             let sql = format!("ALTER TABLE custom_agents ADD COLUMN {}", column);
             if let Err(e) = conn.execute(&sql, []) {
@@ -364,7 +367,56 @@ impl Database {
             [],
         )
         .map_err(|e| e.to_string())?;
+        Self::migrate_races(conn)?;
         Ok(())
+    }
+
+    /// Race mode (best-of-N): one `races` row per race, one
+    /// `race_contenders` row per contender, and `tasks.race_id` linking each
+    /// contender's task worktree back to its race. Local only: races are not
+    /// synced. Idempotent, so it is safe on every launch and on databases
+    /// created before races existed.
+    fn migrate_races(conn: &Connection) -> Result<(), String> {
+        if let Err(e) = conn.execute("ALTER TABLE tasks ADD COLUMN race_id TEXT", []) {
+            if !e.to_string().contains("duplicate column name") {
+                return Err(e.to_string());
+            }
+        }
+        conn.execute_batch(
+            "
+            CREATE TABLE IF NOT EXISTS races (
+                id TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                prompt TEXT NOT NULL,
+                repo_path TEXT NOT NULL,
+                base_branch TEXT NOT NULL,
+                base_sha TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'running',
+                winner_task TEXT,
+                decided_at TEXT,
+                check_command TEXT
+            );
+            CREATE TABLE IF NOT EXISTS race_contenders (
+                race_id TEXT NOT NULL REFERENCES races(id) ON DELETE CASCADE,
+                idx INTEGER NOT NULL,
+                agent TEXT NOT NULL,
+                model TEXT,
+                args TEXT NOT NULL,
+                label TEXT NOT NULL,
+                branch TEXT NOT NULL,
+                worktree_path TEXT NOT NULL,
+                terminal_id TEXT,
+                started_at TEXT,
+                finished_at TEXT,
+                outcome TEXT NOT NULL DEFAULT 'pending',
+                stats TEXT,
+                PRIMARY KEY (race_id, idx)
+            );
+            CREATE INDEX IF NOT EXISTS idx_tasks_race_id ON tasks(race_id);
+            ",
+        )
+        .map_err(|e| e.to_string())
     }
 
     pub(crate) fn conn(&self) -> &Connection {
@@ -530,11 +582,12 @@ impl Database {
         self.conn
             .execute(
                 "INSERT OR REPLACE INTO custom_agents
-                 (id, name, binary, default_args, resume_flag, color, required_env, bindings, install_url, install_hint, created_at, updated_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                 (id, name, binary, default_args, resume_flag, color, required_env, bindings, install_url, install_hint, created_at, updated_at, initial_prompt_template)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
                 params![
                     a.id, a.name, a.binary, default_args, a.resume_flag, a.color,
                     required_env, bindings, a.install_url, a.install_hint, a.created_at, a.updated_at,
+                    a.initial_prompt_template,
                 ],
             )
             .map_err(|e| e.to_string())?;
@@ -571,13 +624,14 @@ impl Database {
             bindings,
             install_url: row.get(8)?,
             install_hint: row.get(9)?,
+            initial_prompt_template: row.get(12)?,
             created_at: row.get(10)?,
             updated_at: row.get(11)?,
         })
     }
 
     const CUSTOM_AGENT_COLUMNS: &'static str =
-        "id, name, binary, default_args, resume_flag, color, required_env, bindings, install_url, install_hint, created_at, updated_at";
+        "id, name, binary, default_args, resume_flag, color, required_env, bindings, install_url, install_hint, created_at, updated_at, initial_prompt_template";
 
     pub fn list_custom_agents(&self) -> Result<Vec<crate::custom_agents::CustomAgent>, String> {
         let sql = format!(
@@ -923,16 +977,16 @@ impl Database {
 
     pub fn insert_task(&self, task: &crate::tasks::TaskInfo) -> Result<(), String> {
         self.conn.execute(
-            "INSERT OR REPLACE INTO tasks (worktree_path, repo_path, branch, base_branch, title, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            params![task.worktree_path, task.repo_path, task.branch, task.base_branch, task.title, chrono::Utc::now().to_rfc3339()],
+            "INSERT OR REPLACE INTO tasks (worktree_path, repo_path, branch, base_branch, title, created_at, race_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![task.worktree_path, task.repo_path, task.branch, task.base_branch, task.title, chrono::Utc::now().to_rfc3339(), task.race_id],
         ).map_err(|e| e.to_string())?;
         Ok(())
     }
 
     pub fn list_tasks(&self) -> Result<Vec<crate::tasks::TaskInfo>, String> {
         let mut stmt = self.conn.prepare(
-            "SELECT title, branch, base_branch, worktree_path, repo_path FROM tasks ORDER BY created_at DESC"
+            "SELECT title, branch, base_branch, worktree_path, repo_path, race_id FROM tasks ORDER BY created_at DESC"
         ).map_err(|e| e.to_string())?;
         let rows = stmt.query_map([], |row| Ok(crate::tasks::TaskInfo {
             title: row.get(0)?,
@@ -940,6 +994,7 @@ impl Database {
             base_branch: row.get(2)?,
             worktree_path: row.get(3)?,
             repo_path: row.get(4)?,
+            race_id: row.get(5)?,
         })).map_err(|e| e.to_string())?;
         rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
     }
@@ -948,6 +1003,179 @@ impl Database {
         self.conn.execute("DELETE FROM tasks WHERE worktree_path = ?1", params![worktree_path])
             .map_err(|e| e.to_string())?;
         Ok(())
+    }
+
+    /// Register a started race: the race row, one row per contender, and
+    /// every contender's task (with `race_id`) in one transaction.
+    pub fn insert_race(&self, race: &crate::races::Race, tasks: &[crate::tasks::TaskInfo]) -> Result<(), String> {
+        let tx = self.conn.unchecked_transaction().map_err(|e| e.to_string())?;
+        tx.execute(
+            "INSERT INTO races (id, title, prompt, repo_path, base_branch, base_sha, created_at, status, winner_task, decided_at, check_command)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            params![
+                race.id, race.title, race.prompt, race.repo_path, race.base_branch, race.base_sha,
+                race.created_at, race.status.as_str(), race.winner_task, race.decided_at, race.check_command,
+            ],
+        ).map_err(|e| e.to_string())?;
+        for c in &race.contenders {
+            let args = serde_json::to_string(&c.args).map_err(|e| e.to_string())?;
+            let stats = c.stats.as_ref().map(|v| v.to_string());
+            tx.execute(
+                "INSERT INTO race_contenders (race_id, idx, agent, model, args, label, branch, worktree_path, terminal_id, started_at, finished_at, outcome, stats)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                params![
+                    race.id, c.idx, c.agent.to_wire(), c.model, args, c.label, c.branch, c.worktree_path,
+                    c.terminal_id, c.started_at, c.finished_at, c.outcome, stats,
+                ],
+            ).map_err(|e| e.to_string())?;
+        }
+        for t in tasks {
+            tx.execute(
+                "INSERT OR REPLACE INTO tasks (worktree_path, repo_path, branch, base_branch, title, created_at, race_id)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![t.worktree_path, t.repo_path, t.branch, t.base_branch, t.title, race.created_at, t.race_id],
+            ).map_err(|e| e.to_string())?;
+        }
+        tx.commit().map_err(|e| e.to_string())
+    }
+
+    fn race_contenders(&self, race_id: &str) -> Result<Vec<crate::races::RaceContender>, String> {
+        let mut stmt = self.conn.prepare(
+            "SELECT idx, agent, model, args, label, branch, worktree_path, terminal_id, started_at, finished_at, outcome, stats
+             FROM race_contenders WHERE race_id = ?1 ORDER BY idx",
+        ).map_err(|e| e.to_string())?;
+        let rows = stmt.query_map(params![race_id], |r| {
+            let agent: String = r.get(1)?;
+            let args: String = r.get(3)?;
+            let stats: Option<String> = r.get(11)?;
+            Ok(crate::races::RaceContender {
+                idx: r.get(0)?,
+                agent: crate::config::AgentKind::from_str_lossy(&agent),
+                model: r.get(2)?,
+                // Corrupt JSON degrades to empty (same policy as profile args).
+                args: serde_json::from_str(&args).unwrap_or_default(),
+                label: r.get(4)?,
+                branch: r.get(5)?,
+                worktree_path: r.get(6)?,
+                terminal_id: r.get(7)?,
+                started_at: r.get(8)?,
+                finished_at: r.get(9)?,
+                outcome: r.get(10)?,
+                stats: stats.and_then(|s| serde_json::from_str(&s).ok()),
+            })
+        }).map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    }
+
+    const RACE_COLUMNS: &'static str =
+        "id, title, prompt, repo_path, base_branch, base_sha, created_at, status, winner_task, decided_at, check_command";
+
+    fn row_to_race(r: &rusqlite::Row<'_>) -> rusqlite::Result<crate::races::Race> {
+        let status: String = r.get(7)?;
+        Ok(crate::races::Race {
+            id: r.get(0)?,
+            title: r.get(1)?,
+            prompt: r.get(2)?,
+            repo_path: r.get(3)?,
+            base_branch: r.get(4)?,
+            base_sha: r.get(5)?,
+            created_at: r.get(6)?,
+            status: crate::races::RaceStatus::parse(&status),
+            winner_task: r.get(8)?,
+            decided_at: r.get(9)?,
+            check_command: r.get(10)?,
+            contenders: Vec::new(),
+        })
+    }
+
+    pub fn get_race(&self, id: &str) -> Result<Option<crate::races::Race>, String> {
+        let sql = format!("SELECT {} FROM races WHERE id = ?1", Self::RACE_COLUMNS);
+        let race = self.conn.query_row(&sql, params![id], Self::row_to_race).optional().map_err(|e| e.to_string())?;
+        match race {
+            Some(mut race) => {
+                race.contenders = self.race_contenders(&race.id)?;
+                Ok(Some(race))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// Newest first.
+    pub fn list_races(&self, limit: u32) -> Result<Vec<crate::races::Race>, String> {
+        let sql = format!("SELECT {} FROM races ORDER BY created_at DESC LIMIT ?1", Self::RACE_COLUMNS);
+        let mut stmt = self.conn.prepare(&sql).map_err(|e| e.to_string())?;
+        let races = stmt.query_map(params![limit], Self::row_to_race).map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
+        races.into_iter().map(|mut race| {
+            race.contenders = self.race_contenders(&race.id)?;
+            Ok(race)
+        }).collect()
+    }
+
+    pub fn update_race_contender(&self, race_id: &str, idx: u32, patch: &crate::races::ContenderPatch) -> Result<(), String> {
+        self.conn.execute(
+            "UPDATE race_contenders SET
+                terminal_id = COALESCE(?3, terminal_id),
+                started_at = COALESCE(?4, started_at),
+                finished_at = COALESCE(?5, finished_at)
+             WHERE race_id = ?1 AND idx = ?2",
+            params![race_id, idx, patch.terminal_id, patch.started_at, patch.finished_at],
+        ).map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn set_race_status(&self, race_id: &str, status: crate::races::RaceStatus) -> Result<(), String> {
+        self.conn.execute("UPDATE races SET status = ?2 WHERE id = ?1", params![race_id, status.as_str()])
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn set_race_check_command(&self, race_id: &str, command: Option<&str>) -> Result<(), String> {
+        self.conn.execute("UPDATE races SET check_command = ?2 WHERE id = ?1", params![race_id, command])
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// Forget a finished race (history). Contender rows go with it (cascade);
+    /// any task it left behind (a kept PR winner, a branch left in place)
+    /// stays a normal task, just no longer linked to the race.
+    pub fn delete_race(&self, race_id: &str) -> Result<(), String> {
+        let tx = self.conn.unchecked_transaction().map_err(|e| e.to_string())?;
+        tx.execute("UPDATE tasks SET race_id = NULL WHERE race_id = ?1", params![race_id])
+            .map_err(|e| e.to_string())?;
+        tx.execute("DELETE FROM race_contenders WHERE race_id = ?1", params![race_id])
+            .map_err(|e| e.to_string())?;
+        tx.execute("DELETE FROM races WHERE id = ?1", params![race_id])
+            .map_err(|e| e.to_string())?;
+        tx.commit().map_err(|e| e.to_string())
+    }
+
+    /// Final status, winner, per-contender outcome and stats snapshot.
+    /// `outcomes` and `stats` are keyed by worktree path.
+    pub fn record_race_result(
+        &self,
+        race: &crate::races::Race,
+        status: crate::races::RaceStatus,
+        winner_task: Option<&str>,
+        outcomes: &[(String, String)],
+        stats: &std::collections::HashMap<String, serde_json::Value>,
+    ) -> Result<(), String> {
+        let tx = self.conn.unchecked_transaction().map_err(|e| e.to_string())?;
+        tx.execute(
+            "UPDATE races SET status = ?2, winner_task = ?3, decided_at = ?4 WHERE id = ?1",
+            params![race.id, status.as_str(), winner_task, chrono::Utc::now().to_rfc3339()],
+        ).map_err(|e| e.to_string())?;
+        let same = |a: &str, b: &str| crate::tasks::same_path(a, b);
+        for c in &race.contenders {
+            let outcome = outcomes.iter().find(|(p, _)| same(p, &c.worktree_path)).map(|(_, o)| o.as_str());
+            let stat = stats.iter().find(|(p, _)| same(p, &c.worktree_path)).map(|(_, v)| v.to_string());
+            tx.execute(
+                "UPDATE race_contenders SET outcome = COALESCE(?3, outcome), stats = COALESCE(?4, stats)
+                 WHERE race_id = ?1 AND idx = ?2",
+                params![race.id, c.idx, outcome, stat],
+            ).map_err(|e| e.to_string())?;
+        }
+        tx.commit().map_err(|e| e.to_string())
     }
 
     /// The most recently used folders, independent of the log viewer's 100-row
@@ -1505,10 +1733,11 @@ impl Database {
                     "INSERT OR REPLACE INTO custom_agents
                        (id, name, binary, default_args, resume_flag, color, required_env,
                         bindings, install_url, install_hint, created_at, updated_at, deleted_at,
-                        client_version, sync_state)
+                        client_version, sync_state, initial_prompt_template)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,
                              COALESCE((SELECT created_at FROM custom_agents WHERE id = ?1), ?11),
-                             ?11, ?12, ?13, ?14)",
+                             ?11, ?12, ?13, ?14,
+                             (SELECT initial_prompt_template FROM custom_agents WHERE id = ?1))",
                     params![
                         get_str("id"), get_str("name"), get_str("binary"),
                         default_args, get_opt_str("resumeFlag"), get_str("color"),
@@ -1854,6 +2083,7 @@ mod tests {
             agent: crate::config::AgentKind::Claude,
             credential_bindings: Vec::new(),
             task: None,
+            prompt_delivery: None,
         }
     }
 
@@ -2229,6 +2459,7 @@ mod tests {
             bindings: vec![crate::config::CredentialBinding { env: "OPENAI_API_KEY".into(), credential_id: "cred-1".into() }],
             install_url: Some("https://opencode.ai".into()),
             install_hint: Some("npm i -g opencode-ai".into()),
+            initial_prompt_template: Some("--prompt {prompt}".into()),
             created_at: "2026-09-04T00:00:00Z".into(),
             updated_at: "2026-09-04T00:00:00Z".into(),
         }
@@ -2712,6 +2943,164 @@ mod tests {
         });
         db.upsert_pulled_row("custom_agents", &tomb).unwrap();
         assert!(db.get_custom_agent("a1").unwrap().is_none());
+    }
+
+    fn sample_race(id: &str, created_at: &str) -> crate::races::Race {
+        crate::races::Race {
+            id: id.into(),
+            title: "Fix bug".into(),
+            prompt: "Fix the \"bug\" & ship".into(),
+            repo_path: "C:\\repo".into(),
+            base_branch: "main".into(),
+            base_sha: "abc123".into(),
+            created_at: created_at.into(),
+            status: crate::races::RaceStatus::Running,
+            winner_task: None,
+            decided_at: None,
+            check_command: Some("npm test".into()),
+            contenders: (0..2).map(|i| crate::races::RaceContender {
+                idx: i,
+                agent: if i == 0 { crate::config::AgentKind::Claude } else { crate::config::AgentKind::Custom("oc".into()) },
+                model: if i == 0 { Some("opus".into()) } else { None },
+                args: vec!["--model".into(), "opus".into()],
+                label: format!("c{i}"),
+                branch: format!("agentrium/race-fix-bug-c{i}"),
+                worktree_path: format!("C:\\wt\\{id}-{i}"),
+                terminal_id: None,
+                started_at: None,
+                finished_at: None,
+                outcome: "pending".into(),
+                stats: None,
+            }).collect(),
+        }
+    }
+
+    fn race_tasks(race: &crate::races::Race) -> Vec<crate::tasks::TaskInfo> {
+        race.contenders.iter().map(|c| crate::tasks::TaskInfo {
+            title: race.title.clone(),
+            branch: c.branch.clone(),
+            base_branch: race.base_branch.clone(),
+            worktree_path: c.worktree_path.clone(),
+            repo_path: race.repo_path.clone(),
+            race_id: Some(race.id.clone()),
+        }).collect()
+    }
+
+    #[test]
+    fn races_round_trip_and_record_results() {
+        let db = Database::new_in_memory().unwrap();
+        let race = sample_race("r1", "2026-10-01T00:00:00Z");
+        db.insert_race(&race, &race_tasks(&race)).unwrap();
+        db.insert_race(&sample_race("r2", "2026-10-02T00:00:00Z"), &[]).unwrap();
+        assert_eq!(db.get_race("r1").unwrap().unwrap(), race);
+        assert!(db.get_race("missing").unwrap().is_none());
+        let ids: Vec<String> = db.list_races(10).unwrap().into_iter().map(|r| r.id).collect();
+        assert_eq!(ids, vec!["r2".to_string(), "r1".to_string()]);
+        let tasks = db.list_tasks().unwrap();
+        assert_eq!(tasks.len(), 2);
+        assert!(tasks.iter().all(|t| t.race_id.as_deref() == Some("r1")));
+
+        db.update_race_contender("r1", 1, &crate::races::ContenderPatch {
+            terminal_id: Some("t-1".into()), started_at: Some("s".into()), finished_at: None,
+        }).unwrap();
+        db.update_race_contender("r1", 1, &crate::races::ContenderPatch {
+            terminal_id: None, started_at: None, finished_at: Some("f".into()),
+        }).unwrap();
+        let c = &db.get_race("r1").unwrap().unwrap().contenders[1];
+        assert_eq!((c.terminal_id.as_deref(), c.started_at.as_deref(), c.finished_at.as_deref()), (Some("t-1"), Some("s"), Some("f")));
+        assert_eq!(c.agent, crate::config::AgentKind::Custom("oc".into()));
+
+        let mut stats = std::collections::HashMap::new();
+        stats.insert("C:\\wt\\r1-0".to_string(), serde_json::json!({ "costUsd": 1.5 }));
+        db.record_race_result(
+            &race, crate::races::RaceStatus::Decided, Some("C:\\wt\\r1-0"),
+            &[("C:\\wt\\r1-0".into(), "winner".into()), ("C:\\wt\\r1-1".into(), "discarded".into())],
+            &stats,
+        ).unwrap();
+        let done = db.get_race("r1").unwrap().unwrap();
+        assert_eq!(done.status, crate::races::RaceStatus::Decided);
+        assert_eq!(done.winner_task.as_deref(), Some("C:\\wt\\r1-0"));
+        assert!(done.decided_at.is_some());
+        assert_eq!(done.contenders[0].outcome, "winner");
+        assert_eq!(done.contenders[0].stats, Some(serde_json::json!({ "costUsd": 1.5 })));
+        assert_eq!(done.contenders[1].outcome, "discarded");
+        db.set_race_check_command("r2", None).unwrap();
+        assert_eq!(db.get_race("r2").unwrap().unwrap().check_command, None);
+    }
+
+    #[test]
+    fn delete_race_forgets_the_race_but_keeps_its_tasks() {
+        let db = Database::new_in_memory().unwrap();
+        let race = sample_race("r1", "2026-10-01T00:00:00Z");
+        db.insert_race(&race, &race_tasks(&race)).unwrap();
+        db.delete_race("r1").unwrap();
+        assert!(db.get_race("r1").unwrap().is_none());
+        assert!(db.list_races(10).unwrap().is_empty());
+        let count: i64 = db.conn().query_row("SELECT COUNT(*) FROM race_contenders", [], |r| r.get(0)).unwrap();
+        assert_eq!(count, 0);
+        let tasks = db.list_tasks().unwrap();
+        assert_eq!(tasks.len(), 2);
+        assert!(tasks.iter().all(|t| t.race_id.is_none()));
+    }
+
+    #[test]
+    fn races_migration_on_existing_db() {
+        // A database file written by a build from before races: the tasks
+        // table has no race_id column and there are no race tables.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("old.db");
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE tasks (
+                    worktree_path TEXT PRIMARY KEY, repo_path TEXT NOT NULL, branch TEXT NOT NULL,
+                    base_branch TEXT NOT NULL, title TEXT NOT NULL, created_at TEXT NOT NULL
+                 );
+                 INSERT INTO tasks VALUES ('C:\\wt\\old', 'C:\\repo', 'agentrium/old', 'main', 'Old task', '2026-09-01T00:00:00Z');
+                 CREATE TABLE custom_agents (
+                    id TEXT PRIMARY KEY, name TEXT NOT NULL, binary TEXT NOT NULL, default_args TEXT NOT NULL,
+                    resume_flag TEXT, color TEXT NOT NULL, required_env TEXT NOT NULL, bindings TEXT NOT NULL,
+                    install_url TEXT, install_hint TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+                 );
+                 INSERT INTO custom_agents VALUES ('a1', 'OpenCode', 'opencode', '[]', NULL, '#30C55E', '[]', '[]', NULL, NULL, 'c', 'u');",
+            ).unwrap();
+        }
+        let conn = Connection::open(&path).unwrap();
+        Database::init_schema(&conn).unwrap();
+        // Second launch: the migration is idempotent.
+        Database::init_schema(&conn).unwrap();
+        let db = Database { conn };
+        let tasks = db.list_tasks().unwrap();
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].title, "Old task");
+        assert_eq!(tasks[0].race_id, None);
+        let agent = db.get_custom_agent("a1").unwrap().unwrap();
+        assert_eq!(agent.initial_prompt_template, None);
+        let race = sample_race("r1", "2026-10-01T00:00:00Z");
+        db.insert_race(&race, &race_tasks(&race)).unwrap();
+        assert_eq!(db.get_race("r1").unwrap().unwrap().contenders.len(), 2);
+        assert_eq!(db.list_tasks().unwrap().len(), 3);
+    }
+
+    #[test]
+    fn custom_agent_initial_prompt_template_is_local_only() {
+        let db = Database::new_in_memory().unwrap();
+        let a = sample_custom_agent("a1");
+        db.save_custom_agent(&a).unwrap();
+        // Never pushed: the sync row carries no template.
+        let row = db.read_syncable_row_json("custom_agents", "a1").unwrap().unwrap();
+        assert!(row.get("initialPromptTemplate").is_none(), "{row}");
+        assert!(!row.to_string().contains("{prompt}"), "{row}");
+        // A pulled row (remote edit) keeps the local template.
+        let pulled = serde_json::json!({
+            "id": "a1", "name": "OpenCode 2", "binary": "opencode", "resumeFlag": null,
+            "color": "#30C55E", "requiredEnv": [], "updatedAt": "2099-01-01T00:00:00Z",
+            "deletedAt": null, "clientVersion": 2,
+        });
+        db.upsert_pulled_row("custom_agents", &pulled).unwrap();
+        let after = db.get_custom_agent("a1").unwrap().unwrap();
+        assert_eq!(after.name, "OpenCode 2");
+        assert_eq!(after.initial_prompt_template.as_deref(), Some("--prompt {prompt}"));
     }
 
     #[test]

@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 const dialog = vi.hoisted(() => ({ confirm: vi.fn() }));
 vi.mock('@tauri-apps/plugin-dialog', () => ({ confirm: dialog.confirm }));
 vi.mock('./FileEditorView', () => ({ FileEditorView: () => null }));
+vi.mock('./RaceCompareView', () => ({ RaceCompareView: () => null }));
 vi.mock('./TerminalView', () => ({ TerminalView: () => null }));
 vi.mock('./FileTreePanel', () => ({ FileTreePanel: () => null }));
 vi.mock('./SplitView', () => ({ SplitView: () => null }));

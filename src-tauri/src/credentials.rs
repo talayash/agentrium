@@ -69,6 +69,7 @@ impl SecretStore for KeyringStore {
 
 /// In-memory store for unit tests and for CI machines with no keyring daemon.
 #[derive(Default)]
+#[cfg_attr(not(test), allow(dead_code))]
 pub struct MemoryStore {
     inner: std::sync::Mutex<HashMap<String, String>>,
 }

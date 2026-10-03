@@ -9,9 +9,9 @@ import { EmptyState } from './ui/EmptyState';
 
 const LABELS: Record<AttentionKind, string> = {
   input: 'Needs input', review: 'Ready to review', error: 'Process failed', stopped: 'Process finished',
-  ci: 'CI failing', merged: 'Pull request merged',
+  ci: 'CI failing', merged: 'Pull request merged', race: 'Race ready to compare',
 };
-const PRIORITY: Record<AttentionKind, number> = { error: 0, ci: 1, input: 2, review: 3, merged: 4, stopped: 5 };
+const PRIORITY: Record<AttentionKind, number> = { error: 0, ci: 1, input: 2, race: 3, review: 3, merged: 4, stopped: 5 };
 
 export function AttentionInbox() {
   const items = useAttentionStore(s => s.items);
@@ -26,6 +26,11 @@ export function AttentionInbox() {
         return (
           <div key={`${item.terminalId}:${channel}`} className="flex items-start mb-2 rounded-lg border border-seam bg-elevation-1">
             <button aria-label={`Open ${item.title}: ${LABELS[item.kind]}`} className="flex-1 min-w-0 p-3 text-left hover:bg-fill-hover rounded-lg" onClick={() => {
+              if (item.raceId) {
+                useAppStore.getState().openRaceTab(item.raceId, item.title);
+                dismiss(item.terminalId, channel);
+                return;
+              }
               if (!useTerminalStore.getState().terminals.has(item.targetId)) { dismiss(item.terminalId, channel); return; }
               const app = useAppStore.getState();
               app.setSplitMode(false);
@@ -34,7 +39,7 @@ export function AttentionInbox() {
               dismiss(item.terminalId, channel);
             }}>
               <span className={`block text-xs font-semibold ${item.kind === 'error' || item.kind === 'ci' ? 'text-error' : 'text-accent-primary'}`}>{LABELS[item.kind]}</span>
-              <span className="block truncate text-sm text-text-primary mt-1">{terminals.get(item.terminalId)?.config.nickname || item.title}</span>
+              <span className="block truncate text-sm text-text-primary mt-1">{(!item.raceId && terminals.get(item.terminalId)?.config.nickname) || item.title}</span>
               <span className="block text-xs text-text-secondary mt-1">{item.detail}</span>
             </button>
             {item.url && (
