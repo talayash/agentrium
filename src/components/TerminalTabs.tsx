@@ -1,5 +1,5 @@
 import { useMemo, useCallback, useEffect } from 'react';
-import { X, Grid3X3, SplitSquareHorizontal, RotateCw, GitBranch, File as FileIcon } from 'lucide-react';
+import { X, Grid3X3, SplitSquareHorizontal, RotateCw, GitBranch, File as FileIcon, Flag } from 'lucide-react';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
 import { toast } from '../store/toastStore';
@@ -25,6 +25,7 @@ import { Tooltip } from './ui/Tooltip';
 import { TaskBadge } from './TaskBadge';
 import { PrChip } from './PrChip';
 import { RaceGridHeader } from './RaceHeader';
+import { RaceCompareView } from './RaceCompareView';
 import { requestCloseTerminal } from '../lib/tasks';
 import type { SessionState } from '../lib/terminalState';
 
@@ -255,9 +256,10 @@ export function TerminalTabs() {
               <div className="flex items-center gap-1 min-w-0 overflow-x-auto scrollbar-none">
                 {openFiles.map((tab) => {
                   const isActive = activeFilePath === tab.path;
-                  const dirty = tab.content !== tab.original;
+                  const isRace = tab.mode === 'race';
+                  const dirty = !isRace && tab.content !== tab.original;
                   return (
-                    <Tooltip key={tab.path} label={tab.path}>
+                    <Tooltip key={tab.path} label={isRace ? `Race: ${tab.content}` : tab.path}>
                     <button
                       onClick={() => focusFile(tab.path)}
                       onAuxClick={(e) => {
@@ -271,8 +273,10 @@ export function TerminalTabs() {
                           : 'hover:bg-fill-hover text-text-secondary'
                       }`}
                     >
-                      <FileIcon size={11} className="text-text-tertiary flex-shrink-0" strokeWidth={1.75} />
-                      <span className="max-w-[140px] truncate">{fileBasename(tab.path)}</span>
+                      {isRace
+                        ? <Flag size={11} className="text-accent-primary flex-shrink-0" strokeWidth={1.75} />
+                        : <FileIcon size={11} className="text-text-tertiary flex-shrink-0" strokeWidth={1.75} />}
+                      <span className="max-w-[140px] truncate">{isRace ? tab.content : fileBasename(tab.path)}</span>
                       <span
                         onClick={(e) => {
                           e.stopPropagation();
@@ -392,8 +396,10 @@ export function TerminalTabs() {
           );
         })}
         {activeFilePath && openFiles.some((t) => t.path === activeFilePath) && (
-          <div key={`file:${activeFilePath}`} className="absolute inset-0 z-10">
-            <FileEditorView path={activeFilePath} />
+          <div key={`file:${activeFilePath}`} className="absolute inset-0 z-10 bg-elevation-0">
+            {openFiles.find((t) => t.path === activeFilePath)?.mode === 'race'
+              ? <RaceCompareView raceId={activeFilePath.slice('race:'.length)} />
+              : <FileEditorView path={activeFilePath} />}
           </div>
         )}
         {!activeTerminalId && !activeFilePath && <WelcomeScreen />}
