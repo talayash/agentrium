@@ -1136,6 +1136,20 @@ impl Database {
         Ok(())
     }
 
+    /// Forget a finished race (history). Contender rows go with it (cascade);
+    /// any task it left behind (a kept PR winner, a branch left in place)
+    /// stays a normal task, just no longer linked to the race.
+    pub fn delete_race(&self, race_id: &str) -> Result<(), String> {
+        let tx = self.conn.unchecked_transaction().map_err(|e| e.to_string())?;
+        tx.execute("UPDATE tasks SET race_id = NULL WHERE race_id = ?1", params![race_id])
+            .map_err(|e| e.to_string())?;
+        tx.execute("DELETE FROM race_contenders WHERE race_id = ?1", params![race_id])
+            .map_err(|e| e.to_string())?;
+        tx.execute("DELETE FROM races WHERE id = ?1", params![race_id])
+            .map_err(|e| e.to_string())?;
+        tx.commit().map_err(|e| e.to_string())
+    }
+
     /// Final status, winner, per-contender outcome and stats snapshot.
     /// `outcomes` and `stats` are keyed by worktree path.
     pub fn record_race_result(
@@ -3012,6 +3026,21 @@ mod tests {
         assert_eq!(done.contenders[1].outcome, "discarded");
         db.set_race_check_command("r2", None).unwrap();
         assert_eq!(db.get_race("r2").unwrap().unwrap().check_command, None);
+    }
+
+    #[test]
+    fn delete_race_forgets_the_race_but_keeps_its_tasks() {
+        let db = Database::new_in_memory().unwrap();
+        let race = sample_race("r1", "2026-10-01T00:00:00Z");
+        db.insert_race(&race, &race_tasks(&race)).unwrap();
+        db.delete_race("r1").unwrap();
+        assert!(db.get_race("r1").unwrap().is_none());
+        assert!(db.list_races(10).unwrap().is_empty());
+        let count: i64 = db.conn().query_row("SELECT COUNT(*) FROM race_contenders", [], |r| r.get(0)).unwrap();
+        assert_eq!(count, 0);
+        let tasks = db.list_tasks().unwrap();
+        assert_eq!(tasks.len(), 2);
+        assert!(tasks.iter().all(|t| t.race_id.is_none()));
     }
 
     #[test]

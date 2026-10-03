@@ -213,6 +213,8 @@ export function RaceDecideDialog() {
       const failures = summarizeFailures(results, race);
       if (failures.length) toast.warning('Some contenders were left in place', failures.join('\n'));
       else toast.success('Race abandoned', `All ${race.contenders.length} contenders were discarded.`);
+      // Nothing is left to compare: close its tab too, like closing a tab.
+      useAppStore.getState().closeFileTab(`race:${race.id}`);
       dismissRaceItem();
       tidyGrid();
       await useRaceStore.getState().refresh(race.id);

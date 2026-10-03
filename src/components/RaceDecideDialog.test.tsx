@@ -123,6 +123,7 @@ it('blocks a winner with uncommitted changes until they are committed', async ()
 
 it('abandon discards every contender after confirming running sessions', async () => {
   useAppStore.setState({ decideRaceMode: 'abandon' });
+  useAppStore.getState().openRaceTab('r1', 'Fix bug');
   vi.mocked(invoke).mockImplementation(async (cmd, args) => {
     if (cmd === 'get_task_status') return { ...statuses[(args as { worktreePath: string }).worktreePath], ahead: 0 };
     if (cmd === 'abandon_race') return [];
@@ -143,6 +144,8 @@ it('abandon discards every contender after confirming running sessions', async (
     ],
   }) })));
   expect(vi.mocked(invoke).mock.calls.filter(([c]) => c === 'close_terminal')).toHaveLength(2);
+  // Nothing left to compare: the race tab closes too.
+  await waitFor(() => expect(useAppStore.getState().openFiles.some((t) => t.path === 'race:r1')).toBe(false));
 });
 
 it('runs one decision even when the confirm button is clicked twice', async () => {

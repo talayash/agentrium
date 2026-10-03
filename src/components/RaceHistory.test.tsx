@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
+vi.mock('../lib/confirmDialog', () => ({ confirmAction: vi.fn().mockResolvedValue(true) }));
+import { invoke } from '@tauri-apps/api/core';
 import { RaceHistory } from './RaceHistory';
 import { useRaceStore } from '../store/raceStore';
 import { useAppStore } from '../store/appStore';
@@ -44,4 +46,15 @@ it('renders nothing without finished races', () => {
   useRaceStore.setState({ races: {} });
   const { container } = render(<RaceHistory />);
   expect(container.innerHTML).toBe('');
+});
+
+it('deletes a finished race from history and closes its tab', async () => {
+  vi.mocked(invoke).mockResolvedValue(undefined);
+  useAppStore.getState().openRaceTab('r1', 'Fix login');
+  render(<RaceHistory />);
+  fireEvent.click(screen.getByRole('button', { name: 'Delete race Fix login' }));
+  await waitFor(() => expect(useRaceStore.getState().races.r1).toBeUndefined());
+  expect(invoke).toHaveBeenCalledWith('delete_race', { raceId: 'r1' });
+  expect(useAppStore.getState().openFiles.some((t) => t.path === 'race:r1')).toBe(false);
+  expect(screen.queryByText('Fix login')).toBeNull();
 });

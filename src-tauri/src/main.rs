@@ -294,6 +294,7 @@ fn main() {
             races::cancel_race_check,
             races::decide_race,
             races::abandon_race,
+            races::delete_race,
             pull_requests::get_remote_info,
             pull_requests::get_default_branch,
             pull_requests::get_pr_context,

@@ -36,6 +36,8 @@ interface RaceStoreState {
   load: () => Promise<void>;
   refresh: (raceId: string) => Promise<Race | null>;
   upsert: (race: Race) => void;
+  /** Drop a deleted race from the store. */
+  remove: (raceId: string) => void;
   setManualDone: (worktreePath: string, done: boolean) => void;
   markSeenBusy: (terminalId: string) => void;
   markSeenTerminal: (worktreePath: string) => void;
@@ -89,6 +91,14 @@ export const useRaceStore = create<RaceStoreState>((set, get) => ({
   },
 
   upsert: (race) => set((s) => ({ races: { ...s.races, [race.id]: race } })),
+
+  remove: (raceId) => set((s) => {
+    const races = { ...s.races };
+    const diffs = { ...s.diffs };
+    delete races[raceId];
+    delete diffs[raceId];
+    return { races, diffs };
+  }),
 
   setManualDone: (worktreePath, done) => set((s) => {
     const next = { ...s.manualDone };

@@ -27,3 +27,10 @@ it('opens the race tab when the group header is clicked', () => {
   expect(useAppStore.getState().activeFilePath).toBe('race:r1');
   expect(useAppStore.getState().openFiles[0]).toMatchObject({ path: 'race:r1', mode: 'race', content: 'Performance Issue' });
 });
+
+it('closes the race like a tab through the Abandon dialog', () => {
+  render(<RaceSidebarGroups />);
+  fireEvent.click(screen.getByRole('button', { name: 'Close race Performance Issue' }));
+  expect(useAppStore.getState().decideRaceId).toBe('r1');
+  expect(useAppStore.getState().decideRaceMode).toBe('abandon');
+});

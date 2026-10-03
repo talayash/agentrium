@@ -1413,6 +1413,22 @@ pub async fn decide_race(
     .await
 }
 
+/// Remove a finished race from history. Open races must be abandoned (or
+/// decided) first, so no contender worktree is ever left untracked.
+#[command]
+pub async fn delete_race(state: State<'_, AppState>, race_id: String) -> Result<(), String> {
+    wrap_cmd("delete_race", async move {
+        let race = load_race(&state, &race_id).await?;
+        if race.status.is_open() {
+            return Err(user_err(
+                "This race is still open. Abandon it (or pick a winner) first.",
+            ));
+        }
+        db_op(&state.db, move |db| db.delete_race(&race_id)).await
+    })
+    .await
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct AbandonRaceRequest {
     pub race_id: String,

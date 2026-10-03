@@ -1,4 +1,4 @@
-import { Flag, GitCompareArrows } from 'lucide-react';
+import { Flag, GitCompareArrows, X } from 'lucide-react';
 import { useAppStore } from '../store/appStore';
 import { useRaceStore } from '../store/raceStore';
 import { useTerminalStore } from '../store/terminalStore';
@@ -11,22 +11,36 @@ import { BrandIcon } from './BrandIcon';
 function RaceGroup({ race }: { race: Race }) {
   const rows = useRaceRows(race);
   const openRaceTab = useAppStore((s) => s.openRaceTab);
+  const openDecideRace = useAppStore((s) => s.openDecideRace);
   const done = rows.filter((r) => r.state === 'done' || r.state === 'exited' || r.state === 'error').length;
   return (
     <div className="mx-2 mb-2 rounded-xl ring-1 ring-inset ring-seam bg-elevation-1" data-race-group={race.id}>
-      {/* The whole header opens the race tab (summary, files, diffs, checks). */}
-      <button
-        type="button"
-        onClick={() => openRaceTab(race.id, race.title)}
-        aria-label={`Open race ${race.title}`}
-        title="Open the race: compare contenders, run checks, pick a winner"
-        className="group w-full flex items-center gap-1.5 px-2.5 pt-2 pb-1 rounded-t-xl text-left hover:bg-fill-hover"
-      >
-        <Flag size={12} className="text-accent-primary flex-shrink-0" />
-        <span className="text-[12px] font-medium text-text-primary truncate group-hover:underline">{race.title}</span>
-        <span className="ml-auto text-[10.5px] text-text-tertiary tabular-nums flex-shrink-0">{done}/{rows.length}</span>
-        <GitCompareArrows size={12} className="text-text-tertiary group-hover:text-text-primary flex-shrink-0" aria-hidden />
-      </button>
+      <div className="group/race flex items-center rounded-t-xl hover:bg-fill-hover">
+        {/* The header opens the race tab (summary, files, diffs, checks). */}
+        <button
+          type="button"
+          onClick={() => openRaceTab(race.id, race.title)}
+          aria-label={`Open race ${race.title}`}
+          title="Open the race: compare contenders, run checks, pick a winner"
+          className="group flex-1 min-w-0 flex items-center gap-1.5 pl-2.5 pr-1 pt-2 pb-1 text-left"
+        >
+          <Flag size={12} className="text-accent-primary flex-shrink-0" />
+          <span className="text-[12px] font-medium text-text-primary truncate group-hover:underline">{race.title}</span>
+          <span className="ml-auto text-[10.5px] text-text-tertiary tabular-nums flex-shrink-0">{done}/{rows.length}</span>
+          <GitCompareArrows size={12} className="text-text-tertiary group-hover:text-text-primary flex-shrink-0" aria-hidden />
+        </button>
+        {/* Close, like a tab: abandoning discards the contenders' worktrees
+            (with the usual confirmations) and removes the race from here. */}
+        <button
+          type="button"
+          onClick={() => openDecideRace(race.id, 'abandon')}
+          aria-label={`Close race ${race.title}`}
+          title="Close race: discard every contender (asks first)"
+          className="mr-1.5 mt-1 p-1 rounded text-text-tertiary hover:text-text-primary hover:bg-fill-active opacity-60 group-hover/race:opacity-100 focus-visible:opacity-100"
+        >
+          <X size={12} />
+        </button>
+      </div>
       <ul className="pb-1.5">
         {rows.map((r) => (
           <li key={r.contender.idx}>

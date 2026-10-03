@@ -141,6 +141,8 @@ export const setRaceCheckCommand = (raceId: string, command: string | null) =>
 export const runRaceCheck = (raceId: string, worktreePath: string, runId: string, timeoutSecs: number) =>
   invoke<RaceCheckResult>('run_race_check', { raceId, worktreePath, runId, timeoutSecs });
 export const cancelRaceCheck = (runId: string) => invoke<boolean>('cancel_race_check', { runId });
+/** Forget a finished race (decided or abandoned). */
+export const deleteRace = (raceId: string) => invoke<void>('delete_race', { raceId });
 export const decideRace = (request: DecideRaceRequest) => invoke<DecideRaceResult>('decide_race', { request });
 export const abandonRace = (raceId: string, contenders: LoserChoice[], stats: Record<string, ContenderStats>) =>
   invoke<ContenderFinish[]>('abandon_race', { request: { race_id: raceId, contenders, stats } });

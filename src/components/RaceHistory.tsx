@@ -1,9 +1,12 @@
 import { useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight, Flag, Trophy } from 'lucide-react';
+import { ChevronDown, ChevronRight, Flag, Trash2, Trophy } from 'lucide-react';
 import { useAppStore } from '../store/appStore';
 import { useRaceStore } from '../store/raceStore';
+import { toast } from '../store/toastStore';
+import { confirmAction } from '../lib/confirmDialog';
+import { reportInvokeFailure } from '../lib/errorReporter';
 import { formatRelativeTime } from '../lib/relativeTime';
-import { formatCost, formatElapsed, samePath, winRates, type Race } from '../lib/races';
+import { deleteRace, formatCost, formatElapsed, samePath, winRates, type Race } from '../lib/races';
 import { BrandIcon } from './BrandIcon';
 
 function RaceHistoryRow({ race }: { race: Race }) {
@@ -12,13 +15,29 @@ function RaceHistoryRow({ race }: { race: Race }) {
   const s = winner?.stats;
   const when = race.decidedAt ?? race.createdAt;
   const age = Date.now() - Date.parse(when);
+  const remove = async () => {
+    const ok = await confirmAction(`Delete "${race.title}" from race history? Its stats and win-rate data go with it.`, { okLabel: 'Delete' });
+    if (!ok) return;
+    try {
+      await deleteRace(race.id);
+      useRaceStore.getState().remove(race.id);
+      useAppStore.getState().closeFileTab(`race:${race.id}`);
+    } catch (err) {
+      toast.error('Could not delete the race', String(err));
+      reportInvokeFailure('delete_race', err);
+    }
+  };
   return (
-    <li>
+    <li className="group/row relative">
+      <button type="button" aria-label={`Delete race ${race.title}`} title="Delete from history" onClick={() => void remove()}
+        className="absolute right-1.5 top-1.5 z-10 p-1 rounded text-text-tertiary hover:text-error hover:bg-fill-active opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100">
+        <Trash2 size={11} />
+      </button>
       <button type="button" onClick={() => openRaceTab(race.id, race.title)}
         className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-fill-hover flex flex-col gap-0.5">
         <span className="flex items-center gap-1.5 min-w-0">
           <span className="text-[12px] text-text-primary truncate">{race.title}</span>
-          <span className="ml-auto text-[10.5px] text-text-tertiary flex-shrink-0">
+          <span className="ml-auto pr-6 text-[10.5px] text-text-tertiary flex-shrink-0">
             {Number.isNaN(age) ? '' : formatRelativeTime(age)}
           </span>
         </span>
