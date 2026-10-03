@@ -7,7 +7,6 @@ import { useRaceRows } from '../hooks/useRaceRows';
 import { ContenderStateDot } from './RaceHeader';
 import { reopenFromUi } from '../lib/raceActions';
 import { BrandIcon } from './BrandIcon';
-import { Tooltip } from './ui/Tooltip';
 
 function RaceGroup({ race }: { race: Race }) {
   const rows = useRaceRows(race);
@@ -15,17 +14,19 @@ function RaceGroup({ race }: { race: Race }) {
   const done = rows.filter((r) => r.state === 'done' || r.state === 'exited' || r.state === 'error').length;
   return (
     <div className="mx-2 mb-2 rounded-xl ring-1 ring-inset ring-seam bg-elevation-1" data-race-group={race.id}>
-      <div className="flex items-center gap-1.5 px-2.5 pt-2 pb-1">
+      {/* The whole header opens the race tab (summary, files, diffs, checks). */}
+      <button
+        type="button"
+        onClick={() => openRaceTab(race.id, race.title)}
+        aria-label={`Open race ${race.title}`}
+        title="Open the race: compare contenders, run checks, pick a winner"
+        className="group w-full flex items-center gap-1.5 px-2.5 pt-2 pb-1 rounded-t-xl text-left hover:bg-fill-hover"
+      >
         <Flag size={12} className="text-accent-primary flex-shrink-0" />
-        <span className="text-[12px] font-medium text-text-primary truncate" title={race.title}>{race.title}</span>
+        <span className="text-[12px] font-medium text-text-primary truncate group-hover:underline">{race.title}</span>
         <span className="ml-auto text-[10.5px] text-text-tertiary tabular-nums flex-shrink-0">{done}/{rows.length}</span>
-        <Tooltip label="Compare contenders">
-          <button type="button" aria-label={`Compare ${race.title}`} onClick={() => openRaceTab(race.id, race.title)}
-            className="p-1 rounded text-text-tertiary hover:text-text-primary hover:bg-fill-hover">
-            <GitCompareArrows size={12} />
-          </button>
-        </Tooltip>
-      </div>
+        <GitCompareArrows size={12} className="text-text-tertiary group-hover:text-text-primary flex-shrink-0" aria-hidden />
+      </button>
       <ul className="pb-1.5">
         {rows.map((r) => (
           <li key={r.contender.idx}>
