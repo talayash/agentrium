@@ -177,8 +177,8 @@ pub fn set_error_reporting_enabled(enabled: bool) -> Result<(), String> {
 /// stall unrelated IPC (including `terminal-output` event delivery).
 ///
 /// This helper takes an `Arc<std::sync::Mutex<Database>>` (the sync flavor
-/// so it can't be held across `.await`) and runs `f` on the blocking pool
-/// - the lock is held only for the duration of the sync work, and the
+/// so it can't be held across `.await`) and runs `f` on the blocking pool;
+/// the lock is held only for the duration of the sync work, and the
 /// runtime workers stay free.
 pub(crate) async fn db_op<T, F>(
     db_arc: &std::sync::Arc<std::sync::Mutex<crate::database::Database>>,
@@ -410,6 +410,10 @@ pub struct CreateTerminalRequest {
     /// Task metadata for terminals started by the New Task flow.
     #[serde(default)]
     pub task: Option<crate::tasks::TaskInfo>,
+    /// Race mode: first prompt delivered at spawn through argv (or a prompt
+    /// file) when the agent supports it. Never persisted with the terminal.
+    #[serde(default)]
+    pub initial_prompt: Option<String>,
 }
 
 /// Built-ins resolve statically; `Custom(id)` reads the `custom_agents` row.
@@ -528,6 +532,7 @@ pub async fn create_terminal(
                 request.resume_session_id,
                 continue_recent,
                 otel_endpoint,
+                request.initial_prompt,
             )?
         };
         if task.is_some() {
@@ -2397,7 +2402,7 @@ pub async fn get_file_diff(
             match show_output {
                 Ok(output) if output.status.success() => {
                     let content = String::from_utf8_lossy(&output.stdout);
-                    let lines: Vec<String> = content.lines().enumerate().map(|(_, line)| {
+                    let lines: Vec<String> = content.lines().map(|line| {
                         format!("-{}", line)
                     }).collect();
                     format!(
@@ -2622,11 +2627,10 @@ pub async fn get_worktree_info(
             .await
             .ok()
             .filter(|o| o.status.success())
-            .map(|o| {
+            .and_then(|o| {
                 let b = String::from_utf8_lossy(&o.stdout).trim().to_string();
                 if b == "HEAD" { None } else { Some(b) }
-            })
-            .flatten();
+            });
 
         // Working-tree cleanliness - count of modified/staged/untracked files
         // via `--porcelain=v1` (stable, machine-readable). Empty output = clean.
@@ -3259,7 +3263,7 @@ pub async fn git_push(
         // Re-validate the remote against `git remote` - don't trust the frontend.
         let remotes_raw = run_git(&path, &["remote"]).await?;
         let known: Vec<&str> = remotes_raw.lines().map(|l| l.trim()).collect();
-        if !known.iter().any(|r| *r == remote.as_str()) {
+        if !known.contains(&remote.as_str()) {
             return Err(error_reporter::user_err(format!("Unknown remote: {}", remote)));
         }
 
@@ -4658,7 +4662,7 @@ fn scan_for_repos(
             None => continue,
         };
         if name.starts_with('.') && name != ".git" { continue; }
-        if SCAN_SKIP_DIRS.iter().any(|s| *s == name) { continue; }
+        if SCAN_SKIP_DIRS.contains(&name) { continue; }
         scan_for_repos(root, &path, depth + 1, max_depth, results, limit);
     }
 }
@@ -5566,12 +5570,13 @@ const SEARCH_MAX_TOTAL_MATCHES: u32 = 5000;
 const SEARCH_MAX_PER_FILE: usize = 200;
 
 fn search_should_skip_dir(name: &str) -> bool {
-    if SEARCH_IGNORE_DIRS.iter().any(|d| *d == name) {
+    if SEARCH_IGNORE_DIRS.contains(&name) {
         return true;
     }
     name.starts_with('.') && name.len() > 1
 }
 
+#[allow(clippy::too_many_arguments)]
 fn search_walk(
     root: &std::path::Path,
     dir: &std::path::Path,
@@ -5647,9 +5652,7 @@ fn search_walk(
                 let sniff_len = bytes.len().min(8192);
                 if !bytes[..sniff_len].contains(&0u8) {
                     if let Ok(text) = std::str::from_utf8(&bytes) {
-                        let mut line_no: u32 = 0;
-                        for line in text.lines() {
-                            line_no += 1;
+                        for (line_no, line) in (1_u32..).zip(text.lines()) {
                             if matches.len() >= SEARCH_MAX_PER_FILE {
                                 break;
                             }

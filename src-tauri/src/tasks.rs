@@ -20,7 +20,7 @@ pub const MANAGED_DIR: &str = ".agentrium-worktrees";
 /// Branch namespace for generated task branches.
 pub const BRANCH_PREFIX: &str = "agentrium/";
 const MAX_SLUG_LEN: usize = 48;
-const MAX_SUFFIX: u32 = 99;
+pub(crate) const MAX_SUFFIX: u32 = 99;
 
 /// Task metadata carried on a terminal. Field names are camelCase on the wire
 /// because the frontend reads them as `task.baseBranch` etc.
@@ -32,6 +32,9 @@ pub struct TaskInfo {
     pub base_branch: String,
     pub worktree_path: String,
     pub repo_path: String,
+    /// Set when the task is one contender of a race (see `races.rs`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub race_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -330,6 +333,7 @@ pub fn same_path(a: &str, b: &str) -> bool {
     norm(a) == norm(b)
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn squash_message_default(title: &str, files: &[String]) -> String {
     let mut msg = title.trim().to_string();
     if !files.is_empty() {
@@ -347,7 +351,7 @@ pub fn squash_message_default(title: &str, files: &[String]) -> String {
 // Git plumbing
 // ---------------------------------------------------------------------------
 
-async fn git(dir: &Path, args: &[&str]) -> Result<String, String> {
+pub(crate) async fn git(dir: &Path, args: &[&str]) -> Result<String, String> {
     let out = git_cmd_async(args)
         .current_dir(dir)
         .output()
@@ -363,15 +367,15 @@ async fn git(dir: &Path, args: &[&str]) -> Result<String, String> {
 
 /// Git failures in this flow are almost always repo state (conflicts, dirty
 /// trees, missing refs), so they surface to the UI without telemetry.
-async fn git_user(dir: &Path, args: &[&str]) -> Result<String, String> {
+pub(crate) async fn git_user(dir: &Path, args: &[&str]) -> Result<String, String> {
     git(dir, args).await.map_err(user_err)
 }
 
-async fn git_ok(dir: &Path, args: &[&str]) -> bool {
+pub(crate) async fn git_ok(dir: &Path, args: &[&str]) -> bool {
     git(dir, args).await.is_ok()
 }
 
-async fn branch_exists(repo: &Path, branch: &str) -> bool {
+pub(crate) async fn branch_exists(repo: &Path, branch: &str) -> bool {
     git_ok(
         repo,
         &[
@@ -446,7 +450,7 @@ async fn tracked_dirty(dir: &Path) -> Result<bool, String> {
     Ok(!out.trim().is_empty())
 }
 
-async fn uncommitted(dir: &Path) -> Result<Vec<TaskFileChange>, String> {
+pub(crate) async fn uncommitted(dir: &Path) -> Result<Vec<TaskFileChange>, String> {
     let out = git_user(
         dir,
         &["-c", "core.quotepath=off", "status", "--porcelain=v1"],
@@ -615,6 +619,7 @@ pub async fn start_task_impl(
         base_branch: base.clone(),
         worktree_path: wt_str.clone(),
         repo_path: repo_str.clone(),
+        race_id: None,
     };
     Ok((
         StartTaskResult {
@@ -851,7 +856,7 @@ pub async fn finish_task_impl(
 // Tauri commands
 // ---------------------------------------------------------------------------
 
-async fn ensure_repo_trusted(state: &State<'_, AppState>, repo_path: &str) -> Result<(), String> {
+pub(crate) async fn ensure_repo_trusted(state: &State<'_, AppState>, repo_path: &str) -> Result<(), String> {
     if crate::commands::validate_path_is_trusted(state, repo_path)
         .await
         .is_ok()

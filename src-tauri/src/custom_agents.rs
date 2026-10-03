@@ -42,6 +42,11 @@ pub struct CustomAgent {
     pub install_url: Option<String>,
     #[serde(default)]
     pub install_hint: Option<String>,
+    /// How the CLI takes a first prompt at spawn (`{prompt}`,
+    /// `--flag {prompt}` or `--flag={prompt}`). Device-local like
+    /// `default_args`: never part of the sync row.
+    #[serde(default)]
+    pub initial_prompt_template: Option<String>,
     #[serde(default)]
     pub created_at: String,
     #[serde(default)]
@@ -145,6 +150,9 @@ pub fn validate(agent: &CustomAgent) -> Result<(), String> {
     for a in &agent.default_args {
         validate_arg(a)?;
     }
+    if let Some(tpl) = agent.initial_prompt_template.as_deref().filter(|t| !t.trim().is_empty()) {
+        crate::agents::parse_initial_prompt_template(tpl)?;
+    }
     if !ALLOWED_COLORS.contains(&agent.color.as_str()) {
         return Err("Tile colour must be one of the offered swatches".to_string());
     }
@@ -176,9 +184,23 @@ mod tests {
             bindings: vec![],
             install_url: None,
             install_hint: None,
+            initial_prompt_template: None,
             created_at: String::new(),
             updated_at: String::new(),
         }
+    }
+
+    #[test]
+    fn initial_prompt_template_is_validated() {
+        let mut a = ok_agent();
+        a.initial_prompt_template = Some("--prompt {prompt}".into());
+        assert!(validate(&a).is_ok());
+        a.initial_prompt_template = Some("   ".into());
+        assert!(validate(&a).is_ok(), "blank means unset");
+        a.initial_prompt_template = Some("--p=$(x) {prompt}".into());
+        assert!(validate(&a).is_err());
+        a.initial_prompt_template = Some("--prompt".into());
+        assert!(validate(&a).unwrap_err().contains("{prompt}"));
     }
 
     #[test]

@@ -38,6 +38,110 @@ pub struct TerminalConfig {
     /// Persisted with session restore so the task survives a restart.
     #[serde(default)]
     pub task: Option<crate::tasks::TaskInfo>,
+    /// How a spawn-time initial prompt reached the agent (Race mode). Only
+    /// set on the config returned by `create_terminal`; never restored.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt_delivery: Option<PromptDelivery>,
+}
+
+/// Result of delivering an initial prompt at spawn.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "mode", rename_all = "lowercase")]
+pub enum PromptDelivery {
+    /// The prompt itself is an argv element.
+    Argv,
+    /// The prompt was written to `path`; argv carries a short instruction to
+    /// read it (too long, or unsafe to pass through `cmd /C`).
+    File { path: String },
+    /// Not delivered: the frontend stages it in the prompt editor instead.
+    Staged,
+}
+
+/// Longest prompt passed inline. `cmd /C` command lines cap at 8191 chars
+/// in total, so Windows leaves generous room for the binary and other args.
+const MAX_INLINE_PROMPT_WINDOWS: usize = 2_000;
+const MAX_INLINE_PROMPT_UNIX: usize = 32_000;
+
+/// Characters `cmd.exe` interprets even inside the double quotes
+/// portable-pty puts around an argument (`%`, `!`, `"` toggling the quote
+/// state), or that are special when an argument ends up unquoted, plus
+/// anything that would end the command line (newlines). An argument free of
+/// all of these reaches the program unchanged through `cmd /C`, and again
+/// through an npm `.cmd` shim's `%*` re-parse.
+pub(crate) const CMD_UNSAFE: &[char] = &['"', '%', '!', '^', '&', '|', '<', '>', '(', ')', '\r', '\n'];
+
+/// True when `arg` passes through `cmd /C` (and portable-pty's MSVCRT
+/// quoting) byte for byte.
+pub(crate) fn is_cmd_safe(arg: &str) -> bool {
+    !arg.is_empty() && !arg.contains(CMD_UNSAFE) && !arg.chars().any(char::is_control)
+}
+
+fn prompt_argv(cap: &crate::agents::InitialPrompt, text: &str) -> Vec<String> {
+    use crate::agents::InitialPrompt;
+    match cap {
+        InitialPrompt::Positional => vec![text.to_string()],
+        InitialPrompt::Flag(flag) => vec![flag.clone(), text.to_string()],
+        InitialPrompt::FlagEquals(flag) => vec![format!("{flag}={text}")],
+    }
+}
+
+/// Render the argv that delivers `prompt` to an agent with capability
+/// `cap`. Inline when it is short, multi-word (a single word could be taken
+/// as a subcommand such as `claude update`), does not start with `-` (would
+/// parse as a flag) and, on Windows, is `cmd`-safe. Otherwise the prompt is
+/// written to a file through `write_file` and argv carries an instruction to
+/// read it. Returns `Staged` (no args) when even that instruction cannot be
+/// passed safely.
+pub(crate) fn render_initial_prompt(
+    cap: &crate::agents::InitialPrompt,
+    prompt: &str,
+    windows: bool,
+    write_file: impl FnOnce(&str) -> Result<String, String>,
+) -> Result<(Vec<String>, PromptDelivery), String> {
+    let text = prompt.trim();
+    if text.is_empty() {
+        return Ok((Vec::new(), PromptDelivery::Staged));
+    }
+    let max = if windows { MAX_INLINE_PROMPT_WINDOWS } else { MAX_INLINE_PROMPT_UNIX };
+    let inline_ok = text.chars().count() <= max
+        && !text.starts_with('-')
+        && text.contains(char::is_whitespace)
+        && !text.contains('\0')
+        && (!windows || is_cmd_safe(text));
+    if inline_ok {
+        return Ok((prompt_argv(cap, text), PromptDelivery::Argv));
+    }
+    let path = write_file(text)?;
+    let instruction = format!("Read the task description in {path} and complete it.");
+    if windows && !is_cmd_safe(&instruction) {
+        return Ok((Vec::new(), PromptDelivery::Staged));
+    }
+    Ok((prompt_argv(cap, &instruction), PromptDelivery::File { path }))
+}
+
+/// Write a prompt to `<temp>/agentrium-prompts/<uuid>.md` (outside every
+/// worktree, so it never shows up as a change). Files older than a week are
+/// cleaned up on the way.
+pub(crate) fn write_prompt_file(text: &str) -> Result<String, String> {
+    let dir = std::env::temp_dir().join("agentrium-prompts");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("Cannot create {}: {e}", dir.display()))?;
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        let week = std::time::Duration::from_secs(7 * 24 * 3600);
+        for entry in entries.flatten() {
+            let old = entry
+                .metadata()
+                .and_then(|m| m.modified())
+                .ok()
+                .and_then(|t| t.elapsed().ok())
+                .is_some_and(|age| age > week);
+            if old {
+                let _ = std::fs::remove_file(entry.path());
+            }
+        }
+    }
+    let path = dir.join(format!("{}.md", Uuid::new_v4()));
+    std::fs::write(&path, text).map_err(|e| format!("Cannot write {}: {e}", path.display()))?;
+    Ok(path.to_string_lossy().to_string())
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -267,6 +371,9 @@ impl TerminalManager {
         // `http://127.0.0.1:<port>` base of the embedded OTLP receiver, or
         // None when cost tracking is disabled / the receiver failed to start.
         otel_endpoint: Option<String>,
+        // Race mode: first prompt delivered through argv (spawn-only, never
+        // persisted in `claude_args`, so a restore never re-sends it).
+        initial_prompt: Option<String>,
     ) -> Result<TerminalConfig, String> {
         // Validate claude_args: reject any argument containing shell
         // metacharacters. Narrow exception: bracketed known-model aliases
@@ -349,7 +456,20 @@ impl TerminalManager {
         // Resolve which agent binary to launch. `build_agent_command` returns
         // the binary name and echoes the args back so we can hand them to
         // CommandBuilder platform-appropriately.
-        let (agent_binary, spawn_args) = build_agent_command(&spec, &claude_args);
+        let (agent_binary, mut spawn_args) = build_agent_command(&spec, &claude_args);
+        // Appended after validation on purpose: the prompt is free text, and
+        // `render_initial_prompt` only inlines it where it is passed through
+        // byte for byte (single-quoted on Unix, cmd-safe on Windows).
+        let prompt_delivery = match (initial_prompt.as_deref(), spec.initial_prompt.as_ref()) {
+            (Some(text), Some(cap)) if !text.trim().is_empty() => {
+                let (args, delivery) =
+                    render_initial_prompt(cap, text, cfg!(target_os = "windows"), write_prompt_file)?;
+                spawn_args.extend(args);
+                Some(delivery)
+            }
+            (Some(text), None) if !text.trim().is_empty() => Some(PromptDelivery::Staged),
+            _ => None,
+        };
 
         // Spawn the agent binary directly so the process exits when it
         // finishes, allowing the terminal-finished event to fire for
@@ -466,6 +586,7 @@ impl TerminalManager {
             agent: spec.kind.clone(),
             credential_bindings,
             task: None,
+            prompt_delivery,
         };
 
         let mut reader = pty_pair.master.try_clone_reader()
@@ -639,6 +760,7 @@ impl TerminalManager {
             agent: crate::config::AgentKind::Claude,
             credential_bindings: Vec::new(),
             task: None,
+            prompt_delivery: None,
         };
 
         let mut reader = pty_pair.master.try_clone_reader()
@@ -762,6 +884,7 @@ impl TerminalManager {
             agent: crate::config::AgentKind::Claude,
             credential_bindings: Vec::new(),
             task: None,
+            prompt_delivery: None,
         };
 
         let mut reader = pty_pair.master.try_clone_reader()
@@ -1140,6 +1263,7 @@ mod tests {
                     agent: crate::config::AgentKind::Claude,
                     credential_bindings: Vec::new(),
                     task: None,
+                    prompt_delivery: None,
                 },
                 pty_pair,
                 writer,
@@ -1244,6 +1368,7 @@ mod tests {
                 None,
                 None,
                 false,
+                None,
                 None,
             )
             .unwrap_err();
@@ -1396,6 +1521,7 @@ mod tests {
             install_url: None,
             install_hint: None,
             resume_flag: tpl.map(|s| s.to_string()),
+            initial_prompt: None,
         }
     }
 
@@ -1472,6 +1598,7 @@ mod tests {
                 credential_id: "c1".into(),
             }],
             task: None,
+            prompt_delivery: None,
         };
         let json = serde_json::to_string(&cfg).unwrap();
         assert!(json.contains("\"credential_bindings\""));
@@ -1481,5 +1608,179 @@ mod tests {
         let old = json.replace(",\"credential_bindings\":[{\"env\":\"ANTHROPIC_API_KEY\",\"credential_id\":\"c1\"}]", "");
         let back: TerminalConfig = serde_json::from_str(&old).unwrap();
         assert!(back.credential_bindings.is_empty());
+    }
+
+    // --- Race mode: initial prompt delivery ---------------------------------
+
+    use crate::agents::InitialPrompt;
+
+    fn no_file(_: &str) -> Result<String, String> {
+        panic!("inline prompts must not write a file")
+    }
+
+    /// portable-pty's Windows quoting (MSVCRT ArgvQuote), reproduced so the
+    /// tests can check what `cmd.exe /C` actually receives.
+    fn msvcrt_quote(arg: &str) -> String {
+        if !arg.is_empty() && !arg.contains([' ', '\t', '\n', '\x0b', '"']) {
+            return arg.to_string();
+        }
+        let mut out = String::from("\"");
+        let chars: Vec<char> = arg.chars().collect();
+        let mut i = 0;
+        while i < chars.len() {
+            let mut slashes = 0;
+            while i < chars.len() && chars[i] == '\\' {
+                slashes += 1;
+                i += 1;
+            }
+            if i == chars.len() {
+                out.push_str(&"\\".repeat(slashes * 2));
+                break;
+            } else if chars[i] == '"' {
+                out.push_str(&"\\".repeat(slashes * 2 + 1));
+                out.push('"');
+            } else {
+                out.push_str(&"\\".repeat(slashes));
+                out.push(chars[i]);
+            }
+            i += 1;
+        }
+        out.push('"');
+        out
+    }
+
+    /// The cmd.exe hazards for a full `/C` command line: a variable expansion
+    /// (`%`/`!`), a line break, or an operator outside double quotes.
+    fn cmd_line_is_inert(line: &str) -> bool {
+        if line.contains(['%', '!', '\r', '\n']) {
+            return false;
+        }
+        let mut quoted = false;
+        for c in line.chars() {
+            match c {
+                '"' => quoted = !quoted,
+                '&' | '|' | '<' | '>' | '^' | '(' | ')' if !quoted => return false,
+                _ => {}
+            }
+        }
+        !quoted
+    }
+
+    fn windows_cmd_line(args: &[String]) -> String {
+        let mut line = String::from("claude --model opus");
+        for a in args {
+            line.push(' ');
+            line.push_str(&msvcrt_quote(a));
+        }
+        line
+    }
+
+    #[test]
+    fn plain_prompt_is_inline_for_each_capability() {
+        let p = "Fix the login redirect loop in auth.ts";
+        for windows in [false, true] {
+            assert_eq!(
+                render_initial_prompt(&InitialPrompt::Positional, p, windows, no_file).unwrap(),
+                (vec![p.to_string()], PromptDelivery::Argv)
+            );
+            assert_eq!(
+                render_initial_prompt(&InitialPrompt::Flag("--prompt-interactive".into()), p, windows, no_file).unwrap(),
+                (vec!["--prompt-interactive".to_string(), p.to_string()], PromptDelivery::Argv)
+            );
+            assert_eq!(
+                render_initial_prompt(&InitialPrompt::FlagEquals("--message".into()), p, windows, no_file).unwrap(),
+                (vec![format!("--message={p}")], PromptDelivery::Argv)
+            );
+        }
+        let (args, _) = render_initial_prompt(&InitialPrompt::Positional, p, true, no_file).unwrap();
+        assert!(cmd_line_is_inert(&windows_cmd_line(&args)));
+    }
+
+    #[test]
+    fn windows_cmd_hostile_prompts_go_to_a_file() {
+        let hostile = [
+            "Fix the \"login\" bug",
+            "Use 100% of the width",
+            "Escape ^ carets everywhere",
+            "Build && deploy & rm -rf",
+            "Line one\nline two",
+            "Pipe | redirect > out.txt (now)",
+            "Hello !USERNAME! world",
+        ];
+        for prompt in hostile {
+            let mut written = None;
+            let (args, delivery) = render_initial_prompt(&InitialPrompt::Positional, prompt, true, |t| {
+                written = Some(t.to_string());
+                Ok(r"C:\Users\me\AppData\Local\Temp\agentrium-prompts\abc.md".to_string())
+            })
+            .unwrap();
+            assert_eq!(written.as_deref(), Some(prompt), "the file holds the exact prompt");
+            assert_eq!(
+                delivery,
+                PromptDelivery::File { path: r"C:\Users\me\AppData\Local\Temp\agentrium-prompts\abc.md".into() }
+            );
+            assert_eq!(args.len(), 1);
+            assert!(args[0].starts_with("Read the task description in C:\\"), "{}", args[0]);
+            assert!(cmd_line_is_inert(&windows_cmd_line(&args)), "{prompt:?} -> {args:?}");
+        }
+        // Inline, an odd quote count flips cmd's quote state so the `&` after
+        // it runs as an operator. This is what the file fallback prevents.
+        assert!(!cmd_line_is_inert(&windows_cmd_line(&["Fix the \"x & calc".to_string()])));
+        assert!(!cmd_line_is_inert(&windows_cmd_line(&["Use 100% now".to_string()])));
+    }
+
+    #[test]
+    fn unix_keeps_quotes_and_newlines_inline() {
+        let p = "Fix the \"login\" bug & 100% of it\nthen run `tests` with $HOME";
+        let (args, delivery) = render_initial_prompt(&InitialPrompt::Positional, p, false, no_file).unwrap();
+        assert_eq!((args, delivery), (vec![p.to_string()], PromptDelivery::Argv));
+    }
+
+    #[test]
+    fn long_single_word_and_dash_prompts_use_the_file() {
+        let path = "/tmp/agentrium-prompts/x.md".to_string();
+        let long = "word ".repeat(10_000);
+        for (prompt, windows) in [
+            (long.as_str(), false),
+            ("refactor", false),
+            ("update", true),
+            ("--dangerously-skip-permissions do it", false),
+        ] {
+            let (args, delivery) =
+                render_initial_prompt(&InitialPrompt::Positional, prompt, windows, |_| Ok(path.clone())).unwrap();
+            assert_eq!(delivery, PromptDelivery::File { path: path.clone() }, "{prompt:.20}");
+            assert_eq!(args, vec![format!("Read the task description in {path} and complete it.")]);
+        }
+        assert_eq!(
+            render_initial_prompt(&InitialPrompt::Positional, "   ", true, no_file).unwrap(),
+            (vec![], PromptDelivery::Staged)
+        );
+    }
+
+    #[test]
+    fn unsafe_prompt_file_path_falls_back_to_staging_on_windows() {
+        let (args, delivery) = render_initial_prompt(&InitialPrompt::Positional, "a \"b\"", true, |_| {
+            Ok(r"C:\Users\R&D\Temp\x.md".to_string())
+        })
+        .unwrap();
+        assert!(args.is_empty());
+        assert_eq!(delivery, PromptDelivery::Staged);
+    }
+
+    #[test]
+    fn prompt_file_round_trip() {
+        let text = "Line \"one\"\nline 100% two";
+        let path = write_prompt_file(text).unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), text);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn prompt_delivery_wire_shape() {
+        assert_eq!(serde_json::to_value(PromptDelivery::Argv).unwrap(), serde_json::json!({ "mode": "argv" }));
+        assert_eq!(
+            serde_json::to_value(PromptDelivery::File { path: "p".into() }).unwrap(),
+            serde_json::json!({ "mode": "file", "path": "p" })
+        );
     }
 }
