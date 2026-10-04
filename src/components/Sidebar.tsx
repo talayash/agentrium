@@ -1,4 +1,4 @@
-import { Terminal, FolderTree, History, Plus, ChevronsRight, ChevronsLeft, Settings, Bell, GitBranch, Flag, UserCog } from 'lucide-react';
+import { Terminal, FolderTree, History, Plus, ChevronsRight, ChevronsLeft, Settings, GitBranch, Flag, UserCog } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useAppStore } from '../store/appStore';
 import type { SidebarNav } from '../store/appStore';
@@ -9,8 +9,6 @@ import { RaceSidebarGroups } from './RaceSidebarGroups';
 import { RaceHistory } from './RaceHistory';
 import { useTerminalStore } from '../store/terminalStore';
 import { Tooltip } from './ui/Tooltip';
-import { AttentionInbox } from './AttentionInbox';
-import { useAttentionStore } from '../store/attentionStore';
 
 interface NavItem {
   id: SidebarNav;
@@ -22,7 +20,6 @@ const NAV: NavItem[] = [
   { id: 'sessions', label: 'Sessions', Icon: Terminal },
   { id: 'files', label: 'Files', Icon: FolderTree },
   { id: 'history', label: 'History', Icon: History },
-  { id: 'attention', label: 'Attention inbox', Icon: Bell },
 ];
 
 /**
@@ -50,7 +47,6 @@ export function Sidebar() {
   const openSettings = useAppStore((s) => s.openSettings);
   const openProfileModal = useAppStore((s) => s.openProfileModal);
   const sessionCount = useTerminalStore((s) => s.terminals.size);
-  const attentionCount = useAttentionStore((s) => s.items.length);
 
   if (sidebarCollapsed) {
     return (
@@ -59,11 +55,10 @@ export function Sidebar() {
           <Tooltip key={id} label={label} side="right">
             <button
               onClick={() => { setNav(id); toggleSidebarCollapse(); }}
-              aria-label={id === 'attention' ? `${label} (${attentionCount})` : label}
+              aria-label={label}
               className="w-8 h-8 flex items-center justify-center rounded-lg text-text-tertiary hover:text-text-primary hover:bg-fill-hover transition-colors"
             >
               <Icon size={16} strokeWidth={1.75} />
-              {id === 'attention' && attentionCount > 0 && <span className="text-[10px] text-accent-primary">{attentionCount}</span>}
             </button>
           </Tooltip>
         ))}
@@ -111,7 +106,7 @@ export function Sidebar() {
               <button
                 onClick={() => setNav(id)}
                 aria-pressed={on}
-                aria-label={id === 'attention' ? `${label} (${attentionCount})` : label}
+                aria-label={label}
                 className={`flex-1 h-9 rounded-lg flex items-center justify-center transition-[background-color,color,transform] duration-100 active:scale-[0.96] ${
                   on
                     ? 'bg-accent-primary text-white shadow-[0_3px_8px_var(--accent-glow-md)]'
@@ -119,7 +114,6 @@ export function Sidebar() {
                 }`}
               >
                 <Icon size={16} strokeWidth={on ? 2 : 1.75} />
-                {id === 'attention' && attentionCount > 0 && <span className="ml-1 text-[10px]">{attentionCount}</span>}
               </button>
             </Tooltip>
           );
@@ -183,7 +177,6 @@ export function Sidebar() {
             <SessionsPanel />
           </div>
         )}
-        {nav === 'attention' && <AttentionInbox />}
       </div>
 
       {/* Prominent primary action + profiles + settings */}

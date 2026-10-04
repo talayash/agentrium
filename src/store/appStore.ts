@@ -22,7 +22,7 @@ export const DEFAULT_TERMINAL_FONT_SIZE = 14;
 export type UiDensity = 'compact' | 'comfortable' | 'spacious';
 export type TabHeight = 'small' | 'medium' | 'large';
 /** Which navigator the unified sidebar shows (Apple/Xcode-style single column). */
-export type SidebarNav = 'sessions' | 'files' | 'history' | 'attention';
+export type SidebarNav = 'sessions' | 'files' | 'history';
 export type ThemeMode = 'dark' | 'light' | 'auto';
 export type AutoStageMode = 'none' | 'tracked' | 'all';
 export type MergeStrategy = 'merge' | 'rebase' | 'ff-only';
@@ -1314,7 +1314,7 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: 'claude-terminal-app',
-      version: 8,
+      version: 9,
       migrate: (persistedState, version) => {
         const s = (persistedState as Partial<AppState>) ?? {};
         if (version < 1) {
@@ -1381,6 +1381,13 @@ export const useAppStore = create<AppState>()(
           // accent pattern; explicit 'light' or a named theme stays put.
           if (s.terminalTheme === 'dark') {
             s.terminalTheme = 'auto';
+          }
+        }
+        if (version < 9) {
+          // The Attention inbox navigator was removed. A sidebar persisted on
+          // it would render an empty body, so fall back to Sessions.
+          if ((s.sidebarNav as string | undefined) === 'attention') {
+            s.sidebarNav = 'sessions';
           }
         }
         return s as AppState;

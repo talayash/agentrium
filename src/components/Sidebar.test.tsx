@@ -8,7 +8,6 @@ vi.mock('./SessionsPanel', () => ({ SessionsPanel: () => null }));
 vi.mock('./SessionCards', () => ({ SessionCards: () => null }));
 vi.mock('./RaceSidebarGroups', () => ({ RaceSidebarGroups: () => null }));
 vi.mock('./RaceHistory', () => ({ RaceHistory: () => null }));
-vi.mock('./AttentionInbox', () => ({ AttentionInbox: () => null }));
 import { Sidebar } from './Sidebar';
 import { useAppStore } from '../store/appStore';
 

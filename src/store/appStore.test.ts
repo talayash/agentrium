@@ -676,6 +676,20 @@ describe('appStore - persist migration v3 → v4 (gemini → antigravity)', () =
   });
 });
 
+describe('appStore - persist migration v8 -> v9 (Attention inbox removed)', () => {
+  it('moves a sidebar persisted on the removed attention navigator back to sessions', async () => {
+    localStorage.setItem(PERSIST_KEY, JSON.stringify({ version: 8, state: { sidebarNav: 'attention' } }));
+    await useAppStore.persist.rehydrate();
+    expect(useAppStore.getState().sidebarNav).toBe('sessions');
+  });
+
+  it('keeps any other navigator', async () => {
+    localStorage.setItem(PERSIST_KEY, JSON.stringify({ version: 8, state: { sidebarNav: 'history' } }));
+    await useAppStore.persist.rehydrate();
+    expect(useAppStore.getState().sidebarNav).toBe('history');
+  });
+});
+
 describe('appStore - persist migration v4 → v8 (Apple redesign preserves explicit picks)', () => {
   // These four cases lock in the invariant that a migration must not clobber
   // an explicit user choice with an unconditional write - the review found
