@@ -82,6 +82,10 @@ impl SyncClient {
     pub fn set_access_token(&mut self, token: String) {
         self.access_token = token;
         self.retry_user_action();
+        // A new access token means a new sign-in, which ends an expired session.
+        if self.blocked == Some(SyncBlock::SessionExpired) {
+            self.blocked = None;
+        }
     }
 
     pub fn is_blocked(&self) -> bool {
@@ -142,11 +146,13 @@ impl SyncClient {
             .map_err(SyncError::Network)?;
         if resp.status() == StatusCode::UNAUTHORIZED {
             // One-shot refresh, then retry. Force-logout on second 401 is
-            // handled by the sync engine layer, not here.
+            // handled by the sync engine layer, not here. No stored refresh
+            // token (or one the broker rejected) means the session is over:
+            // only a new sign-in can resume sync, so block instead of retrying.
             let new_token = auth::refresh_access_token()
                 .await
                 .map_err(SyncError::Refresh)?
-                .ok_or_else(|| SyncError::Refresh("no refresh token stored".into()))?;
+                .ok_or(SyncError::Blocked(SyncBlock::SessionExpired))?;
             self.access_token = new_token;
             let retry = self
                 .http
@@ -231,6 +237,7 @@ impl std::fmt::Display for SyncError {
             SyncError::Blocked(SyncBlock::CredentialAccessCanceled) => {
                 write!(f, "credential_access_canceled")
             }
+            SyncError::Blocked(SyncBlock::SessionExpired) => write!(f, "session_expired"),
             SyncError::Network(e) => write!(f, "network: {e}"),
             SyncError::Refresh(s) => write!(f, "refresh: {s}"),
             SyncError::Server(code, body) => write!(f, "server {code}: {body}"),
@@ -243,6 +250,8 @@ impl std::fmt::Display for SyncError {
 pub enum SyncBlock {
     UpdateRequired,
     CredentialAccessCanceled,
+    /// The refresh token is gone or was rejected; cleared by a new sign-in.
+    SessionExpired,
 }
 
 #[cfg(test)]
@@ -285,13 +294,16 @@ mod tests {
         for reason in [
             SyncBlock::UpdateRequired,
             SyncBlock::CredentialAccessCanceled,
+            SyncBlock::SessionExpired,
         ] {
             client.blocked = Some(reason);
             let result: Result<Value, _> = client.post_with_refresh("/unused", &()).await;
             assert!(matches!(result, Err(SyncError::Blocked(r)) if r == reason));
+            // Retrying cannot bring back a missing refresh token or a newer build.
             client.retry_user_action();
-            assert_eq!(client.is_blocked(), reason == SyncBlock::UpdateRequired);
+            assert_eq!(client.is_blocked(), reason != SyncBlock::CredentialAccessCanceled);
             client.blocked = Some(reason);
+            // A fresh sign-in clears everything except the update requirement.
             client.set_access_token("rotated".into());
             assert_eq!(client.is_blocked(), reason == SyncBlock::UpdateRequired);
         }

@@ -43,6 +43,14 @@ describe('SyncStatusChip', () => {
     await userEvent.setup().click(screen.getByLabelText('Sync: Paused'));
     expect(syncNow).toHaveBeenCalledOnce();
   });
+
+  it('tells the user to sign in again when the session expired', () => {
+    useSyncStore.setState({ status: 'paused', lastError: 'session_expired' });
+    render(<SyncStatusChip />);
+    expect(screen.getByTitle('Your sign-in expired. Sign out and sign in again to resume cloud sync. Local changes are preserved.')).toBeTruthy();
+    expect(screen.getByLabelText('Sync: Paused')).toBeTruthy();
+  });
+
   it('renders nothing for guest users', () => {
     useAuthStore.setState({ mode: 'guest', user: null } as any);
     const { container } = render(<SyncStatusChip />);

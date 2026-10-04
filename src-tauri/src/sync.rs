@@ -897,7 +897,7 @@ mod tests {
     #[test]
     fn user_action_required_pauses_without_telemetry_or_dropping_changes() {
         use sync_client::{SyncBlock, SyncError};
-        for reason in [SyncBlock::UpdateRequired, SyncBlock::CredentialAccessCanceled] {
+        for reason in [SyncBlock::UpdateRequired, SyncBlock::CredentialAccessCanceled, SyncBlock::SessionExpired] {
             let err = SyncError::Blocked(reason);
             assert_eq!(status_for_failure(&err), SyncStatus::Paused);
             assert!(!should_report_failure(&err));
