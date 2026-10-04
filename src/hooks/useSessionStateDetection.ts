@@ -1,20 +1,24 @@
 // Single global poller that infers each Claude terminal's session state every
-// 500ms and fires an attention notification when a session becomes blocked
-// waiting for the user. Mounted once (see App.tsx).
+// 500ms and alerts for blocking prompts and completed turns. Completion needs
+// a ready input prompt plus evidence of a turn; silence alone is insufficient.
+// Mounted once (see App.tsx).
 
 import { useEffect, useRef } from 'react';
 import type { Terminal } from '@xterm/xterm';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
-import { getLastOutputAt } from '../lib/terminalActivity';
-import { classifySettled, type SessionState } from '../lib/terminalState';
+import { getLastOutputAt, getLastSubmissionAt } from '../lib/terminalActivity';
+import { classifySettled, hasReadyPrompt, hasTurnFinishedMarker, type SessionState } from '../lib/terminalState';
 import { isWithinDnd, playNotificationSound } from '../lib/notificationGate';
 import { useNotification } from './useNotification';
 import { useWindowFocused } from './useWindowFocused';
+import { useSessionAttentionStore } from '../store/sessionAttentionStore';
 
 const POLL_INTERVAL_MS = 500;
 const BUSY_WINDOW_MS = 600;
 const BUFFER_TAIL_ROWS = 15;
+const SOUND_INTERVAL_MS = 4000;
+const COMPLETION_QUIET_MS = 1500;
 
 /** Read the bottom `rows` lines of xterm's already-parsed buffer as clean text. */
 function readBufferTail(term: Terminal, rows: number): string[] {
@@ -39,52 +43,95 @@ export function useSessionStateDetection(): void {
 
   // Terminals we've already notified for the current waiting episode.
   const notifiedRef = useRef<Set<string>>(new Set());
+  const lastSoundRef = useRef<number>(-Infinity);
+  const completedRef = useRef(new Set<string>());
+  const submissionsRef = useRef(new Map<string, number>());
 
   useEffect(() => {
     const interval = setInterval(() => {
       const store = useTerminalStore.getState();
       const app = useAppStore.getState();
       const now = Date.now();
+      const attention = useSessionAttentionStore.getState();
+      const dnd = app.dndEnabled && isWithinDnd(app.dndStart, app.dndEnd, new Date());
+      let needsSound = false;
+      for (const id of new Set([...attention.pending, ...attention.acknowledged, ...notifiedRef.current, ...completedRef.current, ...submissionsRef.current.keys()])) {
+        if (!store.terminals.has(id)) {
+          attention.clear(id);
+          notifiedRef.current.delete(id);
+          completedRef.current.delete(id);
+          submissionsRef.current.delete(id);
+        }
+      }
 
       for (const [id, inst] of store.terminals) {
         // Claude terminals only - skip plain shells and script children.
-        if (inst.scriptParentId || inst.isShellTerminal) continue;
+        if (inst.scriptParentId || inst.isShellTerminal) {
+          completedRef.current.delete(id);
+          attention.clear(id);
+          notifiedRef.current.delete(id);
+          continue;
+        }
 
         // Exited process: pin to stopped and re-arm notifications.
         if (inst.config.status === 'Stopped' || inst.config.status === 'Error') {
+          completedRef.current.delete(id);
           store.setTerminalState(id, 'stopped');
           notifiedRef.current.delete(id);
+          attention.clear(id);
           continue;
         }
 
         let state: SessionState;
         const last = getLastOutputAt(id);
+        const submitted = getLastSubmissionAt(id);
+        if (submitted != null && submissionsRef.current.get(id) !== submitted) {
+          submissionsRef.current.set(id, submitted);
+          completedRef.current.delete(id);
+          notifiedRef.current.delete(id);
+          attention.clear(id);
+        }
+        const lines = inst.xterm ? readBufferTail(inst.xterm, BUFFER_TAIL_ROWS) : [];
         if (last != null && now - last < BUSY_WINDOW_MS) {
           state = 'busy';
         } else if (inst.xterm) {
-          state = classifySettled(readBufferTail(inst.xterm, BUFFER_TAIL_ROWS));
+          state = classifySettled(lines);
         } else {
           // No mounted buffer to read - keep the last known state.
           state = store.terminalStates.get(id) ?? 'idle';
         }
 
-        const prev = store.terminalStates.get(id);
         store.setTerminalState(id, state);
 
-        if (state === 'waiting') {
+        const completed = state === 'idle' && hasReadyPrompt(lines)
+          && last != null && now - last >= COMPLETION_QUIET_MS
+          && (submitted != null ? last > submitted : hasTurnFinishedMarker(lines));
+        if (completed) completedRef.current.add(id);
+
+        if (state === 'waiting' || completedRef.current.has(id)) {
           const lookingAtIt = id === store.activeTerminalId && focusedRef.current;
-          const dnd = app.dndEnabled && isWithinDnd(app.dndStart, app.dndEnd, new Date());
-          if (prev !== 'waiting' && !lookingAtIt && !dnd && !notifiedRef.current.has(id)) {
+          attention.request(id);
+          if (lookingAtIt) attention.acknowledge(id);
+          const pending = useSessionAttentionStore.getState().pending.has(id);
+          if (pending && !dnd && !notifiedRef.current.has(id)) {
             const name = inst.config.nickname || inst.config.label;
-            notify('Claude needs your input', `${name} is waiting for your response.`);
-            if (app.notificationSoundEnabled) playNotificationSound();
+            notify(completedRef.current.has(id) ? 'Response ready' : 'Session needs your input',
+              completedRef.current.has(id) ? `${name} has finished. Open the session to review its response.` : `${name} is waiting for your response.`);
             notifiedRef.current.add(id);
           }
+          if (pending && !dnd) needsSound = true;
         } else {
           // Left the waiting episode - re-arm for the next prompt.
           notifiedRef.current.delete(id);
+          attention.clear(id);
         }
       }
+      // One shared sound cadence, even when several sessions need attention.
+      if (needsSound && app.notificationSoundEnabled && now - lastSoundRef.current >= SOUND_INTERVAL_MS) {
+        playNotificationSound();
+        lastSoundRef.current = now;
+      }
+      if (!needsSound) lastSoundRef.current = -Infinity;
     }, POLL_INTERVAL_MS);
 
     return () => clearInterval(interval);

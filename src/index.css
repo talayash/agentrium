@@ -759,3 +759,35 @@ h2, h3 { letter-spacing: var(--track-title); line-height: 1.3; }
 .no-drag {
   -webkit-app-region: no-drag;
 }
+
+.session-attention-outline {
+  position: absolute;
+  inset: 0;
+  border: 2px solid #fbbf24;
+  border-radius: inherit;
+  background: rgb(251 191 36 / 0.08);
+  pointer-events: none;
+  animation: session-attention-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes session-attention-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .session-attention-outline { animation: none; }
+}
+
+.session-busy-dot {
+  animation: session-busy-pulse 1s ease-in-out infinite;
+}
+
+@keyframes session-busy-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.2; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .session-busy-dot { animation: none; outline: 2px solid currentColor; outline-offset: 2px; }
+}

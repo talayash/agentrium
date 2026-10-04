@@ -20,13 +20,13 @@ export default function NotificationsPage() {
 
   return (
     <div>
-      <PageHeader title="Notifications" description="Desktop notifications when terminals finish." />
+      <PageHeader title="Notifications" description="Alerts when responses are ready, sessions need input, or terminals finish." />
 
       <PageSection title="Events">
         <SettingRow label="Notify when terminal finishes" description="System notification on PTY exit.">
           <Toggle value={notifyOnFinish} onChange={setNotifyOnFinish} />
         </SettingRow>
-        <SettingRow label="Play sound" description="Adds a short sound on notification.">
+        <SettingRow label="Play sound" description="Repeats every 4 seconds for unread completed responses or pending questions, until you view the session. Respects Do not disturb.">
           <Toggle value={notificationSoundEnabled} onChange={setNotificationSoundEnabled} />
         </SettingRow>
       </PageSection>

@@ -21,6 +21,7 @@ import { requestCloseTerminal } from '../lib/tasks';
 import { usePrStore } from '../store/prStore';
 import { openCreatePrForTerminal, openPullRequestUrl, sendFailingChecksToAgent, terminalPrTarget } from '../lib/pullRequestActions';
 import { PrChip } from './PrChip';
+import { useSessionAttentionStore } from '../store/sessionAttentionStore';
 
 // Soft per-agent tint for the card badge (Apple-clean, theme-aware via /alpha).
 const AGENT_TINT: Record<BuiltinAgentKind, string> = {
@@ -72,6 +73,8 @@ interface CardContextMenuState {
  */
 export function SessionCards() {
   const terminals = useTerminalStore((s) => s.terminals);
+  const pendingAttention = useSessionAttentionStore((s) => s.pending);
+  const terminalStates = useTerminalStore((s) => s.terminalStates);
   const activeTerminalId = useTerminalStore((s) => s.activeTerminalId);
   const metrics = useTerminalStore((s) => s.terminalMetrics);
   const unreadTerminalIds = useTerminalStore((s) => s.unreadTerminalIds);
@@ -252,6 +255,9 @@ export function SessionCards() {
         if (!t) return null;
         const active = id === activeTerminalId;
         const unread = !active && unreadTerminalIds.has(id);
+        const needsAttention = pendingAttention.has(id);
+        const busy = t.config.status === 'Running' && terminalStates.get(id) === 'busy';
+        const attentionLabel = terminalStates.get(id) === 'waiting' ? 'Needs your input' : 'Response ready';
         const isPinned = pinnedTabIds.includes(id);
         const inGrid = gridTerminalIds.includes(id);
         const cost = formatCost(metrics.get(id)?.costUsd ?? 0);
@@ -269,25 +275,28 @@ export function SessionCards() {
             aria-label={name}
             aria-description={t.sessionContext ? contextTooltip(name, t.sessionContext) : undefined}
             drag={renamingId !== id}
-            onClick={() => setActiveTerminal(id)}
+            onClick={() => { useSessionAttentionStore.getState().acknowledge(id); setActiveTerminal(id); }}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setActiveTerminal(id); }
+              if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); useSessionAttentionStore.getState().acknowledge(id); setActiveTerminal(id); }
             }}
             onAuxClick={(e) => {
               // Middle-click closes - parity with the old tab strip.
               if (e.button === 1) { e.preventDefault(); closeWithReport(id); }
             }}
             onContextMenu={(e) => openContextMenu(e, id)}
-            className={`group relative rounded-xl px-3 py-2.5 cursor-pointer transition-[background-color,box-shadow] duration-100 ring-1 ${
+            className={`group relative rounded-xl px-3 py-2.5 cursor-pointer transition-[background-color,box-shadow] duration-100 ring-1 ${needsAttention ? 'session-needs-attention' : ''} ${
               active
                 ? 'bg-accent-primary/10 ring-accent-primary/30'
                 : 'bg-fill-hover ring-seam hover:bg-fill-active'
             }`}
           >
+            {needsAttention && <span className="session-attention-outline" aria-hidden="true" />}
             <div className="flex items-center gap-2">
               <span
-                className={`w-[7px] h-[7px] rounded-full flex-shrink-0 ${STATUS_DOT[t.config.status] ?? 'bg-text-tertiary'}`}
-                title={t.config.status}
+                role="img"
+                aria-label={busy ? 'Working' : `Session ${terminalStates.get(id) ?? t.config.status}`}
+                className={`w-[7px] h-[7px] rounded-full flex-shrink-0 ${STATUS_DOT[t.config.status] ?? 'bg-text-tertiary'} ${busy ? 'session-busy-dot' : ''}`}
+                title={`Process: ${t.config.status}. Session: ${terminalStates.get(id) ?? 'unknown'}. ${needsAttention ? attentionLabel : 'No pending alert'}`}
               />
               {isPinned && (
                 <Pin size={10} className="text-accent-primary flex-shrink-0" aria-label="Pinned" />
@@ -309,8 +318,8 @@ export function SessionCards() {
                 </span>
                 </Tooltip>
               )}
-              {unread && (
-                <span className="w-1.5 h-1.5 rounded-full bg-accent-primary flex-shrink-0" aria-label="Unread output" />
+              {unread && !needsAttention && (
+                <span className="w-1.5 h-1.5 rounded-full bg-accent-primary flex-shrink-0" aria-label="Unread output" title="New output you have not viewed; this does not mean the agent is working." />
               )}
               {/* Badge first, actions after: when the hover actions appear the
                   badge slides LEFT instead of being covered. */}
@@ -366,6 +375,7 @@ export function SessionCards() {
                 </Tooltip>
               </span>
             </div>
+            {needsAttention && <div className="mt-1 text-xs font-semibold text-amber-400" role="status">{attentionLabel}</div>}
             {t.sessionContext?.title && t.sessionContext.title !== name && (
               <Tooltip label={contextTooltip(name, t.sessionContext, t.sessionSummary)} multiline side="right">
                 <div className="mt-1 text-[12px] text-text-secondary truncate" tabIndex={0}>
