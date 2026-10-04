@@ -1,5 +1,14 @@
 [
   {
+    "version": "1.37.1",
+    "date": "2026-10-04",
+    "features": [
+      { "title": "Fix bugs & performance" },
+      { "title": "Sync pauses when you are signed out", "description": "Cloud sync now pauses instead of retrying over and over when your sign-in has expired or been revoked. Sign in again to resume." },
+      { "title": "Simpler sidebar", "description": "The Attention inbox navigator has been removed from the sidebar." }
+    ]
+  },
+  {
     "version": "1.37.0",
     "date": "2026-10-03",
     "features": [
