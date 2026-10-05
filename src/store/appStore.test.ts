@@ -426,6 +426,7 @@ describe('appStore - persist partialize', () => {
     'showTabActivity',
     'compactTitleBar',
     'notificationSoundEnabled',
+    'notificationSoundRepeat',
     'dndEnabled',
     'dndStart',
     'dndEnd',

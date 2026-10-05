@@ -5,16 +5,18 @@ import { registerSetting } from '../index';
 const cat = { group: 'appearance-behavior', page: 'notifications' } as const;
 registerSetting({ category: cat, id: 'notify-on-finish', label: 'Notify on terminal finish', keywords: ['notification', 'desktop'] });
 registerSetting({ category: cat, id: 'sound',            label: 'Notification sound',         keywords: ['audio', 'ding'] });
+registerSetting({ category: cat, id: 'sound-repeat',     label: 'Repeat sound until viewed',  keywords: ['audio', 'reminder', 'alarm', 'attention'] });
 registerSetting({ category: cat, id: 'dnd',              label: 'Do not disturb',             keywords: ['quiet', 'hours', 'mute'] });
 
 export default function NotificationsPage() {
   const notifyOnFinish = useAppStore((s) => s.notifyOnFinish);
   const notificationSoundEnabled = useAppStore((s) => s.notificationSoundEnabled);
+  const notificationSoundRepeat = useAppStore((s) => s.notificationSoundRepeat);
   const dndEnabled = useAppStore((s) => s.dndEnabled);
   const dndStart = useAppStore((s) => s.dndStart);
   const dndEnd = useAppStore((s) => s.dndEnd);
   const {
-    setNotifyOnFinish, setNotificationSoundEnabled,
+    setNotifyOnFinish, setNotificationSoundEnabled, setNotificationSoundRepeat,
     setDndEnabled, setDndStart, setDndEnd,
   } = useAppStore.getState();
 
@@ -26,8 +28,11 @@ export default function NotificationsPage() {
         <SettingRow label="Notify when terminal finishes" description="System notification on PTY exit.">
           <Toggle value={notifyOnFinish} onChange={setNotifyOnFinish} />
         </SettingRow>
-        <SettingRow label="Play sound" description="Repeats every 4 seconds for unread completed responses or pending questions, until you view the session. Respects Do not disturb.">
+        <SettingRow label="Play sound" description="Plays when a response is ready or a session needs your input. Respects Do not disturb.">
           <Toggle value={notificationSoundEnabled} onChange={setNotificationSoundEnabled} />
+        </SettingRow>
+        <SettingRow label="Repeat until viewed" description="Plays the sound again every 4 seconds until you open the session. Needs Play sound on.">
+          <Toggle value={notificationSoundRepeat} onChange={setNotificationSoundRepeat} />
         </SettingRow>
       </PageSection>
 

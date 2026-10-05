@@ -55,6 +55,7 @@ export function useSessionStateDetection(): void {
       const attention = useSessionAttentionStore.getState();
       const dnd = app.dndEnabled && isWithinDnd(app.dndStart, app.dndEnd, new Date());
       let needsSound = false;
+      let newAlert = false;
       for (const id of new Set([...attention.pending, ...attention.acknowledged, ...notifiedRef.current, ...completedRef.current, ...submissionsRef.current.keys()])) {
         if (!store.terminals.has(id)) {
           attention.clear(id);
@@ -118,6 +119,7 @@ export function useSessionStateDetection(): void {
             notify(completedRef.current.has(id) ? 'Response ready' : 'Session needs your input',
               completedRef.current.has(id) ? `${name} has finished. Open the session to review its response.` : `${name} is waiting for your response.`);
             notifiedRef.current.add(id);
+            newAlert = true;
           }
           if (pending && !dnd) needsSound = true;
         } else {
@@ -127,7 +129,11 @@ export function useSessionStateDetection(): void {
         }
       }
       // One shared sound cadence, even when several sessions need attention.
-      if (needsSound && app.notificationSoundEnabled && now - lastSoundRef.current >= SOUND_INTERVAL_MS) {
+      // Without repeat, sound only when a new alert starts (the pre-#88 behavior).
+      const soundDue = app.notificationSoundRepeat
+        ? needsSound && now - lastSoundRef.current >= SOUND_INTERVAL_MS
+        : newAlert;
+      if (soundDue && app.notificationSoundEnabled) {
         playNotificationSound();
         lastSoundRef.current = now;
       }

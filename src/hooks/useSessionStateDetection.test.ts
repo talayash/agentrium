@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
   notify: vi.fn(), sound: vi.fn(), focused: false, dnd: false,
   lastOutput: vi.fn(), submission: vi.fn(), classify: vi.fn(), setState: vi.fn(),
   terminals: new Map<string, unknown>(), states: new Map<string, string>(),
-  app: { dndEnabled: false, dndStart: '22:00', dndEnd: '08:00', notificationSoundEnabled: true },
+  app: { dndEnabled: false, dndStart: '22:00', dndEnd: '08:00', notificationSoundEnabled: true, notificationSoundRepeat: false },
 }));
 vi.mock('../store/terminalStore', () => ({ useTerminalStore: { getState: () => ({
   terminals: mocks.terminals, terminalStates: mocks.states, activeTerminalId: 'one', setTerminalState: mocks.setState,
@@ -40,6 +40,7 @@ describe('session state polling and notifications', () => {
     mocks.dnd = false;
     mocks.app.dndEnabled = false;
     mocks.app.notificationSoundEnabled = true;
+    mocks.app.notificationSoundRepeat = false;
     mocks.lastOutput.mockReturnValue(undefined);
     mocks.submission.mockReturnValue(undefined);
     mocks.classify.mockReturnValue('waiting');
@@ -186,7 +187,18 @@ describe('session state polling and notifications', () => {
     expect(useSessionAttentionStore.getState().pending.has('one')).toBe(true);
   });
 
+  it('plays one sound per alert when repeat is off', () => {
+    mocks.terminals.set('two', terminal());
+    renderHook(useSessionStateDetection);
+    tick();
+    expect(mocks.sound).toHaveBeenCalledTimes(1);
+    act(() => vi.advanceTimersByTime(12000));
+    expect(mocks.sound).toHaveBeenCalledTimes(1);
+    expect(useSessionAttentionStore.getState().pending.size).toBe(2);
+  });
+
   it('repeats one sound for multiple pending sessions and stops after acknowledgement', () => {
+    mocks.app.notificationSoundRepeat = true;
     mocks.terminals.set('two', terminal());
     renderHook(useSessionStateDetection);
     tick();

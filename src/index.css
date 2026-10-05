@@ -264,6 +264,9 @@
   --success: #30C55E;
   --warning: #FFA028;
   --error:   #FA5A52;
+  /* Session alerts (SessionCards): violet = blocked on the user, teal = turn finished. */
+  --attention-input: #B794FF;
+  --attention-ready: #3DD6C4;
 
   /* Focus ring - soft accent halo (macOS style). --border-focus is normally
      (re)set by applyAccentColor(); this default keeps focus-visible visible
@@ -760,12 +763,16 @@ h2, h3 { letter-spacing: var(--track-title); line-height: 1.3; }
   -webkit-app-region: no-drag;
 }
 
+.session-needs-attention { --attention: var(--attention-ready); }
+.session-needs-attention[data-attention="input"] { --attention: var(--attention-input); }
+.session-attention-label { color: var(--attention); }
+
 .session-attention-outline {
   position: absolute;
   inset: 0;
-  border: 2px solid #fbbf24;
+  border: 2px solid var(--attention);
   border-radius: inherit;
-  background: rgb(251 191 36 / 0.08);
+  background: color-mix(in srgb, var(--attention) 8%, transparent);
   pointer-events: none;
   animation: session-attention-pulse 1.4s ease-in-out infinite;
 }

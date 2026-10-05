@@ -43,9 +43,18 @@ describe('session card context', () => {
     const card = screen.getByRole('button', { name: 'Agentrium 1' });
     expect(card.classList.contains('session-needs-attention')).toBe(true);
     expect(screen.getByRole('status').textContent).toBe('Needs your input');
+    expect(card.dataset.attention).toBe('input');
     fireEvent.click(card);
     expect(screen.queryByText('Needs your input')).toBeNull();
     expect(useSessionAttentionStore.getState().acknowledged.has('one')).toBe(true);
+  });
+
+  it('marks a finished turn as ready, not input', () => {
+    useTerminalStore.setState({ terminalStates: new Map([['one', 'idle']]) });
+    useSessionAttentionStore.getState().request('one');
+    render(<SessionCards />);
+    expect(screen.getByRole('status').textContent).toBe('Response ready');
+    expect(screen.getByRole('button', { name: 'Agentrium 1' }).dataset.attention).toBe('ready');
   });
 
   it('does not turn ordinary unread output into an input alert', () => {

@@ -284,6 +284,7 @@ export function SessionCards() {
               if (e.button === 1) { e.preventDefault(); closeWithReport(id); }
             }}
             onContextMenu={(e) => openContextMenu(e, id)}
+            data-attention={needsAttention ? (terminalStates.get(id) === 'waiting' ? 'input' : 'ready') : undefined}
             className={`group relative rounded-xl px-3 py-2.5 cursor-pointer transition-[background-color,box-shadow] duration-100 ring-1 ${needsAttention ? 'session-needs-attention' : ''} ${
               active
                 ? 'bg-accent-primary/10 ring-accent-primary/30'
@@ -375,7 +376,7 @@ export function SessionCards() {
                 </Tooltip>
               </span>
             </div>
-            {needsAttention && <div className="mt-1 text-xs font-semibold text-amber-400" role="status">{attentionLabel}</div>}
+            {needsAttention && <div className="mt-1 text-xs font-semibold session-attention-label" role="status">{attentionLabel}</div>}
             {t.sessionContext?.title && t.sessionContext.title !== name && (
               <Tooltip label={contextTooltip(name, t.sessionContext, t.sessionSummary)} multiline side="right">
                 <div className="mt-1 text-[12px] text-text-secondary truncate" tabIndex={0}>

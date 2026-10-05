@@ -77,6 +77,8 @@ export function applyThemeMode(mode: ThemeMode): void {
     root.style.setProperty('--success', '#1F8A3D');
     root.style.setProperty('--warning', '#9A5B00');
     root.style.setProperty('--error',   '#D70015');
+    root.style.setProperty('--attention-input', '#5F37C0');
+    root.style.setProperty('--attention-ready', '#09655B');
   } else {
     root.style.removeProperty('--canvas');
     root.style.removeProperty('--elevation-0');
@@ -107,6 +109,8 @@ export function applyThemeMode(mode: ThemeMode): void {
     root.style.removeProperty('--success');
     root.style.removeProperty('--warning');
     root.style.removeProperty('--error');
+    root.style.removeProperty('--attention-input');
+    root.style.removeProperty('--attention-ready');
   }
 }
 
