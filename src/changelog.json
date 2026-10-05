@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.38.0",
+    "date": "2026-10-05",
+    "features": [
+      { "title": "Fix bugs & performance" },
+      { "title": "Session activity and attention alerts", "description": "Each session now shows what it is doing, and alerts stay visible until you open the session." },
+      { "title": "Clearer alert colors", "description": "Needs your input is now violet and Response ready is teal, readable in both light and dark themes." },
+      { "title": "Repeat alert sound", "description": "New optional setting, Repeat until viewed, replays the alert sound every 4 seconds until you open the session. Off by default." }
+    ]
+  },
+  {
     "version": "1.37.1",
     "date": "2026-10-04",
     "features": [
