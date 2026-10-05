@@ -1,6 +1,20 @@
 /** Inferred state of a Claude Code terminal. */
 export type SessionState = 'busy' | 'waiting' | 'idle' | 'stopped';
 
+/** An input prompt alone isn't a completed turn: it also exists on startup.
+ * The caller must additionally have seen a submitted prompt or a finish footer.
+ * Never infer completion merely because output paused. */
+export function hasReadyPrompt(lines: string[]): boolean {
+  if (lines.some((line) => /esc\s+(?:to\s+)?(?:interrupt|cancel|stop)|(?:thinking|working|running)\s*[.…]/i.test(line))) return false;
+  return lines.some((line) => /^[│|]?\s*[❯›>]\s*(?:[│|]\s*)?$/.test(line.trim())
+    || /^\s*›\s+(?:Ask|Explain|Implement|Find|Write|Improve|Run|Summarize)\b/i.test(line));
+}
+
+export function hasTurnFinishedMarker(lines: string[]): boolean {
+  return lines.some((line) => /^\s*(?:[✻✽✢✶✳✺·•]\s*)?[A-Za-z]+\s+for\s+\d+(?:[.\d\s]*[smh]|\s+(?:seconds?|minutes?))\b/i.test(line)
+    || /^\s*[─━-]*\s*Worked for\s+\d/i.test(line));
+}
+
 /**
  * Phrases that unambiguously mean Claude is blocked waiting for a decision.
  * Kept as an exported, versioned list so they are cheap to tune as Claude

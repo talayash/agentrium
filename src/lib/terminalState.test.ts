@@ -1,5 +1,22 @@
 import { describe, it, expect } from 'vitest';
-import { classifySettled } from './terminalState';
+import { classifySettled, hasReadyPrompt, hasTurnFinishedMarker } from './terminalState';
+
+describe('completed turn signals', () => {
+  it('recognizes Claude and Codex input prompts but rejects running output', () => {
+    expect(hasReadyPrompt(['❯ '])).toBe(true);
+    expect(hasReadyPrompt(['› Ask Codex to do anything'])).toBe(true);
+    expect(hasReadyPrompt(['│ >     │'])).toBe(true);
+    expect(hasReadyPrompt(['Running…', '❯ '])).toBe(false);
+    expect(hasReadyPrompt(['esc to interrupt', '❯ '])).toBe(false);
+    expect(hasReadyPrompt(['Some prose then a pause'])).toBe(false);
+  });
+  it('recognizes duration footers, not arbitrary prose', () => {
+    expect(hasTurnFinishedMarker(['✻ Worked for 1m 32s'])).toBe(true);
+    expect(hasTurnFinishedMarker(['✽ Churned for 52s'])).toBe(true);
+    expect(hasTurnFinishedMarker(['── Worked for 20s ──'])).toBe(true);
+    expect(hasTurnFinishedMarker(['Looking for 3 examples'])).toBe(false);
+  });
+});
 
 describe('classifySettled', () => {
   it('flags a "Do you want to proceed?" permission prompt as waiting', () => {

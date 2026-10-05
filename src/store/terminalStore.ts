@@ -6,7 +6,8 @@ import type { WorktreeDetectResult } from '../types/git';
 import type { AgentKind } from '../lib/agents';
 import type { CredentialBinding } from '../lib/credentials';
 import type { TaskInfo, TaskStatus } from '../lib/tasks';
-import { markTerminalActive, clearTerminalActivity } from '../lib/terminalActivity';
+import { markTerminalActive, clearTerminalActivity, markTerminalSubmission } from '../lib/terminalActivity';
+import { useSessionAttentionStore } from './sessionAttentionStore';
 import { reportInvokeFailure } from '../lib/errorReporter';
 import { chunkUtf8Bytes } from '../lib/chunkUtf8';
 import type { SessionState } from '../lib/terminalState';
@@ -534,6 +535,10 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
   },
 
   writeToTerminal: async (id, data) => {
+    if ((data.endsWith('\r') || data === '\n') && !data.includes('\x1b[200~')) {
+      markTerminalSubmission(id);
+      useSessionAttentionStore.getState().clear(id);
+    }
     const bytes = new TextEncoder().encode(data);
     if (bytes.length <= TERMINAL_WRITE_CHUNK_BYTES) {
       await invoke('write_to_terminal', { id, data: Array.from(bytes) });

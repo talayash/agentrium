@@ -8,6 +8,15 @@
 // reactive subscription needed since the tick itself drives the re-render.
 
 const lastOutputAtByTerminal = new Map<string, number>();
+const lastSubmissionAtByTerminal = new Map<string, number>();
+
+export function markTerminalSubmission(id: string): void {
+  lastSubmissionAtByTerminal.set(id, Date.now());
+}
+
+export function getLastSubmissionAt(id: string): number | undefined {
+  return lastSubmissionAtByTerminal.get(id);
+}
 
 export function markTerminalActive(id: string): void {
   lastOutputAtByTerminal.set(id, Date.now());
@@ -19,6 +28,7 @@ export function getLastOutputAt(id: string): number | undefined {
 
 export function clearTerminalActivity(id: string): void {
   lastOutputAtByTerminal.delete(id);
+  lastSubmissionAtByTerminal.delete(id);
 }
 
 export function getActiveTerminalIds(windowMs: number): string[] {

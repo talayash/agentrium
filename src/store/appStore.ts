@@ -149,6 +149,8 @@ interface AppState {
   showTabActivity: boolean;
   compactTitleBar: boolean;
   notificationSoundEnabled: boolean;
+  /** Repeat the attention sound every few seconds until the session is viewed. Off = one sound per alert. */
+  notificationSoundRepeat: boolean;
   dndEnabled: boolean;
   dndStart: string;
   dndEnd: string;
@@ -389,6 +391,7 @@ interface AppState {
   setShowTabActivity: (v: boolean) => void;
   setCompactTitleBar: (v: boolean) => void;
   setNotificationSoundEnabled: (enabled: boolean) => void;
+  setNotificationSoundRepeat: (enabled: boolean) => void;
   setDndEnabled: (enabled: boolean) => void;
   setDndStart: (hhmm: string) => void;
   setDndEnd: (hhmm: string) => void;
@@ -642,6 +645,7 @@ export const useAppStore = create<AppState>()(
       showTabActivity: true,
       compactTitleBar: false,
       notificationSoundEnabled: false,
+      notificationSoundRepeat: false,
       dndEnabled: false,
       dndStart: '22:00',
       dndEnd: '08:00',
@@ -865,6 +869,7 @@ export const useAppStore = create<AppState>()(
       setShowTabActivity: (v) => set({ showTabActivity: v }),
       setCompactTitleBar: (v) => set({ compactTitleBar: v }),
       setNotificationSoundEnabled: (enabled) => set({ notificationSoundEnabled: enabled }),
+      setNotificationSoundRepeat: (enabled) => set({ notificationSoundRepeat: enabled }),
       setDndEnabled: (enabled) => set({ dndEnabled: enabled }),
       setDndStart: (hhmm) => set({ dndStart: /^\d{2}:\d{2}$/.test(hhmm) ? hhmm : '22:00' }),
       setDndEnd: (hhmm) => set({ dndEnd: /^\d{2}:\d{2}$/.test(hhmm) ? hhmm : '08:00' }),
@@ -1448,6 +1453,7 @@ export const useAppStore = create<AppState>()(
         showTabActivity: state.showTabActivity,
         compactTitleBar: state.compactTitleBar,
         notificationSoundEnabled: state.notificationSoundEnabled,
+        notificationSoundRepeat: state.notificationSoundRepeat,
         dndEnabled: state.dndEnabled,
         dndStart: state.dndStart,
         dndEnd: state.dndEnd,
