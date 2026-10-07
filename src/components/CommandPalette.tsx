@@ -28,10 +28,12 @@ import {
   Send,
   GitBranch,
   GitPullRequestCreate,
+  Bot,
   Flag,
   type LucideIcon,
 } from 'lucide-react';
 import { openCreatePrForTerminal } from '../lib/pullRequestActions';
+import { openCiRepairForTerminal } from '../lib/ciRepair';
 
 interface HintCategory {
   category: string;
@@ -166,6 +168,7 @@ export function CommandPalette() {
         { label: 'New Task', description: 'Start an agent on a new branch in its own git worktree', icon: GitBranch, shortcut: 'Ctrl+Shift+T', action: () => { useAppStore.getState().openNewTaskModal(); closeCommandPalette(); } },
         { label: 'New Race', description: 'Send one task to 2-4 agents or models at once, then compare and merge the best', icon: Flag, shortcut: 'Ctrl+Shift+R', action: () => { useAppStore.getState().openNewRaceModal(); closeCommandPalette(); } },
         { label: 'Create Pull Request', description: 'Open a pull request for the branch of the active session (gh, glab or browser)', icon: GitPullRequestCreate, action: () => { closeCommandPalette(); openCreatePrForTerminal(useTerminalStore.getState().activeTerminalId); } },
+        { label: 'Fix Failing CI with Agent', description: 'Start an agent in a new task worktree to fix the failing checks on the pull request of the active session', icon: Bot, action: () => { closeCommandPalette(); openCiRepairForTerminal(useTerminalStore.getState().activeTerminalId); } },
         { label: 'Toggle Sidebar', description: 'Show or hide the sidebar', icon: PanelLeft, shortcut: 'Ctrl+B', action: () => { useAppStore.getState().toggleSidebar(); closeCommandPalette(); } },
         { label: 'Open Settings', description: 'Open application settings', icon: Settings, shortcut: 'Ctrl+,', action: () => { useAppStore.getState().openSettings(); closeCommandPalette(); } },
         { label: 'Toggle Grid View', description: 'Switch between tab and grid view', icon: LayoutGrid, shortcut: 'Ctrl+G', action: () => { useAppStore.getState().toggleGridMode(); closeCommandPalette(); } },

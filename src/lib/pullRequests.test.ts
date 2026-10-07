@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  DEFAULT_PR_BODY_TEMPLATE, buildFailingChecksPrompt, choosePrMethod, defaultPrTitle, formatPrCommits, formatPrFiles,
+  DEFAULT_PR_BODY_TEMPLATE, buildCiRepairBrief, buildFailingChecksPrompt, ciRepairTaskTitle, choosePrMethod, defaultPrTitle, formatPrCommits, formatPrFiles,
   needsPush, prKey, prMethodLabel, prSummaryFor, prTransitions, renderPrBody,
   type PullRequestStatus, type RemoteInfo,
 } from './pullRequests';
@@ -131,4 +131,45 @@ it('builds a failing-checks prompt with names, URLs and logs', () => {
   expect(prompt).toContain('- lint: https://x/1\n- e2e');
   expect(prompt).toContain('boom');
   expect(buildFailingChecksPrompt(s, null)).not.toContain('Failed job logs');
+});
+
+describe('buildCiRepairBrief', () => {
+  const failing = status({}, { state: 'failure', failing: [{ name: 'test', url: 'https://github.com/o/r/actions/runs/9/job/1' }] });
+
+  it('includes checks, logs, description, latest commit and changed files, and forbids pushing', () => {
+    const brief = buildCiRepairBrief({
+      status: failing, branch: 'feat/login', logs: '### Run 9 boom',
+      details: { title: 'Add login', body: 'Adds the login form.', base_branch: 'main', head_sha: 'abc1234def' },
+      changes: { base_ref: 'origin/main', commits: [{ short_sha: 'abc1234', subject: 'Add form' }], files: [{ status: 'M', path: 'src/login.ts' }] },
+    });
+    expect(brief).toContain('# Fix failing CI on pull request #12: Add login');
+    expect(brief).toContain('Branch: `feat/login` into `main`');
+    expect(brief).toContain('- test: https://github.com/o/r/actions/runs/9/job/1');
+    expect(brief).toContain('### Run 9 boom');
+    expect(brief).toContain('Adds the login form.');
+    expect(brief).toContain('Add form (abc1234)');
+    expect(brief).toContain('- `src/login.ts` (modified)');
+    expect(brief).toContain('Do not push');
+    expect(brief).not.toContain('differs from the local branch head');
+  });
+
+  it('names every missing piece instead of dropping it', () => {
+    const brief = buildCiRepairBrief({ status: failing, branch: 'feat/login', logs: null, details: null, changes: null });
+    expect(brief.match(/_Not available/g)?.length).toBe(4);
+    expect(brief).toMatch(/^# Fix failing CI on pull request #12$/m);
+  });
+
+  it('warns when CI ran on a different commit than the local head', () => {
+    const brief = buildCiRepairBrief({
+      status: failing, branch: 'b', logs: null,
+      details: { title: '', body: '', base_branch: 'main', head_sha: 'fff0000aaa' },
+      changes: { base_ref: 'main', commits: [{ short_sha: 'abc1234', subject: 's' }], files: [] },
+    });
+    expect(brief).toContain('CI ran on fff0000aaa');
+    expect(brief).toContain('_The pull request has no description._');
+  });
+
+  it('titles the repair task after the PR number', () => {
+    expect(ciRepairTaskTitle({ number: 7 })).toBe('Fix CI on #7');
+  });
 });

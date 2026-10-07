@@ -23,6 +23,7 @@ import { subscribeRaceTracking } from './store/raceStore';
 import { FinishTaskDialog } from './components/FinishTaskDialog';
 import { PushModal } from './components/PushModal';
 import { CreatePullRequestModal } from './components/CreatePullRequestModal';
+import { CiRepairModal } from './components/CiRepairModal';
 import { SessionHistory } from './components/SessionHistory';
 import { SnippetsModal } from './components/SnippetsModal';
 import { PasteAsFileDrawer } from './components/PasteAsFileDrawer';
@@ -156,6 +157,8 @@ function App() {
   const newRaceModalOpen = useAppStore((s) => s.newRaceModalOpen);
   const decideRaceId = useAppStore((s) => s.decideRaceId);
   const finishTaskTerminalId = useAppStore((s) => s.finishTaskTerminalId);
+  const ciRepairTerminalId = useAppStore((s) => s.ciRepairTerminalId);
+  const closeCiRepair = useAppStore((s) => s.closeCiRepair);
   const { sidebarOpen, sidebarCollapsed, hintsOpen, changesOpen, workspacesOpen, settingsOpen, profileModalOpen, newTerminalModalOpen, workspaceModalOpen, worktreeModalOpen, pushModalOpen, createPrModalOpen, sessionHistoryOpen, snippetsModalOpen, commandPaletteOpen, globalSearchOpen, whatsNewOpen, claudeConfigOpen, sessionTimelineOpen, memoryEditorOpen, showStatusBar, notifyOnFinish, restoreSession, triggerChangesRefresh, showRestoreBanner, pendingRestoreConfigs, setShowRestoreBanner, setPendingRestoreConfigs, lastSeenVersion, setLastSeenVersion, openWhatsNew } = useAppStore();
   const { handleTerminalOutput, updateTerminalStatus, setLoopMode, setSessionSummary, createTerminal, createShellTerminalTab, applyTerminalMetrics, adoptTerminal, detachTerminals, closeTerminal, terminals } = useTerminalStore();
 
@@ -1090,6 +1093,7 @@ function App() {
             {finishTaskTerminalId && <FinishTaskDialog key={`finish-${finishTaskTerminalId}`} />}
             {pushModalOpen && <PushModal />}
             {createPrModalOpen && <CreatePullRequestModal />}
+            {ciRepairTerminalId && <CiRepairModal key={`ci-repair-${ciRepairTerminalId}`} sourceId={ciRepairTerminalId} onClose={closeCiRepair} />}
             {sessionHistoryOpen && <SessionHistory />}
             {snippetsModalOpen && <SnippetsModal />}
             {!isDetached && whatsNewOpen && <WhatsNewModal />}

@@ -1,10 +1,13 @@
 import { invoke } from '@tauri-apps/api/core';
 import { allAgentSpecs, isCustomAgent, type AgentKind } from './agents';
 import { reportInvokeFailure } from './errorReporter';
-import { resolveLaunchConfig, setupFilesFor, type MergeMode, type TaskInfo, type TaskProfile } from './tasks';
+import { needsStaging, promptDeliveryFor, resolveLaunchConfig, setupFilesFor, type MergeMode, type TaskInfo, type TaskProfile } from './tasks';
 import type { AttentionKind } from '../store/attentionStore';
-import type { PromptDelivery, TerminalConfig } from '../store/terminalStore';
+import type { TerminalConfig } from '../store/terminalStore';
 import type { SessionState } from './terminalState';
+
+// Defined in tasks.ts so plain task launches share them.
+export { needsStaging, promptDeliveryFor } from './tasks';
 
 // ---------------------------------------------------------------------------
 // Wire types (mirror races.rs)
@@ -178,19 +181,6 @@ export function contenderLabel(agent: AgentKind, model: string | null | undefine
 
 export function raceTabName(title: string, label: string): string {
   return `Race: ${title.trim()} · ${label}`;
-}
-
-/** Whether a contender can receive the task at spawn (argv / prompt file)
- *  or has it staged in the prompt editor. Custom agents without an
- *  `initial_prompt_template`, unknown kinds and Cursor fall back to staging. */
-export function promptDeliveryFor(kind: AgentKind): 'argv' | 'staged' {
-  const spec = allAgentSpecs().find((s) => s.kind === kind);
-  return spec?.initialPrompt ? 'argv' : 'staged';
-}
-
-/** True when the backend did not deliver the prompt and it must be staged. */
-export function needsStaging(delivery: PromptDelivery | null | undefined): boolean {
-  return !delivery || delivery.mode === 'staged';
 }
 
 /** Replace any `--model` the args carry with the contender's model. */

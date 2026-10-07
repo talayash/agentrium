@@ -191,6 +191,8 @@ interface AppState {
   createPrModalOpen: boolean;
   createPrRepoPath: string | null;
   createPrTerminalId: string | null;
+  /** Source session of the open "Fix with agent" (CI repair) dialog. */
+  ciRepairTerminalId: string | null;
   /** Appended to the prefilled PR body (Race mode's "Raced against" table). */
   createPrExtraBody: string | null;
   /** Race mode: per-repo check command (e.g. `npm test`), typed by the user. */
@@ -359,6 +361,8 @@ interface AppState {
   closePushModal: () => void;
   openCreatePrModal: (repoPath: string, terminalId: string | null, extraBody?: string | null) => void;
   closeCreatePrModal: () => void;
+  openCiRepair: (terminalId: string) => void;
+  closeCiRepair: () => void;
   setDefaultClaudeArgs: (args: string[]) => void;
   setNotifyOnFinish: (enabled: boolean) => void;
   setRestoreSession: (enabled: boolean) => void;
@@ -680,6 +684,7 @@ export const useAppStore = create<AppState>()(
       createPrModalOpen: false,
       createPrRepoPath: null,
       createPrTerminalId: null,
+      ciRepairTerminalId: null,
       createPrExtraBody: null,
       raceCheckCommands: {},
       raceCheckTimeoutMin: 10,
@@ -816,6 +821,8 @@ export const useAppStore = create<AppState>()(
       closePushModal: () => set({ pushModalOpen: false, pushModalRepoPath: null }),
       openCreatePrModal: (repoPath, terminalId, extraBody) => set({ createPrModalOpen: true, createPrRepoPath: repoPath, createPrTerminalId: terminalId, createPrExtraBody: extraBody ?? null }),
       closeCreatePrModal: () => set({ createPrModalOpen: false, createPrRepoPath: null, createPrTerminalId: null, createPrExtraBody: null }),
+      openCiRepair: (terminalId) => set({ ciRepairTerminalId: terminalId }),
+      closeCiRepair: () => set({ ciRepairTerminalId: null }),
       setDefaultClaudeArgs: (args) =>
         // Mirror into defaultAgentArgs.claude so both the legacy and the
         // per-agent readers stay in sync from any writer.

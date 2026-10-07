@@ -23,6 +23,7 @@ import { specFor } from '../lib/agents';
 import { getAnyModelBadgeClasses, getModelBadgeLabel } from '../lib/agentModels';
 import { Tooltip } from './ui/Tooltip';
 import { TaskBadge } from './TaskBadge';
+import { CiRepairBadge } from './CiRepairBadge';
 import { PrChip } from './PrChip';
 import { RaceGridHeader } from './RaceHeader';
 import { RaceCompareView } from './RaceCompareView';
@@ -220,7 +221,10 @@ export function TerminalTabs() {
                   copy here was duplication. Worktree sessions still get a
                   subtle fork glyph. */}
               {activeConfig.task ? (
-                <TaskBadge terminalId={activeConfig.id} task={activeConfig.task} />
+                <>
+                  <TaskBadge terminalId={activeConfig.id} task={activeConfig.task} />
+                  <CiRepairBadge terminalId={activeConfig.id} task={activeConfig.task} />
+                </>
               ) : headerGit?.is_worktree && (
                 <Tooltip label={`Worktree · ${headerGit.current_branch ?? ''}`}>
                   <GitBranch size={11} className="text-purple-400 flex-shrink-0" />
