@@ -2,7 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { allAgentSpecs, defaultArgsFor, filterArgsForAgent, type AgentKind, type BuiltinAgentKind } from './agents';
 import type { CredentialBinding } from './credentials';
 import { reportInvokeFailure } from './errorReporter';
-import { useTerminalStore } from '../store/terminalStore';
+import { useTerminalStore, type PromptDelivery } from '../store/terminalStore';
 import { useAppStore, type MergeStrategy } from '../store/appStore';
 import { useAgentRegistryStore } from '../store/agentRegistryStore';
 
@@ -199,6 +199,22 @@ export interface LaunchTaskParams extends StartTaskParams {
   promptText?: string;
   /** Launch with this saved profile's args, env vars and key pins. */
   profile?: TaskProfile | null;
+  /** Hand the prompt to the agent at spawn when its CLI supports an initial
+   *  prompt; it is staged only when the backend could not deliver it. */
+  deliverPromptAtSpawn?: boolean;
+}
+
+/** Whether an agent can receive a prompt at spawn (argv / prompt file) or
+ *  has it staged in the prompt editor. Custom agents without an
+ *  `initial_prompt_template`, unknown kinds and Cursor fall back to staging. */
+export function promptDeliveryFor(kind: AgentKind): 'argv' | 'staged' {
+  const spec = allAgentSpecs().find((s) => s.kind === kind);
+  return spec?.initialPrompt ? 'argv' : 'staged';
+}
+
+/** True when the backend did not deliver the prompt and it must be staged. */
+export function needsStaging(delivery: PromptDelivery | null | undefined): boolean {
+  return !delivery || delivery.mode === 'staged';
 }
 
 /** Create the task worktree, then a terminal working in it. If the terminal
@@ -212,12 +228,14 @@ export async function launchTask(p: LaunchTaskParams): Promise<string> {
     p.agent, p.profile, useAppStore.getState().defaultAgentArgs,
     useAgentRegistryStore.getState().defaultBindingsFor(p.agent),
   );
+  const prompt = p.promptText ?? (p.titleAsPrompt ? task.title : '');
+  const atSpawn = !!prompt && !!p.deliverPromptAtSpawn && promptDeliveryFor(p.agent) === 'argv';
   let id: string;
   try {
     id = await useTerminalStore.getState().createTerminal(
       task.title, task.worktreePath, launch.args, launch.envVars,
       undefined, task.title, undefined, undefined, false, undefined, p.agent,
-      launch.bindings, task,
+      launch.bindings, task, atSpawn ? { initialPrompt: prompt } : undefined,
     );
   } catch (err) {
     // Fresh branch, no commits: discarding loses nothing.
@@ -225,8 +243,8 @@ export async function launchTask(p: LaunchTaskParams): Promise<string> {
       .catch((e) => reportInvokeFailure('finish_task', e));
     throw err;
   }
-  const prompt = p.promptText ?? (p.titleAsPrompt ? task.title : '');
-  if (prompt) {
+  const delivered = atSpawn && !needsStaging(useTerminalStore.getState().terminals.get(id)?.config.prompt_delivery);
+  if (prompt && !delivered) {
     // A new CLI may still be showing a trust or login prompt: stage the text
     // as the terminal's prompt-editor draft instead of writing it into the
     // PTY. The editor is not opened here; the user opens it (Ctrl+Shift+E or

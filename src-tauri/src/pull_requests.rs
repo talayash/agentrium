@@ -32,6 +32,7 @@ const CLI_CACHE_TTL: Duration = Duration::from_secs(300);
 /// Per-run cap for `gh run view --log-failed` output handed to the agent.
 const MAX_LOG_CHARS_PER_RUN: usize = 6000;
 const MAX_FAILED_RUNS: usize = 3;
+const MAX_PR_BODY_CHARS: usize = 4000;
 
 // ---------------------------------------------------------------------------
 // Remote parsing
@@ -1144,6 +1145,90 @@ pub async fn get_failing_check_logs(
     .await
 }
 
+/// Title, description and head of a branch's PR, for the CI repair brief.
+#[derive(Debug, Serialize, PartialEq)]
+pub struct PullRequestDetails {
+    pub title: String,
+    /// Credential-stripped and cut to `MAX_PR_BODY_CHARS`.
+    pub body: String,
+    /// The PR's base branch, as the forge names it (`main`).
+    pub base_branch: String,
+    /// Commit the forge ran CI on; `None` when the CLI did not say.
+    pub head_sha: Option<String>,
+}
+
+const GH_DETAILS_FIELDS: &str = "title,body,baseRefName,headRefOid";
+
+/// Keep the start of a description, cut at a char boundary.
+fn head_chars(text: &str, max: usize) -> String {
+    if text.chars().count() <= max {
+        return text.to_string();
+    }
+    let mut out: String = text.chars().take(max).collect();
+    out.push_str("\n\n(description truncated)");
+    out
+}
+
+fn details_from(title: &str, body: &str, base: &str, sha: &str) -> PullRequestDetails {
+    PullRequestDetails {
+        title: strip_credentials(title.trim()),
+        body: strip_credentials(&head_chars(body.trim(), MAX_PR_BODY_CHARS)),
+        base_branch: base.trim().to_string(),
+        head_sha: Some(sha.trim().to_string()).filter(|s| !s.is_empty()),
+    }
+}
+
+pub fn parse_gh_details(stdout: &str) -> Result<PullRequestDetails, String> {
+    let json = json_slice(stdout).ok_or_else(|| "gh returned no JSON".to_string())?;
+    let v: serde_json::Value = serde_json::from_str(json).map_err(|e| format!("Unexpected gh output: {e}"))?;
+    let s = |k: &str| v.get(k).and_then(|x| x.as_str()).unwrap_or("");
+    Ok(details_from(s("title"), s("body"), s("baseRefName"), s("headRefOid")))
+}
+
+pub fn parse_glab_details(stdout: &str) -> Result<PullRequestDetails, String> {
+    let json = json_slice(stdout).ok_or_else(|| "glab returned no JSON".to_string())?;
+    let v: serde_json::Value = serde_json::from_str(json).map_err(|e| format!("Unexpected glab output: {e}"))?;
+    let s = |k: &str| v.get(k).and_then(|x| x.as_str()).unwrap_or("");
+    Ok(details_from(s("title"), s("description"), s("target_branch"), s("sha")))
+}
+
+/// Title, description, base branch and head SHA of the PR whose head is
+/// `branch`. `None` when no signed-in CLI can answer or no PR exists.
+#[command]
+pub async fn get_pull_request_details(
+    state: State<'_, AppState>,
+    path: String,
+    branch: String,
+) -> Result<Option<PullRequestDetails>, String> {
+    wrap_cmd("get_pull_request_details", async move {
+        validate_path_is_trusted(&state, &path).await?;
+        let branch = validate_branch(&branch, "Branch")?;
+        let ctx = repo_context(&path).await?;
+        let Some((cli, program)) = ctx.cli.as_ref() else { return Ok(None) };
+        let out = match cli {
+            Cli::Gh => {
+                let slug = gh_repo_slug(&ctx.parsed);
+                run_cli(program, &path, &["pr", "view", &branch, "--repo", &slug, "--json", GH_DETAILS_FIELDS]).await?
+            }
+            Cli::Glab => {
+                run_cli(program, &path, &["mr", "view", &branch, "--repo", &ctx.parsed.web_url, "--output", "json"]).await?
+            }
+        };
+        if !out.success {
+            return match classify_cli_failure(&out.stderr) {
+                CliFailure::NotFound => Ok(None),
+                _ => Err(cli_failure_message(*cli, &ctx.parsed.host, "", &branch, &ctx.remote_name, &out.stderr)),
+            };
+        }
+        let details = match cli {
+            Cli::Gh => parse_gh_details(&out.stdout)?,
+            Cli::Glab => parse_glab_details(&out.stdout)?,
+        };
+        Ok(Some(details))
+    })
+    .await
+}
+
 #[command]
 pub async fn build_pr_compare_url(
     state: State<'_, AppState>,
@@ -1470,5 +1555,33 @@ mod tests {
         assert_eq!(actions_run_ids(&failing), vec!["11".to_string(), "12".to_string()]);
         assert_eq!(tail_chars("abcdef", 10), ("abcdef".into(), false));
         assert_eq!(tail_chars("abcdéf", 3), ("déf".into(), true));
+    }
+
+    #[test]
+    fn parses_gh_pr_details_and_strips_credentials() {
+        let out = r#"{"title":" Fix login ","body":"See https://u:ghp_SECRET@github.com/o/r","baseRefName":"main","headRefOid":"abc123"}"#;
+        let d = parse_gh_details(out).unwrap();
+        assert_eq!(d.title, "Fix login");
+        assert_eq!(d.base_branch, "main");
+        assert_eq!(d.head_sha.as_deref(), Some("abc123"));
+        assert!(!d.body.contains("ghp_SECRET"), "{}", d.body);
+        assert!(parse_gh_details("not json").is_err());
+    }
+
+    #[test]
+    fn parses_glab_mr_details_and_tolerates_missing_fields() {
+        let out = json!({ "title": "MR", "description": null, "target_branch": "develop", "sha": "" }).to_string();
+        let d = parse_glab_details(&out).unwrap();
+        assert_eq!(d, PullRequestDetails { title: "MR".into(), body: String::new(), base_branch: "develop".into(), head_sha: None });
+    }
+
+    #[test]
+    fn long_pr_description_is_cut_from_the_start() {
+        let body = "é".repeat(MAX_PR_BODY_CHARS + 10);
+        let out = json!({ "title": "t", "body": body, "baseRefName": "main", "headRefOid": "x" }).to_string();
+        let d = parse_gh_details(&out).unwrap();
+        assert!(d.body.starts_with('é'));
+        assert!(d.body.ends_with("(description truncated)"));
+        assert_eq!(d.body.chars().filter(|c| *c == 'é').count(), MAX_PR_BODY_CHARS);
     }
 }

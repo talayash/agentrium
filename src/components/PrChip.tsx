@@ -1,6 +1,9 @@
-import { GitPullRequest, GitMerge, GitPullRequestClosed, GitPullRequestDraft, Wrench } from 'lucide-react';
+import { Bot, GitPullRequest, GitMerge, GitPullRequestClosed, GitPullRequestDraft, Wrench } from 'lucide-react';
 import { useTerminalStore } from '../store/terminalStore';
 import { usePrStore } from '../store/prStore';
+import { useAppStore } from '../store/appStore';
+import { useCiRepairStore } from '../store/ciRepairStore';
+import { focusTerminal, openRepairFor } from '../lib/ciRepair';
 import { prKey, type CiState, type PrRef, type PullRequestStatus } from '../lib/pullRequests';
 import { openPullRequestUrl, sendFailingChecksToAgent } from '../lib/pullRequestActions';
 import { Tooltip } from './ui/Tooltip';
@@ -60,12 +63,17 @@ export function PrChip({ terminalId, compact = false }: { terminalId: string; co
   });
   const ref = usePrStore((s) => (key ? s.refs[key] : undefined));
   const status = usePrStore((s) => (key ? s.statuses[key] : undefined));
+  const repairs = useCiRepairStore((s) => s.repairs);
+  // Subscribed so the repair link appears and disappears with its session.
+  useTerminalStore((s) => s.terminals);
   if (!ref) return null;
 
   const shown = shownState(ref, status);
   const { cls, Icon } = STATE_STYLE[shown];
   const ci = shown === 'open' || shown === 'draft' ? (status?.ci.state ?? ref.lastCi ?? 'none') : 'none';
   const label = tooltipFor(ref, status);
+  const repair = !compact && key ? openRepairFor(repairs, key) : null;
+  const repairBranch = repair ? useTerminalStore.getState().terminals.get(repair.terminalId)?.config.task?.branch : undefined;
   const stop = (e: React.SyntheticEvent) => e.stopPropagation();
 
   return (
@@ -93,6 +101,30 @@ export function PrChip({ terminalId, compact = false }: { terminalId: string; co
             className="w-[16px] h-[16px] flex items-center justify-center rounded-md text-red-400 hover:bg-fill-hover"
           >
             <Wrench size={10} strokeWidth={2} />
+          </button>
+        </Tooltip>
+      )}
+      {repair ? (
+        <Tooltip label={`CI repair running${repairBranch ? ` on ${repairBranch}` : ''}\nNothing is pushed until you finish the task and push\nClick to open it`} multiline>
+          <button
+            type="button"
+            onClick={() => focusTerminal(repair.terminalId)}
+            aria-label="Open CI repair session"
+            className="flex items-center gap-0.5 rounded-md text-[10.5px] px-1.5 h-[16px] font-medium bg-amber-500/12 text-amber-400 hover:brightness-125 transition"
+          >
+            <Bot size={10} strokeWidth={2} className="flex-shrink-0" />
+            <span>Repairing</span>
+          </button>
+        </Tooltip>
+      ) : ci === 'failure' && !compact && (
+        <Tooltip label="Fix with agent in a new task worktree">
+          <button
+            type="button"
+            onClick={() => useAppStore.getState().openCiRepair(terminalId)}
+            aria-label="Fix with agent"
+            className="w-[16px] h-[16px] flex items-center justify-center rounded-md text-red-400 hover:bg-fill-hover"
+          >
+            <Bot size={10} strokeWidth={2} />
           </button>
         </Tooltip>
       )}

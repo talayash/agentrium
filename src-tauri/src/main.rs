@@ -301,6 +301,7 @@ fn main() {
             pull_requests::create_pull_request,
             pull_requests::get_pull_request_status,
             pull_requests::get_failing_check_logs,
+            pull_requests::get_pull_request_details,
             pull_requests::build_pr_compare_url,
             commands::get_session_history,
             commands::get_session_history_folders,

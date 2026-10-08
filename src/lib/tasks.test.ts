@@ -136,6 +136,42 @@ describe('launchTask', () => {
     expect(useAppStore.getState().promptDrafts[id]).toBeUndefined();
   });
 
+  it('sends the prompt at spawn when asked and the agent supports it, without staging it', async () => {
+    let request: { initial_prompt: string | null } | undefined;
+    vi.mocked(invoke).mockImplementation(async (cmd, args) => {
+      if (cmd === 'start_task') return { worktree_path: task.worktreePath, branch: task.branch, base_branch: 'main', repo_path: '/src/app', copied_files: [] };
+      if (cmd === 'create_terminal') {
+        request = (args as { request: { initial_prompt: string | null } }).request;
+        return { ...baseConfig, prompt_delivery: { mode: 'argv' } };
+      }
+      return null;
+    });
+    const id = await launchTask({ repoPath: '/src/app', title: 'Fix CI', agent: 'codex', titleAsPrompt: false, promptText: 'Repair brief', deliverPromptAtSpawn: true });
+    expect(request?.initial_prompt).toBe('Repair brief');
+    expect(useAppStore.getState().promptDrafts[id]).toBeUndefined();
+  });
+
+  it('stages the prompt when the agent has no initial prompt or the backend could not deliver it', async () => {
+    const requests: { initial_prompt: string | null }[] = [];
+    let delivery: { mode: 'staged' } | { mode: 'argv' } = { mode: 'argv' };
+    vi.mocked(invoke).mockImplementation(async (cmd, args) => {
+      if (cmd === 'start_task') return { worktree_path: task.worktreePath, branch: task.branch, base_branch: 'main', repo_path: '/src/app', copied_files: [] };
+      if (cmd === 'create_terminal') {
+        requests.push((args as { request: { initial_prompt: string | null } }).request);
+        return { ...baseConfig, prompt_delivery: delivery };
+      }
+      return null;
+    });
+    const cursor = await launchTask({ repoPath: '/src/app', title: 'Fix CI', agent: 'cursor', titleAsPrompt: false, promptText: 'Brief', deliverPromptAtSpawn: true });
+    expect(requests[0].initial_prompt).toBeNull();
+    expect(useAppStore.getState().promptDrafts[cursor]).toBe('Brief');
+
+    delivery = { mode: 'staged' };
+    const codex = await launchTask({ repoPath: '/src/app', title: 'Fix CI', agent: 'codex', titleAsPrompt: false, promptText: 'Brief', deliverPromptAtSpawn: true });
+    expect(requests[1].initial_prompt).toBe('Brief');
+    expect(useAppStore.getState().promptDrafts[codex]).toBe('Brief');
+  });
+
   it('rolls the fresh worktree back when the terminal cannot start', async () => {
     vi.mocked(invoke).mockImplementation(async (cmd) => {
       if (cmd === 'start_task') return { worktree_path: task.worktreePath, branch: task.branch, base_branch: 'main', repo_path: '/src/app', copied_files: [] };

@@ -44,6 +44,8 @@ export interface PrCommit { short_sha: string; subject: string }
 export interface PrFile { status: string; path: string }
 export interface PrContext { commits: PrCommit[]; files: PrFile[]; base_ref: string }
 export interface CompareUrl { url: string; body: 'full' | 'truncated' | 'omitted' }
+/** Mirrors `pull_requests::PullRequestDetails`. */
+export interface PullRequestDetails { title: string; body: string; base_branch: string; head_sha: string | null }
 
 /** What a tab remembers about its branch's PR (persisted in prStore). The
  *  `last*` fields are the last polled values, so a transition that happened
@@ -176,5 +178,62 @@ export function buildPrDraftPrompt(base: string, head: string, ctx: PrContext | 
     `Review the changes with \`git log ${range}..HEAD\` and \`git diff ${range}...HEAD\`.`,
     'Reply with the title on the first line, a blank line, then a Markdown description with Summary, Changes and Testing sections.',
     'Do not create the pull request, push, or change any files.',
+  ].join('\n');
+}
+
+/** What the CI repair brief is built from. Every piece but the status is
+ *  optional: a missing piece is named in the brief instead of dropped. */
+export interface CiRepairContext {
+  status: PullRequestStatus;
+  /** The PR head branch; the repair task branches off it. */
+  branch: string;
+  logs: string | null;
+  details: PullRequestDetails | null;
+  /** Commits and files of the branch against the PR base. */
+  changes: PrContext | null;
+}
+
+export function ciRepairTaskTitle(status: Pick<PullRequestStatus, 'number'>): string {
+  return `Fix CI on #${status.number}`;
+}
+
+export function buildCiRepairBrief(c: CiRepairContext): string {
+  const { status, details, changes } = c;
+  const checks = status.ci.failing.length
+    ? status.ci.failing.map(f => `- ${f.name}${f.url ? `: ${f.url}` : ''}`).join('\n')
+    : '- (the forge did not name the failing checks)';
+  const latest = changes?.commits[0];
+  const head = details?.head_sha ? details.head_sha.slice(0, 12) : null;
+  const commitLine = latest
+    ? `${latest.subject} (${latest.short_sha})`
+    : '_Not available. Run `git log -1` in this worktree._';
+  return [
+    `# Fix failing CI on pull request #${status.number}${details?.title ? `: ${details.title}` : ''}`,
+    `Pull request: ${status.url}`,
+    `Branch: \`${c.branch}\`${details?.base_branch ? ` into \`${details.base_branch}\`` : ''}`,
+    '',
+    '## Failing checks',
+    checks,
+    '',
+    '## Failed job logs',
+    c.logs ? `Truncated to the last lines of each failed run.\n\n${c.logs}` : '_Not available. Open the check links above for the full logs._',
+    '',
+    '## Pull request description',
+    details?.body?.trim() ? details.body.trim() : details ? '_The pull request has no description._' : '_Not available._',
+    '',
+    '## Latest commit',
+    commitLine,
+    ...(head && latest && !head.startsWith(latest.short_sha) && !latest.short_sha.startsWith(head)
+      ? [`CI ran on ${head}, which differs from the local branch head. Check whether the failure still applies.`]
+      : []),
+    '',
+    `## Changed files${changes ? ` (against \`${changes.base_ref}\`)` : ''}`,
+    changes ? formatPrFiles(changes.files) : '_Not available. Run `git diff --name-status` against the base branch._',
+    '',
+    '## What to do',
+    'You are in a fresh task worktree branched from the pull request branch.',
+    'Find the cause of each failing check, reproduce it locally where you can, fix it, and run the relevant checks.',
+    'Keep the fix focused on the failures. Commit the fix on this branch.',
+    'Do not push, force-push, or update the pull request. I will review the diff and decide.',
   ].join('\n');
 }
