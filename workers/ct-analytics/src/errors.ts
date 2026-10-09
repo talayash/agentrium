@@ -68,3 +68,26 @@ export function isGroupResolved(lastSeen: string | null, resolvedAt: string | nu
   if (Number.isNaN(seen) || Number.isNaN(resolved)) return false;
   return seen <= resolved;
 }
+
+export interface ReportIdentity {
+  source: string;
+  kind: string | null;
+  message: string;
+}
+
+/**
+ * Known-benign reports that old installed clients still send after newer
+ * releases stopped emitting them. Installed builds cannot be hot-fixed, so
+ * /error_report drops these server-side to keep them from refilling the table.
+ */
+export function isKnownBenignReport(r: ReportIdentity): boolean {
+  // Monaco's WebKit clipboard workaround rejects a pending write with
+  // CancellationError (name === message === "Canceled") on every editor
+  // click/keydown in WKWebView. Filtered client-side since 1.28.1.
+  if (r.source === 'frontend' && r.kind === 'Canceled' && r.message === 'Canceled') return true;
+  // The API refusing sync for an outdated client is expected, and the client
+  // already tells the user to update. Before 1.34.5 the client reported it on
+  // every hourly pull; newer clients pause sync and report nothing.
+  if (r.source === 'rust_command' && r.kind?.startsWith('sync_') && r.message.includes('desktop_update_required')) return true;
+  return false;
+}
