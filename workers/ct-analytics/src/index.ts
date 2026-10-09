@@ -28,7 +28,7 @@ import { admitErrorReport, admitIngest, boundedJson, validDimensions, versionWit
  */
 
 import { constantTimeEqual, checkLoginAttempt, parseMatchBody, matchInstallations, listLiveInstallations } from './admin';
-import { parseResolveBody, isGroupResolved } from './errors';
+import { parseResolveBody, isGroupResolved, isKnownBenignReport } from './errors';
 import { handleInsights } from './insights-route';
 import { CORS_HEADERS, json, todayUTC } from './http';
 
@@ -308,12 +308,8 @@ async function handleErrorReport(request: Request, env: Env, ctx: ExecutionConte
   const payload = normalizeError(body, request);
   if (!payload) return json({ error: 'invalid_payload' }, 400);
 
-  // Known-benign noise still emitted by clients older than 1.28.1: monaco's
-  // WebKit clipboard workaround rejects a pending write with CancellationError
-  // (name === message === "Canceled") on every editor click/keydown in
-  // WKWebView. Filtered client-side since 1.28.1; drop it here too so old
-  // versions can't refill the table.
-  if (payload.source === 'frontend' && payload.kind === 'Canceled' && payload.message === 'Canceled') {
+  // Noise that old installed clients still emit; see isKnownBenignReport.
+  if (isKnownBenignReport(payload)) {
     return json({ ok: true, dropped: true });
   }
 

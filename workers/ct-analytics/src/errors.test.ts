@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   parseResolveBody,
   isGroupResolved,
+  isKnownBenignReport,
   FINGERPRINT_MAX,
   RESOLVE_MAX_FINGERPRINTS,
 } from './errors';
@@ -107,5 +108,36 @@ describe('isGroupResolved', () => {
   it('is false when either timestamp is unparsable', () => {
     expect(isGroupResolved('not-a-date', '2026-09-18T11:00:00.000Z')).toBe(false);
     expect(isGroupResolved('2026-09-18T10:00:00.000Z', 'not-a-date')).toBe(false);
+  });
+});
+
+describe('isKnownBenignReport', () => {
+  it('drops the update-required sync block that pre-1.34.5 clients still report', () => {
+    // Exact row shape stored by a 1.34.1 client, once an hour, until it updates.
+    expect(isKnownBenignReport({
+      source: 'rust_command',
+      kind: 'sync_pull',
+      message: 'server 503: {"error":"desktop_update_required"}',
+    })).toBe(true);
+  });
+
+  it('drops monaco clipboard Canceled noise from pre-1.28.1 clients', () => {
+    expect(isKnownBenignReport({ source: 'frontend', kind: 'Canceled', message: 'Canceled' })).toBe(true);
+  });
+
+  it('keeps real sync failures', () => {
+    expect(isKnownBenignReport({ source: 'rust_command', kind: 'sync_pull', message: 'server 500: internal' })).toBe(false);
+  });
+
+  it('keeps an update-required message from an unrelated source', () => {
+    expect(isKnownBenignReport({
+      source: 'frontend',
+      kind: 'sync_pull',
+      message: 'desktop_update_required',
+    })).toBe(false);
+  });
+
+  it('keeps a Canceled error that carries a different message', () => {
+    expect(isKnownBenignReport({ source: 'frontend', kind: 'Canceled', message: 'Canceled: write failed' })).toBe(false);
   });
 });
