@@ -1,5 +1,14 @@
 [
   {
+    "version": "1.39.0",
+    "date": "2026-10-10",
+    "features": [
+      { "title": "Fix bugs & performance" },
+      { "title": "Fix failing CI with an agent", "description": "When a pull request has failing checks, Fix with agent on the PR chip or command palette builds a brief from the failing checks and logs and starts an agent in a fresh worktree off the PR branch. Nothing is pushed until you finish the task and push it yourself." },
+      { "title": "Reliable updates on Apple Silicon", "description": "Fixed release update metadata so every platform, including Apple Silicon Macs, finds new versions." }
+    ]
+  },
+  {
     "version": "1.38.0",
     "date": "2026-10-05",
     "features": [
