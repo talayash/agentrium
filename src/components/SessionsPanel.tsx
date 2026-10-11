@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import {
   RefreshCw,
@@ -7,7 +7,6 @@ import {
   ArrowRightCircle,
   FolderOpen,
 } from 'lucide-react';
-import { homeDir } from '@tauri-apps/api/path';
 import { useAppStore } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
 import { toast } from '../store/toastStore';
@@ -34,12 +33,9 @@ function basename(p: string): string {
   return idx === -1 ? trimmed : trimmed.slice(idx + 1);
 }
 
-/** Pick a Windows-friendly encoded folder name for `~/.claude/projects/<X>`.
- *  Mirrors the Rust encoder (`\`, `/`, `:`, space → `-`). Used to assemble
- *  the absolute `.jsonl` path the user can reveal in Explorer. */
-function encodeCwd(cwd: string): string {
-  return cwd.replace(/[\\/:\s]/g, '-');
-}
+/** Background re-scan interval while the panel is expanded. Agents create
+ *  session files (new terminal, `/clear`) without notifying the app. */
+const SESSIONS_POLL_MS = 15_000;
 
 function formatRelativeTime(iso: string): string {
   const then = new Date(iso).getTime();
@@ -90,22 +86,42 @@ function ActiveSessionsPanel() {
   const [error, setError] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
 
-  const fetchSessions = useCallback(async () => {
+  // Changes whenever a terminal in this folder opens, closes, or binds a new
+  // conversation id (e.g. after `/clear`). The agent writes new session files
+  // without telling us, so these are our cues to re-scan (#91).
+  const folderTerminalsKey = useMemo(() => {
+    if (!cwd) return '';
+    return Array.from(terminals.values())
+      .filter((t) => t.config.working_directory === cwd)
+      .map((t) => `${t.config.id}:${t.config.claude_session_id ?? ''}`)
+      .sort()
+      .join('|');
+  }, [terminals, cwd]);
+
+  // Drops responses from a superseded request so a slow scan of the previous
+  // folder can't overwrite the current one.
+  const requestSeq = useRef(0);
+
+  // `background` refreshes (poll, focus, terminal changes) skip the spinner
+  // so the list doesn't flicker every few seconds.
+  const fetchSessions = useCallback(async (background = false) => {
+    const seq = ++requestSeq.current;
     if (!cwd) {
       setSessions([]);
       setError(null);
       return;
     }
-    setLoading(true);
+    if (!background) setLoading(true);
     setError(null);
     try {
       const data = await listAgentSessions(activeAgent, cwd);
-      setSessions(data);
+      if (seq === requestSeq.current) setSessions(data);
     } catch (err) {
+      if (seq !== requestSeq.current) return;
       setError(typeof err === 'string' ? err : 'Failed to list sessions');
       setSessions([]);
     } finally {
-      setLoading(false);
+      if (!background && seq === requestSeq.current) setLoading(false);
     }
   }, [cwd, activeAgent]);
 
@@ -113,6 +129,27 @@ function ActiveSessionsPanel() {
     if (collapsed) return;
     fetchSessions();
   }, [cwd, collapsed, fetchSessions]);
+
+  // Skip the first run: the effect above already loaded this folder.
+  const lastFolderKey = useRef(folderTerminalsKey);
+  useEffect(() => {
+    if (lastFolderKey.current === folderTerminalsKey) return;
+    lastFolderKey.current = folderTerminalsKey;
+    if (!collapsed) fetchSessions(true);
+  }, [folderTerminalsKey, collapsed, fetchSessions]);
+
+  useEffect(() => {
+    if (collapsed) return;
+    const refresh = () => {
+      if (document.visibilityState !== 'hidden') fetchSessions(true);
+    };
+    const timer = window.setInterval(refresh, SESSIONS_POLL_MS);
+    window.addEventListener('focus', refresh);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', refresh);
+    };
+  }, [collapsed, fetchSessions]);
 
   // Close the context menu on outside click / Escape.
   useEffect(() => {
@@ -197,9 +234,7 @@ function ActiveSessionsPanel() {
       return;
     }
     try {
-      const home = await homeDir();
-      const sep = home.includes('\\') ? '\\' : '/';
-      const path = [home.replace(/[\\/]+$/, ''), '.claude', 'projects', encodeCwd(cwd), `${session.id}.jsonl`].join(sep);
+      const path = await invoke<string>('claude_session_file_path', { cwd, id: session.id });
       await invoke('reveal_in_file_manager', { path });
     } catch (err) {
       toast.error('Reveal failed', String(err));
@@ -235,7 +270,7 @@ function ActiveSessionsPanel() {
         actions={
           !collapsed ? (
             <button
-              onClick={fetchSessions}
+              onClick={() => fetchSessions()}
               disabled={loading}
               className="w-5 h-5 flex items-center justify-center rounded-md hover:bg-fill-hover text-text-tertiary hover:text-text-secondary transition-colors disabled:opacity-40"
               title="Refresh"

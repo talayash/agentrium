@@ -1808,6 +1808,24 @@ pub async fn list_claude_sessions(
     .await
 }
 
+/// Absolute path of a Claude session's `.jsonl`, resolved with the same
+/// project-dir rules as the listing so "Reveal" never points at a guessed dir.
+#[command]
+pub async fn claude_session_file_path(cwd: String, id: String) -> Result<String, String> {
+    wrap_cmd("claude_session_file_path", async move {
+        if cwd.is_empty() || cwd.contains('\0') {
+            return Err(crate::error_reporter::user_err("Invalid cwd"));
+        }
+        if id.is_empty() || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+            return Err(crate::error_reporter::user_err("Invalid session id"));
+        }
+        crate::claude_session::session_file_path(&cwd, &id)
+            .map(|p| p.to_string_lossy().into_owned())
+            .ok_or_else(|| "Home directory not found".to_string())
+    })
+    .await
+}
+
 /// Reject paths with null bytes or that resolve to a parent of themselves
 /// (basic sanity gate shared by the file-tree mutation commands).
 fn validate_path(s: &str) -> Result<(), String> {
