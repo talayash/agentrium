@@ -245,6 +245,7 @@ fn main() {
             commands::reveal_in_file_manager,
             commands::list_agent_sessions,
             commands::list_claude_sessions,
+            commands::claude_session_file_path,
             commands::rename_path,
             commands::trash_path,
             commands::move_into_dir,

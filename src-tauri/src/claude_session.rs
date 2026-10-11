@@ -33,13 +33,54 @@ pub struct ClaudeSessionInfo {
 }
 
 /// Encode a working-directory path the way Claude Code names its project
-/// subdirectory. Empirically observed: `\`, `/`, `:`, and spaces all become
-/// `-` (so `C:\Dev\AlefBar - Kornish` becomes `C--Dev-AlefBar---Kornish`).
-/// Every other character is preserved.
+/// subdirectory: `path.replace(/[^a-zA-Z0-9]/g, "-")`. Every character that
+/// is not an ASCII letter or digit becomes `-`, including `.` and `_`
+/// (so `C:\Users\me\.agentrium` becomes `C--Users-me--agentrium`). The JS
+/// regex runs on UTF-16 code units, so an astral char yields two dashes.
 fn encode_cwd(cwd: &str) -> String {
-    cwd.chars()
-        .map(|c| if matches!(c, '\\' | '/' | ':' | ' ') { '-' } else { c })
-        .collect()
+    let mut out = String::with_capacity(cwd.len());
+    for c in cwd.chars() {
+        if c.is_ascii_alphanumeric() {
+            out.push(c);
+        } else {
+            out.extend(std::iter::repeat_n('-', c.len_utf16()));
+        }
+    }
+    out
+}
+
+/// Claude Code caps the encoded name at this many chars; longer names are
+/// truncated and suffixed with `-<hash of the full path>`.
+const MAX_ENCODED_LEN: usize = 200;
+
+/// Resolve the Claude project dir for `cwd` under `root`. For over-long paths
+/// we can't recompute Claude's hash, so we pick the existing dir that starts
+/// with the truncated prefix. Falls back to the plain encoded name (which may
+/// not exist yet - callers treat a missing dir as "no sessions").
+fn project_dir_in(root: &std::path::Path, cwd: &str) -> PathBuf {
+    let encoded = encode_cwd(cwd);
+    if encoded.len() <= MAX_ENCODED_LEN {
+        return root.join(encoded);
+    }
+    // `encoded` is pure ASCII, so byte slicing is char-safe.
+    let prefix = format!("{}-", &encoded[..MAX_ENCODED_LEN]);
+    std::fs::read_dir(root)
+        .ok()
+        .and_then(|entries| {
+            entries.flatten().map(|e| e.path()).find(|p| {
+                p.is_dir()
+                    && p.file_name()
+                        .and_then(|n| n.to_str())
+                        .is_some_and(|n| n.starts_with(&prefix))
+            })
+        })
+        .unwrap_or_else(|| root.join(encoded))
+}
+
+/// Absolute path of the `.jsonl` file for session `id` in `cwd`'s project dir.
+pub fn session_file_path(cwd: &str, id: &str) -> Option<PathBuf> {
+    let root = claude_projects_dir()?;
+    Some(project_dir_in(&root, cwd).join(format!("{id}.jsonl")))
 }
 
 /// Set of every `.jsonl` session file currently on disk. Take this *before*
@@ -80,7 +121,7 @@ pub fn find_new_session_for_cwd(
     exclude: &HashSet<String>,
 ) -> Option<String> {
     let root = claude_projects_dir()?;
-    let dir = root.join(encode_cwd(cwd));
+    let dir = project_dir_in(&root, cwd);
     find_new_session_in_dir(&dir, snapshot, exclude)
 }
 
@@ -162,7 +203,7 @@ fn read_first_user_preview(path: &std::path::Path, max_lines: usize, max_chars: 
 pub fn list_sessions_for_cwd(cwd: &str) -> Vec<ClaudeSessionInfo> {
     let mut out: Vec<(ClaudeSessionInfo, std::time::SystemTime)> = Vec::new();
     let Some(root) = claude_projects_dir() else { return Vec::new() };
-    let dir = root.join(encode_cwd(cwd));
+    let dir = project_dir_in(&root, cwd);
     let Ok(entries) = std::fs::read_dir(&dir) else { return Vec::new() };
     for entry in entries.flatten() {
         let path = entry.path();
@@ -197,8 +238,39 @@ mod tests {
     }
 
     #[test]
-    fn preserves_dashes_and_dots() {
-        assert_eq!(encode_cwd("/a/b-c.d"), "-a-b-c.d");
+    fn encodes_dots_and_underscores() {
+        // Claude Code replaces every non-alphanumeric character (#91).
+        assert_eq!(encode_cwd("/a/b-c.d_e"), "-a-b-c-d-e");
+        assert_eq!(
+            encode_cwd(r"C:\Users\talay\.agentrium\worktrees\app"),
+            "C--Users-talay--agentrium-worktrees-app"
+        );
+    }
+
+    #[test]
+    fn encodes_non_ascii_per_utf16_unit() {
+        // JS regex replacement works on UTF-16 code units: a BMP char is one
+        // dash, an astral char (surrogate pair) is two.
+        assert_eq!(encode_cwd("C:\\פרויקט"), format!("C{}", "-".repeat(8)));
+        assert_eq!(encode_cwd("/a/😀"), "-a---");
+    }
+
+    #[test]
+    fn resolves_short_path_to_exact_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert_eq!(project_dir_in(tmp.path(), "/a/b.c"), tmp.path().join("-a-b-c"));
+    }
+
+    #[test]
+    fn resolves_long_path_to_hashed_dir() {
+        // Claude Code truncates names over 200 chars and appends `-<hash>`.
+        // We can't reproduce the hash, so match on the 200-char prefix.
+        let tmp = tempfile::tempdir().unwrap();
+        let cwd = format!("/{}", "x".repeat(250));
+        let encoded = encode_cwd(&cwd);
+        let hashed = format!("{}-abc123", &encoded[..200]);
+        std::fs::create_dir(tmp.path().join(&hashed)).unwrap();
+        assert_eq!(project_dir_in(tmp.path(), &cwd), tmp.path().join(hashed));
     }
 
     #[test]
