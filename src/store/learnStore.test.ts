@@ -70,3 +70,19 @@ it('reverts a failed save', async () => {
   expect(useLearnStore.getState().byTerminal.t1.cards[0].saved).toBe(false);
   expect(reportInvokeFailure).toHaveBeenCalledWith('update_learn_card', expect.anything());
 });
+
+it('keeps loading when another run is in progress', async () => {
+  vi.mocked(invoke).mockResolvedValue({ status: 'in_progress', cards: [] } as never);
+  await useLearnStore.getState().generate('t1');
+  expect(useLearnStore.getState().byTerminal.t1.status).toBe('loading');
+});
+
+it('onCardsUpdated reloads cards and bumps unseen only when notify is set', async () => {
+  vi.mocked(invoke).mockResolvedValue([card('a'), card('b')] as never);
+  await useLearnStore.getState().onCardsUpdated('t1');
+  expect(invoke).toHaveBeenCalledWith('list_learn_cards', { terminalId: 't1' });
+  expect(useLearnStore.getState().byTerminal.t1.cards).toHaveLength(2);
+  expect(useLearnStore.getState().byTerminal.t1.unseen).toBe(0);
+  await useLearnStore.getState().onCardsUpdated('t1', { count: 2, notify: true });
+  expect(useLearnStore.getState().byTerminal.t1.unseen).toBe(2);
+});

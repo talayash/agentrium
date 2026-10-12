@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::path::Path;
 use std::sync::{Arc, Mutex, OnceLock};
-use tauri::{command, State};
+use tauri::{command, AppHandle, Emitter, State};
 
 use crate::commands::{
     db_op, git_cmd_async, resolve_repo_root, shell_command, validate_git_pathspec, wrap_cmd,
@@ -52,11 +52,6 @@ pub struct RawCard {
     pub options: Vec<String>,
     pub answer_index: u8,
     pub explain: String,
-}
-
-#[derive(Deserialize)]
-struct RawEnvelope {
-    cards: Vec<RawCard>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -128,14 +123,27 @@ pub fn parse_unified_diff(text: &str) -> Vec<DiffFile> {
 }
 
 pub fn parse_cards(stdout: &str) -> Result<Vec<RawCard>, String> {
-    let start = stdout.find('{').ok_or("no JSON object in model output")?;
-    let end = stdout.rfind('}').ok_or("no JSON object in model output")?;
-    if end < start {
-        return Err("no JSON object in model output".into());
+    let arr = find_cards_array(stdout).ok_or("no JSON object in model output")?;
+    // One malformed card must not sink the whole batch.
+    Ok(arr
+        .into_iter()
+        .filter_map(|v| serde_json::from_value::<RawCard>(v).ok())
+        .collect())
+}
+
+/// Finds the first `{` that starts a JSON object with a `cards` array, so prose
+/// containing braces before the JSON does not break parsing.
+fn find_cards_array(stdout: &str) -> Option<Vec<serde_json::Value>> {
+    for (start, _) in stdout.match_indices('{') {
+        let mut de =
+            serde_json::Deserializer::from_str(&stdout[start..]).into_iter::<serde_json::Value>();
+        if let Some(Ok(serde_json::Value::Object(mut map))) = de.next() {
+            if let Some(serde_json::Value::Array(arr)) = map.remove("cards") {
+                return Some(arr);
+            }
+        }
     }
-    let env: RawEnvelope = serde_json::from_str(&stdout[start..=end])
-        .map_err(|e| format!("invalid lesson JSON: {e}"))?;
-    Ok(env.cards)
+    None
 }
 
 fn find_block(lines: &[&str], quote: &[String]) -> Option<usize> {
@@ -426,6 +434,14 @@ const CLAUDE_ARGS: [&str; 8] = [
 ];
 const DIFF_DELIMITER: &str = "===== DIFF START =====";
 
+/// A missing CLI never fails the spawn (the shell always starts), so it shows up as the
+/// shell's "not found" exit code (9009 for cmd, 127 for sh) or message.
+fn is_cli_missing(code: Option<i32>, stderr: &str) -> bool {
+    matches!(code, Some(9009) | Some(127))
+        || stderr.contains("is not recognized as an internal or external command")
+        || stderr.contains("command not found")
+}
+
 async fn run_claude(stdin_text: String) -> RunOutcome {
     use std::time::Duration;
     use tokio::io::AsyncWriteExt;
@@ -465,7 +481,15 @@ async fn run_claude(stdin_text: String) -> RunOutcome {
         Ok(Ok(o)) if o.status.success() => {
             RunOutcome::Ok(String::from_utf8_lossy(&o.stdout).to_string())
         }
-        Ok(Ok(_)) | Ok(Err(_)) => RunOutcome::Failed,
+        Ok(Ok(o)) => {
+            let stderr = String::from_utf8_lossy(&o.stderr);
+            if is_cli_missing(o.status.code(), &stderr) {
+                RunOutcome::CliMissing
+            } else {
+                RunOutcome::Failed
+            }
+        }
+        Ok(Err(_)) => RunOutcome::Failed,
         Err(_) => RunOutcome::Timeout,
     }
 }
@@ -516,6 +540,7 @@ pub async fn set_learn_consent(state: State<'_, AppState>, enabled: bool) -> Res
 
 #[command]
 pub async fn generate_learn_cards(
+    app: AppHandle,
     state: State<'_, AppState>,
     terminal_id: String,
     goal: Option<String>,
@@ -528,7 +553,17 @@ pub async fn generate_learn_cards(
                 .get(&terminal_id)
                 .map(|t| t.config.working_directory.clone())
         };
-        generate_for(&state.db, &terminal_id, working_directory, goal).await
+        let result = generate_for(&state.db, &terminal_id, working_directory, goal).await?;
+        if result.status == "ok" {
+            // Lets windows that did not run the generation (torn-off windows) reload.
+            if let Err(e) = app.emit(
+                "learn-cards-updated",
+                serde_json::json!({ "terminalId": terminal_id, "count": result.cards.len() }),
+            ) {
+                eprintln!("[learn] failed to emit learn-cards-updated: {e}");
+            }
+        }
+        Ok(result)
     })
     .await
 }
@@ -685,6 +720,38 @@ mod tests {
         assert_eq!(parse_cards(json).unwrap().len(), 1);
         let fenced = format!("Here you go:\n```json\n{}\n```\n", json);
         assert_eq!(parse_cards(&fenced).unwrap().len(), 1);
+    }
+
+    const GOOD: &str = r#"{"kind":"pattern","title":"T","file":"a.ts","quote":["x"],"why":["a","b","c"],"question":"q","options":["1","2","3"],"answerIndex":0,"explain":"e"}"#;
+
+    #[test]
+    fn parse_cards_drops_only_the_bad_card() {
+        let json = format!(r#"{{"cards":[{GOOD},{{"kind":"pattern"}},{GOOD}]}}"#);
+        assert_eq!(parse_cards(&json).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn parse_cards_skips_prose_braces_before_json() {
+        let text = format!(
+            "I changed {{foo}} and {{bar: 1}} for you.
+```json
+{{\"cards\":[{GOOD}]}}
+```"
+        );
+        assert_eq!(parse_cards(&text).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn cli_missing_is_detected_from_exit_code_or_stderr() {
+        assert!(is_cli_missing(Some(9009), ""));
+        assert!(is_cli_missing(Some(127), ""));
+        assert!(is_cli_missing(
+            Some(1),
+            "'claude' is not recognized as an internal or external command,"
+        ));
+        assert!(is_cli_missing(Some(1), "zsh: command not found: claude"));
+        assert!(!is_cli_missing(Some(1), "API error"));
+        assert!(!is_cli_missing(None, ""));
     }
 
     #[test]

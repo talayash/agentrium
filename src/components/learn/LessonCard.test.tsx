@@ -47,3 +47,11 @@ it('disables level buttons at the ends and shows saved state', () => {
   expect((screen.getByRole('button', { name: 'Explain simpler' }) as HTMLButtonElement).disabled).toBe(true);
   expect(screen.getByRole('button', { name: 'Saved' }).getAttribute('aria-pressed')).toBe('true');
 });
+
+it('uses the error tone for a wrong answer and success for a right one', () => {
+  const { unmount } = render(<LessonCardView card={{ ...card, answeredIndex: 0 }} level={1} onPick={noop} onToggleSave={noop} onLevel={noop} onNext={noop} />);
+  expect(screen.getByRole('status').className).toContain('bg-error/10');
+  unmount();
+  render(<LessonCardView card={{ ...card, answeredIndex: 1 }} level={1} onPick={noop} onToggleSave={noop} onLevel={noop} onNext={noop} />);
+  expect(screen.getByRole('status').className).toContain('bg-success/10');
+});

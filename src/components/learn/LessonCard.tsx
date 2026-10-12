@@ -69,7 +69,7 @@ export function LessonCardView({ card, level, onPick, onToggleSave, onLevel, onN
           );
         })}
         {answered ? (
-          <div className="px-3 py-2.5 rounded-lg bg-success/10 text-[13px] leading-relaxed text-text-primary">
+          <div role="status" className={`px-3 py-2.5 rounded-lg ${correct ? 'bg-success/10' : 'bg-error/10'} text-[13px] leading-relaxed text-text-primary`}>
             {correct ? 'Correct.' : 'Not quite.'} {card.explain}
           </div>
         ) : (

@@ -16,6 +16,8 @@ interface LearnState {
   byTerminal: Record<string, TerminalLearn>;
   load: (terminalId: string) => Promise<void>;
   generate: (terminalId: string, opts?: { goal?: string; silent?: boolean }) => Promise<GenerateResult | null>;
+  /** Reload after another window generated cards; bumps unseen only when asked. */
+  onCardsUpdated: (terminalId: string, opts?: { count?: number; notify?: boolean }) => Promise<void>;
   markSeen: (terminalId: string) => void;
   answer: (terminalId: string, cardId: string, index: number) => Promise<void>;
   toggleSave: (terminalId: string, cardId: string) => Promise<void>;
@@ -44,6 +46,14 @@ export const useLearnStore = create<LearnState>((set, get) => {
       }
     },
 
+    onCardsUpdated: async (terminalId, opts = {}) => {
+      await get().load(terminalId);
+      if (opts.notify) {
+        const prev = get().byTerminal[terminalId]?.unseen ?? 0;
+        patch(terminalId, { unseen: prev + Math.max(opts.count ?? 1, 1) });
+      }
+    },
+
     generate: async (terminalId, opts = {}) => {
       patch(terminalId, { status: 'loading' });
       try {
@@ -51,6 +61,9 @@ export const useLearnStore = create<LearnState>((set, get) => {
         if (res.status === 'ok') {
           const cards = await invoke<LessonCard[]>('list_learn_cards', { terminalId }).catch(() => res.cards);
           patch(terminalId, { status: 'ok', cards, unseen: res.cards.length });
+        } else if (res.status === 'in_progress') {
+          // Another run owns this terminal; it will update us through learn-cards-updated.
+          patch(terminalId, { status: 'loading' });
         } else {
           patch(terminalId, { status: res.status });
         }

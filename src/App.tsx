@@ -58,6 +58,7 @@ import type { SavedTerminalConfig } from './store/appStore';
 import { useAgentRegistryStore } from './store/agentRegistryStore';
 import { useAuthStore } from './store/authStore';
 import { useTerminalStore } from './store/terminalStore';
+import { openLearnFor } from './lib/openLearnFor';
 import { useLearnStore } from './store/learnStore';
 import { usePreviewStore } from './store/previewStore';
 import { toast } from './store/toastStore';
@@ -716,6 +717,27 @@ function App() {
     }
   }), []);
 
+  // Learn Cards: only the main window generates, so every window reloads on this event.
+  useEffect(() => {
+    let cancelled = false;
+    let unlistenFn: (() => void) | undefined;
+    listen<{ terminalId: string; count?: number }>('learn-cards-updated', (event) => {
+      if (cancelled) return;
+      const { terminalId, count } = event.payload;
+      // The main window's generate() already records unseen for its own run.
+      void useLearnStore.getState().onCardsUpdated(terminalId, { count, notify: isDetached });
+    }).then((fn) => {
+      if (cancelled) fn();
+      else unlistenFn = fn;
+    }).catch(() => {
+      // Best-effort refresh; the panel still loads cards when opened.
+    });
+    return () => {
+      cancelled = true;
+      unlistenFn?.();
+    };
+  }, [isDetached]);
+
   useEffect(() => {
     // Same listen()/cleanup race guard as the other event listeners above.
     let cancelled = false;
@@ -791,7 +813,7 @@ function App() {
             const n = res.cards.length;
             toast.info('Lessons ready', `${n} lesson${n === 1 ? '' : 's'} from this change`, {
               duration: 8000,
-              actions: [{ label: 'Open Learn', variant: 'primary', onClick: () => useAppStore.getState().openLearn() }],
+              actions: [{ label: 'Open Learn', variant: 'primary', onClick: () => openLearnFor(id) }],
             });
           }
         }).catch(() => {
