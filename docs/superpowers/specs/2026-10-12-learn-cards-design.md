@@ -70,7 +70,8 @@ learn.rs
 #[command] update_learn_card(id, saved?, answered_index?)
 ```
 
-- `GenerateResult = { status: "ok" | "no_consent" | "no_changes" | "cli_missing" | "timeout" | "failed", cards }`.
+- `GenerateResult = { status: "ok" | "no_consent" | "no_changes" | "no_cards" | "in_progress" | "cli_missing" | "timeout" | "failed", cards }`.
+  `no_cards` = the model answered but verification dropped every card; `in_progress` = a generation for that terminal is already running.
   Non-ok statuses are data for the UI, not `Err`, so expected outcomes do not pollute telemetry.
 - Working directory resolved from the terminal config the same way `get_terminal_changes` does; repo root
   via `resolve_repo_root`. Paths validated with `validate_git_pathspec`.
