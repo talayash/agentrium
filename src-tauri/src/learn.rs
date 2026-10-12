@@ -228,8 +228,19 @@ pub fn verify_cards<F: Fn(&str) -> Option<String>>(
         } else {
             "concept".to_string()
         };
+        // The model tends to put the right answer first; rotate by a random
+        // offset so its position is not guessable. The answer text is unchanged.
+        let id = uuid::Uuid::new_v4();
+        let shift = (id.as_bytes()[0] % 3) as usize;
+        let mut options = [
+            r.options[0].clone(),
+            r.options[1].clone(),
+            r.options[2].clone(),
+        ];
+        options.rotate_left(shift);
+        let answer_index = ((r.answer_index as usize + 3 - shift) % 3) as u8;
         out.push(LessonCard {
-            id: uuid::Uuid::new_v4().to_string(),
+            id: id.to_string(),
             terminal_id: terminal_id.to_string(),
             created_at: now.clone(),
             kind,
@@ -241,12 +252,8 @@ pub fn verify_cards<F: Fn(&str) -> Option<String>>(
             highlight,
             why: [r.why[0].clone(), r.why[1].clone(), r.why[2].clone()],
             question: r.question,
-            options: [
-                r.options[0].clone(),
-                r.options[1].clone(),
-                r.options[2].clone(),
-            ],
-            answer_index: r.answer_index,
+            options,
+            answer_index,
             explain: r.explain,
             saved: false,
             answered_index: None,
@@ -841,6 +848,25 @@ mod tests {
             .map(|_| raw("src/lib/api.ts", &["export function withRetry<T>("]))
             .collect();
         assert_eq!(verify_cards(many, &b, "t", read).len(), MAX_CARDS);
+    }
+
+    #[test]
+    fn verify_shuffles_options_but_keeps_the_answer() {
+        // QA found the model nearly always puts the right answer first, which
+        // makes the quiz guessable. Positions must vary; the answer must not.
+        let mut positions = HashSet::new();
+        for _ in 0..60 {
+            let cards = verify_cards(
+                vec![raw("src/lib/api.ts", &["export function withRetry<T>("])],
+                &bundle(),
+                "t",
+                |_| Some(FILE.to_string()),
+            );
+            let c = &cards[0];
+            assert_eq!(c.options[c.answer_index as usize], "a function");
+            positions.insert(c.answer_index);
+        }
+        assert!(positions.len() > 1, "answer never moved: {positions:?}");
     }
 
     #[test]

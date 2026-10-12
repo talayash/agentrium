@@ -36,7 +36,7 @@ export function LearnPanel() {
 
   return (
     <div className="h-full overflow-y-auto p-4 flex flex-col gap-3.5">
-      <div role="group" aria-label="Level" className="flex gap-1 p-0.5 rounded-lg bg-fill-hover/40">
+      <div role="group" aria-label="Level" className="shrink-0 flex gap-1 p-0.5 rounded-lg bg-fill-hover/40">
         {LEVEL_LABELS.map((label, i) => (
           <button
             key={label}
@@ -54,7 +54,7 @@ export function LearnPanel() {
         type="button"
         onClick={run}
         disabled={status === 'loading'}
-        className="h-9 rounded-lg border border-[var(--seam)] text-[12px] text-text-primary hover:bg-fill-hover disabled:opacity-50"
+        className="shrink-0 h-9 rounded-lg border border-[var(--seam)] text-[12px] text-text-primary hover:bg-fill-hover disabled:opacity-50"
       >
         Learn from current changes
       </button>

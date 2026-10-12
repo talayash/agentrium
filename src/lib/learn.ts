@@ -54,3 +54,25 @@ export const STATUS_MESSAGE: Record<Exclude<GenerateStatus, 'ok'>, string> = {
   timeout: 'Claude took too long. Try again.',
   failed: 'Could not write lessons for this change. Try again.',
 };
+
+interface AutoLearnTerminal {
+  config: { claude_args?: string[] };
+  isShellTerminal?: boolean;
+  scriptParentId?: string;
+}
+
+/**
+ * Whether a finished terminal should get Learn Cards automatically. Plain
+ * shells (bottom pane or main-tab `__shell__`) and script runners are not
+ * agent sessions, so generating for them would only spend Claude quota.
+ * `closedConfig` covers a terminal already removed from the store.
+ */
+export function shouldAutoLearn(
+  terminal: AutoLearnTerminal | undefined,
+  closedConfig: { claude_args?: string[] } | undefined,
+): boolean {
+  if (terminal?.isShellTerminal || terminal?.scriptParentId) return false;
+  const config = terminal?.config ?? closedConfig;
+  if (!config) return false;
+  return config.claude_args?.[0] !== '__shell__';
+}

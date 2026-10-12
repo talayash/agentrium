@@ -59,6 +59,7 @@ import { useAgentRegistryStore } from './store/agentRegistryStore';
 import { useAuthStore } from './store/authStore';
 import { useTerminalStore } from './store/terminalStore';
 import { openLearnFor } from './lib/openLearnFor';
+import { shouldAutoLearn } from './lib/learn';
 import { useLearnStore } from './store/learnStore';
 import { usePreviewStore } from './store/previewStore';
 import { toast } from './store/toastStore';
@@ -806,7 +807,7 @@ function App() {
 
       // Learn Cards: best-effort background work. Consent is enforced in Rust,
       // so a no_consent result is silent; generate() records failures in the store.
-      if (useAppStore.getState().learnEnabled) {
+      if (useAppStore.getState().learnEnabled && shouldAutoLearn(terminal, config)) {
         const goal = useTerminalStore.getState().terminals.get(id)?.sessionContext?.goal;
         useLearnStore.getState().generate(id, { goal, silent: true }).then((res) => {
           if (res?.status === 'ok' && res.cards.length > 0) {
