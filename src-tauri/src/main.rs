@@ -20,6 +20,7 @@ mod otel_receiver;
 mod lsp;
 mod session_provider;
 mod session_context;
+mod learn;
 mod feedback;
 mod auth;
 mod sync_client;
