@@ -1,15 +1,19 @@
 //! Learn Cards: turn a session's git diff into 1-3 short, verified lessons.
-//! Pure logic lives here; IPC commands are added in the same file (Task 3).
+//! Pure logic lives here; IPC commands live in the same file.
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use std::sync::{Mutex, OnceLock};
+use std::path::Path;
+use std::sync::{Arc, Mutex, OnceLock};
+use tauri::{command, State};
 
-// TODO(Task 3): remove the allow(dead_code) attributes once the IPC commands use these items.
-#[allow(dead_code)]
+use crate::commands::{
+    db_op, git_cmd_async, resolve_repo_root, shell_command, validate_git_pathspec, wrap_cmd,
+};
+use crate::AppState;
+
 pub const MAX_DIFF_BYTES: usize = 24 * 1024;
 pub const MAX_CARDS: usize = 3;
-#[allow(dead_code)]
 pub const CONSENT_KEY: &str = "learn_ai_consent";
 const MAX_QUOTE_LINES: usize = 12;
 const KINDS: [&str; 4] = ["pattern", "system_design", "syntax", "concept"];
@@ -64,7 +68,6 @@ pub struct DiffFile {
     pub added: Vec<String>,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone, Default)]
 pub struct DiffBundle {
     pub files: Vec<DiffFile>,
@@ -72,14 +75,12 @@ pub struct DiffBundle {
     pub truncated: bool,
 }
 
-#[allow(dead_code)]
 impl DiffBundle {
     pub fn is_empty(&self) -> bool {
         self.files.iter().all(|f| f.added.is_empty())
     }
 }
 
-#[allow(dead_code)]
 pub fn parse_unified_diff(text: &str) -> Vec<DiffFile> {
     let mut files: Vec<DiffFile> = Vec::new();
     // None while inside a deleted file (+++ /dev/null) so its lines attach nowhere.
@@ -126,7 +127,6 @@ pub fn parse_unified_diff(text: &str) -> Vec<DiffFile> {
     files
 }
 
-#[allow(dead_code)]
 pub fn parse_cards(stdout: &str) -> Result<Vec<RawCard>, String> {
     let start = stdout.find('{').ok_or("no JSON object in model output")?;
     let end = stdout.rfind('}').ok_or("no JSON object in model output")?;
@@ -150,7 +150,6 @@ fn find_block(lines: &[&str], quote: &[String]) -> Option<usize> {
     })
 }
 
-#[allow(dead_code)]
 pub fn verify_cards<F: Fn(&str) -> Option<String>>(
     raw: Vec<RawCard>,
     bundle: &DiffBundle,
@@ -248,7 +247,6 @@ pub fn verify_cards<F: Fn(&str) -> Option<String>>(
     out
 }
 
-#[allow(dead_code)]
 pub fn build_prompt(goal: Option<&str>, truncated: bool) -> String {
     let mut p = String::from(
         "You are a senior engineer teaching a developer about code an AI coding agent just wrote. \
@@ -285,7 +283,6 @@ fn in_flight() -> &'static Mutex<HashSet<String>> {
 }
 
 /// Removes the terminal id from the in-flight set when dropped.
-#[allow(dead_code)]
 pub struct InFlightGuard(String);
 
 impl Drop for InFlightGuard {
@@ -297,13 +294,263 @@ impl Drop for InFlightGuard {
     }
 }
 
-#[allow(dead_code)]
 pub fn try_begin(terminal_id: &str) -> Option<InFlightGuard> {
     let mut set = in_flight().lock().unwrap_or_else(|e| e.into_inner());
     if !set.insert(terminal_id.to_string()) {
         return None;
     }
     Some(InFlightGuard(terminal_id.to_string()))
+}
+
+const MAX_UNTRACKED_FILE_BYTES: u64 = 256 * 1024;
+const CLAUDE_TIMEOUT_SECS: u64 = 60;
+
+fn cut_at_char_boundary(mut s: String, max: usize) -> String {
+    if s.len() <= max {
+        return s;
+    }
+    let mut cut = max;
+    while !s.is_char_boundary(cut) {
+        cut -= 1;
+    }
+    s.truncate(cut);
+    s
+}
+
+async fn untracked_patch(full: &Path, rel: &str) -> Option<String> {
+    let meta = tokio::fs::metadata(full).await.ok()?;
+    if !meta.is_file() || meta.len() > MAX_UNTRACKED_FILE_BYTES {
+        return None;
+    }
+    let bytes = tokio::fs::read(full).await.ok()?;
+    if bytes[..bytes.len().min(8192)].contains(&0u8) {
+        return None;
+    }
+    let content = String::from_utf8(bytes).ok()?;
+    let lines: Vec<String> = content.lines().map(|l| format!("+{l}")).collect();
+    Some(format!(
+        "diff --git a/{rel} b/{rel}\n--- /dev/null\n+++ b/{rel}\n@@ -0,0 +1,{} @@\n{}\n",
+        lines.len(),
+        lines.join("\n")
+    ))
+}
+
+/// Working tree vs HEAD (tracked) plus untracked files, capped at MAX_DIFF_BYTES.
+/// Any git failure (not a repo, no HEAD yet) yields fewer files, never an error.
+pub async fn collect_diff(repo_root: &str) -> DiffBundle {
+    let mut text = String::new();
+    let mut truncated = false;
+    if let Ok(o) = git_cmd_async(&["diff", "HEAD", "--no-color", "--no-ext-diff", "--unified=3"])
+        .current_dir(repo_root)
+        .output()
+        .await
+    {
+        if o.status.success() {
+            text.push_str(&String::from_utf8_lossy(&o.stdout));
+        }
+    }
+    if let Ok(o) = git_cmd_async(&["ls-files", "--others", "--exclude-standard", "-z"])
+        .current_dir(repo_root)
+        .output()
+        .await
+    {
+        if o.status.success() {
+            for raw in o.stdout.split(|b| *b == 0).filter(|p| !p.is_empty()) {
+                if text.len() >= MAX_DIFF_BYTES {
+                    truncated = true;
+                    break;
+                }
+                let rel = String::from_utf8_lossy(raw).to_string();
+                if validate_git_pathspec(&rel).is_err() {
+                    continue;
+                }
+                if let Some(patch) = untracked_patch(&Path::new(repo_root).join(&rel), &rel).await {
+                    text.push_str(&patch);
+                }
+            }
+        }
+    }
+    if text.len() > MAX_DIFF_BYTES {
+        text = cut_at_char_boundary(text, MAX_DIFF_BYTES);
+        truncated = true;
+    }
+    DiffBundle {
+        files: parse_unified_diff(&text),
+        text,
+        truncated,
+    }
+}
+
+enum RunOutcome {
+    Ok(String),
+    CliMissing,
+    Timeout,
+    Failed,
+}
+
+/// Same spawn pattern as `summarize_session`: bounded wait, kill on drop.
+async fn run_claude(prompt: &str, stdin_text: &str) -> RunOutcome {
+    use std::time::Duration;
+    use tokio::io::AsyncWriteExt;
+    let mut cmd: tokio::process::Command =
+        shell_command("claude", &["-p", "--model", "haiku", prompt]).into();
+    cmd.kill_on_drop(true);
+    cmd.stdin(std::process::Stdio::piped());
+    cmd.stdout(std::process::Stdio::piped());
+    cmd.stderr(std::process::Stdio::piped());
+    let mut child = match cmd.spawn() {
+        Ok(c) => c,
+        Err(_) => return RunOutcome::CliMissing,
+    };
+    if let Some(mut stdin) = child.stdin.take() {
+        let _ = stdin.write_all(stdin_text.as_bytes()).await;
+        drop(stdin);
+    }
+    match tokio::time::timeout(
+        Duration::from_secs(CLAUDE_TIMEOUT_SECS),
+        child.wait_with_output(),
+    )
+    .await
+    {
+        Ok(Ok(o)) if o.status.success() => {
+            RunOutcome::Ok(String::from_utf8_lossy(&o.stdout).to_string())
+        }
+        Ok(Ok(_)) | Ok(Err(_)) => RunOutcome::Failed,
+        Err(_) => RunOutcome::Timeout,
+    }
+}
+
+pub(crate) async fn consent_granted(
+    db: &Arc<std::sync::Mutex<crate::database::Database>>,
+) -> Result<bool, String> {
+    db_op(db, |db| {
+        Ok(db.get_user_meta(CONSENT_KEY)?.as_deref() == Some("true"))
+    })
+    .await
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GenerateResult {
+    pub status: String,
+    pub cards: Vec<LessonCard>,
+}
+
+impl GenerateResult {
+    fn status(s: &str) -> Self {
+        Self {
+            status: s.to_string(),
+            cards: vec![],
+        }
+    }
+}
+
+#[command]
+pub async fn get_learn_consent(state: State<'_, AppState>) -> Result<bool, String> {
+    wrap_cmd("get_learn_consent", async move {
+        consent_granted(&state.db).await
+    })
+    .await
+}
+
+#[command]
+pub async fn set_learn_consent(state: State<'_, AppState>, enabled: bool) -> Result<(), String> {
+    wrap_cmd("set_learn_consent", async move {
+        db_op(&state.db, move |db| {
+            db.set_user_meta(CONSENT_KEY, Some(if enabled { "true" } else { "false" }))
+        })
+        .await
+    })
+    .await
+}
+
+#[command]
+pub async fn generate_learn_cards(
+    state: State<'_, AppState>,
+    terminal_id: String,
+    goal: Option<String>,
+) -> Result<GenerateResult, String> {
+    wrap_cmd("generate_learn_cards", async move {
+        // Rust owns consent so direct IPC calls cannot bypass the preference.
+        if !consent_granted(&state.db).await? {
+            return Ok(GenerateResult::status("no_consent"));
+        }
+        let Some(_guard) = try_begin(&terminal_id) else {
+            return Ok(GenerateResult::status("in_progress"));
+        };
+        let working_directory = {
+            let terminals = state.terminals.lock().await;
+            terminals
+                .terminals
+                .get(&terminal_id)
+                .map(|t| t.config.working_directory.clone())
+        };
+        let Some(wd) = working_directory else {
+            return Ok(GenerateResult::status("no_changes"));
+        };
+        let Ok(root) = resolve_repo_root(&wd).await else {
+            return Ok(GenerateResult::status("no_changes"));
+        };
+        let bundle = collect_diff(&root).await;
+        if bundle.is_empty() {
+            return Ok(GenerateResult::status("no_changes"));
+        }
+        let diff_text = crate::error_reporter::scrub(&bundle.text);
+        let prompt = build_prompt(goal.as_deref(), bundle.truncated);
+        let stdout = match run_claude(&prompt, &diff_text).await {
+            RunOutcome::Ok(s) => s,
+            RunOutcome::CliMissing => return Ok(GenerateResult::status("cli_missing")),
+            RunOutcome::Timeout => return Ok(GenerateResult::status("timeout")),
+            RunOutcome::Failed => return Ok(GenerateResult::status("failed")),
+        };
+        let Ok(raw) = parse_cards(&stdout) else {
+            return Ok(GenerateResult::status("failed"));
+        };
+        let root_path = std::path::PathBuf::from(&root);
+        let cards = verify_cards(raw, &bundle, &terminal_id, |p| {
+            if validate_git_pathspec(p).is_err() {
+                return None;
+            }
+            std::fs::read_to_string(root_path.join(p)).ok()
+        });
+        if cards.is_empty() {
+            return Ok(GenerateResult::status("no_cards"));
+        }
+        let (tid, to_store) = (terminal_id.clone(), cards.clone());
+        db_op(&state.db, move |db| db.replace_learn_cards(&tid, &to_store)).await?;
+        Ok(GenerateResult {
+            status: "ok".into(),
+            cards,
+        })
+    })
+    .await
+}
+
+#[command]
+pub async fn list_learn_cards(
+    state: State<'_, AppState>,
+    terminal_id: String,
+) -> Result<Vec<LessonCard>, String> {
+    wrap_cmd("list_learn_cards", async move {
+        db_op(&state.db, move |db| db.list_learn_cards(&terminal_id)).await
+    })
+    .await
+}
+
+#[command]
+pub async fn update_learn_card(
+    state: State<'_, AppState>,
+    id: String,
+    saved: Option<bool>,
+    answered_index: Option<u8>,
+) -> Result<(), String> {
+    wrap_cmd("update_learn_card", async move {
+        db_op(&state.db, move |db| {
+            db.update_learn_card(&id, saved, answered_index)
+        })
+        .await
+    })
+    .await
 }
 
 #[cfg(test)]
@@ -492,5 +739,73 @@ mod tests {
         assert!(p.contains("add retry"));
         assert!(p.contains("truncated"));
         assert!(!build_prompt(None, false).contains("truncated"));
+    }
+
+    fn git(dir: &std::path::Path, args: &[&str]) {
+        let ok = std::process::Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .output()
+            .unwrap()
+            .status
+            .success();
+        assert!(ok, "git {:?} failed", args);
+    }
+
+    fn repo() -> tempfile::TempDir {
+        let tmp = tempfile::tempdir().unwrap();
+        let d = tmp.path();
+        git(d, &["init", "-q"]);
+        git(d, &["config", "user.email", "t@example.com"]);
+        git(d, &["config", "user.name", "t"]);
+        std::fs::write(d.join("a.ts"), "export const a = 1;\n").unwrap();
+        git(d, &["add", "."]);
+        git(d, &["commit", "-q", "-m", "init"]);
+        tmp
+    }
+
+    #[tokio::test]
+    async fn collect_diff_includes_tracked_and_untracked_changes() {
+        let tmp = repo();
+        let d = tmp.path();
+        std::fs::write(d.join("a.ts"), "export const a = 2;\n").unwrap();
+        std::fs::write(d.join("b.ts"), "export const b = 1;\n").unwrap();
+        let bundle = collect_diff(d.to_str().unwrap()).await;
+        let paths: Vec<&str> = bundle.files.iter().map(|f| f.path.as_str()).collect();
+        assert!(paths.contains(&"a.ts") && paths.contains(&"b.ts"));
+        assert!(!bundle.is_empty());
+    }
+
+    #[tokio::test]
+    async fn collect_diff_caps_and_skips_binary() {
+        let tmp = repo();
+        let d = tmp.path();
+        std::fs::write(d.join("bin.dat"), [0u8, 1, 2, 0, 5]).unwrap();
+        // Multi-byte characters so a naive byte cut would split a char.
+        std::fs::write(d.join("big.ts"), "const s = 'é';\n".repeat(4000)).unwrap();
+        let bundle = collect_diff(d.to_str().unwrap()).await;
+        assert!(bundle.text.len() <= MAX_DIFF_BYTES);
+        assert!(bundle.truncated);
+        assert!(bundle.files.iter().all(|f| f.path != "bin.dat"));
+    }
+
+    #[tokio::test]
+    async fn collect_diff_on_non_repo_is_empty() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("x.ts"), "x").unwrap();
+        assert!(collect_diff(tmp.path().to_str().unwrap()).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn consent_is_off_by_default_and_rust_owned() {
+        let db = std::sync::Arc::new(std::sync::Mutex::new(
+            crate::database::Database::new_in_memory().unwrap(),
+        ));
+        assert!(!consent_granted(&db).await.unwrap());
+        db.lock()
+            .unwrap()
+            .set_user_meta(CONSENT_KEY, Some("true"))
+            .unwrap();
+        assert!(consent_granted(&db).await.unwrap());
     }
 }
