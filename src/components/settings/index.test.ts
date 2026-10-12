@@ -51,6 +51,6 @@ describe('settings index', () => {
     const g = CATEGORY_GROUPS.find((x) => x.id === 'claude')!;
     expect(g.label).toBe('Agents');
     expect(g.pages[0]).toEqual({ id: 'agents-keys', label: 'Agents & Keys' });
-    expect(g.pages.map((p) => p.id)).toEqual(['agents-keys', 'defaults', 'updates']);
+    expect(g.pages.map((p) => p.id)).toEqual(['agents-keys', 'defaults', 'learn', 'updates']);
   });
 });
