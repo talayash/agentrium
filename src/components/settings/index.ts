@@ -43,6 +43,7 @@ export const CATEGORY_GROUPS: {
   { id: 'claude', label: 'Agents', pages: [
     { id: 'agents-keys', label: 'Agents & Keys' },
     { id: 'defaults',    label: 'Agent Defaults' },
+    { id: 'learn',       label: 'Learn' },
     { id: 'updates',     label: 'Agent Updates' },
   ]},
   { id: 'tools', label: 'Tools', pages: [

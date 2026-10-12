@@ -19,6 +19,9 @@ function resetAppStore() {
     sidebarCollapsed: false,
     hintsOpen: false,
     changesOpen: false,
+    learnOpen: false,
+    learnEnabled: true,
+    learnLevel: 1,
     settingsOpen: false,
     profileModalOpen: false,
     editingProfileId: null,
@@ -405,6 +408,9 @@ describe('appStore - persist partialize', () => {
     'workspacesOpen',
     'lastSeenVersion',
     'lspEnabled',
+    'learnEnabled',
+    'learnLevel',
+    'learnOpen',
     'pasteAutoDetectEnabled',
     'pasteAutoDetectThresholdBytes',
     'pasteAutoDetectThresholdLines',
@@ -754,5 +760,24 @@ describe('appStore - editor v1.22.0 setters', () => {
     expect(useAppStore.getState().editorLineHeight).toBe(1.0);
     s.setEditorLineHeight(5);
     expect(useAppStore.getState().editorLineHeight).toBe(2.0);
+  });
+});
+
+describe('appStore - Learn', () => {
+  it('Learn is on by default and its tab is exclusive with the other inspector tabs', () => {
+    const s = useAppStore.getState();
+    expect(s.learnEnabled).toBe(true);
+    s.toggleChanges();
+    s.toggleLearn();
+    expect(useAppStore.getState()).toMatchObject({ learnOpen: true, changesOpen: false, workspacesOpen: false, hintsOpen: false });
+    useAppStore.getState().toggleHints();
+    expect(useAppStore.getState().learnOpen).toBe(false);
+  });
+
+  it('turning Learn off closes its tab', () => {
+    useAppStore.getState().openLearn();
+    useAppStore.getState().setLearnEnabled(false);
+    expect(useAppStore.getState()).toMatchObject({ learnEnabled: false, learnOpen: false });
+    useAppStore.getState().setLearnEnabled(true);
   });
 });

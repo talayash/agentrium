@@ -40,11 +40,15 @@ export function TitleBar() {
   const toggleChanges = useAppStore((s) => s.toggleChanges);
   const toggleWorkspaces = useAppStore((s) => s.toggleWorkspaces);
   const toggleHints = useAppStore((s) => s.toggleHints);
-  const inspectorOpen = changesOpen || workspacesOpen || hintsOpen;
+  const learnOpen = useAppStore((s) => s.learnOpen);
+  const learnEnabled = useAppStore((s) => s.learnEnabled);
+  const toggleLearn = useAppStore((s) => s.toggleLearn);
+  const inspectorOpen = changesOpen || workspacesOpen || hintsOpen || (learnOpen && learnEnabled);
   const toggleInspector = () => {
     if (changesOpen) toggleChanges();
     else if (workspacesOpen) toggleWorkspaces();
     else if (hintsOpen) toggleHints();
+    else if (learnOpen) toggleLearn();
     else toggleChanges();
   };
   const appWindow = getCurrentWindow();

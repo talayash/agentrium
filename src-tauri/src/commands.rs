@@ -2322,7 +2322,7 @@ pub struct FileDiffResult {
 /// Mirrors `validate_file_list`'s per-entry checks. The diff/show commands pass
 /// a frontend-supplied file path straight into git args, so this is both a
 /// traversal guard and defense-in-depth for the arg-handling seams.
-fn validate_git_pathspec(file: &str) -> Result<(), String> {
+pub(crate) fn validate_git_pathspec(file: &str) -> Result<(), String> {
     if file.is_empty() || file.contains('\0') {
         return Err("Invalid file path".to_string());
     }
@@ -2863,7 +2863,7 @@ pub(crate) async fn run_git(path: &str, args: &[&str]) -> Result<String, String>
 /// porcelain status reports root-relative paths while command-line pathspecs
 /// resolve against the cwd, so commands that take file lists must run from
 /// the root or they fail with "pathspec did not match" in subdirectories.
-async fn resolve_repo_root(path: &str) -> Result<String, String> {
+pub(crate) async fn resolve_repo_root(path: &str) -> Result<String, String> {
     let out = run_git(path, &["rev-parse", "--show-toplevel"]).await?;
     let root = out.trim().to_string();
     if root.is_empty() {

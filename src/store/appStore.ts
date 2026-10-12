@@ -6,6 +6,7 @@ import { MAX_GRID_TERMINALS } from '../lib/gridEmptyCells';
 import { addPin, removePin, togglePin } from '../lib/pinnedTabs';
 import type { AgentKind, BuiltinAgentKind } from '../lib/agents';
 import type { CredentialBinding } from '../lib/credentials';
+import type { LearnLevel } from '../lib/learn';
 import type { NewTerminalIsolation } from '../lib/tasks';
 import { DEFAULT_PR_BODY_TEMPLATE, type PrMethodPreference } from '../lib/pullRequests';
 
@@ -106,6 +107,9 @@ interface AppState {
   errorReportingEnabled: boolean;
   // Master switch for language-server features (diagnostics squiggles).
   lspEnabled: boolean;
+  learnEnabled: boolean;
+  learnLevel: LearnLevel;
+  learnOpen: boolean;
   setLspEnabled: (v: boolean) => void;
   // Per-session OTel cost/token tracking (distinct from the analytics heartbeat
   // `telemetryEnabled`, which reports to ct-analytics). This is local only.
@@ -342,6 +346,10 @@ interface AppState {
   toggleSidebarCollapse: () => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
   toggleHints: () => void;
+  toggleLearn: () => void;
+  openLearn: () => void;
+  setLearnEnabled: (v: boolean) => void;
+  setLearnLevel: (l: LearnLevel) => void;
   toggleChanges: () => void;
   triggerChangesRefresh: () => void;
   openSettings: () => void;
@@ -619,6 +627,9 @@ export const useAppStore = create<AppState>()(
       telemetryEnabled: true,
       errorReportingEnabled: true,
       lspEnabled: true,
+      learnEnabled: true,
+      learnLevel: 1,
+      learnOpen: false,
       costTrackingEnabled: false,
       sessionBudgetUsd: 0,
       showGitPanel: true,
@@ -804,8 +815,12 @@ export const useAppStore = create<AppState>()(
       // The three right-side panels now share one Inspector frame, so opening
       // one closes the others (mutually exclusive → the Inspector shows exactly
       // one tab). ToolStripe/shortcuts/palette call these unchanged.
-      toggleHints: () => set((state) => ({ hintsOpen: !state.hintsOpen, changesOpen: false, workspacesOpen: false })),
-      toggleChanges: () => set((state) => ({ changesOpen: !state.changesOpen, hintsOpen: false, workspacesOpen: false })),
+      toggleHints: () => set((state) => ({ hintsOpen: !state.hintsOpen, changesOpen: false, workspacesOpen: false, learnOpen: false })),
+      toggleLearn: () => set((state) => ({ learnOpen: !state.learnOpen, changesOpen: false, workspacesOpen: false, hintsOpen: false })),
+      openLearn: () => set({ learnOpen: true, changesOpen: false, workspacesOpen: false, hintsOpen: false }),
+      setLearnEnabled: (v) => set(v ? { learnEnabled: true } : { learnEnabled: false, learnOpen: false }),
+      setLearnLevel: (l) => set({ learnLevel: l }),
+      toggleChanges: () => set((state) => ({ changesOpen: !state.changesOpen, hintsOpen: false, workspacesOpen: false, learnOpen: false })),
       triggerChangesRefresh: () => set((state) => ({ changesRefreshTrigger: state.changesRefreshTrigger + 1 })),
       openSettings: () => set({ settingsOpen: true }),
       closeSettings: () => set({ settingsOpen: false }),
@@ -1267,7 +1282,7 @@ export const useAppStore = create<AppState>()(
       clearSplit: () => set({ splitMode: false, splitTerminalIds: null, splitRatio: 0.5 }),
 
       // Workspaces actions (F4)
-      toggleWorkspaces: () => set((state) => ({ workspacesOpen: !state.workspacesOpen, changesOpen: false, hintsOpen: false })),
+      toggleWorkspaces: () => set((state) => ({ workspacesOpen: !state.workspacesOpen, changesOpen: false, hintsOpen: false, learnOpen: false })),
 
       // Snippets actions (F5)
       openSnippetsModal: () => set({ snippetsModalOpen: true }),
@@ -1416,6 +1431,9 @@ export const useAppStore = create<AppState>()(
         telemetryEnabled: state.telemetryEnabled,
         errorReportingEnabled: state.errorReportingEnabled,
         lspEnabled: state.lspEnabled,
+        learnEnabled: state.learnEnabled,
+        learnLevel: state.learnLevel,
+        learnOpen: state.learnOpen,
         costTrackingEnabled: state.costTrackingEnabled,
         sessionBudgetUsd: state.sessionBudgetUsd,
         showGitPanel: state.showGitPanel,

@@ -20,6 +20,7 @@ mod otel_receiver;
 mod lsp;
 mod session_provider;
 mod session_context;
+mod learn;
 mod feedback;
 mod auth;
 mod sync_client;
@@ -334,6 +335,11 @@ fn main() {
             session_context::get_terminal_context,
             commands::save_session_summary,
             commands::get_session_summary,
+            learn::get_learn_consent,
+            learn::set_learn_consent,
+            learn::generate_learn_cards,
+            learn::list_learn_cards,
+            learn::update_learn_card,
             commands::list_memory_files,
             commands::read_memory_file,
             commands::write_memory_file,

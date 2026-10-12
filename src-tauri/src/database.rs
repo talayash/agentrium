@@ -152,6 +152,19 @@ impl Database {
                 created_at TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS learn_cards (
+                id TEXT PRIMARY KEY,
+                terminal_id TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                title TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                card_json TEXT NOT NULL,
+                saved INTEGER NOT NULL DEFAULT 0,
+                answered_index INTEGER
+            );
+            CREATE INDEX IF NOT EXISTS idx_learn_cards_terminal ON learn_cards(terminal_id);
+
             CREATE INDEX IF NOT EXISTS idx_profiles_name ON profiles(name);
             CREATE INDEX IF NOT EXISTS idx_workspaces_name ON workspaces(name);
             CREATE INDEX IF NOT EXISTS idx_session_history_terminal_id ON session_history(terminal_id);
@@ -1290,6 +1303,66 @@ impl Database {
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
             Err(e) => Err(e.to_string()),
         }
+    }
+
+    // Learn Cards are local only: never enqueue them for sync.
+
+    pub fn replace_learn_cards(&self, terminal_id: &str, cards: &[crate::learn::LessonCard]) -> Result<(), String> {
+        let tx = self.conn.unchecked_transaction().map_err(|e| e.to_string())?;
+        tx.execute("DELETE FROM learn_cards WHERE terminal_id = ?1 AND saved = 0", params![terminal_id])
+            .map_err(|e| e.to_string())?;
+        for c in cards {
+            let json = serde_json::to_string(c).map_err(|e| e.to_string())?;
+            tx.execute(
+                "INSERT OR REPLACE INTO learn_cards (id, terminal_id, created_at, kind, title, file_path, card_json, saved, answered_index)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, NULL)",
+                params![c.id, terminal_id, c.created_at, c.kind, c.title, c.file_path, json],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        tx.commit().map_err(|e| e.to_string())
+    }
+
+    pub fn list_learn_cards(&self, terminal_id: &str) -> Result<Vec<crate::learn::LessonCard>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT card_json, saved, answered_index FROM learn_cards
+                 WHERE terminal_id = ?1 ORDER BY created_at DESC, rowid ASC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params![terminal_id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?, row.get::<_, Option<i64>>(2)?))
+            })
+            .map_err(|e| e.to_string())?;
+        let mut out = Vec::new();
+        for row in rows {
+            let (json, saved, answered) = row.map_err(|e| e.to_string())?;
+            // A row that no longer parses (older shape) is skipped, not fatal.
+            let Ok(mut card) = serde_json::from_str::<crate::learn::LessonCard>(&json) else { continue };
+            card.saved = saved != 0;
+            card.answered_index = answered.and_then(|a| u8::try_from(a).ok());
+            out.push(card);
+        }
+        Ok(out)
+    }
+
+    pub fn update_learn_card(&self, id: &str, saved: Option<bool>, answered_index: Option<u8>) -> Result<(), String> {
+        if let Some(a) = answered_index {
+            if a > 2 {
+                return Err(crate::error_reporter::user_err("Invalid answer index"));
+            }
+            self.conn
+                .execute("UPDATE learn_cards SET answered_index = ?1 WHERE id = ?2", params![a as i64, id])
+                .map_err(|e| e.to_string())?;
+        }
+        if let Some(s) = saved {
+            self.conn
+                .execute("UPDATE learn_cards SET saved = ?1 WHERE id = ?2", params![s as i64, id])
+                .map_err(|e| e.to_string())?;
+        }
+        Ok(())
     }
 
     // App meta methods
@@ -3113,5 +3186,51 @@ mod tests {
         });
         db.upsert_pulled_row("workspaces", &row).unwrap();
         assert_eq!(db.get_local_updated_at("workspaces", "w-uuid-1").unwrap().as_deref(), Some("2026-06-01T00:00:00Z"));
+    }
+
+    fn learn_card(id: &str, terminal: &str, created: &str) -> crate::learn::LessonCard {
+        crate::learn::LessonCard {
+            id: id.into(),
+            terminal_id: terminal.into(),
+            created_at: created.into(),
+            kind: "pattern".into(),
+            title: format!("card {id}"),
+            file_path: "src/a.ts".into(),
+            start_line: 1,
+            end_line: 2,
+            quote: vec!["a".into(), "b".into()],
+            highlight: vec![1],
+            why: ["b".into(), "i".into(), "e".into()],
+            question: "q".into(),
+            options: ["1".into(), "2".into(), "3".into()],
+            answer_index: 0,
+            explain: "e".into(),
+            saved: false,
+            answered_index: None,
+        }
+    }
+
+    #[test]
+    fn learn_cards_round_trip_and_update() {
+        let db = Database::new_in_memory().unwrap();
+        db.replace_learn_cards("t1", &[learn_card("a", "t1", "2026-10-12T10:00:00Z"), learn_card("b", "t1", "2026-10-12T10:00:00Z")]).unwrap();
+        let cards = db.list_learn_cards("t1").unwrap();
+        assert_eq!(cards.iter().map(|c| c.id.as_str()).collect::<Vec<_>>(), vec!["a", "b"]);
+        db.update_learn_card("a", Some(true), Some(2)).unwrap();
+        let a = db.list_learn_cards("t1").unwrap().into_iter().find(|c| c.id == "a").unwrap();
+        assert!(a.saved);
+        assert_eq!(a.answered_index, Some(2));
+        assert!(db.update_learn_card("a", None, Some(3)).is_err());
+        assert!(db.list_learn_cards("other").unwrap().is_empty());
+    }
+
+    #[test]
+    fn regenerating_learn_cards_keeps_saved_and_drops_unsaved() {
+        let db = Database::new_in_memory().unwrap();
+        db.replace_learn_cards("t1", &[learn_card("old-saved", "t1", "2026-10-12T10:00:00Z"), learn_card("old", "t1", "2026-10-12T10:00:00Z")]).unwrap();
+        db.update_learn_card("old-saved", Some(true), None).unwrap();
+        db.replace_learn_cards("t1", &[learn_card("new", "t1", "2026-10-12T11:00:00Z")]).unwrap();
+        let ids: Vec<String> = db.list_learn_cards("t1").unwrap().into_iter().map(|c| c.id).collect();
+        assert_eq!(ids, vec!["new".to_string(), "old-saved".to_string()]);
     }
 }

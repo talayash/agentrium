@@ -1,22 +1,27 @@
-import { X, FileDiff, FolderOpen, Lightbulb } from 'lucide-react';
+import { X, FileDiff, FolderOpen, Lightbulb, GraduationCap } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useAppStore } from '../store/appStore';
+import { useLearnStore } from '../store/learnStore';
+import { useTerminalStore } from '../store/terminalStore';
 import { FileChangesPanel } from './FileChangesPanel';
 import { WorkspacesPanel } from './WorkspacesPanel';
 import { HintsPanel } from './HintsPanel';
+import { LearnPanel } from './learn/LearnPanel';
 
-type InspectorTab = 'changes' | 'workspaces' | 'commands';
+type InspectorTab = 'changes' | 'workspaces' | 'commands' | 'learn';
 
 const TABS: { id: InspectorTab; label: string; Icon: LucideIcon }[] = [
   { id: 'changes', label: 'Changes', Icon: FileDiff },
   { id: 'workspaces', label: 'Workspaces', Icon: FolderOpen },
   { id: 'commands', label: 'Commands', Icon: Lightbulb },
+  { id: 'learn', label: 'Learn', Icon: GraduationCap },
 ];
 
 /**
  * One contextual inspector on the right, replacing the four separately-toggled
  * panels. A segmented switcher moves between Changes (Git), Workspaces
- * (saved terminal layouts), and Commands (hints); the underlying panels keep
+ * (saved terminal layouts), Commands (hints), and Learn (lesson cards, only
+ * when the feature is enabled); the underlying panels keep
  * all their own logic. Visibility is driven by the (now mutually-exclusive)
  * store booleans, so keyboard shortcuts / command palette work unchanged.
  */
@@ -27,25 +32,32 @@ export function Inspector() {
   const toggleChanges = useAppStore((s) => s.toggleChanges);
   const toggleWorkspaces = useAppStore((s) => s.toggleWorkspaces);
   const toggleHints = useAppStore((s) => s.toggleHints);
+  const learnEnabled = useAppStore((s) => s.learnEnabled);
+  const learnOpen = useAppStore((s) => s.learnOpen);
+  const toggleLearn = useAppStore((s) => s.toggleLearn);
+  const activeTerminalId = useTerminalStore((s) => s.activeTerminalId);
+  const unseen = useLearnStore((s) => (activeTerminalId ? s.byTerminal[activeTerminalId]?.unseen ?? 0 : 0));
 
-  const active: InspectorTab = changesOpen ? 'changes' : workspacesOpen ? 'workspaces' : 'commands';
+  const active: InspectorTab = changesOpen ? 'changes' : workspacesOpen ? 'workspaces' : learnOpen && learnEnabled ? 'learn' : 'commands';
 
   const openTab = (id: InspectorTab) => {
     if (id === active) return;
     if (id === 'changes') toggleChanges();
     else if (id === 'workspaces') toggleWorkspaces();
+    else if (id === 'learn') toggleLearn();
     else toggleHints();
   };
   const close = () => {
     if (changesOpen) toggleChanges();
     else if (workspacesOpen) toggleWorkspaces();
     else if (hintsOpen) toggleHints();
+    else if (learnOpen) toggleLearn();
   };
 
   return (
     <div className="h-full material-chrome flex flex-col">
       <div className="flex items-center gap-1 p-2 border-b border-[var(--seam)]">
-        {TABS.map(({ id, label, Icon }) => {
+        {TABS.filter((t) => t.id !== 'learn' || learnEnabled).map(({ id, label, Icon }) => {
           const on = active === id;
           return (
             <button
@@ -60,6 +72,9 @@ export function Inspector() {
             >
               <Icon size={13} strokeWidth={1.9} />
               {label}
+              {id === 'learn' && unseen > 0 && (
+                <span className="ml-0.5 px-1.5 rounded-full bg-accent-primary/15 text-text-primary text-[10px] font-semibold">{unseen}</span>
+              )}
             </button>
           );
         })}
@@ -75,6 +90,7 @@ export function Inspector() {
         {active === 'changes' && <FileChangesPanel />}
         {active === 'workspaces' && <WorkspacesPanel />}
         {active === 'commands' && <HintsPanel />}
+        {active === 'learn' && <LearnPanel />}
       </div>
     </div>
   );
