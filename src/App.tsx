@@ -58,6 +58,7 @@ import type { SavedTerminalConfig } from './store/appStore';
 import { useAgentRegistryStore } from './store/agentRegistryStore';
 import { useAuthStore } from './store/authStore';
 import { useTerminalStore } from './store/terminalStore';
+import { useLearnStore } from './store/learnStore';
 import { usePreviewStore } from './store/previewStore';
 import { toast } from './store/toastStore';
 import { detectUrl } from './lib/preview/detector';
@@ -159,7 +160,7 @@ function App() {
   const finishTaskTerminalId = useAppStore((s) => s.finishTaskTerminalId);
   const ciRepairTerminalId = useAppStore((s) => s.ciRepairTerminalId);
   const closeCiRepair = useAppStore((s) => s.closeCiRepair);
-  const { sidebarOpen, sidebarCollapsed, hintsOpen, changesOpen, workspacesOpen, settingsOpen, profileModalOpen, newTerminalModalOpen, workspaceModalOpen, worktreeModalOpen, pushModalOpen, createPrModalOpen, sessionHistoryOpen, snippetsModalOpen, commandPaletteOpen, globalSearchOpen, whatsNewOpen, claudeConfigOpen, sessionTimelineOpen, memoryEditorOpen, showStatusBar, notifyOnFinish, restoreSession, triggerChangesRefresh, showRestoreBanner, pendingRestoreConfigs, setShowRestoreBanner, setPendingRestoreConfigs, lastSeenVersion, setLastSeenVersion, openWhatsNew } = useAppStore();
+  const { sidebarOpen, sidebarCollapsed, hintsOpen, changesOpen, workspacesOpen, learnOpen, learnEnabled, settingsOpen, profileModalOpen, newTerminalModalOpen, workspaceModalOpen, worktreeModalOpen, pushModalOpen, createPrModalOpen, sessionHistoryOpen, snippetsModalOpen, commandPaletteOpen, globalSearchOpen, whatsNewOpen, claudeConfigOpen, sessionTimelineOpen, memoryEditorOpen, showStatusBar, notifyOnFinish, restoreSession, triggerChangesRefresh, showRestoreBanner, pendingRestoreConfigs, setShowRestoreBanner, setPendingRestoreConfigs, lastSeenVersion, setLastSeenVersion, openWhatsNew } = useAppStore();
   const { handleTerminalOutput, updateTerminalStatus, setLoopMode, setSessionSummary, createTerminal, createShellTerminalTab, applyTerminalMetrics, adoptTerminal, detachTerminals, closeTerminal, terminals } = useTerminalStore();
 
   // Window identity. A torn-off ("detached") window renders the SAME full
@@ -780,6 +781,23 @@ function App() {
           reportInvokeFailure('summarize_session', err);
         }
       })();
+
+      // Learn Cards: best-effort background work. Consent is enforced in Rust,
+      // so a no_consent result is silent; generate() records failures in the store.
+      if (useAppStore.getState().learnEnabled) {
+        const goal = useTerminalStore.getState().terminals.get(id)?.sessionContext?.goal;
+        useLearnStore.getState().generate(id, { goal, silent: true }).then((res) => {
+          if (res?.status === 'ok' && res.cards.length > 0) {
+            const n = res.cards.length;
+            toast.info('Lessons ready', `${n} lesson${n === 1 ? '' : 's'} from this change`, {
+              duration: 8000,
+              actions: [{ label: 'Open Learn', variant: 'primary', onClick: () => useAppStore.getState().openLearn() }],
+            });
+          }
+        }).catch(() => {
+          // generate() never throws; this only guards the toast callback.
+        });
+      }
     }).then((fn) => {
       if (cancelled) fn();
       else unlistenFn = fn;
@@ -1064,7 +1082,7 @@ function App() {
 
             {/* One contextual inspector replaces the four separate right panels. */}
             <AnimatePresence mode="wait">
-              {(changesOpen || workspacesOpen || hintsOpen) && (
+              {(changesOpen || workspacesOpen || hintsOpen || (learnOpen && learnEnabled)) && (
                 <div
                   className="h-full overflow-hidden rounded-2xl shadow-elevation-2 transition-all duration-150 ease-out"
                   style={{ width: 400 }}

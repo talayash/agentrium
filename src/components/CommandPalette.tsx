@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
+import { useLearnStore } from '../store/learnStore';
 import { toast } from '../store/toastStore';
 import { copyText } from '../lib/clipboard';
 import { reportInvokeFailure } from '../lib/errorReporter';
@@ -30,6 +31,7 @@ import {
   GitPullRequestCreate,
   Bot,
   Flag,
+  GraduationCap,
   type LucideIcon,
 } from 'lucide-react';
 import { openCreatePrForTerminal } from '../lib/pullRequestActions';
@@ -179,6 +181,19 @@ export function CommandPalette() {
         { label: 'Snippets', description: 'Open snippet manager', icon: Scissors, shortcut: 'Ctrl+Shift+S', action: () => { useAppStore.getState().openSnippetsModal(); closeCommandPalette(); } },
         { label: 'Session History', description: 'View past terminal sessions', icon: History, action: () => { useAppStore.getState().openSessionHistory(); closeCommandPalette(); } },
       ];
+      if (useAppStore.getState().learnEnabled) {
+        actions.push(
+          { label: 'Open Learn', description: 'Show lessons from the active session changes', icon: GraduationCap, action: () => { useAppStore.getState().openLearn(); closeCommandPalette(); } },
+          { label: 'Learn from Current Changes', description: 'Write 1-3 short lessons from the active session git diff', icon: GraduationCap, action: () => {
+            closeCommandPalette();
+            const id = useTerminalStore.getState().activeTerminalId;
+            if (!id) return;
+            useAppStore.getState().openLearn();
+            const goal = useTerminalStore.getState().terminals.get(id)?.sessionContext?.goal;
+            void useLearnStore.getState().generate(id, { goal });
+          } },
+        );
+      }
       actions.forEach((a, i) => {
         result.push({ id: `action-${i}`, frecencyKey: `cmd:${a.label}`, label: a.label, description: a.description, category: 'Commands', icon: a.icon, shortcut: a.shortcut, action: a.action });
       });
