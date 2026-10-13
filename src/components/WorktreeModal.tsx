@@ -10,6 +10,7 @@ import { Modal } from './ui/Modal';
 import { Button } from './ui/Button';
 import { ListRow } from './ui/ListRow';
 import { EmptyState } from './ui/EmptyState';
+import { nextSessionLabel } from '../lib/sessionLabel';
 
 export function WorktreeModal() {
   const { closeWorktreeModal, worktreeModalRepoPath, defaultClaudeArgs } = useAppStore();
@@ -146,7 +147,7 @@ export function WorktreeModal() {
     setOpeningTerminal(true);
     try {
       const selected = worktrees.find(w => w.path === selectedPath);
-      const label = `Terminal ${terminals.size + 1}`;
+      const label = nextSessionLabel('Terminal', Array.from(terminals.values(), t => t.config.label));
       const TAG_COLORS = ['bg-red-500', 'bg-orange-500', 'bg-yellow-500', 'bg-green-500', 'bg-blue-500', 'bg-purple-500', 'bg-pink-500'];
       const colorTag = TAG_COLORS[terminals.size % TAG_COLORS.length];
       const nickname = selected?.branch ? `${repoName} (${selected.branch})` : undefined;

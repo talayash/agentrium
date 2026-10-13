@@ -26,6 +26,7 @@ import { Button } from './ui/Button';
 import { Modal } from './ui/Modal';
 import { ListRow } from './ui/ListRow';
 import { Toggle } from './ui/Toggle';
+import { nextSessionLabel } from '../lib/sessionLabel';
 
 const isMac = navigator.platform.toUpperCase().includes('MAC');
 
@@ -398,7 +399,7 @@ export function NewTerminalModal() {
     try {
       const selectedProfile = profiles.find(p => p.id === selectedProfileId);
       const baseName = plainShell ? 'Shell' : (selectedProfile?.name || 'Terminal');
-      const label = `${baseName} ${terminals.size + 1}`;
+      const label = nextSessionLabel(baseName, Array.from(terminals.values(), t => t.config.label));
       const colorTag = TAG_COLORS[terminals.size % TAG_COLORS.length];
 
       let newTerminalId: string;
