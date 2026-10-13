@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.40.0",
+    "date": "2026-10-13",
+    "features": [
+      { "title": "Fix bugs & performance" },
+      { "title": "Learn Cards", "description": "After an agent changes code, the new Learn tab turns the change into 1-3 short cards about a pattern, a system design idea or a syntax point. Each card quotes real lines from the diff and asks you to predict the answer before the explanation is shown. Generate cards when a session finishes or with Learn from current changes." },
+      { "title": "You choose what leaves your device", "description": "Learn sends the session diff to your own Claude CLI only after you allow it in Settings > Agents > Learn. Cards stay on this device and are never synced. You can turn Learn off there too." },
+      { "title": "Cleaner session names", "description": "The first session of a profile now uses the profile name as is. A number is added only when another session of the same profile is already open." }
+    ]
+  },
+  {
     "version": "1.39.0",
     "date": "2026-10-11",
     "features": [
