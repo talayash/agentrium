@@ -81,7 +81,7 @@ pub fn validate_binary(binary: &str) -> Result<(), String> {
 }
 
 fn validate_arg(arg: &str) -> Result<(), String> {
-    if arg.contains(crate::terminal::TerminalManager::SHELL_METACHARACTERS) {
+    if arg.contains(crate::terminal::TerminalManager::ARG_FORBIDDEN) {
         return Err(format!(
             "Invalid character in argument: \"{}\". Shell metacharacters are not allowed.",
             arg
@@ -261,6 +261,23 @@ mod tests {
         let mut a = ok_agent();
         a.bindings = vec![CredentialBinding { env: "OTHER".into(), credential_id: "c1".into() }];
         assert!(validate(&a).unwrap_err().contains("no matching required variable"));
+    }
+
+    #[test]
+    fn accepts_hash_inside_an_argument() {
+        // Model ids with an effort suffix (`muse/muse-spark-1.3#high`) are
+        // real CLI inputs. `#` is literal in both spawn paths (cmd.exe never
+        // treats it specially; the Unix path single-quotes every arg).
+        let mut a = ok_agent();
+        a.default_args = vec!["--model".into(), "muse/muse-spark-1.3#high".into()];
+        assert!(validate(&a).is_ok());
+    }
+
+    #[test]
+    fn still_rejects_other_metacharacters_in_arguments() {
+        let mut a = ok_agent();
+        a.default_args = vec!["muse#high;rm".into()];
+        assert!(validate(&a).is_err());
     }
 
     #[test]
