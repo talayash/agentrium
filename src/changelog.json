@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.41.0",
+    "date": "2026-10-14",
+    "features": [
+      { "title": "Fix bugs & performance" },
+      { "title": "Liquid glass look", "description": "The toolbar, sidebar and inspector now use floating glass panels with rounded, nested corners. Sidebar actions get coloured icon tiles, and a 'N waiting' pill shows when another session needs your input." },
+      { "title": "Jump to the start of a response", "description": "A small up-arrow beside the terminal scrollbar scrolls back to where the last response began." },
+      { "title": "Model effort suffixes in agent arguments", "description": "Arguments such as model ids with '#high' are no longer rejected as invalid." }
+    ]
+  },
+  {
     "version": "1.40.0",
     "date": "2026-10-13",
     "features": [
