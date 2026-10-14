@@ -50,7 +50,7 @@ export function Sidebar() {
 
   if (sidebarCollapsed) {
     return (
-      <div className="h-full material-chrome flex flex-col items-center py-2 gap-1" style={{ width: 'var(--w-rail)' }}>
+      <div className="h-full flex flex-col items-center py-2 gap-1" style={{ width: 'var(--w-rail)' }}>
         {NAV.map(({ id, label, Icon }) => (
           <Tooltip key={id} label={label} side="right">
             <button
@@ -95,7 +95,7 @@ export function Sidebar() {
   }
 
   return (
-    <div className="h-full material-chrome flex flex-col">
+    <div className="h-full flex flex-col">
       {/* Navigator switcher + collapse control (the collapse affordance lives
           IN the sidebar - the titlebar logo is a brand mark, not a toggle). */}
       <div className="flex gap-1 p-2 items-center">

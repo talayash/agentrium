@@ -4,6 +4,7 @@ import type { ErrorInfo, ReactNode } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { reportError, reportInvokeFailure } from './lib/errorReporter';
 import { TitleBar } from './components/TitleBar';
+import { SidebarWindowHeader } from './components/titlebar/WindowControls';
 import { Button } from './components/ui/Button';
 import { Sidebar } from './components/Sidebar';
 import { TerminalTabs } from './components/TerminalTabs';
@@ -1029,7 +1030,7 @@ function App() {
       // top edge inside it. `inset 0 0 0 1px` moves the hairline INSIDE the
       // opaque `--canvas` fill so every corner gets an equal, visible edge
       // in dark and light themes. See #60.
-      className="app-root h-screen w-screen flex flex-col overflow-hidden rounded-[10px]"
+      className="app-root h-screen w-screen flex flex-col overflow-hidden rounded-[var(--radius-window)]"
       style={{ boxShadow: 'inset 0 0 0 1px var(--seam-strong)' }}
     >
       {/* Launch splash - logo reveal video + loading bar, main window only. */}
@@ -1082,40 +1083,57 @@ function App() {
             )}
           </AnimatePresence>
 
-          <TitleBar />
-
-          {/* Floating-panel band: rail hugs the edge, then sidebar + content +
-              side panels float as rounded cards over the deep canvas (macOS
-              Sonoma). gap-2 p-2 opens the canvas seams between them. */}
-          <div className="flex-1 flex overflow-hidden gap-2 p-2">
+          {/* Concentric Toolbar band: the sidebar slab and the content cards
+              sit --inset-window from the window edge and from each other, and
+              their radius is the window radius minus that inset, so every
+              corner nests. There is no title bar: TitleBar floats as glass
+              capsules over the top --h-toolbar of the cards on the right. */}
+          <div className={`flex-1 flex overflow-hidden gap-[var(--inset-window)] p-[var(--inset-window)] ${showStatusBar ? 'pb-0' : ''}`}>
             <AnimatePresence mode="wait">
               {sidebarOpen && (
                 <div
-                  className="h-full overflow-hidden rounded-2xl shadow-elevation-2 transition-all duration-200 ease-out"
+                  className="h-full overflow-hidden rounded-[var(--radius-card)] shadow-elevation-3 material-lens flex flex-col transition-all duration-200 ease-out"
                   style={{ width: sidebarCollapsed ? 'var(--w-rail)' : 'var(--w-panel)' }}
                 >
-                  <Sidebar />
+                  <SidebarWindowHeader collapsed={sidebarCollapsed} />
+                  <div className="flex-1 min-h-0">
+                    <Sidebar />
+                  </div>
                 </div>
               )}
             </AnimatePresence>
 
-            <main className="flex-1 flex flex-col overflow-hidden rounded-2xl bg-elevation-0 shadow-elevation-2 min-w-0">
-              <TerminalTabs />
-            </main>
-
-            {/* One contextual inspector replaces the four separate right panels. */}
-            <AnimatePresence mode="wait">
-              {(changesOpen || workspacesOpen || hintsOpen || (learnOpen && learnEnabled)) && (
-                <div
-                  className="h-full overflow-hidden rounded-2xl shadow-elevation-2 transition-all duration-150 ease-out"
-                  style={{ width: 400 }}
-                >
-                  <Inspector />
+            <div className="relative flex-1 flex gap-[var(--inset-window)] min-w-0">
+              <main className="flex-1 flex flex-col overflow-hidden rounded-[var(--radius-card)] bg-elevation-0 shadow-elevation-3 ring-1 ring-inset ring-seam min-w-0">
+                {/* Reserved toolbar zone; the floating capsules sit on it and
+                    content fades out beneath it (scroll-edge effect). */}
+                <div className="toolbar-edge h-[var(--h-toolbar)] flex-shrink-0" aria-hidden />
+                <div className="flex-1 min-h-0">
+                  <TerminalTabs />
                 </div>
-              )}
-            </AnimatePresence>
+              </main>
 
-            <PreviewPanel />
+              {/* One contextual inspector replaces the four separate right panels. */}
+              <AnimatePresence mode="wait">
+                {(changesOpen || workspacesOpen || hintsOpen || (learnOpen && learnEnabled)) && (
+                  <div
+                    className="h-full overflow-hidden rounded-[var(--radius-card)] shadow-elevation-3 material-lens flex flex-col transition-all duration-150 ease-out"
+                    style={{ width: 400 }}
+                  >
+                    <div className="h-[var(--h-toolbar)] flex-shrink-0" aria-hidden />
+                    <div className="flex-1 min-h-0">
+                      <Inspector />
+                    </div>
+                  </div>
+                )}
+              </AnimatePresence>
+
+              <div className="h-full flex pt-[var(--h-toolbar)]">
+                <PreviewPanel />
+              </div>
+
+              <TitleBar />
+            </div>
           </div>
 
           {showStatusBar && <StatusBar />}

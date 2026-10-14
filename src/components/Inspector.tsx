@@ -55,7 +55,7 @@ export function Inspector() {
   };
 
   return (
-    <div className="h-full material-chrome flex flex-col">
+    <div className="h-full flex flex-col">
       <div className="flex items-center gap-1 p-2 border-b border-[var(--seam)]">
         {TABS.filter((t) => t.id !== 'learn' || learnEnabled).map(({ id, label, Icon }) => {
           const on = active === id;

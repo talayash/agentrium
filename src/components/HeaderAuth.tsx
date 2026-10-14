@@ -13,7 +13,7 @@ import { Toggle } from './ui/Toggle';
  * with avatar (or initials when no picture exists / it fails to load) + name;
  * clicking opens a dropdown with "Sign out".
  *
- * Rendered in TitleBar.tsx (Task 27). Follows the SessionWidget popover
+ * Rendered in TitleBar.tsx (Task 27). Follows the title-bar popover
  * pattern for consistency: `material-popover` surface, outside-click +
  * Escape to close, `aria-haspopup="menu"` + `aria-expanded` on the trigger.
  *
@@ -79,7 +79,7 @@ export function HeaderAuth() {
         <button
           type="button"
           onClick={() => setShowLogin(true)}
-          className="no-drag h-7 px-2.5 flex items-center rounded-md text-[12px] font-medium text-text-secondary hover:text-text-primary hover:bg-fill-hover transition-colors"
+          className="no-drag h-7 px-2.5 flex items-center rounded-full text-[12px] font-medium text-text-secondary hover:text-text-primary hover:bg-fill-hover transition-colors"
         >
           Sign in
         </button>
@@ -117,7 +117,7 @@ export function HeaderAuth() {
         aria-haspopup="menu"
         aria-expanded={menuOpen}
         aria-label={`Account - ${label}`}
-        className={`h-7 pl-1 pr-2 flex items-center gap-1.5 rounded-md transition-colors ${
+        className={`h-7 pl-1 pr-2 flex items-center gap-1.5 rounded-full transition-colors ${
           menuOpen ? 'bg-fill-active' : 'hover:bg-fill-hover'
         }`}
       >

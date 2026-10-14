@@ -1,9 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import appIcon from '../assets/app-icon.png';
 import {
-  Minus,
-  Square,
-  X,
   GitBranch,
   ChevronDown,
   Check,
@@ -11,6 +8,7 @@ import {
   Search as SearchIcon,
   Upload,
   PanelRight,
+  Plus,
 } from 'lucide-react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { invoke } from '@tauri-apps/api/core';
@@ -18,7 +16,8 @@ import { useAppStore } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
 import { toast } from '../store/toastStore';
 import { UpdatePill } from './UpdatePill';
-import { SessionWidget } from './titlebar/SessionWidget';
+import { WaitingPill } from './titlebar/WaitingPill';
+import { TrafficLights, CaptionButtons, isMac } from './titlebar/WindowControls';
 import { HeaderAuth } from './HeaderAuth';
 import { SyncStatusChip } from './SyncStatusChip';
 import { Tooltip } from './ui/Tooltip';
@@ -26,10 +25,17 @@ import { ThemeToggle } from './ui/ThemeToggle';
 import { ListRow } from './ui/ListRow';
 import { pickBreadcrumb } from '../lib/breadcrumb';
 
-const isMac = navigator.platform.toUpperCase().includes('MAC');
 
+/**
+ * Concentric Toolbar: there is no title bar. This renders an absolutely
+ * positioned row of glass capsules that floats over the top edge of the
+ * content cards (App.tsx reserves --h-toolbar at the top of each card). The
+ * row itself is the window drag region; only its controls are no-drag.
+ */
 export function TitleBar() {
   const { triggerChangesRefresh } = useAppStore();
+  const sidebarOpen = useAppStore((s) => s.sidebarOpen);
+  const openNewTerminalModal = useAppStore((s) => s.openNewTerminalModal);
   const { terminals, activeTerminalId, gitInfoCache } = useTerminalStore();
   const fetchGitInfo = useTerminalStore.getState().fetchGitInfo;
   // Inspector state - one titlebar toggle; the tab switcher lives inside
@@ -138,10 +144,10 @@ export function TitleBar() {
     ? 'bg-error'
     : 'bg-text-tertiary';
 
-  // Neutral monochrome styling for the right-side tool cluster.
+  // Neutral monochrome styling for the tool capsule.
   // Instant press dip - feedback on pointer-down, not release.
   const toolBtn = (active: boolean) =>
-    `no-drag w-7 h-7 flex items-center justify-center rounded-md transition-[background-color,color,transform] duration-100 active:scale-95 ${
+    `no-drag w-7 h-7 flex items-center justify-center rounded-full transition-[background-color,color,transform] duration-100 active:scale-95 ${
       active
         ? 'bg-fill-active text-text-primary'
         : 'text-text-secondary hover:bg-fill-hover hover:text-text-primary'
@@ -163,40 +169,22 @@ export function TitleBar() {
           appWindow.startDragging();
         }
       }}
-      className="h-[var(--h-header)] material-chrome flex items-center justify-between pl-2 pr-0 border-b border-seam-strong drag-region select-none"
+      className="absolute inset-x-0 top-0 z-20 h-[var(--h-toolbar)] flex items-center justify-between gap-2 px-1.5 drag-region select-none"
+      data-toolbar
     >
-      {/* Left cluster - traffic lights (mac), sidebar toggle */}
-      <div className="flex items-center gap-1 min-w-0">
-        {isMac && (
-          <div className="flex items-center gap-1.5 no-drag mr-1">
-            <button
-              onClick={() => appWindow.close()}
-              className="w-3 h-3 rounded-full bg-[#ff5f57] hover:brightness-90 transition-all"
-              aria-label="Close"
-            />
-            <button
-              onClick={() => appWindow.minimize()}
-              className="w-3 h-3 rounded-full bg-[#febc2e] hover:brightness-90 transition-all"
-              aria-label="Minimize"
-            />
-            <button
-              onClick={() => appWindow.toggleMaximize()}
-              className="w-3 h-3 rounded-full bg-[#28c840] hover:brightness-90 transition-all"
-              aria-label="Maximize"
-            />
-          </div>
+      {/* Leading: window controls + brand only while the sidebar (their
+          normal home) is hidden, then the context capsule. */}
+      <div className="flex items-center gap-2 min-w-0">
+        {!sidebarOpen && isMac && <span className="pl-2"><TrafficLights /></span>}
+        {!sidebarOpen && (
+          <img src={appIcon} alt="Agentrium" className="w-[26px] h-[26px] flex-shrink-0" draggable={false} />
         )}
 
-        {/* Brand mark only - collapsing the sidebar lives IN the sidebar
-            (its ChevronsLeft button); Ctrl+B still toggles it entirely. */}
-        <span className="w-9 h-9 flex items-center justify-center flex-shrink-0">
-          <img src={appIcon} alt="Agentrium" className="w-[30px] h-[30px]" draggable={false} />
-        </span>
-
+        <div className="glass-capsule h-8 pr-0.5 min-w-0">
         {/* Project breadcrumb - static status display, not a control (user
             decision: no click target, no chevron). */}
         <Tooltip label={active?.config.working_directory || 'No active session'}>
-        <div className="flex items-center gap-1.5 h-7 ml-1 pl-2 pr-2 max-w-[360px] cursor-default select-none">
+        <div className="flex items-center gap-1.5 h-7 pl-2.5 pr-2 max-w-[360px] min-w-0 cursor-default select-none">
           <span className={`w-1.5 h-1.5 rounded-full ${statusDot} flex-shrink-0`} />
           {breadcrumb.sub && (
             <>
@@ -220,7 +208,7 @@ export function TitleBar() {
               <Tooltip label="Switch branch" disabled={branchMenuOpen}>
               <button
                 onClick={() => (branchMenuOpen ? setBranchMenuOpen(false) : openBranchMenu())}
-                className={`flex items-center gap-1.5 h-7 px-2 rounded-md transition-colors ${
+                className={`flex items-center gap-1.5 h-7 px-2 rounded-full transition-colors ${
                   branchMenuOpen ? 'bg-fill-active' : 'hover:bg-fill-hover'
                 }`}
               >
@@ -314,58 +302,42 @@ export function TitleBar() {
           </>
         )}
 
-        {/* Session widget - IntelliJ run-widget analog */}
-        <SessionWidget />
+        {/* Only shows when another session is blocked on the user. */}
+        <WaitingPill />
+        </div>
       </div>
 
-      {/* Right cluster - run, tool windows, settings, window controls */}
-      <div className="flex items-stretch">
-        <div className="flex items-center gap-0.5 pr-2 no-drag">
-          <UpdatePill />
+      {/* Trailing: tools capsule, the one prominent action, caption buttons. */}
+      <div className="flex items-center gap-1.5 no-drag flex-shrink-0">
+        <UpdatePill />
 
+        <div className="glass-capsule h-8 px-0.5">
           {/* ONE inspector toggle - the Changes/Agents/Commands switcher
-              lives inside the Inspector itself, so four separate titlebar
-              toggles were clutter. Reopens on the Changes tab. */}
+              lives inside the Inspector itself. Reopens on the Changes tab. */}
           <Tooltip label={inspectorOpen ? 'Close Inspector' : 'Open Inspector'}>
             <button onClick={toggleInspector} className={toolBtn(inspectorOpen)}>
               <PanelRight size={15} strokeWidth={1.9} />
             </button>
           </Tooltip>
-
-          <div className="w-px h-4 bg-seam-strong mx-1" />
-
           <ThemeToggle />
-
           <SyncStatusChip />
-
           <HeaderAuth />
         </div>
 
-        {!isMac && (
-          <div className="flex items-stretch no-drag">
+        <Tooltip label="New Session">
+          <div className="glass-capsule glass-capsule-tinted h-8">
             <button
-              onClick={() => appWindow.minimize()}
-              className="w-[46px] h-[var(--h-header)] flex items-center justify-center hover:bg-fill-hover text-text-secondary transition-colors"
-              aria-label="Minimize"
+              onClick={() => openNewTerminalModal()}
+              aria-label="New Session"
+              className="h-7 pl-2 pr-3 flex items-center gap-1 rounded-full text-white text-[12px] font-semibold hover:bg-white/10 transition-colors"
             >
-              <Minus size={12} strokeWidth={1.75} />
-            </button>
-            <button
-              onClick={() => appWindow.toggleMaximize()}
-              className="w-[46px] h-[var(--h-header)] flex items-center justify-center hover:bg-fill-hover text-text-secondary transition-colors"
-              aria-label="Maximize"
-            >
-              <Square size={11} strokeWidth={1.75} />
-            </button>
-            <button
-              onClick={() => appWindow.close()}
-              className="w-[46px] h-[var(--h-header)] flex items-center justify-center hover:bg-[#E04545] text-text-secondary hover:text-white transition-colors"
-              aria-label="Close"
-            >
-              <X size={13} strokeWidth={2} />
+              <Plus size={14} strokeWidth={2.25} />
+              New
             </button>
           </div>
-        )}
+        </Tooltip>
+
+        {!isMac && <CaptionButtons />}
       </div>
     </div>
   );

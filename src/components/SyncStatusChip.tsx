@@ -40,7 +40,7 @@ export function SyncStatusChip() {
         onClick={() => syncNow()}
         disabled={!enabled}
         aria-label={`Sync: ${label}`}
-        className={`no-drag h-7 px-2 flex items-center gap-1.5 rounded-md hover:bg-fill-hover transition-colors ${tone}`}
+        className={`no-drag h-7 px-2 flex items-center gap-1.5 rounded-full hover:bg-fill-hover transition-colors ${tone}`}
       >
         <Icon size={13} className={spin ? 'animate-spin' : ''} />
         {queueDepth > 0 && enabled && (
