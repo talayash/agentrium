@@ -50,6 +50,43 @@ pub fn should_report(err: &str) -> bool {
     !is_user_error(err)
 }
 
+/// Commands that just returned a `user_err`. `wrap_cmd` strips the marker
+/// before the frontend sees the message, so a user-action `.catch` that calls
+/// `reportInvokeFailure('<command>', err)` cannot tell a validation error from
+/// a bug and re-reports it as a `frontend` error. `report_error` drops a
+/// frontend report whose kind names a command listed here within the window.
+/// Real failures of that command are not lost: `wrap_cmd` already reports
+/// those itself as `rust_command`.
+static RECENT_USER_ERRORS: std::sync::Mutex<std::collections::VecDeque<(String, std::time::Instant)>> =
+    std::sync::Mutex::new(std::collections::VecDeque::new());
+const MAX_RECENT_USER_ERRORS: usize = 32;
+const USER_ERROR_ECHO_WINDOW: std::time::Duration = std::time::Duration::from_secs(30);
+
+pub fn note_user_error(command: &str) {
+    note_user_error_at(command, std::time::Instant::now());
+}
+
+fn note_user_error_at(command: &str, now: std::time::Instant) {
+    if let Ok(mut q) = RECENT_USER_ERRORS.lock() {
+        q.push_back((command.to_string(), now));
+        while q.len() > MAX_RECENT_USER_ERRORS {
+            q.pop_front();
+        }
+    }
+}
+
+/// True when a frontend report with this `kind` is the echo of a user-input
+/// error that `command` returned moments ago.
+pub fn is_user_error_echo(kind: Option<&str>) -> bool {
+    is_user_error_echo_at(kind, std::time::Instant::now())
+}
+
+fn is_user_error_echo_at(kind: Option<&str>, now: std::time::Instant) -> bool {
+    let Some(kind) = kind else { return false };
+    let Ok(q) = RECENT_USER_ERRORS.lock() else { return false };
+    q.iter().any(|(cmd, at)| cmd == kind && now.saturating_duration_since(*at) <= USER_ERROR_ECHO_WINDOW)
+}
+
 /// Secret values resolved for a spawn. `scrub` replaces any occurrence in an
 /// outgoing report with `<credential>`. Bounded so a long session cannot grow
 /// it without limit; the oldest entries fall off.
@@ -485,6 +522,24 @@ fn clamp(s: String, max: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn frontend_echo_of_recent_user_error_is_dropped() {
+        let t0 = std::time::Instant::now();
+        note_user_error_at("echo_test_save_agent", t0);
+        assert!(is_user_error_echo_at(Some("echo_test_save_agent"), t0 + std::time::Duration::from_secs(1)));
+        // Other commands and kind-less reports still go through.
+        assert!(!is_user_error_echo_at(Some("echo_test_other_cmd"), t0));
+        assert!(!is_user_error_echo_at(None, t0));
+    }
+
+    #[test]
+    fn user_error_echo_expires_after_window() {
+        let t0 = std::time::Instant::now();
+        note_user_error_at("echo_test_expiry", t0);
+        let later = t0 + USER_ERROR_ECHO_WINDOW + std::time::Duration::from_secs(1);
+        assert!(!is_user_error_echo_at(Some("echo_test_expiry"), later));
+    }
 
     #[test]
     fn scrub_replaces_windows_user_path() {

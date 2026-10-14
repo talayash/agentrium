@@ -64,7 +64,9 @@ where
                 Err(e)
             } else {
                 // User-input error: strip the marker prefix so the frontend
-                // sees a plain message, and skip telemetry.
+                // sees a plain message, and skip telemetry. Remember it so the
+                // frontend's reportInvokeFailure echo is dropped too.
+                error_reporter::note_user_error(name);
                 Err(error_reporter::strip_user_prefix(&e).to_string())
             }
         }
@@ -80,6 +82,11 @@ pub struct FrontendErrorPayload {
 
 #[command]
 pub async fn report_error(payload: FrontendErrorPayload) -> Result<(), String> {
+    // A user-action `.catch` re-reporting a validation error the command just
+    // returned (wrap_cmd stripped its user_err marker). Not a bug - drop it.
+    if error_reporter::is_user_error_echo(payload.kind.as_deref()) {
+        return Ok(());
+    }
     error_reporter::report(
         ErrorSource::Frontend,
         payload.kind,
@@ -6083,6 +6090,22 @@ mod wrap_cmd_tests {
             Err(error_reporter::user_err("input was bad"))
         }).await;
         assert_eq!(result, Err("input was bad".to_string()));
+    }
+
+    #[tokio::test]
+    async fn wrap_cmd_user_error_suppresses_the_frontend_echo() {
+        let _: Result<(), String> = wrap_cmd("echo_wrap_test_cmd", async {
+            Err(error_reporter::user_err("Invalid character in argument"))
+        }).await;
+        assert!(error_reporter::is_user_error_echo(Some("echo_wrap_test_cmd")));
+    }
+
+    #[tokio::test]
+    async fn wrap_cmd_internal_error_does_not_suppress_frontend_reports() {
+        let _: Result<(), String> = wrap_cmd("echo_wrap_internal_cmd", async {
+            Err("io failure".to_string())
+        }).await;
+        assert!(!error_reporter::is_user_error_echo(Some("echo_wrap_internal_cmd")));
     }
 
     #[tokio::test]
