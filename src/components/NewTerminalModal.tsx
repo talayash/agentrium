@@ -417,7 +417,9 @@ export function NewTerminalModal() {
         // only accepted when the arg is a known model alias (bare or
         // `--model=alias`), and only for Claude - other agents don't
         // recognize the `[1m]` form.
-        const dangerousPattern = /[;&|`$(){}<>^\n\r'"\\~*?[\]!#\t]/;
+        // Mirrors TerminalManager::ARG_FORBIDDEN: `#` is allowed (model ids
+        // like `muse/muse-spark-1.3#high`; it is literal in both spawn paths).
+        const dangerousPattern = /[;&|`$(){}<>^\n\r'"\\~*?[\]!\t]/;
         for (let i = 0; i < claudeArgs.length; i++) {
           const arg = claudeArgs[i];
           const prev = claudeArgs[i - 1];

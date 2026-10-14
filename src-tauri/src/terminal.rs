@@ -358,6 +358,18 @@ impl TerminalManager {
         '\'', '"', '\\', '~', '*', '?', '[', ']', '!', '\t', '#',
     ];
 
+    /// Characters rejected inside a spawn ARGUMENT: `SHELL_METACHARACTERS`
+    /// minus `#`. `#` is literal in both spawn paths - cmd.exe never treats it
+    /// specially, and the Unix path single-quotes every argument - and real
+    /// CLI inputs use it (model ids with an effort suffix such as
+    /// `muse/muse-spark-1.3#high`). Binaries, flags, session ids and script
+    /// names still use the full `SHELL_METACHARACTERS` list. Mirrored by the
+    /// `dangerousPattern` regex in src/components/NewTerminalModal.tsx.
+    pub(crate) const ARG_FORBIDDEN: &'static [char] = &[
+        '&', '|', ';', '`', '$', '(', ')', '{', '}', '<', '>', '^', '\n', '\r',
+        '\'', '"', '\\', '~', '*', '?', '[', ']', '!', '\t',
+    ];
+
     /// Known Claude Code model aliases. Only these values may contain `[`/`]`
     /// (the 1M-context variants use that form: `opus[1m]`, `sonnet[1m]`).
     /// Kept in sync with src/lib/claudeModels.ts - update both together.
@@ -436,7 +448,7 @@ impl TerminalManager {
             if bare_known_model || eq_known_model {
                 continue;
             }
-            if arg.contains(Self::SHELL_METACHARACTERS) {
+            if arg.contains(Self::ARG_FORBIDDEN) {
                 return Err(error_reporter::user_err(format!(
                     "Invalid character in argument: \"{}\". Shell metacharacters are not allowed.",
                     arg
@@ -1391,6 +1403,17 @@ mod tests {
         let mut mgr = TerminalManager::new();
         insert_test_terminal(&mut mgr, "t", TerminalStatus::Running, Box::new(DeniedWriter));
         assert!(mgr.write("t", b"hello").is_err());
+    }
+
+    #[test]
+    fn arg_forbidden_is_shell_metacharacters_minus_hash() {
+        // If SHELL_METACHARACTERS gains a char, ARG_FORBIDDEN must too.
+        let expected: Vec<char> = TerminalManager::SHELL_METACHARACTERS
+            .iter()
+            .copied()
+            .filter(|c| *c != '#')
+            .collect();
+        assert_eq!(TerminalManager::ARG_FORBIDDEN, expected.as_slice());
     }
 
     #[test]
