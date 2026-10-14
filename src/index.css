@@ -345,6 +345,99 @@
   /* Specular top edge - the glass catches light along its top rim. */
   box-shadow: inset 0 1px 0 var(--edge-light);
 }
+/* --- Concentric Toolbar (liquid glass chrome) ---------------------------
+   No title bar: window controls and tools float as glass capsules over the
+   top edge of the content cards. Corners are concentric - every card's radius
+   is the window radius minus the inset that separates them, so the curves
+   nest instead of fighting. Glass is only the control layer; the content card
+   (terminal, editor) stays solid. */
+:root {
+  --radius-window: 16px;
+  --inset-window: 6px;
+  --radius-card: calc(var(--radius-window) - var(--inset-window));
+  --h-toolbar: 44px; /* floating-toolbar zone at the top of each card */
+  --material-lens-bg: rgba(20, 24, 46, 0.52);
+  --material-capsule-bg: rgba(255, 255, 255, 0.07);
+  /* Specular hot-spot: light source fixed top-left, like real glass. */
+  --glass-hotspot: radial-gradient(120% 45% at 18% 0%, rgba(255, 255, 255, 0.09), transparent 60%);
+}
+:root[data-theme="light"] {
+  --material-lens-bg: rgba(255, 255, 255, 0.58);
+  --material-capsule-bg: rgba(255, 255, 255, 0.70);
+  --glass-hotspot: radial-gradient(120% 45% at 18% 0%, rgba(255, 255, 255, 0.55), transparent 60%);
+}
+/* Sidebar / Inspector glass slab. Owns only the inset optics; the drop
+   shadow lives on the rounded wrapper in App.tsx (overflow-hidden would clip
+   an outer shadow painted here). */
+.material-lens {
+  background: var(--glass-hotspot), var(--glass-layers), var(--material-lens-bg);
+  backdrop-filter: blur(32px) saturate(200%);
+  -webkit-backdrop-filter: blur(32px) saturate(200%);
+  box-shadow: var(--glass-edges);
+}
+/* Control capsule. The glass is painted on ::before, NOT on the capsule
+   itself: an element with backdrop-filter becomes a backdrop root, and menus
+   that open out of capsule children (branch switcher, account menu) would
+   then blur nothing. z-index: 0 makes the capsule the stacking context that
+   keeps the -1 layer behind its own children only. */
+.glass-capsule {
+  position: relative;
+  z-index: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 9999px;
+}
+.glass-capsule::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  background: var(--glass-hotspot), var(--glass-layers), var(--material-capsule-bg);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  box-shadow: var(--glass-edges), 0 0 0 1px var(--seam), var(--shadow-float-sm);
+}
+/* The one prominent action in a group (sidebar New Session): accent glass. */
+.glass-capsule-accent::before {
+  background: var(--glass-hotspot), var(--glass-layers), var(--accent-primary);
+  box-shadow: var(--glass-edges), 0 6px 18px var(--accent-glow-md);
+}
+@media (prefers-reduced-transparency: reduce) {
+  .glass-capsule-accent::before { background: var(--accent-primary); }
+}
+/* Scroll-edge effect: content softly fades out under the floating toolbar
+   instead of meeting a hard divider line. */
+.toolbar-edge { position: relative; }
+.toolbar-edge::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  height: 10px;
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(to bottom, var(--elevation-0), transparent);
+}
+@media (prefers-reduced-transparency: reduce) {
+  .material-lens, .glass-capsule::before {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background-image: none;
+  }
+  :root {
+    --material-lens-bg: var(--elevation-1);
+    --material-capsule-bg: var(--elevation-2);
+  }
+}
+@media (prefers-contrast: more) {
+  .glass-capsule::before { box-shadow: inset 0 0 0 1px var(--seam-strong); }
+}
+
 :root[data-vibrancy="on"] {
   --material-chrome-bg: rgba(24, 24, 27, 0.55);
 }

@@ -22,7 +22,7 @@ vi.mock('../lib/sync', () => ({
 }));
 vi.mock('../lib/errorReporter', () => ({ reportInvokeFailure: vi.fn() }));
 vi.mock('./UpdatePill', () => ({ UpdatePill: () => null }));
-vi.mock('./titlebar/SessionWidget', () => ({ SessionWidget: () => null }));
+vi.mock('./titlebar/WaitingPill', () => ({ WaitingPill: () => null }));
 vi.mock('./ui/ThemeToggle', () => ({ ThemeToggle: () => null }));
 vi.mock('../store/terminalStore', () => {
   const state = { terminals: new Map(), gitInfoCache: new Map(), activeTerminalId: null };
@@ -81,8 +81,9 @@ describe('title bar auth interactions', () => {
 
   it('drags the title bar but excludes controls and portal content', async () => {
     const user = userEvent.setup();
-    render(<StrictMode><TitleBar /></StrictMode>);
-    fireEvent.mouseDown(screen.getByAltText('Agentrium'), { buttons: 1 });
+    const { container } = render(<StrictMode><TitleBar /></StrictMode>);
+    // The floating toolbar row itself (not a control) is the drag region.
+    fireEvent.mouseDown(container.querySelector('[data-toolbar]')!, { buttons: 1 });
     expect(startDragging).toHaveBeenCalledTimes(1);
     startDragging.mockClear();
 

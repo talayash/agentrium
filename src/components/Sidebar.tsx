@@ -8,6 +8,7 @@ import { SessionCards } from './SessionCards';
 import { RaceSidebarGroups } from './RaceSidebarGroups';
 import { RaceHistory } from './RaceHistory';
 import { useTerminalStore } from '../store/terminalStore';
+import { IconTile } from './ui/IconTile';
 import { Tooltip } from './ui/Tooltip';
 
 interface NavItem {
@@ -50,7 +51,7 @@ export function Sidebar() {
 
   if (sidebarCollapsed) {
     return (
-      <div className="h-full material-chrome flex flex-col items-center py-2 gap-1" style={{ width: 'var(--w-rail)' }}>
+      <div className="h-full flex flex-col items-center py-2 gap-1" style={{ width: 'var(--w-rail)' }}>
         {NAV.map(({ id, label, Icon }) => (
           <Tooltip key={id} label={label} side="right">
             <button
@@ -95,7 +96,7 @@ export function Sidebar() {
   }
 
   return (
-    <div className="h-full material-chrome flex flex-col">
+    <div className="h-full flex flex-col">
       {/* Navigator switcher + collapse control (the collapse affordance lives
           IN the sidebar - the titlebar logo is a brand mark, not a toggle). */}
       <div className="flex gap-1 p-2 items-center">
@@ -179,7 +180,7 @@ export function Sidebar() {
         )}
       </div>
 
-      {/* Prominent primary action + profiles + settings */}
+      {/* Prominent primary action + creates + navigation (liquid glass) */}
       <div className="p-2 flex flex-col gap-1.5">
         <button
           onClick={(e) => {
@@ -193,49 +194,54 @@ export function Sidebar() {
             e.currentTarget.blur();
             openNewTerminalModal();
           }}
-          className="w-full h-9 rounded-xl bg-accent-primary text-white text-[13px] font-semibold flex items-center justify-center gap-2 shadow-[0_4px_12px_var(--accent-glow-md)] hover:bg-accent-secondary active:scale-[0.98] transition-[background-color,transform] duration-100"
+          className="glass-capsule glass-capsule-accent w-full h-10 justify-center gap-2 text-white text-[13px] font-semibold hover:brightness-110 active:scale-[0.98] transition-[filter,transform] duration-100"
         >
           <Plus size={15} strokeWidth={2.5} />
           New Session
         </button>
         {/* One style per row: filled primary, ringed secondary creates, ghost navigation. */}
-        <div className="flex gap-1.5">
+        {/* Creates: one segmented glass capsule, same shape as the navigation row.
+            All four segments are left-aligned with the same inset so the icon
+            tiles line up in two columns. */}
+        <div className="glass-capsule w-full h-9">
           <button
             onClick={(e) => { e.currentTarget.blur(); openNewTaskModal(); }}
             aria-label="New Task"
             aria-keyshortcuts="Control+Shift+T"
-            className="flex-1 min-w-0 h-[34px] rounded-xl ring-1 ring-seam text-text-primary hover:bg-fill-hover text-[12.5px] font-medium flex items-center justify-center gap-2 active:scale-[0.98] transition-[background-color,transform] duration-100"
+            className="flex-1 min-w-0 h-8 rounded-full text-text-primary hover:bg-fill-hover text-[12.5px] font-medium flex items-center justify-start gap-2 pl-3 active:scale-[0.98] transition-[background-color,transform] duration-100"
           >
-            <GitBranch size={14} strokeWidth={1.9} />
+            <IconTile icon={GitBranch} tone="green" size={18} />
             Task
           </button>
+          <span className="w-px h-4 bg-seam-strong flex-shrink-0" aria-hidden="true" />
           <button
             onClick={(e) => { e.currentTarget.blur(); openNewRaceModal(); }}
             aria-label="New Race"
             aria-keyshortcuts="Control+Shift+R"
-            className="flex-1 min-w-0 h-[34px] rounded-xl ring-1 ring-seam text-text-primary hover:bg-fill-hover text-[12.5px] font-medium flex items-center justify-center gap-2 active:scale-[0.98] transition-[background-color,transform] duration-100"
+            className="flex-1 min-w-0 h-8 rounded-full text-text-primary hover:bg-fill-hover text-[12.5px] font-medium flex items-center justify-start gap-2 pl-3 active:scale-[0.98] transition-[background-color,transform] duration-100"
           >
-            <Flag size={14} strokeWidth={1.9} />
+            <IconTile icon={Flag} tone="orange" size={18} />
             Race
           </button>
         </div>
-        <div className="h-px bg-seam mx-1" aria-hidden="true" />
-        <div className="flex gap-1.5">
+        {/* Navigation: one segmented glass capsule. */}
+        <div className="glass-capsule w-full h-9">
           <button
             // No-arg call opens the profile manager list; passing the click event
             // through would be read as a profileId and open the focused editor.
             onClick={(e) => { e.currentTarget.blur(); openProfileModal(); }}
-            className="flex-1 min-w-0 h-8 rounded-xl text-text-secondary hover:text-text-primary hover:bg-fill-hover text-[12.5px] font-medium flex items-center justify-center gap-2 active:scale-[0.98] transition-[background-color,color,transform] duration-100"
+            className="flex-1 min-w-0 h-8 rounded-full text-text-secondary hover:text-text-primary hover:bg-fill-hover text-[12.5px] font-medium flex items-center justify-start gap-2 pl-3 active:scale-[0.98] transition-[background-color,color,transform] duration-100"
           >
-            <UserCog size={14} strokeWidth={1.9} />
+            <IconTile icon={UserCog} tone="purple" size={18} />
             Profiles
           </button>
+          <span className="w-px h-4 bg-seam-strong flex-shrink-0" aria-hidden="true" />
           <button
             onClick={openSettings}
             aria-keyshortcuts="Control+,"
-            className="flex-1 min-w-0 h-8 rounded-xl text-text-secondary hover:text-text-primary hover:bg-fill-hover text-[12.5px] font-medium flex items-center justify-center gap-2 active:scale-[0.98] transition-[background-color,color,transform] duration-100"
+            className="flex-1 min-w-0 h-8 rounded-full text-text-secondary hover:text-text-primary hover:bg-fill-hover text-[12.5px] font-medium flex items-center justify-start gap-2 pl-3 active:scale-[0.98] transition-[background-color,color,transform] duration-100"
           >
-            <Settings size={14} strokeWidth={1.9} />
+            <IconTile icon={Settings} tone="gray" size={18} />
             Settings
           </button>
         </div>
