@@ -401,6 +401,14 @@
   -webkit-backdrop-filter: blur(20px) saturate(180%);
   box-shadow: var(--glass-edges), 0 0 0 1px var(--seam), var(--shadow-float-sm);
 }
+/* The one prominent action in a group (sidebar New Session): accent glass. */
+.glass-capsule-accent::before {
+  background: var(--glass-hotspot), var(--glass-layers), var(--accent-primary);
+  box-shadow: var(--glass-edges), 0 6px 18px var(--accent-glow-md);
+}
+@media (prefers-reduced-transparency: reduce) {
+  .glass-capsule-accent::before { background: var(--accent-primary); }
+}
 /* Scroll-edge effect: content softly fades out under the floating toolbar
    instead of meeting a hard divider line. */
 .toolbar-edge { position: relative; }
