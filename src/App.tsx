@@ -1088,7 +1088,7 @@ function App() {
               their radius is the window radius minus that inset, so every
               corner nests. There is no title bar: TitleBar floats as glass
               capsules over the top --h-toolbar of the cards on the right. */}
-          <div className={`flex-1 flex overflow-hidden gap-[var(--inset-window)] p-[var(--inset-window)] ${showStatusBar ? 'pb-0' : ''}`}>
+          <div className="flex-1 flex overflow-hidden gap-[var(--inset-window)] p-[var(--inset-window)]">
             <AnimatePresence mode="wait">
               {sidebarOpen && (
                 <div

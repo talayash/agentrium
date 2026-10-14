@@ -28,24 +28,20 @@ export function StatusBar() {
           <ProgressStripe />
         </div>
       )}
-      {/* Concentric Toolbar: no bar - one small glass capsule centred on
-          the window's bottom edge. */}
-      <div className="h-[var(--h-status)] flex items-center justify-center text-[11px] select-none">
-        <div className="glass-capsule h-5 pr-2">
-          <button
-            type="button"
-            onClick={() => setContactOpen(true)}
-            aria-label="Send feedback or contact us"
-            title="Contact us"
-            className="inline-flex items-center gap-1 h-4 px-1.5 rounded-full text-text-tertiary hover:text-text-primary hover:bg-fill-hover transition-colors duration-100"
-          >
-            <Mail size={11} />
-            <span>Contact</span>
-          </button>
-          {appVersion && (
-            <span className="text-text-tertiary font-mono ml-0.5">v{appVersion}</span>
-          )}
-        </div>
+      <div className="h-[var(--h-status)] flex items-center justify-end gap-1 px-2 material-chrome border-t border-seam-strong text-[11px] select-none">
+        <button
+          type="button"
+          onClick={() => setContactOpen(true)}
+          aria-label="Send feedback or contact us"
+          title="Contact us"
+          className="inline-flex items-center gap-1 h-5 px-1.5 rounded text-text-tertiary hover:text-text-primary hover:bg-fill-hover transition-colors duration-100"
+        >
+          <Mail size={12} />
+          <span>Contact</span>
+        </button>
+        {appVersion && (
+          <span className="text-text-tertiary font-mono ml-1">v{appVersion}</span>
+        )}
       </div>
       <AnimatePresence>
         {contactOpen && <ContactModal onClose={() => setContactOpen(false)} />}
