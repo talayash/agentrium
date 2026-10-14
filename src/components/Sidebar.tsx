@@ -200,24 +200,25 @@ export function Sidebar() {
           New Session
         </button>
         {/* One style per row: filled primary, ringed secondary creates, ghost navigation. */}
-        {/* Creates: two glass pills, each led by a colour icon tile. */}
-        <div className="flex gap-1.5">
+        {/* Creates: one segmented glass capsule, same shape as the navigation row. */}
+        <div className="glass-capsule w-full h-9">
           <button
             onClick={(e) => { e.currentTarget.blur(); openNewTaskModal(); }}
             aria-label="New Task"
             aria-keyshortcuts="Control+Shift+T"
-            className="glass-capsule flex-1 min-w-0 h-9 pl-1.5 pr-3 justify-center gap-2 text-text-primary text-[12.5px] font-medium hover:bg-fill-hover active:scale-[0.98] transition-[background-color,transform] duration-100"
+            className="flex-1 min-w-0 h-8 rounded-full text-text-primary hover:bg-fill-hover text-[12.5px] font-medium flex items-center justify-center gap-2 active:scale-[0.98] transition-[background-color,transform] duration-100"
           >
-            <IconTile icon={GitBranch} tone="green" />
+            <IconTile icon={GitBranch} tone="green" size={18} />
             Task
           </button>
+          <span className="w-px h-4 bg-seam-strong flex-shrink-0" aria-hidden="true" />
           <button
             onClick={(e) => { e.currentTarget.blur(); openNewRaceModal(); }}
             aria-label="New Race"
             aria-keyshortcuts="Control+Shift+R"
-            className="glass-capsule flex-1 min-w-0 h-9 pl-1.5 pr-3 justify-center gap-2 text-text-primary text-[12.5px] font-medium hover:bg-fill-hover active:scale-[0.98] transition-[background-color,transform] duration-100"
+            className="flex-1 min-w-0 h-8 rounded-full text-text-primary hover:bg-fill-hover text-[12.5px] font-medium flex items-center justify-center gap-2 active:scale-[0.98] transition-[background-color,transform] duration-100"
           >
-            <IconTile icon={Flag} tone="orange" />
+            <IconTile icon={Flag} tone="orange" size={18} />
             Race
           </button>
         </div>
