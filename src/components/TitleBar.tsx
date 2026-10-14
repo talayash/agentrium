@@ -8,7 +8,6 @@ import {
   Search as SearchIcon,
   Upload,
   PanelRight,
-  Plus,
 } from 'lucide-react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { invoke } from '@tauri-apps/api/core';
@@ -35,7 +34,6 @@ import { pickBreadcrumb } from '../lib/breadcrumb';
 export function TitleBar() {
   const { triggerChangesRefresh } = useAppStore();
   const sidebarOpen = useAppStore((s) => s.sidebarOpen);
-  const openNewTerminalModal = useAppStore((s) => s.openNewTerminalModal);
   const { terminals, activeTerminalId, gitInfoCache } = useTerminalStore();
   const fetchGitInfo = useTerminalStore.getState().fetchGitInfo;
   // Inspector state - one titlebar toggle; the tab switcher lives inside
@@ -307,7 +305,7 @@ export function TitleBar() {
         </div>
       </div>
 
-      {/* Trailing: tools capsule, the one prominent action, caption buttons. */}
+      {/* Trailing: tools capsule, caption buttons. */}
       <div className="flex items-center gap-1.5 no-drag flex-shrink-0">
         <UpdatePill />
 
@@ -323,19 +321,6 @@ export function TitleBar() {
           <SyncStatusChip />
           <HeaderAuth />
         </div>
-
-        <Tooltip label="New Session">
-          <div className="glass-capsule glass-capsule-tinted h-8">
-            <button
-              onClick={() => openNewTerminalModal()}
-              aria-label="New Session"
-              className="h-7 pl-2 pr-3 flex items-center gap-1 rounded-full text-white text-[12px] font-semibold hover:bg-white/10 transition-colors"
-            >
-              <Plus size={14} strokeWidth={2.25} />
-              New
-            </button>
-          </div>
-        </Tooltip>
 
         {!isMac && <CaptionButtons />}
       </div>
