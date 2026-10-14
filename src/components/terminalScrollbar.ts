@@ -1,4 +1,4 @@
-import type { Terminal } from '@xterm/xterm';
+import type { IMarker, Terminal } from '@xterm/xterm';
 
 /** Attach one overlay to its terminal; no private xterm internals required. */
 export function attachTerminalScrollbar(container: HTMLElement, terminal: Terminal, mode: string) {
@@ -13,6 +13,20 @@ export function attachTerminalScrollbar(container: HTMLElement, terminal: Termin
   thumb.className = 'terminal-scrollbar-thumb';
   track.append(thumb);
   container.append(track);
+  // "Jump to start of last response": the line where the user last pressed
+  // Enter is where the agent's latest output begins. An xterm marker follows
+  // that line as the buffer scrolls and is disposed if scrollback trims it.
+  const jumpToStart = document.createElement('button');
+  jumpToStart.type = 'button';
+  jumpToStart.className = 'terminal-jump-start';
+  jumpToStart.textContent = '↑';
+  jumpToStart.title = 'Jump to start of last response';
+  jumpToStart.setAttribute('aria-label', 'Jump to start of last response');
+  jumpToStart.hidden = true;
+  container.append(jumpToStart);
+  let responseStart: IMarker | undefined;
+  const responseStartLine = () =>
+    responseStart && !responseStart.isDisposed && responseStart.line >= 0 ? responseStart.line : -1;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let frame = 0;
   let drag: { y: number; top: number; pointer: number } | undefined;
@@ -43,6 +57,11 @@ export function attachTerminalScrollbar(container: HTMLElement, terminal: Termin
     // Alternate-screen applications own their history. xterm has no position
     // or extent for it, so never draw a fabricated thumb (previously 50%).
     track.hidden = mode === 'hidden' || !scrollable;
+    // Only useful when the response start is above the top of the viewport,
+    // i.e. the response is longer than what is on screen. Alternate-screen
+    // apps (Claude Code fullscreen, vim) keep no scrollback, so never there.
+    const start = responseStartLine();
+    jumpToStart.hidden = mode === 'hidden' || !scrollable || start < 0 || buffer.viewportY <= start;
     if (track.hidden && drag) endDrag();
     track.title = 'Scroll terminal history';
     const height = track.clientHeight;
@@ -104,13 +123,29 @@ export function attachTerminalScrollbar(container: HTMLElement, terminal: Termin
     reveal();
   };
   track.onmousedown = (event) => event.stopPropagation();
+  jumpToStart.onclick = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const start = responseStartLine();
+    if (start >= 0) terminal.scrollToLine(start);
+    reveal();
+  };
+  jumpToStart.onmousedown = (event) => event.stopPropagation();
   container.addEventListener('pointermove', reveal);
   container.addEventListener('wheel', reveal, { passive: true });
   // xterm suppresses its public onScroll event for native viewport scrolling.
   // Read the buffer on the next frame, after xterm processes the DOM event.
   const viewport = container.querySelector('.xterm-viewport');
   viewport?.addEventListener('scroll', schedule, { passive: true });
-  const subscriptions = [terminal.onScroll(schedule), terminal.onWriteParsed(schedule), terminal.onResize(schedule), terminal.buffer.onBufferChange(schedule)];
+  const markResponseStart = (data: string) => {
+    // Enter submits a prompt. registerMarker returns undefined on the
+    // alternate screen, which correctly leaves no jump target there.
+    if (!data || !data.includes('\r') || isAlternate()) return;
+    responseStart?.dispose();
+    responseStart = terminal.registerMarker(0);
+    schedule();
+  };
+  const subscriptions = [terminal.onData(markResponseStart), terminal.onScroll(schedule), terminal.onWriteParsed(schedule), terminal.onResize(schedule), terminal.buffer.onBufferChange(schedule)];
   const observer = new ResizeObserver(schedule);
   observer.observe(container);
   update();
@@ -122,6 +157,8 @@ export function attachTerminalScrollbar(container: HTMLElement, terminal: Termin
     container.removeEventListener('pointermove', reveal);
     container.removeEventListener('wheel', reveal);
     viewport?.removeEventListener('scroll', schedule);
+    responseStart?.dispose();
     track.remove();
+    jumpToStart.remove();
   };
 }
