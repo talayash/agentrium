@@ -388,6 +388,19 @@ fn main() {
             commands::sync_now,
         ])
         .on_window_event(|window, event| {
+            // Any Agentrium window counts as "in use" for sync: moving from
+            // main to a detached window emits main-false then detached-true.
+            if let tauri::WindowEvent::Focused(focused) = event {
+                let app_state = window.state::<AppState>();
+                // Best effort: if sign-in/out holds the lock, the next focus
+                // change or the regular pull covers it.
+                if let Ok(guard) = app_state.sync_handle.try_lock() {
+                    if let Some(handle) = guard.as_ref() {
+                        handle.focus_changed(*focused);
+                    }
+                }
+                return;
+            }
             // Only the main window owns the app lifecycle. Detached (tear-off)
             // windows are labelled `detached-*`; closing one must NOT save the
             // session or tear down every PTY - that close is handled in JS

@@ -1,5 +1,13 @@
 [
   {
+    "version": "1.41.1",
+    "date": "2026-10-17",
+    "features": [
+      { "title": "Fix bugs & performance" },
+      { "title": "Lighter background sync", "description": "Sync now checks for changes from your other devices every 30 minutes while Agentrium is in front, and right away when you switch back to it. A minimized or background window no longer polls at all." }
+    ]
+  },
+  {
     "version": "1.41.0",
     "date": "2026-10-14",
     "features": [

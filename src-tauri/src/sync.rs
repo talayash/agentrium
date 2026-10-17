@@ -31,7 +31,19 @@ fn rows_within_byte_cap(sizes: &[usize], cap: usize) -> usize {
     sizes.len()
 }
 const DEBOUNCE_MS: u64 = 5_000;
-const PULL_INTERVAL_MS: u64 = 5 * 60 * 1_000;
+/// Background pull cadence, only while the main window is focused. The
+/// broker's Neon compute suspends after 5 idle minutes, so a 5-minute poll from
+/// any running client kept it awake (and billed) around the clock.
+const PULL_INTERVAL_MS: u64 = 30 * 60 * 1_000;
+/// Regaining focus pulls only if the last pull is at least this old, so
+/// alt-tabbing (and Windows' focus flapping) does not spam the broker.
+const FOCUS_PULL_MIN_GAP_MS: u64 = 5 * 60 * 1_000;
+
+/// Whether a focus-gained event should pull now. `None` means no pull has
+/// happened yet in this engine run.
+pub fn focus_pull_due(since_last_pull: Option<std::time::Duration>) -> bool {
+    since_last_pull.is_none_or(|d| d >= std::time::Duration::from_millis(FOCUS_PULL_MIN_GAP_MS))
+}
 /// Spec §7.4: after a transient push failure wait `min(30 * 2^attempts, 3600)`
 /// seconds (±20% jitter) before the next automatic push. `attempts` is the
 /// count *before* the failed one, so the first retry lands ~30s later.
@@ -105,7 +117,7 @@ fn is_keychain_asleep(msg: &str) -> bool {
 /// chip is a normal fact of laptop life (sleep/resume, hotel wifi, DNS), not a
 /// defect: reporting it buries real errors in the admin dashboard. It also
 /// never stops, because `DEDUP_WINDOW` (60s) is shorter than
-/// `PULL_INTERVAL_MS` (5min), so dedup can never collapse the repeats.
+/// `PULL_INTERVAL_MS` (30min), so dedup can never collapse the repeats.
 pub fn should_report_failure(err: &sync_client::SyncError) -> bool {
     !matches!(status_for_failure(err), SyncStatus::Offline | SyncStatus::Paused)
 }
@@ -232,6 +244,8 @@ pub enum SyncCommand {
     SetEnabled(bool),
     /// Access token rotated (post-refresh). Update the client.
     UpdateToken(String),
+    /// Main window focus changed. Background pulls run only while focused.
+    FocusChanged(bool),
     /// Stop the engine (on logout).
     Shutdown,
 }
@@ -250,6 +264,9 @@ impl SyncHandle {
     }
     pub fn update_token(&self, token: String) {
         let _ = self.tx.try_send(SyncCommand::UpdateToken(token));
+    }
+    pub fn focus_changed(&self, focused: bool) {
+        let _ = self.tx.try_send(SyncCommand::FocusChanged(focused));
     }
     pub async fn shutdown(self) {
         let _ = self.tx.send(SyncCommand::Shutdown).await;
@@ -297,17 +314,28 @@ async fn run_engine(
     };
     let mut client = sync_client::SyncClient::new(access_token);
     let mut debounce_tick = tokio::time::interval(std::time::Duration::from_millis(1_000));
-    let mut pull_tick = tokio::time::interval(std::time::Duration::from_millis(PULL_INTERVAL_MS));
+    // `interval` fires its first tick immediately, which doubled the startup
+    // pull below; start one period out instead.
+    let pull_period = std::time::Duration::from_millis(PULL_INTERVAL_MS);
+    let mut pull_tick = tokio::time::interval_at(tokio::time::Instant::now() + pull_period, pull_period);
     let mut dirty_since: Option<tokio::time::Instant> = None;
     // Set after a transient push failure; automatic pushes wait it out.
     // User-initiated actions (Sync now, re-enable) clear it.
     let mut backoff_until: Option<tokio::time::Instant> = None;
     // Current push batch size; see `do_push`.
     let mut push_row_limit = PUSH_BATCH_ROW_CAP;
+    // Sign-in starts the engine from the browser callback, often while the
+    // browser still has focus, so ask instead of assuming.
+    let mut focused = {
+        use tauri::Manager;
+        app.get_webview_window("main").and_then(|w| w.is_focused().ok()).unwrap_or(true)
+    };
+    let mut last_pull: Option<tokio::time::Instant> = None;
 
     if enabled {
         emit_status(&app, &db, SyncStatus::Idle, None).await;
         do_pull(&app, &db, &mut client).await;
+        last_pull = Some(tokio::time::Instant::now());
     } else {
         emit_status(&app, &db, SyncStatus::Paused, None).await;
     }
@@ -320,6 +348,7 @@ async fn run_engine(
                         client.retry_user_action();
                         backoff_until = do_push(&app, &db, &mut client, &mut push_row_limit).await.next_backoff();
                         do_pull(&app, &db, &mut client).await;
+                        last_pull = Some(tokio::time::Instant::now());
                     }
                 }
                 Some(SyncCommand::SetEnabled(e)) => {
@@ -337,12 +366,22 @@ async fn run_engine(
                         emit_status(&app, &db, SyncStatus::Idle, None).await;
                         backoff_until = do_push(&app, &db, &mut client, &mut push_row_limit).await.next_backoff();
                         do_pull(&app, &db, &mut client).await;
+                        last_pull = Some(tokio::time::Instant::now());
                     } else {
                         emit_status(&app, &db, SyncStatus::Paused, None).await;
                     }
                 }
                 Some(SyncCommand::UpdateToken(t)) => {
                     client.set_access_token(t);
+                }
+                Some(SyncCommand::FocusChanged(f)) => {
+                    let gained = f && !focused;
+                    focused = f;
+                    if gained && enabled && !client.is_blocked() && focus_pull_due(last_pull.map(|t| t.elapsed())) {
+                        do_pull(&app, &db, &mut client).await;
+                        last_pull = Some(tokio::time::Instant::now());
+                        pull_tick.reset();
+                    }
                 }
                 Some(SyncCommand::Shutdown) | None => break,
             },
@@ -370,8 +409,11 @@ async fn run_engine(
                 }
             },
             _ = pull_tick.tick() => {
-                if enabled && !client.is_blocked() {
+                // Unfocused clients stay quiet so the broker's database can
+                // scale to zero; regaining focus catches up (see above).
+                if enabled && focused && !client.is_blocked() {
                     do_pull(&app, &db, &mut client).await;
+                    last_pull = Some(tokio::time::Instant::now());
                 }
             }
         }
@@ -826,6 +868,27 @@ mod tests {
         assert_eq!(jittered(30, 1.0), std::time::Duration::from_secs(36));
     }
 
+    /// Regaining focus catches up on remote changes, but alt-tabbing back
+    /// within a few minutes of the last pull must not hit the broker again.
+    #[test]
+    fn focus_pull_waits_out_the_min_gap() {
+        use std::time::Duration;
+        assert!(focus_pull_due(None));
+        assert!(!focus_pull_due(Some(Duration::from_secs(10))));
+        assert!(!focus_pull_due(Some(Duration::from_millis(FOCUS_PULL_MIN_GAP_MS - 1))));
+        assert!(focus_pull_due(Some(Duration::from_millis(FOCUS_PULL_MIN_GAP_MS))));
+        assert!(focus_pull_due(Some(Duration::from_secs(3 * 3600))));
+    }
+
+    /// The broker's Neon compute suspends after 5 idle minutes. A background
+    /// poll at or under that keeps it billed 24/7, which is what drained the
+    /// free tier's 100 CU-hours by mid-October 2026.
+    #[test]
+    fn background_pull_is_longer_than_neon_suspend_delay() {
+        const NEON_SUSPEND_MS: u64 = 5 * 60 * 1_000;
+        const { assert!(PULL_INTERVAL_MS > 2 * NEON_SUSPEND_MS) };
+    }
+
     #[test]
     fn four_xx_other_than_401_is_poison_everything_else_is_transient() {
         use sync_client::SyncError;
@@ -858,7 +921,7 @@ mod tests {
     /// calm Offline state is a normal fact of laptop life (sleep/resume, hotel
     /// wifi, DNS) and is not a defect worth an error report. Without this gate
     /// a permanently-offline install reports forever: `DEDUP_WINDOW` is 60s
-    /// but `PULL_INTERVAL_MS` is 5min, so dedup can never suppress the repeat.
+    /// but `PULL_INTERVAL_MS` is 30min, so dedup can never suppress the repeat.
     #[test]
     fn offline_class_failures_are_not_reported() {
         use sync_client::SyncError;
