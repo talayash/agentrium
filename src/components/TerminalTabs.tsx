@@ -1,5 +1,5 @@
 import { useMemo, useCallback, useEffect } from 'react';
-import { X, Grid3X3, SplitSquareHorizontal, RotateCw, GitBranch, File as FileIcon, Flag } from 'lucide-react';
+import { X, XCircle, Grid3X3, SplitSquareHorizontal, RotateCw, GitBranch, File as FileIcon, Flag } from 'lucide-react';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
 import { toast } from '../store/toastStore';
@@ -206,14 +206,20 @@ export function TerminalTabs() {
                 {activeConfig.nickname || activeConfig.label}
               </span>
               {terminals.get(activeConfig.id)?.sessionContext?.title && terminals.get(activeConfig.id)?.sessionContext?.title !== (activeConfig.nickname || activeConfig.label) && (
-                <span className="text-[12px] text-text-secondary max-w-[260px] truncate" title={terminals.get(activeConfig.id)?.sessionContext?.title}>
-                  {'\u00b7'} {terminals.get(activeConfig.id)?.sessionContext?.title}
-                </span>
+                <>
+                  <span className="w-px h-3.5 bg-seam-strong flex-shrink-0" aria-hidden />
+                  <span className="text-[12px] text-text-secondary max-w-[260px] truncate" title={terminals.get(activeConfig.id)?.sessionContext?.title}>
+                    {terminals.get(activeConfig.id)?.sessionContext?.title}
+                  </span>
+                </>
               )}
               {activeConfig.working_directory && (
-                <span className="text-[11px] text-text-tertiary max-w-[160px] truncate">
-                  {fileBasename(activeConfig.working_directory)}
-                </span>
+                <>
+                  <span className="w-px h-3.5 bg-seam-strong flex-shrink-0" aria-hidden />
+                  <span className="text-[11px] text-text-tertiary max-w-[160px] truncate">
+                    {fileBasename(activeConfig.working_directory)}
+                  </span>
+                </>
               )}
               {/* Branch deliberately absent: the interactive branch switcher
                   lives in the titlebar directly above and the status bar
@@ -342,16 +348,22 @@ export function TerminalTabs() {
                 when there is no active session. Mirrors the sidebar card X,
                 which also closes without a confirm. */}
             {activeConfig && !activeFilePath && (
-              <Tooltip label="Close Session">
-                <button
-                  onClick={closeActiveSession}
-                  aria-label="Close Session"
-                  aria-keyshortcuts="Control+W"
-                  className="flex items-center justify-center h-7 w-7 rounded-lg text-[11.5px] font-medium hover:bg-fill-hover text-text-secondary hover:text-text-primary transition-colors"
-                >
-                  <X size={13} strokeWidth={1.75} />
-                </button>
-              </Tooltip>
+              <>
+                <span className="w-px h-4 bg-seam-strong mx-0.5 flex-shrink-0" aria-hidden />
+                {/* Labelled, circled glyph so it never reads as the window's
+                    caption X that sits right above it. */}
+                <Tooltip label="Close this session" shortcut="Ctrl+W">
+                  <button
+                    onClick={closeActiveSession}
+                    aria-label="Close Session"
+                    aria-keyshortcuts="Control+W"
+                    className="flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11.5px] font-medium hover:bg-fill-hover text-text-secondary hover:text-text-primary transition-colors"
+                  >
+                    <XCircle size={13} strokeWidth={1.75} />
+                    <span className="hidden sm:inline">Close session</span>
+                  </button>
+                </Tooltip>
+              </>
             )}
           </div>
         </div>
