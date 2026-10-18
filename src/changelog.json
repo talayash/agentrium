@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.41.2",
+    "date": "2026-10-18",
+    "features": [
+      { "title": "Fix bugs & performance" },
+      { "title": "Confirm before quitting", "description": "Closing the main window now asks before quitting Agentrium and shows how many sessions will close, so a stray click no longer ends your work." },
+      { "title": "Clearer session close", "description": "The session close button in the header is now labelled 'Close session' and set apart from the window controls, so it is no longer mistaken for quitting the app." },
+      { "title": "Tidier header", "description": "The app name now sits beside the logo, and the session name, description and repo in the header are separated by thin dividers." }
+    ]
+  },
+  {
     "version": "1.41.1",
     "date": "2026-10-17",
     "features": [
