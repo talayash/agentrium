@@ -175,7 +175,10 @@ export function TitleBar() {
       <div className="flex items-center gap-2 min-w-0">
         {!sidebarOpen && isMac && <span className="pl-2"><TrafficLights /></span>}
         {!sidebarOpen && (
-          <img src={appIcon} alt="Agentrium" className="w-[26px] h-[26px] flex-shrink-0" draggable={false} />
+          <span className="flex items-center gap-2 flex-shrink-0">
+            <img src={appIcon} alt="" className="w-[26px] h-[26px]" draggable={false} />
+            <span className="text-[13px] font-semibold text-text-primary tracking-tight">Agentrium</span>
+          </span>
         )}
 
         <div className="glass-capsule h-8 pr-0.5 min-w-0">

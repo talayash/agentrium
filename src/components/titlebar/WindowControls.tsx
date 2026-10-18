@@ -1,8 +1,25 @@
 import { Minus, Square, X } from 'lucide-react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import appIcon from '../../assets/app-icon.png';
+import { Tooltip } from '../ui/Tooltip';
+import { useQuitPrompt } from './QuitDialog';
 
 export const isMac = navigator.platform.toUpperCase().includes('MAC');
+
+/**
+ * Window close button handler. Closing the main window quits the whole app and
+ * ends every session, so it opens the in-app QuitDialog first. Detached windows
+ * close straight through to their own onCloseRequested "return to main / close
+ * terminals" prompt.
+ */
+function requestWindowClose() {
+  const appWindow = getCurrentWindow();
+  if (appWindow.label === 'main') {
+    useQuitPrompt.getState().setOpen(true);
+    return;
+  }
+  void appWindow.close();
+}
 
 /** macOS traffic lights. `vertical` stacks them for the collapsed sidebar rail. */
 export function TrafficLights({ vertical = false }: { vertical?: boolean }) {
@@ -10,9 +27,9 @@ export function TrafficLights({ vertical = false }: { vertical?: boolean }) {
   return (
     <div className={`flex items-center gap-1.5 no-drag ${vertical ? 'flex-col' : ''}`}>
       <button
-        onClick={() => appWindow.close()}
+        onClick={requestWindowClose}
         className="w-3 h-3 rounded-full bg-[#ff5f57] hover:brightness-90 transition-all"
-        aria-label="Close"
+        aria-label="Quit Agentrium"
       />
       <button
         onClick={() => appWindow.minimize()}
@@ -41,9 +58,11 @@ export function CaptionButtons() {
       <button onClick={() => appWindow.toggleMaximize()} className={`${btn} hover:bg-fill-hover`} aria-label="Maximize">
         <Square size={10} strokeWidth={1.75} />
       </button>
-      <button onClick={() => appWindow.close()} className={`${btn} hover:bg-[#E04545] hover:text-white`} aria-label="Close">
-        <X size={13} strokeWidth={2} />
-      </button>
+      <Tooltip label="Quit Agentrium">
+        <button onClick={requestWindowClose} className={`${btn} hover:bg-[#E04545] hover:text-white`} aria-label="Quit Agentrium">
+          <X size={13} strokeWidth={2} />
+        </button>
+      </Tooltip>
     </div>
   );
 }
@@ -68,7 +87,10 @@ export function SidebarWindowHeader({ collapsed }: { collapsed: boolean }) {
       }`}
     >
       {isMac && <TrafficLights vertical={collapsed} />}
-      <img src={appIcon} alt="Agentrium" className="w-[24px] h-[24px]" draggable={false} />
+      <img src={appIcon} alt="" className="w-[24px] h-[24px]" draggable={false} />
+      {!collapsed && (
+        <span className="text-[13px] font-semibold text-text-primary tracking-tight">Agentrium</span>
+      )}
     </div>
   );
 }
