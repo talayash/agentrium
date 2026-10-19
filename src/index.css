@@ -191,7 +191,7 @@
   --fill-hover: rgba(255, 255, 255, 0.06);
   --fill-active: rgba(255, 255, 255, 0.10);
   --fill-sel: rgba(255, 255, 255, 0.08);
-  --ij-stripe: #0A84FF;               /* Selection stripe (accent-driven; one consumer) */
+  --ij-stripe: #0A84FF;               /* Selection stripe (accent-driven; settings tree + session cards) */
 
   /* Accent - Apple system blue (dark). applyAccentColor() overrides from the
      user's choice; these keep first paint correct. */
@@ -894,6 +894,19 @@ h2, h3 { letter-spacing: var(--track-title); line-height: 1.3; }
   background: color-mix(in srgb, var(--attention) 8%, transparent);
   pointer-events: none;
   animation: session-attention-pulse 1.4s ease-in-out infinite;
+}
+
+/* Selection = left stripe + tint, attention = full outline. Different shapes
+   so a selected card never reads as an alert; selection never animates. */
+.session-selected-stripe {
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 4px;
+  border-radius: 0 2px 2px 0;
+  background: var(--ij-stripe); /* contrast-adjusted per theme by applyAccentColor */
+  pointer-events: none;
 }
 
 @keyframes session-attention-pulse {

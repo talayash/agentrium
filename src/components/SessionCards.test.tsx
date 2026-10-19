@@ -99,3 +99,38 @@ describe('session card context', () => {
     expect(screen.getByText('Fix login redirect')).toBeTruthy();
   });
 });
+
+describe('session card selection', () => {
+  const card = () => screen.getByRole('button', { name: 'Agentrium 1' });
+  const stripe = () => card().querySelector('.session-selected-stripe');
+  const outline = () => card().querySelector('.session-attention-outline');
+
+  it('marks the selected card with a static stripe and tint, not a thin border', () => {
+    render(<SessionCards />);
+    expect(card().dataset.selected).toBe('true');
+    expect(stripe()).not.toBeNull();
+    expect(card().classList.contains('bg-accent-primary/18')).toBe(true);
+    expect(card().classList.contains('ring-1')).toBe(false);
+    expect(outline()).toBeNull();
+  });
+
+  it('shows only the attention outline on an unselected alerting card', () => {
+    useTerminalStore.setState({ activeTerminalId: null });
+    useSessionAttentionStore.getState().request('one');
+    render(<SessionCards />);
+    expect(card().dataset.selected).toBeUndefined();
+    expect(stripe()).toBeNull();
+    expect(outline()).not.toBeNull();
+  });
+
+  it('shows the stripe on top of the attention outline when selected and alerting', () => {
+    // Happens when the active session alerts while the window is unfocused.
+    useSessionAttentionStore.getState().request('one');
+    render(<SessionCards />);
+    const s = stripe();
+    const o = outline();
+    expect(s).not.toBeNull();
+    expect(o).not.toBeNull();
+    expect(o!.compareDocumentPosition(s!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+});

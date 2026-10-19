@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeEach } from 'vitest';
 import {
   applyAccentColor, applyThemeMode, applyDensity, applyReduceMotion, applyUiFontScale,
+  contrastRatio, selectedCardBackground,
 } from './accentTheme';
 
 beforeEach(() => {
@@ -12,10 +13,11 @@ beforeEach(() => {
 
 describe('accentTheme', () => {
   it('applyAccentColor sets the selection stripe + accent CSS vars', () => {
-    applyAccentColor('#FF00AA');
+    // A high-contrast accent, so the stripe needs no contrast adjustment.
+    applyAccentColor('#FFD60A');
     const style = document.documentElement.style;
-    expect(style.getPropertyValue('--accent-primary')).toBe('#FF00AA');
-    expect(style.getPropertyValue('--ij-stripe')).toBe('#FF00AA');
+    expect(style.getPropertyValue('--accent-primary')).toBe('#FFD60A');
+    expect(style.getPropertyValue('--ij-stripe')).toBe('#FFD60A');
   });
 
   it('applyAccentColor handles 3-digit hex', () => {
@@ -92,5 +94,51 @@ describe('accentTheme', () => {
     expect(style.getPropertyValue('--success')).toBe('#1F8A3D');
     expect(style.getPropertyValue('--warning')).toBe('#9A5B00');
     expect(style.getPropertyValue('--error')).toBe('#D70015');
+  });
+});
+
+describe('selection stripe contrast', () => {
+  const stripe = () => document.documentElement.style.getPropertyValue('--ij-stripe');
+  const stripeContrast = (accent: string, theme: 'light' | 'dark') =>
+    contrastRatio(stripe(), selectedCardBackground(accent, theme));
+
+  it('keeps an accent that already has enough contrast unchanged', () => {
+    applyThemeMode('dark');
+    applyAccentColor('#FFD60A');
+    expect(stripe()).toBe('#FFD60A');
+  });
+
+  it('darkens the default blue in light mode to reach 3:1 on the tinted card', () => {
+    applyThemeMode('light');
+    applyAccentColor('#0A84FF');
+    expect(stripe()).not.toBe('#0A84FF');
+    expect(stripeContrast('#0A84FF', 'light')).toBeGreaterThanOrEqual(3);
+  });
+
+  it('rescues a pale accent in light mode', () => {
+    applyThemeMode('light');
+    applyAccentColor('#F5E663');
+    expect(stripeContrast('#F5E663', 'light')).toBeGreaterThanOrEqual(3);
+  });
+
+  it('lightens a very dark accent in dark mode', () => {
+    applyThemeMode('dark');
+    applyAccentColor('#1A237E');
+    expect(stripeContrast('#1A237E', 'dark')).toBeGreaterThanOrEqual(3);
+  });
+
+  it('leaves the accent itself untouched', () => {
+    applyThemeMode('light');
+    applyAccentColor('#F5E663');
+    expect(document.documentElement.style.getPropertyValue('--accent-primary')).toBe('#F5E663');
+  });
+
+  it('recomputes the stripe when only the theme changes', () => {
+    applyThemeMode('light');
+    applyAccentColor('#0A84FF');
+    const lightStripe = stripe();
+    applyThemeMode('dark');
+    expect(stripe()).not.toBe(lightStripe);
+    expect(stripeContrast('#0A84FF', 'dark')).toBeGreaterThanOrEqual(3);
   });
 });
