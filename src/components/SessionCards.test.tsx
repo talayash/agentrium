@@ -109,7 +109,7 @@ describe('session card selection', () => {
     render(<SessionCards />);
     expect(card().dataset.selected).toBe('true');
     expect(stripe()).not.toBeNull();
-    expect(card().classList.contains('bg-accent-primary/12')).toBe(true);
+    expect(card().classList.contains('bg-accent-primary/18')).toBe(true);
     expect(card().classList.contains('ring-1')).toBe(false);
     expect(outline()).toBeNull();
   });
