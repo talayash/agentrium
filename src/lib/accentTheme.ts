@@ -23,7 +23,7 @@ export function applyAccentColor(hex: string): void {
   const lift = (c: number) => Math.min(255, Math.round(c + (255 - c) * 0.08));
   const sR = lift(r), sG = lift(g), sB = lift(b);
   root.style.setProperty('--accent-secondary', `#${toHex(sR)}${toHex(sG)}${toHex(sB)}`);
-  root.style.setProperty('--ij-stripe', hex);
+  root.style.setProperty('--ij-stripe', selectionStripeColor(hex, currentTheme()));
   root.style.setProperty('--border-focus', `rgba(${r}, ${g}, ${b}, 0.55)`);
   // Shadow-glow tokens consumed by Tailwind's shadow-glow-sm / shadow-glow-md.
   // Distinct from --accent-glow (0.18) - different consumers, different alphas.
@@ -112,6 +112,69 @@ export function applyThemeMode(mode: ThemeMode): void {
     root.style.removeProperty('--attention-input');
     root.style.removeProperty('--attention-ready');
   }
+  // The stripe's contrast depends on the theme, so re-derive it if an accent is already set.
+  const accent = root.style.getPropertyValue('--accent-primary');
+  if (accent) root.style.setProperty('--ij-stripe', selectionStripeColor(accent, effective));
+}
+
+type EffectiveTheme = 'light' | 'dark';
+
+/** WCAG non-text minimum is 3:1 (#99). The model targets 3.75 because the real
+ *  card sits on bluish glass and may carry the attention fill; in light mode
+ *  QA screenshots measured up to ~15% below this flat model. */
+const STRIPE_MIN_CONTRAST = 3.75;
+/** Keep in sync with bg-accent-primary/18 on the selected card in SessionCards. */
+const SELECTED_TINT = 0.18;
+/** Worst-case surface under the card: white glass (light), the lightest sidebar tone (dark). */
+const CARD_BASE: Record<EffectiveTheme, { r: number; g: number; b: number }> = {
+  light: { r: 255, g: 255, b: 255 },
+  dark: { r: 44, g: 44, b: 46 },
+};
+
+function currentTheme(): EffectiveTheme {
+  return document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+}
+
+/** The selected card's tinted background for an accent, as hex. */
+export function selectedCardBackground(hex: string, theme: EffectiveTheme): string {
+  const a = hexToRgb(hex) ?? { r: 10, g: 132, b: 255 };
+  const base = CARD_BASE[theme];
+  const mix = (c: number, k: number) => Math.round(c * SELECTED_TINT + k * (1 - SELECTED_TINT));
+  return `#${toHex(mix(a.r, base.r))}${toHex(mix(a.g, base.g))}${toHex(mix(a.b, base.b))}`;
+}
+
+export function contrastRatio(a: string, b: string): number {
+  const la = luminance(a);
+  const lb = luminance(b);
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+}
+
+/**
+ * The accent, unchanged when it already reaches 3:1 on the tinted card;
+ * otherwise moved toward black (light) or white (dark) until it does.
+ * Only the stripe is adjusted - the user's accent stays exact everywhere else.
+ */
+function selectionStripeColor(hex: string, theme: EffectiveTheme): string {
+  const rgb = hexToRgb(hex);
+  if (!rgb) return hex;
+  const bg = selectedCardBackground(hex, theme);
+  if (contrastRatio(hex, bg) >= STRIPE_MIN_CONTRAST) return hex;
+  const target = theme === 'light' ? 0 : 255;
+  for (let t = 0.05; t <= 1; t += 0.05) {
+    const step = (c: number) => Math.round(c + (target - c) * t);
+    const candidate = `#${toHex(step(rgb.r))}${toHex(step(rgb.g))}${toHex(step(rgb.b))}`;
+    if (contrastRatio(candidate, bg) >= STRIPE_MIN_CONTRAST) return candidate;
+  }
+  return theme === 'light' ? '#000000' : '#FFFFFF';
+}
+
+function luminance(hex: string): number {
+  const rgb = hexToRgb(hex) ?? { r: 0, g: 0, b: 0 };
+  const lin = (c: number) => {
+    const v = c / 255;
+    return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * lin(rgb.r) + 0.7152 * lin(rgb.g) + 0.0722 * lin(rgb.b);
 }
 
 /**
