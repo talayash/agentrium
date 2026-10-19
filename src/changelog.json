@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.41.3",
+    "date": "2026-10-19",
+    "features": [
+      { "title": "Fix bugs & performance" },
+      {
+        "title": "Easier to spot your current session",
+        "description": "The selected session card now has a solid accent stripe and a stronger tint, so it stands out even next to 'Response ready' and 'Needs your input' alerts. The stripe adjusts its shade to stay readable with any accent colour, in light and dark themes."
+      }
+    ]
+  },
+  {
     "version": "1.41.2",
     "date": "2026-10-18",
     "features": [
