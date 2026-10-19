@@ -42,6 +42,7 @@ import { SessionTimeline } from './components/SessionTimeline';
 import { MemoryEditor } from './components/MemoryEditor';
 import { StatusBar } from './components/StatusBar';
 import { ToastContainer } from './components/ToastContainer';
+import { QuitDialog } from './components/titlebar/QuitDialog';
 import { History } from 'lucide-react';
 import { setColorfulFolderIcons } from './utils/fileIcons';
 import { getWindowMode } from './lib/windowMode';
@@ -1209,6 +1210,7 @@ function App() {
 
       <PreviewInlineHint />
       <InputContextMenu />
+      {!isDetached && <QuitDialog />}
       <ToastContainer />
     </div>
   );
