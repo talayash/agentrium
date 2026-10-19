@@ -285,13 +285,16 @@ export function SessionCards() {
             }}
             onContextMenu={(e) => openContextMenu(e, id)}
             data-attention={needsAttention ? (terminalStates.get(id) === 'waiting' ? 'input' : 'ready') : undefined}
-            className={`group relative rounded-xl px-3 py-2.5 cursor-pointer transition-[background-color,box-shadow] duration-100 ring-1 ${needsAttention ? 'session-needs-attention' : ''} ${
+            data-selected={active || undefined}
+            className={`group relative rounded-xl px-3 py-2.5 cursor-pointer transition-[background-color,box-shadow] duration-100 ${needsAttention ? 'session-needs-attention' : ''} ${
               active
-                ? 'bg-accent-primary/10 ring-accent-primary/30'
-                : 'bg-fill-hover ring-seam hover:bg-fill-active'
+                ? 'bg-accent-primary/12'
+                : 'ring-1 bg-fill-hover ring-seam hover:bg-fill-active'
             }`}
           >
             {needsAttention && <span className="session-attention-outline" aria-hidden="true" />}
+            {/* After the outline so it paints on top when selected AND alerting. */}
+            {active && <span className="session-selected-stripe" aria-hidden="true" />}
             <div className="flex items-center gap-2">
               <span
                 role="img"
