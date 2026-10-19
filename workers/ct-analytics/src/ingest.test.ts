@@ -10,11 +10,13 @@ beforeAll(async () => {
   await db.exec('CREATE TABLE ingest_limits (key TEXT PRIMARY KEY, window INTEGER NOT NULL, count INTEGER NOT NULL)');
 });
 afterAll(async () => { await mf.dispose(); });
+// 130 D1 round-trips through miniflare take ~2.5 s locally and over 6 s on a
+// slow CI runner, so the 5 s default timeout is too tight for this one test.
 it('atomically limits concurrent requests from one IP regardless of installation IDs', async () => {
   const results = await Promise.all(Array.from({ length: 130 }, () => admitIngest(db, 'test-ip', 60000)));
   expect(results.filter(Boolean)).toHaveLength(120);
   expect(await admitIngest(db, 'test-ip', 120000)).toBe(true);
-});
+}, 20_000);
 it('global budget prevents rotating IPs from admitting more ingestion', async () => {
   await db.prepare("UPDATE ingest_limits SET count = 10000, window = 3 WHERE key = 'global'").run();
   expect(await admitIngest(db, 'fresh-ip', 180000)).toBe(false);
