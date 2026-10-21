@@ -288,7 +288,7 @@ export function SessionCards() {
             data-selected={active || undefined}
             className={`group relative rounded-xl px-3 py-2.5 cursor-pointer transition-[background-color,box-shadow] duration-100 ${needsAttention ? 'session-needs-attention' : ''} ${
               active
-                ? 'bg-accent-primary/18'
+                ? 'bg-accent-primary/18 border border-[var(--ij-stripe)]'
                 : 'ring-1 bg-fill-hover ring-seam hover:bg-fill-active'
             }`}
           >
