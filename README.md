@@ -15,6 +15,7 @@
   <a href="#usage">Usage</a> •
   <a href="#keyboard-shortcuts">Shortcuts</a> •
   <a href="#building-from-source">Build</a> •
+  <a href="#community">Community</a> •
   <a href="#license">License</a>
 </p>
 
@@ -24,6 +25,7 @@
   <img src="https://img.shields.io/badge/license-MIT-orange?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/Tauri-2.x-purple?style=flat-square" alt="Tauri">
   <img src="https://img.shields.io/badge/React-18-blue?style=flat-square" alt="React">
+  <a href="https://discord.gg/NNDGeFE24s"><img src="https://img.shields.io/badge/Discord-Join%20us-5865F2?style=flat-square&logo=discord&logoColor=white" alt="Discord"></a>
 </p>
 
 ---
@@ -432,6 +434,14 @@ If the binary is on PATH but Agentrium still can't detect a version, the agent p
 1. Ensure Rust is installed: `rustc --version`
 2. Update Rust: `rustup update`
 3. Clean and rebuild: `cargo clean && npm run tauri build`
+
+## Community
+
+Ask questions, report bugs, share your setup, and hear about new releases first on Discord.
+
+<p>
+  <a href="https://discord.gg/NNDGeFE24s"><img src="https://img.shields.io/badge/Join%20our%20Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Join our Discord"></a>
+</p>
 
 ## Contributing
 
