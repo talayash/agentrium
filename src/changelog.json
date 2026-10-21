@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.41.4",
+    "date": "2026-10-21",
+    "features": [
+      { "title": "Fix bugs & performance" },
+      {
+        "title": "Join us on Discord",
+        "description": "A new Discord button in the bottom-right status bar opens the Agentrium community server, where you can ask questions, report bugs, and hear about new releases first."
+      }
+    ]
+  },
+  {
     "version": "1.41.3",
     "date": "2026-10-19",
     "features": [
