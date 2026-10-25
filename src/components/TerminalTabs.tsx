@@ -27,7 +27,7 @@ import { CiRepairBadge } from './CiRepairBadge';
 import { PrChip } from './PrChip';
 import { RaceGridHeader } from './RaceHeader';
 import { RaceCompareView } from './RaceCompareView';
-import { requestCloseTerminal } from '../lib/tasks';
+import { closeWithConfirm } from '../lib/closeConfirm';
 import type { SessionState } from '../lib/terminalState';
 
 function fileBasename(p: string): string {
@@ -75,10 +75,10 @@ export function TerminalTabs() {
   // SessionCards' `closeWithReport` so error handling + telemetry stay
   // consistent with the existing close paths (per CLAUDE.md's frontend
   // error-handling rules).
-  const closeActiveSession = useCallback(() => {
+  const closeActiveSession = useCallback((e: React.MouseEvent<HTMLElement>) => {
     const id = activeTerminalId;
     if (!id) return;
-    requestCloseTerminal(id).catch((err) => {
+    closeWithConfirm(id, e.currentTarget).catch((err) => {
       toast.error('Close failed', 'Could not close the session.');
       reportInvokeFailure('close_terminal', err);
     });
@@ -345,8 +345,8 @@ export function TerminalTabs() {
             </Tooltip>
             {/* Close active session (#59). Only visible while a real terminal
                 is focused - hidden while browsing a file, and hidden entirely
-                when there is no active session. Mirrors the sidebar card X,
-                which also closes without a confirm. */}
+                when there is no active session. Like the sidebar card X it
+                asks first (CloseSessionConfirm); Ctrl+W anchors there too. */}
             {activeConfig && !activeFilePath && (
               <>
                 <span className="w-px h-4 bg-seam-strong mx-0.5 flex-shrink-0" aria-hidden />
@@ -356,6 +356,7 @@ export function TerminalTabs() {
                   <button
                     onClick={closeActiveSession}
                     aria-label="Close Session"
+                    data-close-session-anchor
                     aria-keyshortcuts="Control+W"
                     className="flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11.5px] font-medium hover:bg-fill-hover text-text-secondary hover:text-text-primary transition-colors"
                   >

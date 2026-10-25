@@ -217,6 +217,8 @@ interface AppState {
   finishTaskCloseAfter: boolean;
   sessionFilter: SessionFilter;
   vcsChangelistsConfirmDelete: boolean;
+  /** Ask before closing a single session (card X, header button, Ctrl+W). */
+  confirmCloseSession: boolean;
 
   // Claude Code defaults (NEW v1.22.0).
   // Any alias from `CLAUDE_MODELS` (opus, sonnet, haiku, fable, sonnet[1m],
@@ -449,6 +451,7 @@ interface AppState {
   closeFinishTask: () => void;
   setSessionFilter: (filter: SessionFilter) => void;
   setVcsChangelistsConfirmDelete: (enabled: boolean) => void;
+  setConfirmCloseSession: (enabled: boolean) => void;
 
   // Claude setters (NEW v1.22.0)
   setClaudeDefaultModel: (model: string | null) => void;
@@ -710,6 +713,7 @@ export const useAppStore = create<AppState>()(
       finishTaskCloseAfter: false,
       sessionFilter: 'all' as SessionFilter,
       vcsChangelistsConfirmDelete: true,
+      confirmCloseSession: true,
 
       // Claude defaults (NEW v1.22.0)
       claudeDefaultModel: null as string | null,
@@ -962,6 +966,7 @@ export const useAppStore = create<AppState>()(
       closeFinishTask: () => set({ finishTaskTerminalId: null, finishTaskCloseAfter: false }),
       setSessionFilter: (filter) => set({ sessionFilter: filter }),
       setVcsChangelistsConfirmDelete: (enabled) => set({ vcsChangelistsConfirmDelete: enabled }),
+      setConfirmCloseSession: (enabled) => set({ confirmCloseSession: enabled }),
 
       // Claude setters (NEW v1.22.0)
       setClaudeDefaultModel: (model) => set({ claudeDefaultModel: model }),
@@ -1514,6 +1519,7 @@ export const useAppStore = create<AppState>()(
         prBodyTemplate: state.prBodyTemplate,
         sessionFilter: state.sessionFilter,
         vcsChangelistsConfirmDelete: state.vcsChangelistsConfirmDelete,
+        confirmCloseSession: state.confirmCloseSession,
 
         // Claude (NEW v1.22.0)
         claudeDefaultModel: state.claudeDefaultModel,
