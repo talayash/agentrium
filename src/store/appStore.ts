@@ -69,6 +69,7 @@ export interface EditorNavigationTarget {
 interface AppState {
   sidebarOpen: boolean;
   sidebarCollapsed: boolean;  // widths driven by --w-rail / --w-panel tokens
+  sidebarWidth: number;
   hintsOpen: boolean;
   changesOpen: boolean;
   settingsOpen: boolean;
@@ -347,6 +348,7 @@ interface AppState {
   toggleSidebar: () => void;
   toggleSidebarCollapse: () => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
+  setSidebarWidth: (width: number) => void;
   toggleHints: () => void;
   toggleLearn: () => void;
   openLearn: () => void;
@@ -605,6 +607,7 @@ export const useAppStore = create<AppState>()(
     (set) => ({
       sidebarOpen: true,
       sidebarCollapsed: false,
+      sidebarWidth: 260,
       hintsOpen: false,
       changesOpen: false,
       settingsOpen: false,
@@ -816,6 +819,7 @@ export const useAppStore = create<AppState>()(
       toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
       toggleSidebarCollapse: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
       setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
+      setSidebarWidth: (width) => set({ sidebarWidth: Math.min(480, Math.max(200, width)) }),
       // The three right-side panels now share one Inspector frame, so opening
       // one closes the others (mutually exclusive → the Inspector shows exactly
       // one tab). ToolStripe/shortcuts/palette call these unchanged.
@@ -1427,6 +1431,7 @@ export const useAppStore = create<AppState>()(
       partialize: (state) => ({
         sidebarOpen: state.sidebarOpen,
         sidebarCollapsed: state.sidebarCollapsed,
+        sidebarWidth: state.sidebarWidth,
         hintsOpen: state.hintsOpen,
         changesOpen: state.changesOpen,
         defaultClaudeArgs: state.defaultClaudeArgs,
