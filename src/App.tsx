@@ -7,6 +7,7 @@ import { TitleBar } from './components/TitleBar';
 import { SidebarWindowHeader } from './components/titlebar/WindowControls';
 import { Button } from './components/ui/Button';
 import { Sidebar } from './components/Sidebar';
+import { SidebarResizeHandle } from './components/SidebarResizeHandle';
 import { TerminalTabs } from './components/TerminalTabs';
 import { Inspector } from './components/Inspector';
 import { Splash } from './components/Splash';
@@ -165,7 +166,7 @@ function App() {
   const finishTaskTerminalId = useAppStore((s) => s.finishTaskTerminalId);
   const ciRepairTerminalId = useAppStore((s) => s.ciRepairTerminalId);
   const closeCiRepair = useAppStore((s) => s.closeCiRepair);
-  const { sidebarOpen, sidebarCollapsed, hintsOpen, changesOpen, workspacesOpen, learnOpen, learnEnabled, settingsOpen, profileModalOpen, newTerminalModalOpen, workspaceModalOpen, worktreeModalOpen, pushModalOpen, createPrModalOpen, sessionHistoryOpen, snippetsModalOpen, commandPaletteOpen, globalSearchOpen, whatsNewOpen, claudeConfigOpen, sessionTimelineOpen, memoryEditorOpen, showStatusBar, notifyOnFinish, restoreSession, triggerChangesRefresh, showRestoreBanner, pendingRestoreConfigs, setShowRestoreBanner, setPendingRestoreConfigs, lastSeenVersion, setLastSeenVersion, openWhatsNew } = useAppStore();
+  const { sidebarOpen, sidebarCollapsed, sidebarWidth, setSidebarWidth, hintsOpen, changesOpen, workspacesOpen, learnOpen, learnEnabled, settingsOpen, profileModalOpen, newTerminalModalOpen, workspaceModalOpen, worktreeModalOpen, pushModalOpen, createPrModalOpen, sessionHistoryOpen, snippetsModalOpen, commandPaletteOpen, globalSearchOpen, whatsNewOpen, claudeConfigOpen, sessionTimelineOpen, memoryEditorOpen, showStatusBar, notifyOnFinish, restoreSession, triggerChangesRefresh, showRestoreBanner, pendingRestoreConfigs, setShowRestoreBanner, setPendingRestoreConfigs, lastSeenVersion, setLastSeenVersion, openWhatsNew } = useAppStore();
   const { handleTerminalOutput, updateTerminalStatus, setLoopMode, setSessionSummary, createTerminal, createShellTerminalTab, applyTerminalMetrics, adoptTerminal, detachTerminals, closeTerminal, terminals } = useTerminalStore();
 
   // Window identity. A torn-off ("detached") window renders the SAME full
@@ -1097,7 +1098,7 @@ function App() {
               {sidebarOpen && (
                 <div
                   className="h-full overflow-hidden rounded-[var(--radius-card)] shadow-elevation-3 material-lens flex flex-col transition-all duration-200 ease-out"
-                  style={{ width: sidebarCollapsed ? 'var(--w-rail)' : 'var(--w-panel)' }}
+                  style={{ width: sidebarCollapsed ? 'var(--w-rail)' : sidebarWidth, flexShrink: 0 }}
                 >
                   <SidebarWindowHeader collapsed={sidebarCollapsed} />
                   <div className="flex-1 min-h-0">
@@ -1106,6 +1107,9 @@ function App() {
                 </div>
               )}
             </AnimatePresence>
+            {sidebarOpen && !sidebarCollapsed && (
+              <SidebarResizeHandle width={sidebarWidth} onWidthChange={setSidebarWidth} />
+            )}
 
             <div className="relative flex-1 flex gap-[var(--inset-window)] min-w-0">
               <main className="flex-1 flex flex-col overflow-hidden rounded-[var(--radius-card)] bg-elevation-0 shadow-elevation-3 ring-1 ring-inset ring-seam min-w-0">
