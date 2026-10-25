@@ -377,6 +377,7 @@ describe('appStore - persist partialize', () => {
   const PERSISTED_KEYS = [
     'sidebarOpen',
     'sidebarCollapsed',
+    'sidebarWidth',
     'hintsOpen',
     'changesOpen',
     'defaultClaudeArgs',
