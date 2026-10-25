@@ -223,15 +223,14 @@ export function TitleBar() {
 
               {branchMenuOpen && (
                 <div
-                  // Flat New UI popover (#61): opaque `--elevation-4` surface
-                  // with a plain 1px `--seam-strong` hairline and a standard
-                  // float shadow - no `backdrop-filter`, no `edge-light` rim.
-                  // Matches the flat treatment CLAUDE.md documents for the
-                  // IntelliJ 2026.1 language.
-                  className="absolute left-0 top-full mt-1 z-50 w-[260px] bg-elevation-4 ring-1 ring-inset ring-seam-strong shadow-elevation-3 ct-pop-in rounded-lg overflow-hidden"
+                  // Same `material-popover` glass as the session context menu
+                  // and tooltips, so every menu out of the toolbar capsules
+                  // reads as one family (the old opaque `--elevation-4` slab
+                  // rendered as a saturated blue block in dark mode).
+                  className="absolute left-0 top-full mt-1.5 z-50 w-[260px] material-popover ct-pop-in rounded-lg overflow-hidden"
                   style={{ transformOrigin: 'top left' }}
                 >
-                  <div className="p-2 border-b border-seam">
+                  <div className="p-1.5 border-b border-seam">
                     <div className="relative">
                       <SearchIcon size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-text-tertiary" strokeWidth={1.75} />
                       <input
@@ -240,7 +239,7 @@ export function TitleBar() {
                         value={branchFilter}
                         onChange={(e) => setBranchFilter(e.target.value)}
                         placeholder="Filter branches…"
-                        className="w-full bg-elevation-0 ring-1 ring-inset ring-seam rounded-md h-7 pl-7 pr-2 text-[12px] text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45"
+                        className="w-full bg-fill-hover ring-1 ring-inset ring-seam rounded-md h-7 pl-7 pr-2 text-[12px] text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-accent-primary/60 transition-shadow"
                       />
                     </div>
                   </div>
@@ -260,28 +259,32 @@ export function TitleBar() {
                       const isCurrent = b === gitInfo.current_branch;
                       const isChecking = checkoutTarget === b;
                       return (
+                        // The current branch is NOT `disabled`: ListRow dims
+                        // disabled rows to 50%, which made the one row the
+                        // user looks for the hardest to read. Clicking it is
+                        // a no-op instead.
                         <ListRow
                           key={b}
-                          variant="compact"
                           selected={isCurrent}
-                          disabled={isChecking || isCurrent}
-                          onClick={() => handleCheckout(b)}
+                          disabled={isChecking}
+                          onClick={() => { if (!isCurrent) handleCheckout(b); }}
+                          className={isCurrent ? 'cursor-default' : ''}
                           trailing={
                             isChecking ? (
                               <Loader2 size={11} className="animate-spin text-text-tertiary" />
                             ) : isCurrent ? (
-                              <Check size={12} className="text-accent-primary" />
+                              <Check size={12} strokeWidth={2.25} className="text-accent-primary" />
                             ) : null
                           }
                         >
-                          <span className={`truncate font-mono text-[12px] ${isCurrent ? 'text-accent-primary' : 'text-text-primary'}`}>
+                          <span className={`truncate font-mono text-[12px] ${isCurrent ? 'text-text-primary font-medium' : 'text-text-secondary group-hover:text-text-primary'}`}>
                             {b}
                           </span>
                         </ListRow>
                       );
                     })}
                   </div>
-                  <div className="border-t border-seam">
+                  <div className="border-t border-seam p-1">
                     <button
                       onClick={() => {
                         const path = active?.config.working_directory;
@@ -290,11 +293,12 @@ export function TitleBar() {
                           useAppStore.getState().openPushModal(path);
                         }
                       }}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-accent-primary hover:bg-accent-primary/10 transition-colors"
+                      className="group w-full flex items-center gap-2 h-7 px-2 rounded-md text-[12px] text-text-primary hover:bg-fill-hover transition-colors"
                       aria-keyshortcuts="Control+Shift+K"
                     >
-                      <Upload size={12} strokeWidth={2} />
-                      Push to remote…
+                      <Upload size={12} strokeWidth={1.75} className="text-text-tertiary group-hover:text-text-secondary" />
+                      <span className="flex-1 text-left">Push to remote…</span>
+                      <kbd className="font-sans text-[10.5px] text-text-tertiary">{isMac ? '⇧⌘K' : 'Ctrl+Shift+K'}</kbd>
                     </button>
                   </div>
                 </div>
