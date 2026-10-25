@@ -1,5 +1,5 @@
 import { useMemo, useCallback, useEffect } from 'react';
-import { X, XCircle, Grid3X3, SplitSquareHorizontal, RotateCw, GitBranch, File as FileIcon, Flag } from 'lucide-react';
+import { X, XCircle, Grid3X3, SplitSquareHorizontal, RotateCw, GitBranch, File as FileIcon, Flag, Inbox } from 'lucide-react';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
 import { toast } from '../store/toastStore';
@@ -27,6 +27,7 @@ import { CiRepairBadge } from './CiRepairBadge';
 import { PrChip } from './PrChip';
 import { RaceGridHeader } from './RaceHeader';
 import { RaceCompareView } from './RaceCompareView';
+import { ReviewQueueView } from './ReviewQueueView';
 import { requestCloseTerminal } from '../lib/tasks';
 import type { SessionState } from '../lib/terminalState';
 
@@ -267,9 +268,11 @@ export function TerminalTabs() {
                 {openFiles.map((tab) => {
                   const isActive = activeFilePath === tab.path;
                   const isRace = tab.mode === 'race';
-                  const dirty = !isRace && tab.content !== tab.original;
+                  const isReview = tab.mode === 'review';
+                  const isView = isRace || isReview;
+                  const dirty = !isView && tab.content !== tab.original;
                   return (
-                    <Tooltip key={tab.path} label={isRace ? `Race: ${tab.content}` : tab.path}>
+                    <Tooltip key={tab.path} label={isRace ? `Race: ${tab.content}` : isReview ? 'Review Queue across sessions' : tab.path}>
                     <button
                       onClick={() => focusFile(tab.path)}
                       onAuxClick={(e) => {
@@ -285,8 +288,10 @@ export function TerminalTabs() {
                     >
                       {isRace
                         ? <Flag size={11} className="text-accent-primary flex-shrink-0" strokeWidth={1.75} />
-                        : <FileIcon size={11} className="text-text-tertiary flex-shrink-0" strokeWidth={1.75} />}
-                      <span className="max-w-[140px] truncate">{isRace ? tab.content : fileBasename(tab.path)}</span>
+                        : isReview
+                          ? <Inbox size={11} className="text-accent-primary flex-shrink-0" strokeWidth={1.75} />
+                          : <FileIcon size={11} className="text-text-tertiary flex-shrink-0" strokeWidth={1.75} />}
+                      <span className="max-w-[140px] truncate">{isView ? tab.content : fileBasename(tab.path)}</span>
                       <span
                         onClick={(e) => {
                           e.stopPropagation();
@@ -413,9 +418,12 @@ export function TerminalTabs() {
         })}
         {activeFilePath && openFiles.some((t) => t.path === activeFilePath) && (
           <div key={`file:${activeFilePath}`} className="absolute inset-0 z-10 bg-elevation-0">
-            {openFiles.find((t) => t.path === activeFilePath)?.mode === 'race'
-              ? <RaceCompareView raceId={activeFilePath.slice('race:'.length)} />
-              : <FileEditorView path={activeFilePath} />}
+            {(() => {
+              const mode = openFiles.find((t) => t.path === activeFilePath)?.mode;
+              if (mode === 'race') return <RaceCompareView raceId={activeFilePath.slice('race:'.length)} />;
+              if (mode === 'review') return <ReviewQueueView />;
+              return <FileEditorView path={activeFilePath} />;
+            })()}
           </div>
         )}
         {!activeTerminalId && !activeFilePath && <WelcomeScreen />}

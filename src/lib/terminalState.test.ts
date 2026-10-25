@@ -47,6 +47,16 @@ describe('classifySettled', () => {
     expect(classifySettled(lines)).toBe('waiting');
   });
 
+  it('flags the current unnumbered folder-trust prompt as waiting', () => {
+    const lines = [
+      'Quick safety check: Is this a project you created or one you trust? (Like your own code, a well-known open source project, or work',
+      '❯ No, exit',
+      '  Yes, I trust this folder',
+      'Enter to confirm · Esc to cancel',
+    ];
+    expect(classifySettled(lines)).toBe('waiting');
+  });
+
   it('treats the plain idle input box as idle', () => {
     const lines = [
       '╭───────────────────────────────╮',

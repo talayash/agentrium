@@ -23,6 +23,9 @@ export function hasTurnFinishedMarker(lines: string[]): boolean {
 export const WAITING_PATTERNS: RegExp[] = [
   /Do you want to proceed\??/i,
   /Do you trust the files in this folder\??/i,
+  // Current Claude Code trust prompt and its selection footer.
+  /Is this a project you created or one you trust\??/i,
+  /Enter to confirm\s*[·•]\s*Esc to cancel/i,
   /\(y\/n\)/i,
   /\[y\/n\]/i,
   // Codex approval prompts (command, edits) and their footer.

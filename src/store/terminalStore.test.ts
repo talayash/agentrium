@@ -353,3 +353,18 @@ describe('terminalStore session state', () => {
     expect(useTerminalStore.getState().terminalStates.get('a')).toBe('idle');
   });
 });
+
+describe('createTerminal - initial prompt counts as a submission', () => {
+  it('marks a spawn-time prompt so the Review Queue sees a submitted turn', async () => {
+    const { getLastSubmissionAt, clearTerminalActivity } = await import('../lib/terminalActivity');
+    invokeMock.mockImplementation(async (cmd) => (cmd === 'create_terminal' ? makeConfig('spawned') : undefined));
+    clearTerminalActivity('spawned');
+    await useTerminalStore.getState().createTerminal('t', 'C:/tmp', [], {}, undefined, undefined, undefined, undefined, false,
+      undefined, 'claude', [], null, { initialPrompt: 'Fix the bug' });
+    expect(getLastSubmissionAt('spawned')).toEqual(expect.any(Number));
+    clearTerminalActivity('spawned');
+    await useTerminalStore.getState().createTerminal('t', 'C:/tmp', [], {}, undefined, undefined, undefined, undefined, false, undefined, 'claude');
+    expect(getLastSubmissionAt('spawned')).toBeUndefined();
+    invokeMock.mockImplementation(async () => undefined);
+  });
+});

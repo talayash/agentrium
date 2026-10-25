@@ -167,6 +167,9 @@ export interface TerminalInstance {
   // Plain interactive shell at a directory (no claude). Renders in the bottom
   // BottomTerminalPane, not the main tab bar / sidebar.
   isShellTerminal?: boolean;
+  // Exit code from the backend's terminal-finished event, when it reported
+  // one. Observed evidence for the Review Queue; absent while running.
+  exitCode?: number | null;
 }
 
 interface TerminalState {
@@ -227,7 +230,7 @@ interface TerminalState {
   setXterm: (id: string, xterm: Terminal | null) => void;
   stashTerminalBuffer: (id: string, data: string) => void;
   handleTerminalOutput: (id: string, data: Uint8Array) => void;
-  updateTerminalStatus: (id: string, status: TerminalConfig['status']) => void;
+  updateTerminalStatus: (id: string, status: TerminalConfig['status'], exitCode?: number | null) => void;
   setLoopMode: (id: string, info: LoopInfo | null) => void;
   setSessionSummary: (id: string, summary: string | null) => void;
   setSessionContext: (id: string, context: SessionContext) => void;
@@ -313,6 +316,9 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
         }
       }
 
+      // A prompt handed over at spawn is the user's first submission, so the
+      // Review Queue treats the turn it starts like one typed into the PTY.
+      if (options?.initialPrompt) markTerminalSubmission(config.id);
       set((state) => {
         const newTerminals = new Map(state.terminals);
         newTerminals.set(config.id, { config, xterm: null, restoredOutput, model, effort, isWorktree });
@@ -660,12 +666,13 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
     }
   },
 
-  updateTerminalStatus: (id, status) => {
+  updateTerminalStatus: (id, status, exitCode) => {
     set((state) => {
       const newTerminals = new Map(state.terminals);
       const instance = newTerminals.get(id);
       if (instance) {
-        newTerminals.set(id, { ...instance, config: { ...instance.config, status } });
+        const code = exitCode !== undefined ? exitCode : status === 'Running' ? undefined : instance.exitCode;
+        newTerminals.set(id, { ...instance, exitCode: code, config: { ...instance.config, status } });
       }
       return { terminals: newTerminals };
     });

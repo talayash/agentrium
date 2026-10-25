@@ -20,10 +20,13 @@ const BUFFER_TAIL_ROWS = 15;
 const SOUND_INTERVAL_MS = 4000;
 const COMPLETION_QUIET_MS = 1500;
 
-/** Read the bottom `rows` lines of xterm's already-parsed buffer as clean text. */
-function readBufferTail(term: Terminal, rows: number): string[] {
+/** Read the last `rows` non-blank-trailing lines of xterm's already-parsed
+ *  buffer as clean text. Trailing blank rows are skipped: on a fresh screen a
+ *  TUI draws its prompt in the top half and the bottom rows stay empty. */
+export function readBufferTail(term: Pick<Terminal, 'buffer'>, rows: number): string[] {
   const buf = term.buffer.active;
-  const end = buf.length;
+  let end = buf.length;
+  while (end > 0 && !buf.getLine(end - 1)?.translateToString(true).trim()) end--;
   const start = Math.max(0, end - rows);
   const out: string[] = [];
   for (let i = start; i < end; i++) {

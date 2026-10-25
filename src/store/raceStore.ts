@@ -6,7 +6,7 @@ import {
 } from '../lib/races';
 import { reportInvokeFailure } from '../lib/errorReporter';
 import { useTerminalStore, type TerminalInstance } from './terminalStore';
-import { useAttentionStore, type AttentionItem } from './attentionStore';
+import { channelOf, useAttentionStore, type AttentionItem } from './attentionStore';
 
 export interface CheckRun {
   runId: string;
@@ -182,7 +182,7 @@ export function terminalForContender(
 
 export function sessionAttentionFor(terminalId: string | undefined, items: AttentionItem[]): AttentionItem['kind'] | null {
   if (!terminalId) return null;
-  const item = items.find((i) => i.terminalId === terminalId && i.kind !== 'race' && i.kind !== 'ci' && i.kind !== 'merged');
+  const item = items.find((i) => i.terminalId === terminalId && channelOf(i.kind) === 'session');
   return item?.kind ?? null;
 }
 

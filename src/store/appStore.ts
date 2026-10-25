@@ -50,7 +50,8 @@ export interface FileTabState {
   // 'edit' → plain Monaco editor. 'diff' → Monaco DiffEditor showing HEAD vs working copy.
   // 'race' → not a file: the Race compare view for race `path` = race:<id>
   // (`content` holds the tab title). Never read from or written to disk.
-  mode: 'edit' | 'diff' | 'race';
+  // 'review' → not a file: the cross-session Review Queue (`path` = REVIEW_QUEUE_TAB).
+  mode: 'edit' | 'diff' | 'race' | 'review';
   // HEAD version, used as the "original" side in diff mode. Empty string for
   // new/untracked files. Always present so the user can toggle into diff mode.
   headContent: string;
@@ -58,6 +59,9 @@ export interface FileTabState {
   repoRoot: string | null;
   relativePath: string | null;
 }
+
+/** Path of the single Review Queue tab in `openFiles`. */
+export const REVIEW_QUEUE_TAB = 'review:queue';
 
 export interface EditorNavigationTarget {
   path: string;
@@ -443,6 +447,8 @@ interface AppState {
   setRaceCheckTimeoutMin: (minutes: number) => void;
   /** Open (or focus) the Race compare tab. */
   openRaceTab: (raceId: string, title: string) => void;
+  /** Open (or focus) the Review Queue tab. */
+  openReviewQueue: () => void;
   openDecideRace: (raceId: string, mode: 'decide' | 'abandon') => void;
   closeDecideRace: () => void;
   openFinishTask: (terminalId: string, closeAfter: boolean) => void;
@@ -951,6 +957,18 @@ export const useAppStore = create<AppState>()(
           openFiles: [...state.openFiles, {
             path, content: title, original: title, loading: false, saving: false, error: null,
             mode: 'race' as const, headContent: '', repoRoot: null, relativePath: null,
+          }],
+          activeFilePath: path,
+          gridMode: false,
+        };
+      }),
+      openReviewQueue: () => set((state) => {
+        const path = REVIEW_QUEUE_TAB;
+        if (state.openFiles.some((t) => t.path === path)) return { activeFilePath: path, gridMode: false };
+        return {
+          openFiles: [...state.openFiles, {
+            path, content: 'Review Queue', original: 'Review Queue', loading: false, saving: false, error: null,
+            mode: 'review' as const, headContent: '', repoRoot: null, relativePath: null,
           }],
           activeFilePath: path,
           gridMode: false,

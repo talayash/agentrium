@@ -246,3 +246,12 @@ describe('session state polling and notifications', () => {
     expect(useSessionAttentionStore.getState().pending.size).toBe(0);
   });
 });
+
+describe('readBufferTail', () => {
+  it('skips trailing blank rows so a prompt drawn high on a fresh screen is still read', async () => {
+    const { readBufferTail } = await import('./useSessionStateDetection');
+    const rows = ['Is this a project you created or one you trust?', '❯ No, exit', 'Enter to confirm · Esc to cancel', ...Array(20).fill('')];
+    const term = { buffer: { active: { length: rows.length, getLine: (i: number) => ({ translateToString: () => rows[i] }) } } };
+    expect(readBufferTail(term as never, 15).slice(-3)).toEqual(rows.slice(0, 3));
+  });
+});

@@ -16,6 +16,7 @@ import { useTerminalStore } from '../store/terminalStore';
 import { toast } from '../store/toastStore';
 import { UpdatePill } from './UpdatePill';
 import { WaitingPill } from './titlebar/WaitingPill';
+import { ReviewQueuePill } from './titlebar/ReviewQueuePill';
 import { TrafficLights, CaptionButtons, isMac } from './titlebar/WindowControls';
 import { HeaderAuth } from './HeaderAuth';
 import { SyncStatusChip } from './SyncStatusChip';
@@ -314,6 +315,8 @@ export function TitleBar() {
 
       {/* Trailing: tools capsule, caption buttons. */}
       <div className="flex items-center gap-1.5 no-drag flex-shrink-0">
+        {/* Only shows when the Review Queue has unreviewed items. */}
+        <ReviewQueuePill />
         <UpdatePill />
 
         <div className="glass-capsule h-8 px-0.5">

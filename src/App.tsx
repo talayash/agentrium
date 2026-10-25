@@ -76,6 +76,7 @@ import { InputContextMenu } from './components/InputContextMenu';
 import { useNotification } from './hooks/useNotification';
 import { useSessionStateDetection } from './hooks/useSessionStateDetection';
 import { useAttentionInbox } from './hooks/useAttentionInbox';
+import { useTaskReviewPoller } from './hooks/useTaskReviewPoller';
 import { usePullRequestPoller } from './hooks/usePullRequestPoller';
 import {
   applyAccentColor,
@@ -204,6 +205,8 @@ function App() {
   // Races: load history, track contender states, raise "ready to compare".
   useEffect(subscribeRaceTracking, []);
   usePullRequestPoller();
+  // Review Queue: raise "Ready to merge" from observed task worktrees.
+  useTaskReviewPoller();
 
   // v1.22.0 - apply theme/density/accent/motion/scale on store change.
   const themeMode = useAppStore((s) => s.themeMode);
@@ -761,7 +764,7 @@ function App() {
       const failed = event.payload.exit_code != null && event.payload.exit_code !== 0;
       const message = failed ? `"${label}" exited with code ${event.payload.exit_code}.` : `"${label}" has finished running.`;
 
-      updateTerminalStatus(id, failed ? 'Error' : 'Stopped');
+      updateTerminalStatus(id, failed ? 'Error' : 'Stopped', event.payload.exit_code ?? null);
       triggerChangesRefresh();
 
       // Notifications + summarization are owned by the main window so torn-off
