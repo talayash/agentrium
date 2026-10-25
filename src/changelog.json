@@ -1,5 +1,24 @@
 [
   {
+    "version": "1.41.5",
+    "date": "2026-10-25",
+    "features": [
+      { "title": "Fix bugs & performance" },
+      {
+        "title": "Resizable sidebar",
+        "description": "Drag the sidebar edge to set its width."
+      },
+      {
+        "title": "Confirm before closing a session",
+        "description": "Closing a session now asks first, so you do not lose a running agent by accident."
+      },
+      {
+        "title": "Restyled branch switcher menu",
+        "description": "The branch switcher now matches the rest of the app popovers."
+      }
+    ]
+  },
+  {
     "version": "1.41.4",
     "date": "2026-10-21",
     "features": [
