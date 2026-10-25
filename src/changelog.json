@@ -605,7 +605,7 @@
     "version": "1.20.5",
     "date": "2026-04-26",
     "features": [
-      { "title": "Global file & content search (Ctrl+Shift+F)", "description": "VS Code–style search modal that scans filenames and file contents across the workspace, skips .git / node_modules / target / dist / etc., binary-sniffs files, debounces input, and groups matches by file with line/column previews. Arrow keys navigate, Enter opens the file. Terminal-internal search moved to Ctrl+F so the two no longer collide." },
+      { "title": "Global file & content search (Ctrl+Shift+F)", "description": "VS Code-style search modal that scans filenames and file contents across the workspace, skips .git / node_modules / target / dist / etc., binary-sniffs files, debounces input, and groups matches by file with line/column previews. Arrow keys navigate, Enter opens the file. Terminal-internal search moved to Ctrl+F so the two no longer collide." },
       { "title": "One-click pull from origin", "description": "New Pull button in the File Changes header pulls the upstream branch (or origin/<current-branch> as fallback) into the current branch with merge strategy." },
       { "title": "Resizable Repositories ↕ Changes split", "description": "Drag the splitter between the Repositories list and the Changes content inside the File Changes panel - ratio persists across restarts." },
       { "title": "Open a plain shell at any pinned repo", "description": "Each scanned/pinned repo row gets a terminal-icon button that opens an interactive shell (no Claude) at that repo's path. Shells live in a new tabbed BottomTerminalPane with drag-to-resize handle, +/x per tab, and a collapse toggle. Backed by a new create_shell_terminal Rust command (cmd.exe on Windows, $SHELL -li on Unix)." },
@@ -616,7 +616,7 @@
     "version": "1.20.4",
     "date": "2026-04-23",
     "features": [
-      { "title": "File Explorer in the sidebar", "description": "VS Code–style file tree rooted at the active terminal's folder (or the pinned repo in File Changes); drag the horizontal splitter between the terminal list and the Explorer to resize" },
+      { "title": "File Explorer in the sidebar", "description": "VS Code-style file tree rooted at the active terminal's folder (or the pinned repo in File Changes); drag the horizontal splitter between the terminal list and the Explorer to resize" },
       { "title": "Inline Monaco editor tabs", "description": "Click a file in the Explorer or the pencil in File Changes to open it as a tab next to the terminals; per-path models preserve cursor, selection, and undo when switching" },
       { "title": "Diff view from File Changes", "description": "Opening a changed file shows a side-by-side HEAD vs working-copy diff; toolbar toggle flips between Diff and Edit modes" },
       { "title": "Discard changes per file", "description": "Trash icon on each changed file reverts tracked files to HEAD or deletes untracked files (with confirmation); auto-closes the editor tab" },
