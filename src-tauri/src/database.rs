@@ -275,6 +275,14 @@ impl Database {
         // shape in Rust. `agent` stores the agent kind as a lowercase string;
         // the NOT NULL DEFAULT 'claude' ensures existing rows get a valid value.
         for column in [
+            // v1.0 columns. Every build creates them, but a field install had
+            // a `profiles` table without them, which broke every profile read.
+            // ADD COLUMN NOT NULL needs a default, so use the empty JSON values
+            // the loader already treats as "no args" / "no env vars".
+            "description TEXT",
+            "claude_args TEXT NOT NULL DEFAULT '[]'",
+            "env_vars TEXT NOT NULL DEFAULT '{}'",
+            "is_default INTEGER DEFAULT 0",
             "preview_json TEXT",
             "agent TEXT NOT NULL DEFAULT 'claude'",
             // Per-agent args (multi-agent profiles). Nullable JSON so a row
@@ -1994,6 +2002,27 @@ impl Database {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn init_schema_repairs_profiles_table_missing_legacy_columns() {
+        // Field report: an install whose `profiles` table lacked `claude_args`
+        // failed every get_profiles call with "no such column".
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE profiles (id TEXT PRIMARY KEY, name TEXT NOT NULL,
+                                    description TEXT, working_directory TEXT NOT NULL);
+             INSERT INTO profiles (id, name, working_directory) VALUES ('p', 'Old', '/p');",
+        )
+        .unwrap();
+        super::Database::init_schema(&conn).unwrap();
+        let db = super::Database { conn };
+        let profiles = db.get_profiles().unwrap();
+        assert_eq!(profiles.len(), 1);
+        assert_eq!(profiles[0].name, "Old");
+        assert!(profiles[0].claude_args.is_empty());
+        assert!(profiles[0].env_vars.is_empty());
+        assert!(!profiles[0].is_default);
+    }
+
     #[test]
     fn stale_push_ack_preserves_requeued_edit_and_delete() {
         let db = super::Database::new_in_memory().unwrap();
