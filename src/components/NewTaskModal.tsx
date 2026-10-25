@@ -142,7 +142,7 @@ export function NewTaskModal() {
   };
 
   return (
-    <Modal title="New Task" showHeader onClose={() => { if (!busy) close(); }} panelClassName="w-full max-w-lg">
+    <Modal title="New Task" showHeader closeOn="doubleClick" onClose={() => { if (!busy) close(); }} panelClassName="w-full max-w-lg">
       <form
         className="p-4 flex flex-col gap-3.5"
         onSubmit={(e) => { e.preventDefault(); if (canSubmit) void submit(); }}
