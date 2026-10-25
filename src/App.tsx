@@ -22,6 +22,7 @@ import { NewRaceModal } from './components/NewRaceModal';
 import { RaceDecideDialog } from './components/RaceDecideDialog';
 import { subscribeRaceTracking } from './store/raceStore';
 import { FinishTaskDialog } from './components/FinishTaskDialog';
+import { CloseSessionConfirm } from './components/CloseSessionConfirm';
 import { PushModal } from './components/PushModal';
 import { CreatePullRequestModal } from './components/CreatePullRequestModal';
 import { CiRepairModal } from './components/CiRepairModal';
@@ -1211,6 +1212,7 @@ function App() {
       <PreviewInlineHint />
       <InputContextMenu />
       {!isDetached && <QuitDialog />}
+      <CloseSessionConfirm />
       <ToastContainer />
     </div>
   );

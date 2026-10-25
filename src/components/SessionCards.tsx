@@ -17,7 +17,7 @@ import { resolveRenameCommit } from '../lib/renameTab';
 import { contextTooltip, refreshSessionContext, sessionDisplayName } from '../lib/sessionContext';
 import { HandoffModal } from './HandoffModal';
 import { TaskBadge } from './TaskBadge';
-import { requestCloseTerminal } from '../lib/tasks';
+import { closeWithConfirm } from '../lib/closeConfirm';
 import { usePrStore } from '../store/prStore';
 import { openCreatePrForTerminal, openPullRequestUrl, sendFailingChecksToAgent, terminalPrTarget } from '../lib/pullRequestActions';
 import { PrChip } from './PrChip';
@@ -135,11 +135,12 @@ export function SessionCards() {
     };
   }, [contextMenu]);
 
-  // Single closes go through requestCloseTerminal so task sessions get the
-  // finish dialog. Bulk closes skip it: one dialog per session would be
-  // unusable, and their worktrees stay listed in Settings > Git.
-  const closeWithReport = (id: string) => {
-    requestCloseTerminal(id).catch((err) => {
+  // Single closes go through closeWithConfirm: a "Close this session?"
+  // popover anchored to the control, or the finish dialog for task sessions.
+  // Bulk closes skip both: one dialog per session would be unusable, and
+  // their worktrees stay listed in Settings > Git.
+  const closeWithReport = (id: string, anchor?: Element | null) => {
+    closeWithConfirm(id, anchor).catch((err) => {
       toast.error('Close failed', 'Could not close the session.');
       reportInvokeFailure('close_terminal', err);
     });
@@ -281,11 +282,12 @@ export function SessionCards() {
             }}
             onAuxClick={(e) => {
               // Middle-click closes - parity with the old tab strip.
-              if (e.button === 1) { e.preventDefault(); closeWithReport(id); }
+              if (e.button === 1) { e.preventDefault(); closeWithReport(id, e.currentTarget); }
             }}
             onContextMenu={(e) => openContextMenu(e, id)}
             data-attention={needsAttention ? (terminalStates.get(id) === 'waiting' ? 'input' : 'ready') : undefined}
             data-selected={active || undefined}
+            data-session-card={id}
             className={`group relative rounded-xl px-3 py-2.5 cursor-pointer transition-[background-color,box-shadow] duration-100 ${needsAttention ? 'session-needs-attention' : ''} ${
               active
                 ? 'bg-accent-primary/18 border border-[var(--ij-stripe)]'
@@ -370,7 +372,7 @@ export function SessionCards() {
                 </Tooltip>
                 <Tooltip label="Close session">
                   <button
-                    onClick={(e) => { e.stopPropagation(); closeWithReport(id); }}
+                    onClick={(e) => { e.stopPropagation(); closeWithReport(id, e.currentTarget); }}
                     aria-label={`Close ${name}`}
                     className="w-[18px] h-[18px] rounded-md flex items-center justify-center text-text-tertiary hover:bg-fill-active hover:text-error transition-colors"
                   >
@@ -504,7 +506,10 @@ export function SessionCards() {
           <CardMenuItem
             icon={<X size={13} strokeWidth={1.75} />}
             label="Close"
-            onClick={() => { setContextMenu(null); closeWithReport(ctxId); }}
+            onClick={() => {
+              setContextMenu(null);
+              closeWithReport(ctxId, document.querySelector(`[data-session-card="${CSS.escape(ctxId)}"]`));
+            }}
           />
           <CardMenuItem
             icon={<X size={13} strokeWidth={1.75} />}

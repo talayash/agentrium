@@ -3,7 +3,7 @@ import { PageHeader, PageSection, SettingRow, Toggle, Segmented } from '../Setti
 import { registerSetting } from '../index';
 
 const cat = { group: 'terminal', page: 'behavior' } as const;
-['shell-override', 'copy-on-select', 'paste-shortcut', 'prompt-editor-shortcut'].forEach((id) =>
+['shell-override', 'copy-on-select', 'paste-shortcut', 'prompt-editor-shortcut', 'confirm-close-session'].forEach((id) =>
   registerSetting({ category: cat, id, label: id.replace(/-/g, ' '), keywords: ['terminal', 'shell', 'prompt', 'editor', id] })
 );
 
@@ -12,9 +12,10 @@ export default function TerminalBehaviorPage() {
   const terminalCopyOnSelect = useAppStore((s) => s.terminalCopyOnSelect);
   const terminalPasteShortcut = useAppStore((s) => s.terminalPasteShortcut);
   const promptEditorShortcutEnabled = useAppStore((s) => s.promptEditorShortcutEnabled);
+  const confirmCloseSession = useAppStore((s) => s.confirmCloseSession);
   const {
     setTerminalShellPathOverride, setTerminalCopyOnSelect, setTerminalPasteShortcut,
-    setPromptEditorShortcutEnabled,
+    setPromptEditorShortcutEnabled, setConfirmCloseSession,
   } = useAppStore.getState();
 
   return (
@@ -33,6 +34,15 @@ export default function TerminalBehaviorPage() {
             onChange={(e) => setTerminalShellPathOverride(e.target.value)}
             className="w-72 bg-elevation-0 text-text-primary text-[12px] px-2 py-1 rounded ring-1 ring-border-light font-mono"
           />
+        </SettingRow>
+      </PageSection>
+
+      <PageSection title="Sessions">
+        <SettingRow
+          label="Confirm before closing a session"
+          description="Ask before the close button, middle-click or Ctrl+W closes a session. Task sessions always open the finish dialog."
+        >
+          <Toggle value={confirmCloseSession} onChange={setConfirmCloseSession} />
         </SettingRow>
       </PageSection>
 
