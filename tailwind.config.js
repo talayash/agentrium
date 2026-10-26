@@ -24,6 +24,9 @@ export default {
         // utilities used to emit no CSS at all.
         'accent-primary': 'color-mix(in srgb, var(--accent-primary) calc(<alpha-value> * 100%), transparent)',
         'accent-secondary': 'color-mix(in srgb, var(--accent-secondary) calc(<alpha-value> * 100%), transparent)',
+        // Warm ambient counter-light (orange). Glows/reflections only, never a
+        // status or control fill - that's --warning's job.
+        'accent-warm': 'color-mix(in srgb, var(--accent-warm) calc(<alpha-value> * 100%), transparent)',
         // Borders / seams - translucent separation, not opaque lines. The
         // legacy `border` alias now points at the seam hairline: the old
         // opaque --ij-divider line is retired everywhere at once.
@@ -71,6 +74,7 @@ export default {
         // glow follows the user's chosen accent instead of hardcoded blue.
         'glow-sm': '0 0 8px var(--accent-glow-sm)',
         'glow-md': '0 0 16px var(--accent-glow-md)',
+        'glow-warm': '0 0 16px var(--accent-warm-glow)',
         // Layered ambient+key shadows - surfaces float, they don't outline.
         // elevation-3/4 read the theme-aware float tokens (light overrides in
         // applyThemeMode) so shadows soften over a light canvas.
