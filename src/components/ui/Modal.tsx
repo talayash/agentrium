@@ -137,7 +137,7 @@ export function Modal({
     <motion.div
       {...overlayMotion}
       ref={scrimRef}
-      className={`fixed inset-0 flex items-center justify-center backdrop-blur-[3px] ${scrimClassName}`}
+      className={`fixed inset-0 flex items-center justify-center backdrop-blur-[6px] ${scrimClassName}`}
       onClick={onScrimClick}
       onDoubleClick={onScrimDoubleClick}
     >
