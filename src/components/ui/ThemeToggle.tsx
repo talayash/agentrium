@@ -7,8 +7,8 @@ import { Tooltip } from './Tooltip';
 import { SPRING_DRAWER } from '../../lib/motionTokens';
 
 /**
- * Sun/Moon theme switch. A colored pill (warm sky in light, indigo night in
- * dark) with a white knob that springs across, carrying the active icon.
+ * Sun/Moon theme switch. A colored pill (warm sky in light, accent-tinted
+ * night glass in dark, so it follows the app palette) with a white knob that springs across, carrying the active icon.
  * Flips between explicit light/dark; if the user was on 'auto' it resolves
  * the current appearance first, then flips to the opposite explicit mode.
  */
@@ -33,7 +33,7 @@ export function ThemeToggle() {
         onClick={() => setThemeMode(isDark ? 'light' : 'dark')}
         className={`no-drag relative w-[48px] h-[26px] rounded-full p-[3px] flex items-center ring-1 ring-inset transition-colors duration-300 active:scale-[0.96] ${
           isDark
-            ? 'bg-gradient-to-r from-indigo-600/60 to-violet-500/55 ring-seam-strong'
+            ? 'bg-gradient-to-r from-accent-primary/45 to-accent-primary/20 ring-accent-primary/40'
             : 'bg-gradient-to-r from-amber-200 to-sky-300 ring-black/[0.06]'
         }`}
       >
@@ -43,7 +43,7 @@ export function ThemeToggle() {
           className="relative z-10 w-[20px] h-[20px] rounded-full bg-white shadow-[0_1px_3px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.9)] flex items-center justify-center"
         >
           {isDark
-            ? <Moon size={12} strokeWidth={2} className="text-indigo-500 fill-indigo-500/25" />
+            ? <Moon size={12} strokeWidth={2} className="text-accent-primary fill-accent-primary/25" />
             : <Sun size={12} strokeWidth={2.25} className="text-amber-500" />}
         </motion.span>
       </button>

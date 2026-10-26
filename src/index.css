@@ -383,13 +383,20 @@
   --radius-card: calc(var(--radius-window) - var(--inset-window));
   --h-toolbar: 44px; /* floating-toolbar zone at the top of each card */
   --material-lens-bg: rgba(20, 24, 46, 0.52);
-  --material-capsule-bg: rgba(255, 255, 255, 0.07);
+  /* Blue-tinted, not neutral white: capsules belong to the same glass family
+     as the sidebar lens and the pop-ups instead of reading as gray blobs
+     floating over the content card. */
+  --material-capsule-bg: rgba(46, 64, 116, 0.34);
+  /* Soft lift, no hard outline or black drop: the capsule should sit in the
+     card's toolbar band, not punch a hole in it. */
+  --capsule-shadow: 0 4px 16px -6px rgba(2, 8, 32, 0.45);
   /* Specular hot-spot: light source fixed top-left, like real glass. */
   --glass-hotspot: radial-gradient(120% 45% at 18% 0%, rgba(255, 255, 255, 0.09), transparent 60%);
 }
 :root[data-theme="light"] {
   --material-lens-bg: rgba(255, 255, 255, 0.58);
-  --material-capsule-bg: rgba(255, 255, 255, 0.70);
+  --material-capsule-bg: rgba(255, 255, 255, 0.62);
+  --capsule-shadow: 0 4px 16px -6px rgba(40, 70, 140, 0.22);
   --glass-hotspot: radial-gradient(120% 45% at 18% 0%, rgba(255, 255, 255, 0.55), transparent 60%);
 }
 /* Sidebar / Inspector glass slab. Owns only the inset optics; the drop
@@ -422,10 +429,10 @@
   z-index: -1;
   border-radius: inherit;
   pointer-events: none;
-  background: var(--glass-hotspot), var(--glass-layers), var(--material-capsule-bg);
+  background: var(--glass-hotspot), var(--glass-layers), var(--glass-wash), var(--material-capsule-bg);
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
-  box-shadow: var(--glass-edges), 0 0 0 1px var(--seam), var(--shadow-float-sm);
+  box-shadow: var(--glass-edges-float), var(--capsule-shadow);
 }
 /* --- Primary buttons: liquid accent glass --------------------------------
    Every primary action is a clear glass pill tinted with the user's accent
@@ -443,6 +450,7 @@
   --btn-bottom-hover: color-mix(in srgb, var(--accent-primary) 32%, transparent);
   --btn-text: color-mix(in srgb, var(--accent-primary) 12%, #ffffff);
   --btn-fill: linear-gradient(180deg, var(--btn-top), var(--btn-bottom));
+  --btn-base: linear-gradient(var(--elevation-1), var(--elevation-1));
   --btn-fill-hover: linear-gradient(180deg, var(--btn-top-hover), var(--btn-bottom-hover));
   /* Glossy upper lens: a faint bright cap over the top half, like light on wet glass. */
   --btn-gloss: linear-gradient(180deg, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.05) 48%, rgba(255, 255, 255, 0) 52%);
@@ -482,8 +490,6 @@ button.bg-accent-primary.text-white {
   background-size: 250% 100%, 100% 100%, 100% 100%;
   background-position: 130% 0, 0 0, 0 0;
   background-repeat: no-repeat;
-  backdrop-filter: blur(12px) saturate(160%);
-  -webkit-backdrop-filter: blur(12px) saturate(160%);
   box-shadow: var(--btn-edges), var(--btn-bloom);
   /* Soft corners; the browser clamps this to a pill on short buttons. */
   border-radius: var(--radius-lg);
@@ -499,7 +505,13 @@ button.bg-accent-primary.text-white:disabled { box-shadow: var(--btn-edges); }
 /* The one prominent action in a group (sidebar New Session): same liquid accent glass. */
 .glass-capsule-accent { color: var(--btn-text); }
 .glass-capsule-accent::before {
-  background: var(--btn-gloss), var(--btn-fill);
+  /* Tint over a solid base, no backdrop blur: sampling the sidebar lens
+     (itself a backdrop root) through a translucent pill showed a hard
+     vertical band. The base is the surface the pill sits on, so it still
+     reads as clear glass. */
+  background: var(--btn-gloss), var(--btn-fill), var(--btn-base);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   box-shadow: var(--btn-edges), var(--btn-bloom);
 }
 @media (prefers-reduced-transparency: reduce) {
@@ -517,8 +529,16 @@ button.bg-accent-primary.text-white:disabled { box-shadow: var(--btn-edges); }
   }
 }
 /* Scroll-edge effect: content softly fades out under the floating toolbar
-   instead of meeting a hard divider line. */
-.toolbar-edge { position: relative; }
+   instead of meeting a hard divider line. The band itself carries a faint
+   accent light from the top, the same blue the sidebar lens and capsules
+   catch, so the glass controls, the card and the sidebar read as one
+   connected surface rather than capsules pasted onto a flat card. */
+.toolbar-edge {
+  position: relative;
+  background:
+    var(--glass-hotspot),
+    linear-gradient(180deg, color-mix(in srgb, var(--accent-primary) 9%, var(--elevation-0)) 0%, var(--elevation-0) 100%);
+}
 .toolbar-edge::after {
   content: '';
   position: absolute;
@@ -1013,16 +1033,45 @@ h2, h3 { letter-spacing: var(--track-title); line-height: 1.3; }
   animation: session-attention-pulse 1.4s ease-in-out infinite;
 }
 
+/* Selected session card: a lit glass pane, not a hard outline. The
+   bg-accent-primary/18 tint stays (selectedCardBackground() models it for the
+   stripe contrast); this adds a soft top-down light, a translucent accent rim
+   and a faint accent bloom, matching the primary buttons' glass. */
+.session-card-selected {
+  /* Long, gentle falloff (no visible band) and a rim that is mostly light,
+     not line: smooth liquid glass rather than an outlined box. */
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.025) 45%, rgba(255, 255, 255, 0) 100%);
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.12),
+    inset 0 0 0 1px color-mix(in srgb, var(--accent-primary) 28%, transparent),
+    inset 0 -6px 12px -10px color-mix(in srgb, var(--accent-primary) 45%, transparent),
+    0 6px 20px -10px var(--accent-glow-md);
+}
+:root[data-theme="light"] .session-card-selected {
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.6) 0%, rgba(255, 255, 255, 0.2) 45%, rgba(255, 255, 255, 0) 100%);
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.9),
+    inset 0 0 0 1px color-mix(in srgb, var(--accent-primary) 24%, transparent),
+    inset 0 -6px 12px -10px color-mix(in srgb, var(--accent-primary) 35%, transparent),
+    0 6px 20px -10px var(--accent-glow-md);
+}
+@media (prefers-contrast: more) {
+  .session-card-selected { box-shadow: inset 0 0 0 1px var(--ij-stripe); }
+}
+
 /* Selection = left stripe + tint, attention = full outline. Different shapes
    so a selected card never reads as an alert; selection never animates. */
 .session-selected-stripe {
+  /* A soft floating pill inside the curved card rather than a hard edge
+     line, so it follows the 18px corners instead of cutting across them. */
   position: absolute;
-  left: 0;
-  top: 6px;
-  bottom: 6px;
-  width: 2px;
-  border-radius: 0 2px 2px 0;
+  left: 4px;
+  top: 12px;
+  bottom: 12px;
+  width: 3px;
+  border-radius: 9999px;
   background: var(--ij-stripe); /* contrast-adjusted per theme by applyAccentColor */
+  box-shadow: 0 0 6px color-mix(in srgb, var(--ij-stripe) 55%, transparent);
   pointer-events: none;
 }
 

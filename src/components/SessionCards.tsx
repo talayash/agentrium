@@ -288,9 +288,9 @@ export function SessionCards() {
             data-attention={needsAttention ? (terminalStates.get(id) === 'waiting' ? 'input' : 'ready') : undefined}
             data-selected={active || undefined}
             data-session-card={id}
-            className={`group relative rounded-xl px-3 py-2.5 cursor-pointer transition-[background-color,box-shadow] duration-100 ${needsAttention ? 'session-needs-attention' : ''} ${
+            className={`group relative rounded-[18px] px-3 py-2.5 cursor-pointer transition-[background-color,box-shadow] duration-200 ease-out ${needsAttention ? 'session-needs-attention' : ''} ${
               active
-                ? 'bg-accent-primary/18 border border-[var(--ij-stripe)]'
+                ? 'bg-accent-primary/18 session-card-selected'
                 : 'ring-1 bg-fill-hover ring-seam hover:bg-fill-active'
             }`}
           >
