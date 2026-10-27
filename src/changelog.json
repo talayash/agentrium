@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.41.6",
+    "date": "2026-10-27",
+    "features": [
+      { "title": "Fix bugs & performance" },
+      {
+        "title": "Refreshed glass look",
+        "description": "Pop-ups, menus and dialogs get a subtle frosted glass finish, a soft blue and orange ambience, and glossier buttons."
+      }
+    ]
+  },
+  {
     "version": "1.41.5",
     "date": "2026-10-25",
     "features": [
