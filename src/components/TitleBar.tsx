@@ -8,11 +8,13 @@ import {
   Search as SearchIcon,
   Upload,
   PanelRight,
+  Globe,
 } from 'lucide-react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
+import { useBrowserStore } from '../store/browserStore';
 import { toast } from '../store/toastStore';
 import { UpdatePill } from './UpdatePill';
 import { WaitingPill } from './titlebar/WaitingPill';
@@ -48,6 +50,8 @@ export function TitleBar() {
   const learnEnabled = useAppStore((s) => s.learnEnabled);
   const toggleLearn = useAppStore((s) => s.toggleLearn);
   const inspectorOpen = changesOpen || workspacesOpen || hintsOpen || (learnOpen && learnEnabled);
+  const browserOpen = useBrowserStore((s) => s.open);
+  const toggleBrowser = useBrowserStore((s) => s.toggleOpen);
   const toggleInspector = () => {
     if (changesOpen) toggleChanges();
     else if (workspacesOpen) toggleWorkspaces();
@@ -319,6 +323,16 @@ export function TitleBar() {
         <div className="glass-capsule h-8 px-0.5">
           {/* ONE inspector toggle - the Changes/Agents/Commands switcher
               lives inside the Inspector itself. Reopens on the Changes tab. */}
+          <Tooltip label={browserOpen ? 'Close browser' : 'Open browser'}>
+            <button
+              onClick={toggleBrowser}
+              aria-label={browserOpen ? 'Close browser' : 'Open browser'}
+              aria-pressed={browserOpen}
+              className={toolBtn(browserOpen)}
+            >
+              <Globe size={15} strokeWidth={1.9} />
+            </button>
+          </Tooltip>
           <Tooltip label={inspectorOpen ? 'Close Inspector' : 'Open Inspector'}>
             <button onClick={toggleInspector} className={toolBtn(inspectorOpen)}>
               <PanelRight size={15} strokeWidth={1.9} />

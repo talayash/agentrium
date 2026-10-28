@@ -38,6 +38,7 @@ import { WhatsNewModal } from './components/WhatsNewModal';
 import { LoginModal } from './components/LoginModal';
 import { ClaudeConfigModal } from './components/ClaudeConfigModal';
 import { PreviewPanel } from './components/PreviewPanel';
+import { BrowserWorkspace } from './components/browser/BrowserWorkspace';
 import { PreviewInlineHint } from './components/PreviewInlineHint';
 import { GlobalSearchModal } from './components/GlobalSearchModal';
 import { SessionTimeline } from './components/SessionTimeline';
@@ -1114,9 +1115,9 @@ function App() {
                 {/* Reserved toolbar zone; the floating capsules sit on it and
                     content fades out beneath it (scroll-edge effect). */}
                 <div className="toolbar-edge h-[var(--h-toolbar)] flex-shrink-0" aria-hidden />
-                <div className="flex-1 min-h-0">
+                <BrowserWorkspace>
                   <TerminalTabs />
-                </div>
+                </BrowserWorkspace>
               </main>
 
               {/* One contextual inspector replaces the four separate right panels. */}
