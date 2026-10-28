@@ -230,7 +230,7 @@ function Toolbar({ tab }: { tab: BrowserTab | undefined }) {
           spellCheck={false}
           autoComplete="off"
           placeholder="Type a URL or search…"
-          className="flex-1 min-w-0 bg-transparent outline-none text-[12.5px] text-text-primary placeholder:text-text-tertiary"
+          className="flex-1 min-w-0 bg-transparent outline-none focus-visible:outline-none text-[12.5px] text-text-primary placeholder:text-text-tertiary"
         />
       </label>
 
