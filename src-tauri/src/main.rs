@@ -29,6 +29,7 @@ mod sync_privacy;
 mod tasks;
 mod races;
 mod pull_requests;
+mod browser;
 
 use tauri::Manager;
 use std::sync::Arc;
@@ -241,6 +242,13 @@ fn main() {
             commands::check_system_requirements,
             commands::install_claude_code,
             commands::open_external_url,
+            browser::browser_navigate,
+            browser::browser_back,
+            browser::browser_forward,
+            browser::browser_reload,
+            browser::browser_set_bounds,
+            browser::browser_set_visible,
+            browser::browser_close,
             commands::send_feedback,
             commands::open_feedback_inbox,
             commands::reveal_in_file_manager,

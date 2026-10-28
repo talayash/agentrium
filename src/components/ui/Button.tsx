@@ -2,7 +2,7 @@ import { forwardRef } from 'react';
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
 import { Loader2 } from 'lucide-react';
 
-export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'success';
+export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'destructive' | 'success';
 export type ButtonSize = 'sm' | 'md';
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -23,6 +23,9 @@ const VARIANTS: Record<ButtonVariant, string> = {
     'bg-elevation-2 ring-1 ring-border-light text-text-secondary hover:text-text-primary hover:bg-elevation-3',
   ghost: 'text-text-secondary hover:text-text-primary hover:bg-fill-hover',
   danger: 'text-error hover:bg-error/10',
+  // Solid red for an irreversible confirm (Quit). Not bg-accent-primary, so
+  // the accent glass skin in index.css doesn't tint it.
+  destructive: 'bg-error hover:bg-error/85 text-white',
   success: 'bg-success hover:bg-success/90 text-white',
 };
 

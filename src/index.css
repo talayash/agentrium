@@ -1015,14 +1015,13 @@ h2, h3 { letter-spacing: var(--track-title); line-height: 1.3; }
 
 /* Selection = left stripe + tint, attention = full outline. Different shapes
    so a selected card never reads as an alert; selection never animates. */
+/* A left border on a layer that matches the card's border box, so the stripe
+   follows the rounded corners and tapers into them instead of a straight bar. */
 .session-selected-stripe {
   position: absolute;
-  left: 0;
-  top: 6px;
-  bottom: 6px;
-  width: 2px;
-  border-radius: 0 2px 2px 0;
-  background: var(--ij-stripe); /* contrast-adjusted per theme by applyAccentColor */
+  inset: -1px; /* over the card's 1px border */
+  border-radius: inherit;
+  border-left: 4px solid var(--ij-stripe); /* contrast-adjusted per theme by applyAccentColor */
   pointer-events: none;
 }
 

@@ -55,12 +55,7 @@ export function QuitDialog() {
               <Button variant="secondary" size="sm" className="flex-1" onClick={cancel}>
                 Cancel
               </Button>
-              <Button
-                variant="primary"
-                size="sm"
-                className="flex-1 !bg-[#E04545] hover:!bg-[#C93B3B]"
-                onClick={quit}
-              >
+              <Button variant="destructive" size="sm" className="flex-1" onClick={quit}>
                 Quit
               </Button>
             </div>

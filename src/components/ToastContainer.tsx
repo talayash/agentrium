@@ -155,6 +155,7 @@ export function ToastContainer() {
   return (
     <div
       data-testid="notification-region"
+      data-browser-overlay-ignore
       className="pointer-events-none fixed bottom-8 right-3 z-[100000] flex flex-col items-end gap-2.5"
     >
       {/* Controls sit ABOVE the stack - below it is the window edge. */}
