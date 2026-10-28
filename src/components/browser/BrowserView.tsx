@@ -82,15 +82,23 @@ function TabStrip() {
   const addTab = useBrowserStore((s) => s.addTab);
 
   return (
-    <div className="flex items-center gap-0.5 h-[34px] px-2 shrink-0 overflow-hidden" role="tablist" aria-label="Browser tabs">
+    <div
+      className="relative flex items-center gap-0.5 h-[38px] px-2 pt-1.5 shrink-0 overflow-hidden border-t border-seam-strong"
+      role="tablist"
+      aria-label="Browser tabs"
+    >
+      {/* Strip's bottom edge; the active tab paints over it so it joins the toolbar. */}
+      <div className="absolute inset-x-0 bottom-0 h-px bg-seam" aria-hidden />
       {tabs.map((t) => {
         const active = t.id === activeTabId;
         const label = tabLabel(t);
         return (
           <div
             key={t.id}
-            className={`group flex items-center gap-1.5 h-7 pl-2.5 pr-1 rounded-lg min-w-[72px] flex-[0_1_190px] ${
-              active ? 'bg-elevation-2 text-text-primary' : 'text-text-secondary hover:bg-fill-hover'
+            className={`group relative self-end flex items-center gap-1.5 pl-2.5 pr-1 min-w-[72px] flex-[0_1_190px] ${
+              active
+                ? 'h-8 rounded-t-lg bg-elevation-2 text-text-primary border-x border-t border-seam'
+                : 'h-7 mb-0.5 rounded-lg text-text-secondary hover:bg-fill-hover'
             }`}
           >
             {t.loading ? (
@@ -176,7 +184,7 @@ function Toolbar({ tab }: { tab: BrowserTab | undefined }) {
   };
 
   return (
-    <div className="relative flex items-center gap-1 h-10 px-2 bg-elevation-2 border-t border-seam shrink-0">
+    <div className="relative flex items-center gap-1 h-10 px-2 bg-elevation-2 shrink-0">
       <Tooltip label="Back">
         <button
           type="button"
