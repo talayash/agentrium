@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.41.7",
+    "date": "2026-10-29",
+    "features": [
+      { "title": "Fix bugs & performance" },
+      {
+        "title": "Built-in browser",
+        "description": "Browse the web inside Agentrium with tabs, bookmarks and history, and split it beside a terminal."
+      }
+    ]
+  },
+  {
     "version": "1.41.6",
     "date": "2026-10-27",
     "features": [
