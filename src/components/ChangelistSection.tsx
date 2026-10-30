@@ -30,6 +30,10 @@ import { useAppStore } from '../store/appStore';
 import { toast } from '../store/toastStore';
 import { getFileIconUrl } from '../utils/fileIcons';
 import { InlineDiffView } from './InlineDiffView';
+import { Button } from './ui/Button';
+import { useReviewStore } from '../store/reviewStore';
+import { buildReviewBrief } from '../lib/review';
+import { stageForAgent } from '../lib/agentContext';
 
 export interface MergedChange {
   path: string;
@@ -156,6 +160,9 @@ export function ChangelistSection({
   const triggerChangesRefresh = useAppStore((s) => s.triggerChangesRefresh);
   const openDiffTab = useAppStore((s) => s.openDiffTab);
   const closeFileTab = useAppStore((s) => s.closeFileTab);
+  const allReviewComments = useReviewStore((s) => s.comments);
+  const clearReview = useReviewStore((s) => s.clearFor);
+  const reviewComments = terminalId ? allReviewComments.filter((c) => c.terminalId === terminalId) : [];
 
   const onDiscard = useCallback(async (file: MergedChange) => {
     const label = pathBasename(file.path);
@@ -498,6 +505,24 @@ export function ChangelistSection({
 
   return (
     <div ref={containerRef}>
+      {terminalId && reviewComments.length > 0 && (
+        <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border/50 text-[11px] text-text-secondary">
+          <span className="flex-1">
+            {reviewComments.length} review comment{reviewComments.length === 1 ? '' : 's'}
+          </span>
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => {
+              stageForAgent(terminalId, buildReviewBrief(reviewComments));
+              clearReview(terminalId);
+            }}
+          >
+            Send review ({reviewComments.length})
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => clearReview(terminalId)}>Discard</Button>
+        </div>
+      )}
       {renderGroup('Changes', 'default', grouped.get('default') ?? [], null)}
       {lists.filter((l) => l.id != null).map((l) =>
         renderGroup(l.name, 'named', grouped.get(l.id!) ?? [], l.id!),

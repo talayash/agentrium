@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Loader2, ToggleLeft, ToggleRight } from 'lucide-react';
+import { Loader2, MessageSquarePlus, ToggleLeft, ToggleRight, X } from 'lucide-react';
 import { parseDiff, type DiffHunk } from '../utils/diffParser';
+import { useReviewStore } from '../store/reviewStore';
+import { Button } from './ui/Button';
 
 interface FileDiffResult {
   file_path: string;
@@ -18,6 +20,12 @@ interface InlineDiffViewProps {
 }
 
 const MAX_DIFF_SIZE = 100_000; // 100KB guard
+const MAX_SNIPPET = 120;
+
+interface Anchor {
+  side: 'new' | 'old';
+  line: number;
+}
 
 export function InlineDiffView({ filePath, terminalId, pathOverride }: InlineDiffViewProps) {
   const [hunks, setHunks] = useState<DiffHunk[]>([]);
@@ -26,6 +34,11 @@ export function InlineDiffView({ filePath, terminalId, pathOverride }: InlineDif
   const [staged, setStaged] = useState(false);
   const [isBinary, setIsBinary] = useState(false);
   const [truncated, setTruncated] = useState(false);
+  const [editing, setEditing] = useState<Anchor | null>(null);
+  const [draft, setDraft] = useState('');
+  const allComments = useReviewStore((st) => st.comments);
+  const addComment = useReviewStore((st) => st.add);
+  const removeComment = useReviewStore((st) => st.remove);
 
   const fetchDiff = async (showStaged: boolean) => {
     setLoading(true);
@@ -64,6 +77,11 @@ export function InlineDiffView({ filePath, terminalId, pathOverride }: InlineDif
   };
 
   useEffect(() => {
+    setEditing(null);
+    setDraft('');
+  }, [filePath, terminalId, pathOverride, staged]);
+
+  useEffect(() => {
     fetchDiff(staged);
   }, [filePath, terminalId, pathOverride, staged]);
 
@@ -99,6 +117,18 @@ export function InlineDiffView({ filePath, terminalId, pathOverride }: InlineDif
     return max;
   }, 0);
   const numWidth = Math.max(String(lineNumberWidth).length, 2);
+
+  const closeEditor = () => {
+    setEditing(null);
+    setDraft('');
+  };
+  const saveComment = (snippet: string) => {
+    const body = draft.trim();
+    if (editing && body) {
+      addComment({ terminalId, filePath, side: editing.side, line: editing.line, snippet, body });
+    }
+    closeEditor();
+  };
 
   return (
     <div className="border-t border-border/50 bg-bg-primary/60">
@@ -138,11 +168,36 @@ export function InlineDiffView({ filePath, terminalId, pathOverride }: InlineDif
               const prefix =
                 line.type === 'added' ? '+' : line.type === 'removed' ? '-' : ' ';
 
+              const anchor: Anchor | null =
+                line.type === 'header'
+                  ? null
+                  : line.type === 'removed'
+                    ? line.oldLineNumber != null ? { side: 'old', line: line.oldLineNumber } : null
+                    : line.newLineNumber != null ? { side: 'new', line: line.newLineNumber } : null;
+              const snippet = line.content.trim().slice(0, MAX_SNIPPET);
+              const lineComments = anchor
+                ? allComments.filter(
+                    (c) => c.terminalId === terminalId && c.filePath === filePath
+                      && c.side === anchor.side && c.line === anchor.line,
+                  )
+                : [];
+              const isEditingHere = !!anchor && editing?.side === anchor.side && editing.line === anchor.line;
+
               return (
+                <div key={`${hunkIdx}-${lineIdx}`}>
                 <div
-                  key={`${hunkIdx}-${lineIdx}`}
-                  className={`flex font-mono text-[11px] leading-[18px] ${bgClass} hover:brightness-125 transition-all`}
+                  className={`group relative flex font-mono text-[11px] leading-[18px] ${bgClass} hover:brightness-125 transition-all`}
                 >
+                  {anchor && (
+                    <button
+                      type="button"
+                      aria-label={`Comment on line ${anchor.line}`}
+                      onClick={() => { setEditing(anchor); setDraft(''); }}
+                      className="absolute right-1 top-0 h-[18px] px-1 opacity-0 group-hover:opacity-100 focus:opacity-100 text-text-tertiary hover:text-accent-primary transition-opacity"
+                    >
+                      <MessageSquarePlus size={12} />
+                    </button>
+                  )}
                   {/* Old line number */}
                   <span
                     className="text-text-tertiary/50 select-none text-right shrink-0 px-1"
@@ -165,6 +220,41 @@ export function InlineDiffView({ filePath, terminalId, pathOverride }: InlineDif
                   <span className={`${textClass} whitespace-pre pr-2`}>
                     {line.content}
                   </span>
+                </div>
+                {lineComments.map((c) => (
+                  <div key={c.id} className="flex items-start gap-2 mx-2 my-1 px-2 py-1 rounded border border-border/50 bg-bg-secondary text-[11px] text-text-primary font-sans">
+                    <span className="flex-1 whitespace-pre-wrap">{c.body}</span>
+                    <button
+                      type="button"
+                      aria-label="Delete comment"
+                      onClick={() => removeComment(c.id)}
+                      className="shrink-0 text-text-tertiary hover:text-text-primary"
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                ))}
+                {isEditingHere && (
+                  <div className="mx-2 my-1 p-1.5 rounded border border-border/50 bg-bg-secondary font-sans">
+                    <textarea
+                      autoFocus
+                      aria-label="Review comment"
+                      value={draft}
+                      onChange={(e) => setDraft(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Escape') { e.preventDefault(); closeEditor(); }
+                        else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveComment(snippet); }
+                      }}
+                      rows={2}
+                      placeholder="Comment for the agent (Ctrl+Enter to save, Esc to cancel)"
+                      className="w-full resize-none bg-transparent text-[11px] text-text-primary outline-none"
+                    />
+                    <div className="flex justify-end gap-1">
+                      <Button variant="ghost" size="sm" onClick={closeEditor}>Cancel</Button>
+                      <Button variant="primary" size="sm" onClick={() => saveComment(snippet)} disabled={!draft.trim()}>Comment</Button>
+                    </div>
+                  </div>
+                )}
                 </div>
               );
             })}
