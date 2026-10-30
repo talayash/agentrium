@@ -138,6 +138,8 @@ export interface CreateTerminalOptions {
   /** Race mode: first prompt delivered at spawn through argv (or a prompt
    *  file) when the agent supports it. */
   initialPrompt?: string;
+  /** Branch `resumeSessionId` into a new conversation (Claude and Codex). */
+  fork?: boolean;
 }
 
 export interface LoopInfo {
@@ -221,6 +223,8 @@ interface TerminalState {
   closeTerminal: (id: string) => Promise<void>;
   setActiveTerminal: (id: string) => void;
   updateLabel: (id: string, label: string) => Promise<void>;
+  // Backend bound (or rotated) the agent conversation id for a live terminal.
+  setSessionId: (id: string, sessionId: string) => void;
   updateNickname: (id: string, nickname: string) => Promise<void>;
   writeToTerminal: (id: string, data: string) => Promise<void>;
   resizeTerminal: (id: string, cols: number, rows: number) => Promise<void>;
@@ -298,6 +302,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
           credential_bindings: credentialBindings ?? [],
           task: task ?? null,
           initial_prompt: options?.initialPrompt ?? null,
+          fork: !!options?.fork,
         },
       });
       // Parse model, effort, worktree from claude_args
@@ -503,6 +508,14 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
     const newUnread = new Set(state.unreadTerminalIds);
     newUnread.delete(id);
     return { activeTerminalId: id, unreadTerminalIds: newUnread };
+  }),
+
+  setSessionId: (id, sessionId) => set((state) => {
+    const instance = state.terminals.get(id);
+    if (!instance || instance.config.claude_session_id === sessionId) return state;
+    const newTerminals = new Map(state.terminals);
+    newTerminals.set(id, { ...instance, config: { ...instance.config, claude_session_id: sessionId } });
+    return { terminals: newTerminals };
   }),
 
   updateLabel: async (id, label) => {

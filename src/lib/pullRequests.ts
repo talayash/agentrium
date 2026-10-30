@@ -141,7 +141,8 @@ export function prKey(root: string, branch: string): string {
 
 export type PrEvent =
   | { kind: 'ci-failed'; status: PullRequestStatus }
-  | { kind: 'merged'; status: PullRequestStatus };
+  | { kind: 'merged'; status: PullRequestStatus }
+  | { kind: 'closed'; status: PullRequestStatus };
 
 /** Events worth an attention item: CI flipping to failure on an open PR, and
  *  the PR becoming merged. A ref with no recorded state (first sighting of a
@@ -150,6 +151,7 @@ export function prTransitions(prev: Pick<PrRef, 'lastState' | 'lastCi'> | undefi
   if (!prev || prev.lastState === undefined) return [];
   const events: PrEvent[] = [];
   if (next.state === 'merged' && prev.lastState !== 'merged') events.push({ kind: 'merged', status: next });
+  if (next.state === 'closed' && prev.lastState !== 'closed') events.push({ kind: 'closed', status: next });
   if (next.state === 'open' && next.ci.state === 'failure' && prev.lastCi !== 'failure') {
     events.push({ kind: 'ci-failed', status: next });
   }

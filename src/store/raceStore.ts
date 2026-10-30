@@ -182,7 +182,7 @@ export function terminalForContender(
 
 export function sessionAttentionFor(terminalId: string | undefined, items: AttentionItem[]): AttentionItem['kind'] | null {
   if (!terminalId) return null;
-  const item = items.find((i) => i.terminalId === terminalId && i.kind !== 'race' && i.kind !== 'ci' && i.kind !== 'merged');
+  const item = items.find((i) => i.terminalId === terminalId && i.kind !== 'race' && i.kind !== 'ci' && i.kind !== 'merged' && i.kind !== 'closed');
   return item?.kind ?? null;
 }
 

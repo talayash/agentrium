@@ -305,9 +305,28 @@ describe('launchRace', () => {
     expect(useAppStore.getState().gridLayout).toBe('1x2');
   });
 
+  it('cancels the rest and abandons the race when a contender setup fails', async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd, args) => {
+      if (cmd === 'start_race') return race();
+      if (cmd === 'run_task_setup') {
+        if ((args as { worktreePath: string }).worktreePath === '/wt/race-fix-c0') {
+          return { exit_code: 3, timed_out: false, cancelled: false, duration_ms: 1, output_tail: 'bad', truncated: false };
+        }
+        return null;
+      }
+      return [];
+    });
+    await expect(launchRace({ repoPath: '/repo', title: 'Fix bug', prompt: 'p q', setupRunId: 'S', contenders: [{ agent: 'claude', model: null }, { agent: 'codex', model: null }] }))
+      .rejects.toThrow('Setup command failed (exit 3).\n\nbad');
+    expect(invoke).toHaveBeenCalledWith('cancel_task_setup', { runId: 'S-1' });
+    expect(invoke).toHaveBeenCalledWith('abandon_race', expect.anything());
+    expect(vi.mocked(invoke).mock.calls.some(([c]) => c === 'create_terminal')).toBe(false);
+  });
+
   it('closes and discards every contender when one terminal fails to start', async () => {
     vi.mocked(invoke).mockImplementation(async (cmd) => {
       if (cmd === 'start_race') return race();
+      if (cmd === 'run_task_setup') return null;
       if (cmd === 'create_terminal') {
         if (useTerminalStore.getState().terminals.size > 0) throw 'spawn failed';
         return { ...baseConfig, id: 't1', prompt_delivery: { mode: 'argv' } };

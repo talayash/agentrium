@@ -12,6 +12,10 @@ import { listen } from '@tauri-apps/api/event';
 import { useBrowserStore, type BrowserEventPayload } from '../../store/browserStore';
 import { resolveAddress } from './address';
 import { reportInvokeFailure } from '../errorReporter';
+import { stageForAgent, stageTarget } from '../agentContext';
+import { copyText } from '../clipboard';
+import { toast } from '../../store/toastStore';
+import { formatPickedElement, type PickedElement } from './pickedElement';
 
 export interface Bounds {
   x: number;
@@ -52,11 +56,41 @@ export function ensureBrowserEvents(): void {
 
 function handleEvent(ev: BrowserEventPayload): void {
   if (!findTab(ev.id)) return;
-  if (ev.kind === 'newTab') {
-    void openInNewTab(ev.url);
-    return;
+  switch (ev.kind) {
+    case 'newTab':
+      void openInNewTab(ev.url);
+      return;
+    case 'elementPicked':
+      // Rust only reports picks from the armed tab; also drop one the UI
+      // already cancelled while it was in flight.
+      if (store().pickingTabId !== ev.id) return;
+      store().setPickingTabId(null);
+      stagePickedElement(ev.element);
+      return;
+    case 'pickCancelled':
+      if (store().pickingTabId === ev.id) store().setPickingTabId(null);
+      return;
+    case 'loadStarted':
+      // A new document drops the injected picker script.
+      if (store().pickingTabId === ev.id) cancelPick(ev.id);
+      break;
   }
   store().applyEvent(ev);
+}
+
+function stagePickedElement(element: PickedElement): void {
+  const block = formatPickedElement(element);
+  const target = stageTarget();
+  if (target) {
+    stageForAgent(target, block);
+    return;
+  }
+  void copyText(block).then((copied) => {
+    toast.info(
+      'Open an agent session to send this element to.',
+      copied ? 'The element was copied to the clipboard.' : 'Copying it to the clipboard failed too.',
+    );
+  });
 }
 
 function errorText(err: unknown): string {
@@ -151,6 +185,26 @@ export function reloadTab(id: string): void {
   }
   store().patchTab(id, { loading: true, error: null, notice: null });
   tabAction('browser_reload', id);
+}
+
+/** Arm the element picker in one tab; any other armed tab is cancelled. */
+export function startPick(id: string): void {
+  const prev = store().pickingTabId;
+  if (prev && prev !== id) cancelPick(prev);
+  ensureBrowserEvents();
+  store().setPickingTabId(id);
+  invoke('browser_pick_element', { id }).catch((err) => {
+    if (store().pickingTabId === id) store().setPickingTabId(null);
+    store().patchTab(id, { notice: errorText(err) });
+    reportInvokeFailure('browser_pick_element', err);
+  });
+}
+
+export function cancelPick(id: string): void {
+  if (store().pickingTabId === id) store().setPickingTabId(null);
+  // Best effort: Rust disarms before touching the page, so a failed eval
+  // (tab gone or navigated) still leaves nothing armed.
+  invoke('browser_cancel_pick', { id }).catch(() => {});
 }
 
 export function closeTab(id: string): void {

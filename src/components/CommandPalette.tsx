@@ -36,6 +36,7 @@ import {
 } from 'lucide-react';
 import { openCreatePrForTerminal } from '../lib/pullRequestActions';
 import { openCiRepairForTerminal } from '../lib/ciRepair';
+import { canFork, forkSession } from '../lib/fork';
 
 interface HintCategory {
   category: string;
@@ -171,6 +172,19 @@ export function CommandPalette() {
         { label: 'New Race', description: 'Send one task to 2-4 agents or models at once, then compare and merge the best', icon: Flag, shortcut: 'Ctrl+Shift+R', action: () => { useAppStore.getState().openNewRaceModal(); closeCommandPalette(); } },
         { label: 'Create Pull Request', description: 'Open a pull request for the branch of the active session (gh, glab or browser)', icon: GitPullRequestCreate, action: () => { closeCommandPalette(); openCreatePrForTerminal(useTerminalStore.getState().activeTerminalId); } },
         { label: 'Fix Failing CI with Agent', description: 'Start an agent in a new task worktree to fix the failing checks on the pull request of the active session', icon: Bot, action: () => { closeCommandPalette(); openCiRepairForTerminal(useTerminalStore.getState().activeTerminalId); } },
+        { label: 'Fork Current Session', description: 'Branch the active Claude Code or Codex conversation into a new session', icon: GitBranch, action: () => {
+          closeCommandPalette();
+          const { activeTerminalId, terminals } = useTerminalStore.getState();
+          const active = activeTerminalId ? terminals.get(activeTerminalId) : undefined;
+          if (!activeTerminalId || !active || !canFork(active)) {
+            toast.info('Fork Current Session', 'Only Claude Code and Codex sessions with a saved conversation can fork.');
+            return;
+          }
+          forkSession(activeTerminalId).catch((err) => {
+            toast.error('Could not fork the conversation', err instanceof Error ? err.message : String(err));
+            reportInvokeFailure('create_terminal', err);
+          });
+        } },
         { label: 'Toggle Sidebar', description: 'Show or hide the sidebar', icon: PanelLeft, shortcut: 'Ctrl+B', action: () => { useAppStore.getState().toggleSidebar(); closeCommandPalette(); } },
         { label: 'Open Settings', description: 'Open application settings', icon: Settings, shortcut: 'Ctrl+,', action: () => { useAppStore.getState().openSettings(); closeCommandPalette(); } },
         { label: 'Toggle Grid View', description: 'Switch between tab and grid view', icon: LayoutGrid, shortcut: 'Ctrl+G', action: () => { useAppStore.getState().toggleGridMode(); closeCommandPalette(); } },

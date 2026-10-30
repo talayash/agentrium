@@ -389,7 +389,23 @@ impl Database {
         )
         .map_err(|e| e.to_string())?;
         Self::migrate_races(conn)?;
+        Self::migrate_task_setup(conn)?;
         Ok(())
+    }
+
+    /// Per-repo worktree setup command (for example `npm ci`), keyed by the
+    /// main repo root. Local only: never synced. Idempotent.
+    fn migrate_task_setup(conn: &Connection) -> Result<(), String> {
+        conn.execute_batch(
+            "
+            CREATE TABLE IF NOT EXISTS task_setup_commands (
+                repo_path TEXT PRIMARY KEY,
+                command TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            ",
+        )
+        .map_err(|e| e.to_string())
     }
 
     /// Race mode (best-of-N): one `races` row per race, one
@@ -1154,6 +1170,31 @@ impl Database {
     pub fn set_race_check_command(&self, race_id: &str, command: Option<&str>) -> Result<(), String> {
         self.conn.execute("UPDATE races SET check_command = ?2 WHERE id = ?1", params![race_id, command])
             .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn get_task_setup_command(&self, repo_path: &str) -> Result<Option<String>, String> {
+        self.conn
+            .query_row(
+                "SELECT command FROM task_setup_commands WHERE repo_path = ?1",
+                params![repo_path],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(|e| e.to_string())
+    }
+
+    /// `None` deletes the row.
+    pub fn set_task_setup_command(&self, repo_path: &str, command: Option<&str>) -> Result<(), String> {
+        match command {
+            Some(c) => self.conn.execute(
+                "INSERT INTO task_setup_commands (repo_path, command, updated_at) VALUES (?1, ?2, ?3)
+                 ON CONFLICT(repo_path) DO UPDATE SET command = excluded.command, updated_at = excluded.updated_at",
+                params![repo_path, c, chrono::Utc::now().to_rfc3339()],
+            ),
+            None => self.conn.execute("DELETE FROM task_setup_commands WHERE repo_path = ?1", params![repo_path]),
+        }
+        .map_err(|e| e.to_string())?;
         Ok(())
     }
 
@@ -2002,6 +2043,22 @@ impl Database {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn task_setup_command_round_trip() {
+        let db = super::Database::new_in_memory().unwrap();
+        assert_eq!(db.get_task_setup_command("/r").unwrap(), None);
+        db.set_task_setup_command("/r", Some("npm ci")).unwrap();
+        db.set_task_setup_command("/r", Some("pnpm i")).unwrap();
+        assert_eq!(db.get_task_setup_command("/r").unwrap().as_deref(), Some("pnpm i"));
+        let n: i64 = db
+            .conn
+            .query_row("SELECT COUNT(*) FROM task_setup_commands", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(n, 1);
+        db.set_task_setup_command("/r", None).unwrap();
+        assert_eq!(db.get_task_setup_command("/r").unwrap(), None);
+    }
+
     #[test]
     fn init_schema_repairs_profiles_table_missing_legacy_columns() {
         // Field report: an install whose `profiles` table lacked `claude_args`

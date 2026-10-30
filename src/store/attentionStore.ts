@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-export type AttentionKind = 'input' | 'review' | 'error' | 'stopped' | 'ci' | 'merged' | 'race';
+export type AttentionKind = 'input' | 'review' | 'error' | 'stopped' | 'ci' | 'merged' | 'closed' | 'race';
 /** Session items follow the agent's state and are replaced on every
  *  transition; PR items (CI failed, merged) must survive the agent getting
  *  busy again, so they live in their own slot per terminal. Race items ("Race
@@ -9,7 +9,7 @@ export type AttentionChannel = 'session' | 'pr' | 'race';
 
 export function channelOf(kind: AttentionKind): AttentionChannel {
   if (kind === 'race') return 'race';
-  return kind === 'ci' || kind === 'merged' ? 'pr' : 'session';
+  return kind === 'ci' || kind === 'merged' || kind === 'closed' ? 'pr' : 'session';
 }
 
 export interface AttentionItem {

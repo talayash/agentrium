@@ -421,6 +421,46 @@ pub struct CreateTerminalRequest {
     /// file) when the agent supports it. Never persisted with the terminal.
     #[serde(default)]
     pub initial_prompt: Option<String>,
+    /// Branch `resume_session_id` into a new conversation (Claude/Codex).
+    #[serde(default)]
+    pub fork: bool,
+}
+
+/// Tell the frontend which conversation id the backend bound to a live
+/// terminal, so `TerminalConfig.claude_session_id` stays current.
+fn emit_session_bound(app: &AppHandle, terminal_id: &str, session_id: &str) {
+    if let Err(e) = app.emit(
+        "terminal-session-bound",
+        serde_json::json!({ "id": terminal_id, "session_id": session_id }),
+    ) {
+        eprintln!("Failed to emit terminal-session-bound: {}", e);
+        error_reporter::report_bg(
+            "emit_terminal_session_bound",
+            format!("Failed to emit terminal-session-bound: {}", e),
+        );
+    }
+}
+
+/// A new session file in a directory belongs to the terminal there that was
+/// typed in most recently (a session file is written on a user turn). Without
+/// this, a source and its fork (same cwd, both typed recently) race for the
+/// same new file. `None` never beats `Some`; an exact tie lets both proceed.
+fn is_latest_typer(
+    mine: Option<std::time::Instant>,
+    others: impl Iterator<Item = Option<std::time::Instant>>,
+) -> bool {
+    let Some(mine) = mine else { return false };
+    others.flatten().all(|o| o <= mine)
+}
+
+/// Directory equality for the detector: slash style, trailing separators,
+/// and (on Windows) case are not significant.
+fn same_working_dir(a: &str, b: &str) -> bool {
+    let norm = |s: &str| {
+        let t = s.replace('\\', "/").trim_end_matches('/').to_string();
+        if cfg!(windows) { t.to_lowercase() } else { t }
+    };
+    norm(a) == norm(b)
 }
 
 /// Built-ins resolve statically; `Custom(id)` reads the `custom_agents` row.
@@ -511,6 +551,7 @@ pub async fn create_terminal(
         let session_snapshot = crate::session_provider::provider_for(&agent).snapshot();
         let resume_id = request.resume_session_id.clone();
         let continue_recent = request.continue_recent && resume_id.is_none();
+        let fork = request.fork;
         let working_directory = request.working_directory.clone();
 
         // Build the OTLP endpoint only when the user enabled tracking AND the
@@ -540,6 +581,7 @@ pub async fn create_terminal(
                 continue_recent,
                 otel_endpoint,
                 request.initial_prompt,
+                fork,
             )?
         };
         if task.is_some() {
@@ -553,7 +595,10 @@ pub async fn create_terminal(
         // full lifetime of the terminal and keeps overwriting the captured
         // id whenever a newer .jsonl appears in the same cwd dir. That way
         // `/clear` (which rotates the session id) is handled transparently.
-        if let Some(id) = resume_id.as_deref() {
+        // A fork has a new conversation of its own, so it takes the detector
+        // branch below like a fresh terminal (the source id is in the
+        // snapshot and never matches as "new").
+        if let (Some(id), false) = (resume_id.as_deref(), fork) {
             eprintln!("[session-resume] spawning '{}' with --resume {}", config.label, id);
         } else if continue_recent {
             eprintln!("[session-resume] spawning '{}' with --continue", config.label);
@@ -573,6 +618,9 @@ pub async fn create_terminal(
                     let mut m = state.terminals.lock().await;
                     m.update_claude_session_id(&config.id, newest.id.clone());
                 }
+                // The frontend adds this terminal from the returned config, so
+                // carry the id there (an event now would precede the terminal).
+                config.claude_session_id = Some(newest.id.clone());
                 // Persist to history so the Session Timeline can `--resume` it.
                 {
                     let cfg_id = config.id.clone();
@@ -590,6 +638,7 @@ pub async fn create_terminal(
             let detect_label = config.label.clone();
             let cwd_for_log = working_directory.clone();
             let agent_for_detect = agent.clone();
+            let app_for_detect = app.clone();
             tokio::spawn(async move {
                 let mut last_recorded: Option<String> = None;
                 loop {
@@ -615,6 +664,19 @@ pub async fn create_terminal(
                         if !recently_typed {
                             continue;
                         }
+                        // Same-cwd terminals typed in more recently own the new
+                        // file (e.g. a fork answering while its source idles).
+                        let newest = is_latest_typer(
+                            me.last_input_at,
+                            m.terminals
+                                .iter()
+                                .filter(|(tid, _)| tid.as_str() != detect_id)
+                                .filter(|(_, t)| same_working_dir(&t.config.working_directory, &me.config.working_directory))
+                                .map(|(_, t)| t.last_input_at),
+                        );
+                        if !newest {
+                            continue;
+                        }
                         m.terminals
                             .iter()
                             .filter(|(tid, _)| tid.as_str() != detect_id)
@@ -635,6 +697,7 @@ pub async fn create_terminal(
                                 let mut m = manager.lock().await;
                                 m.update_claude_session_id(&detect_id, session_id.clone());
                             }
+                            emit_session_bound(&app_for_detect, &detect_id, &session_id);
                             // Mirror onto the history row for later `--resume`.
                             {
                                 let detect_id_c = detect_id.clone();
@@ -6271,5 +6334,45 @@ mod spawn_err_tests {
         let plain = strip_user_prefix(&msg);
         assert!(plain.starts_with("Failed to run npm: "), "got {plain}");
         assert!(!plain.contains("page file"));
+    }
+}
+
+#[cfg(test)]
+mod latest_typer_tests {
+    use super::{is_latest_typer, same_working_dir};
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn sole_terminal_wins() {
+        assert!(is_latest_typer(Some(Instant::now()), std::iter::empty()));
+    }
+
+    #[test]
+    fn newest_input_wins_and_older_loses() {
+        let old = Instant::now();
+        let new = old + Duration::from_secs(5);
+        assert!(is_latest_typer(Some(new), [Some(old)].into_iter()));
+        assert!(!is_latest_typer(Some(old), [Some(new)].into_iter()));
+    }
+
+    #[test]
+    fn none_never_wins_against_some_and_ignores_none_others() {
+        let t = Instant::now();
+        assert!(!is_latest_typer(None, [Some(t)].into_iter()));
+        assert!(!is_latest_typer(None, std::iter::empty()));
+        assert!(is_latest_typer(Some(t), [None, None].into_iter()));
+    }
+
+    #[test]
+    fn exact_tie_lets_both_proceed() {
+        let t = Instant::now();
+        assert!(is_latest_typer(Some(t), [Some(t)].into_iter()));
+    }
+
+    #[test]
+    fn working_dirs_compare_ignoring_slash_style_and_trailing_separator() {
+        assert!(same_working_dir("C:\\p\\repo\\", "C:\\p\\repo"));
+        assert!(same_working_dir("/p/repo/", "/p/repo"));
+        assert!(!same_working_dir("/p/repo", "/p/other"));
     }
 }

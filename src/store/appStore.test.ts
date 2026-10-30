@@ -425,6 +425,7 @@ describe('appStore - persist partialize', () => {
     'tabHeight',
     'colorfulFolderIcons',
     'accentColorHex',
+    'autoCleanupMergedPrs',
     'uiFontScale',
     'uiReduceMotion',
     'uiReduceMotionUserSet',

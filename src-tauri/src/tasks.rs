@@ -10,10 +10,17 @@
 
 use crate::commands::{db_op, git_cmd_async, spawn_err, wrap_cmd};
 use crate::error_reporter::user_err;
+use crate::races::{
+    cancel_check, run_check, running_checks, validate_check_command, CheckGuard, RaceCheckResult,
+    DEFAULT_CHECK_TIMEOUT_SECS, MAX_CHECK_TIMEOUT_SECS,
+};
 use crate::AppState;
 use serde::{Deserialize, Serialize};
 use std::path::{Component, Path, PathBuf};
+use std::sync::Arc;
+use std::time::Duration;
 use tauri::{command, State};
+use tokio::sync::Notify;
 
 /// Name of the managed folder created next to the repository.
 pub const MANAGED_DIR: &str = ".agentrium-worktrees";
@@ -904,10 +911,140 @@ async fn registered_task(
     worktree_path: &str,
 ) -> Result<TaskInfo, String> {
     let tasks = db_op(&state.db, |db| db.list_tasks()).await?;
+    find_registered(tasks, worktree_path)
+}
+
+fn find_registered(tasks: Vec<TaskInfo>, worktree_path: &str) -> Result<TaskInfo, String> {
     tasks
         .into_iter()
         .find(|t| same_path(&t.worktree_path, worktree_path))
         .ok_or_else(|| user_err("This worktree is not a task managed by Agentrium."))
+}
+
+/// Key for the per-repo setup command: the main repo root as a string, so a
+/// task's `repo_path` and the settings page's repo selection match. Falls back
+/// to the raw path when it is not (or no longer) a git repo.
+async fn setup_key(repo_path: &str) -> String {
+    match main_repo_root(Path::new(repo_path)).await {
+        Ok(root) => normalize_setup_key(&root.to_string_lossy()),
+        Err(_) => normalize_setup_key(repo_path),
+    }
+}
+
+/// Forward slashes, no trailing slash, and (Windows) lowercase, so `C:\Repo\`
+/// from one caller and `c:/repo` from another find the same stored command.
+fn normalize_setup_key(path: &str) -> String {
+    let s = path.replace('\\', "/");
+    let trimmed = s.trim_end_matches('/');
+    let s = if trimmed.is_empty() && !s.is_empty() {
+        "/"
+    } else {
+        trimmed
+    };
+    if cfg!(windows) {
+        s.to_lowercase()
+    } else {
+        s.to_string()
+    }
+}
+
+/// Register `run_id` before any lookup so a cancel that arrives early is not
+/// lost: `notify_one` stores a permit that ends `run_check` as soon as it
+/// starts. The guard frees the id however the run ends.
+pub(crate) fn register_setup_run(run_id: &str) -> Result<(Arc<Notify>, CheckGuard), String> {
+    let cancel = Arc::new(Notify::new());
+    let mut running = running_checks().lock().map_err(|e| e.to_string())?;
+    if running.contains_key(run_id) {
+        return Err(user_err("That setup is already running."));
+    }
+    running.insert(run_id.to_string(), cancel.clone());
+    Ok((cancel, CheckGuard(run_id.to_string())))
+}
+
+/// Run `command` (the stored setup command, if any) in the task's worktree.
+/// `None` means no command is configured. A non-zero exit, timeout and cancel
+/// are data in the result; the caller decides to roll back. `cancel` comes
+/// from `register_setup_run`.
+pub(crate) async fn run_task_setup_impl(
+    command: Option<String>,
+    task: &TaskInfo,
+    cancel: Arc<Notify>,
+    timeout: Duration,
+) -> Result<Option<RaceCheckResult>, String> {
+    let Some(command) = command else {
+        return Ok(None);
+    };
+    let cwd = PathBuf::from(&task.worktree_path);
+    if !cwd.is_dir() {
+        return Err(user_err("The task's worktree no longer exists."));
+    }
+    run_check(&command, &cwd, timeout, cancel).await.map(Some)
+}
+
+#[command]
+pub async fn get_task_setup_command(
+    state: State<'_, AppState>,
+    repo_path: String,
+) -> Result<Option<String>, String> {
+    wrap_cmd("get_task_setup_command", async move {
+        let key = setup_key(&repo_path).await;
+        db_op(&state.db, move |db| db.get_task_setup_command(&key)).await
+    })
+    .await
+}
+
+#[command]
+pub async fn set_task_setup_command(
+    state: State<'_, AppState>,
+    repo_path: String,
+    command: Option<String>,
+) -> Result<(), String> {
+    wrap_cmd("set_task_setup_command", async move {
+        let command = command
+            .map(|c| c.trim().to_string())
+            .filter(|c| !c.is_empty());
+        if let Some(c) = command.as_deref() {
+            validate_check_command(c)?;
+        }
+        let key = setup_key(&repo_path).await;
+        db_op(&state.db, move |db| {
+            db.set_task_setup_command(&key, command.as_deref())
+        })
+        .await
+    })
+    .await
+}
+
+/// Runs only the stored command for the task's repo. `None` = none configured.
+#[command]
+pub async fn run_task_setup(
+    state: State<'_, AppState>,
+    worktree_path: String,
+    run_id: String,
+    timeout_secs: Option<u64>,
+) -> Result<Option<RaceCheckResult>, String> {
+    wrap_cmd("run_task_setup", async move {
+        let (cancel, _guard) = register_setup_run(&run_id)?;
+        let task = registered_task(&state, &worktree_path).await?;
+        let key = setup_key(&task.repo_path).await;
+        let command = db_op(&state.db, move |db| db.get_task_setup_command(&key)).await?;
+        let timeout = Duration::from_secs(
+            timeout_secs
+                .unwrap_or(DEFAULT_CHECK_TIMEOUT_SECS)
+                .clamp(5, MAX_CHECK_TIMEOUT_SECS),
+        );
+        run_task_setup_impl(command, &task, cancel, timeout).await
+    })
+    .await
+}
+
+#[command]
+pub async fn cancel_task_setup(run_id: String) -> Result<bool, String> {
+    wrap_cmd(
+        "cancel_task_setup",
+        async move { Ok(cancel_check(&run_id)) },
+    )
+    .await
 }
 
 #[command]
@@ -1280,6 +1417,113 @@ mod tests {
         let (res2, _) = start_task_impl(&req(&repo, "Fix login bug")).await.unwrap();
         assert_eq!(res2.branch, "agentrium/fix-login-bug-2");
         assert!(res2.worktree_path.ends_with("fix-login-bug-2"));
+    }
+
+    #[tokio::test]
+    async fn run_task_setup_runs_in_worktree() {
+        let (_tmp, repo) = temp_repo();
+        let (res, info) = start_task_impl(&req(&repo, "Setup ok")).await.unwrap();
+        let r = run_task_setup_impl(
+            Some("echo ok > setup.txt".into()),
+            &info,
+            register_setup_run("t-setup-ok").unwrap().0,
+            Duration::from_secs(60),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert_eq!(r.exit_code, Some(0));
+        assert!(PathBuf::from(&res.worktree_path)
+            .join("setup.txt")
+            .is_file());
+        assert!(!repo.join("setup.txt").exists());
+        let none = run_task_setup_impl(
+            None,
+            &info,
+            register_setup_run("t-setup-none").unwrap().0,
+            Duration::from_secs(5),
+        )
+        .await
+        .unwrap();
+        assert!(none.is_none());
+    }
+
+    #[tokio::test]
+    async fn run_task_setup_reports_timeout() {
+        let (_tmp, repo) = temp_repo();
+        let (_res, info) = start_task_impl(&req(&repo, "Setup slow")).await.unwrap();
+        #[cfg(windows)]
+        let cmd = "ping -n 30 127.0.0.1 > nul";
+        #[cfg(not(windows))]
+        let cmd = "sleep 30";
+        let r = run_task_setup_impl(
+            Some(cmd.into()),
+            &info,
+            register_setup_run("t-setup-slow").unwrap().0,
+            Duration::from_secs(5),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert!(r.timed_out);
+        assert_eq!(r.exit_code, None);
+    }
+
+    #[tokio::test]
+    async fn run_task_setup_honours_a_cancel_sent_before_the_run_starts() {
+        let (_tmp, repo) = temp_repo();
+        let (_res, info) = start_task_impl(&req(&repo, "Setup early cancel"))
+            .await
+            .unwrap();
+        let (cancel, _guard) = register_setup_run("t-setup-early-cancel").unwrap();
+        // The UI cancels while the command is still looking up the task.
+        assert!(cancel_check("t-setup-early-cancel"));
+        #[cfg(windows)]
+        let cmd = "ping -n 30 127.0.0.1 > nul";
+        #[cfg(not(windows))]
+        let cmd = "sleep 30";
+        let r = run_task_setup_impl(Some(cmd.into()), &info, cancel, Duration::from_secs(60))
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(r.cancelled);
+        assert!(r.duration_ms < 20_000, "{}", r.duration_ms);
+    }
+
+    #[test]
+    fn register_setup_run_refuses_a_duplicate_and_frees_on_drop() {
+        let first = register_setup_run("t-setup-dup").unwrap();
+        assert_eq!(
+            register_setup_run("t-setup-dup").err(),
+            Some(user_err("That setup is already running."))
+        );
+        drop(first);
+        assert!(register_setup_run("t-setup-dup").is_ok());
+    }
+
+    #[test]
+    fn normalize_setup_key_unifies_separators_and_trailing_slash() {
+        assert_eq!(normalize_setup_key("/a/b/"), "/a/b");
+        #[cfg(windows)]
+        assert_eq!(
+            normalize_setup_key(r"C:\Repo\"),
+            normalize_setup_key("c:/repo")
+        );
+        #[cfg(windows)]
+        assert_eq!(normalize_setup_key(r"C:\Repo\"), "c:/repo");
+        #[cfg(not(windows))]
+        assert_eq!(normalize_setup_key("/Users/Me/Repo/"), "/Users/Me/Repo");
+        #[cfg(not(windows))]
+        assert_ne!(normalize_setup_key("/Repo"), normalize_setup_key("/repo"));
+    }
+
+    #[test]
+    fn run_task_setup_refuses_unregistered_worktree() {
+        let e = find_registered(vec![], "/nope").unwrap_err();
+        assert_eq!(
+            e,
+            user_err("This worktree is not a task managed by Agentrium.")
+        );
     }
 
     #[tokio::test]

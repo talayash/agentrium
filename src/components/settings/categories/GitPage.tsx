@@ -9,6 +9,7 @@ import {
 } from '../../../lib/tasks';
 import { PageHeader, PageSection, SettingRow, Segmented, Toggle } from '../SettingRow';
 import { DEFAULT_PR_BODY_TEMPLATE } from '../../../lib/pullRequests';
+import { getTaskSetupCommand, setTaskSetupCommand } from '../../../lib/taskSetup';
 import { registerSetting } from '../index';
 
 const cat = { group: 'vcs', page: 'git' } as const;
@@ -18,9 +19,14 @@ const cat = { group: 'vcs', page: 'git' } as const;
 ['pr-method', 'pr-draft-default', 'pr-body-template'].forEach((id) =>
   registerSetting({ category: cat, id, label: id.replace(/-/g, ' '), keywords: ['git', 'pull request', 'pr', 'gh', 'glab', 'merge request'] })
 );
-['task-isolation', 'task-worktree-folder', 'task-setup-files', 'task-orphaned-worktrees'].forEach((id) =>
+['task-isolation', 'task-worktree-folder', 'task-setup-files', 'task-setup-command', 'task-orphaned-worktrees'].forEach((id) =>
   registerSetting({ category: cat, id, label: id.replace(/-/g, ' '), keywords: ['git', 'task', 'worktree', 'isolation'] })
 );
+
+registerSetting({
+  category: cat, id: 'pr-auto-cleanup', label: 'pr auto cleanup',
+  keywords: ['pr', 'merge', 'archive', 'cleanup', 'worktree'],
+});
 
 const FIELD = 'w-72 bg-elevation-0 text-text-primary text-[12px] px-2 py-1 rounded ring-1 ring-border-light font-mono';
 
@@ -34,10 +40,11 @@ export default function GitPage() {
   const prMethod = useAppStore((s) => s.prMethod);
   const prDraftByDefault = useAppStore((s) => s.prDraftByDefault);
   const prBodyTemplate = useAppStore((s) => s.prBodyTemplate);
+  const autoCleanupMergedPrs = useAppStore((s) => s.autoCleanupMergedPrs);
   const {
     setVcsCommitMessageTemplate, setVcsDefaultAutoStage, setVcsDefaultMergeStrategy,
     setNewTerminalIsolation, setTaskWorktreeRoot, setTaskSetupFiles,
-    setPrMethod, setPrDraftByDefault, setPrBodyTemplate,
+    setPrMethod, setPrDraftByDefault, setPrBodyTemplate, setAutoCleanupMergedPrs,
   } = useAppStore.getState();
 
   return (
@@ -107,6 +114,12 @@ export default function GitPage() {
           <Toggle value={prDraftByDefault} onChange={setPrDraftByDefault} label="Create as draft by default" />
         </SettingRow>
         <SettingRow
+          label="Clean up sessions automatically when their PR merges"
+          description="Closes the PR's sessions and removes task worktrees (branches are kept). Sessions with a busy agent or uncommitted changes are skipped."
+        >
+          <Toggle value={autoCleanupMergedPrs} onChange={setAutoCleanupMergedPrs} label="Clean up sessions automatically when their PR merges" />
+        </SettingRow>
+        <SettingRow
           label="Description template"
           description="Prefills the PR description. Supports {title}, {summary}, {files} and {commits}."
           align="start"
@@ -156,6 +169,7 @@ export default function GitPage() {
           />
         </SettingRow>
         <SetupFilesRow perRepo={taskSetupFiles} onChange={setTaskSetupFiles} />
+        <SetupCommandRow />
         <OrphanedWorktrees />
       </PageSection>
     </div>
@@ -202,6 +216,57 @@ function SetupFilesRow({ perRepo, onChange }: {
                 Reset to default
               </button>
             )}
+          </>
+        )}
+      </div>
+    </SettingRow>
+  );
+}
+
+function SetupCommandRow() {
+  const repos = useMemo(() => knownRepoPaths(), []);
+  const [repo, setRepo] = useState(repos[0] ?? '');
+  const [draft, setDraft] = useState('');
+  const [loaded, setLoaded] = useState('');
+
+  useEffect(() => {
+    if (!repo) return;
+    let live = true;
+    getTaskSetupCommand(repo)
+      .then((c) => { if (live) { setDraft(c ?? ''); setLoaded(c ?? ''); } })
+      .catch((err) => reportInvokeFailure('get_task_setup_command', err));
+    return () => { live = false; };
+  }, [repo]);
+
+  const commit = () => {
+    if (!repo || draft.trim() === loaded) return;
+    setTaskSetupCommand(repo, draft.trim() || null)
+      .then(() => setLoaded(draft.trim()))
+      .catch((err) => {
+        toast.error('Could not save the setup command', String(err));
+        reportInvokeFailure('set_task_setup_command', err);
+      });
+  };
+
+  return (
+    <SettingRow
+      label="Setup command"
+      description="Runs in every new task or race worktree before the agent starts, for example npm ci. If it fails, the new worktree is removed."
+      align="start"
+    >
+      <div className="flex flex-col gap-1.5 w-72">
+        {repos.length === 0 ? (
+          <p className="text-[11.5px] text-text-tertiary">Open a session in a repository to set its command.</p>
+        ) : (
+          <>
+            <select value={repo} onChange={(e) => setRepo(e.target.value)} aria-label="Repository for setup command"
+              className="bg-elevation-0 text-text-primary text-[12px] px-2 py-1 rounded ring-1 ring-border-light">
+              {repos.map((r) => <option key={r} value={r}>{r}</option>)}
+            </select>
+            <input value={draft} onChange={(e) => setDraft(e.target.value)} onBlur={commit}
+              onKeyDown={(e) => { if (e.key === 'Enter') commit(); }}
+              placeholder="npm ci" spellCheck={false}
+              aria-label="Setup command" className={FIELD.replace('w-72 ', '')} />
           </>
         )}
       </div>
