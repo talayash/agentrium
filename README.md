@@ -71,6 +71,30 @@ they do not establish that a task or its tests passed. Failure entries use the
 exit status of processes launched by Agentrium; commands run internally by an
 agent do not expose separate exit statuses to the inbox.
 
+## Send context to agents
+
+Nothing here types into a running agent. Context is staged in the prompt editor
+for you to review and send.
+
+- **Fork conversation**: choose it in the session card menu, or run **Fork Current
+  Session** from the command palette. Claude and Codex sessions branch into a new
+  session in the same directory with the history so far.
+- **Setup command**: in Settings > Git, set a per-repo command such as `npm ci`.
+  It runs in each new task or race worktree before any agent starts. If it fails,
+  times out, or is cancelled, the new worktree is removed. The command is stored
+  on this device only.
+- **PR cleanup**: once a session's pull request is merged or closed, choose
+  **Clean up sessions...** in its card menu. Idle sessions close and task
+  worktrees are removed, keeping the branch. Busy sessions and worktrees with
+  uncommitted changes are skipped. A Settings > Git toggle does this automatically
+  when a pull request merges.
+- **Element picker**: the crosshair button in the built-in browser toolbar lets
+  you click a page element. Its selector and details are staged as a brief for
+  an agent.
+- **Review comments**: use the comment button on a line in the Changes panel,
+  then **Send review** to stage all comments as one brief. Comments are kept in
+  memory only and are lost when the app closes.
+
 ## Supported Agents
 
 Each terminal you spawn can target any of the four agents below. Switch between them with a picker in the New Terminal dialog; the icon on each tab and grid cell tells you which agent is running.
