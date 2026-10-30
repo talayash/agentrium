@@ -39,6 +39,14 @@ import { Button } from '../ui/Button';
 const iconBtn =
   'w-7 h-7 flex items-center justify-center rounded-md text-text-secondary hover:bg-fill-hover hover:text-text-primary active:scale-95 transition-[background-color,color,transform] duration-100 disabled:opacity-35 disabled:pointer-events-none';
 
+// The element picker is the one toolbar control that talks to the agent, so it
+// carries the accent instead of the neutral iconBtn look.
+const pickBtn =
+  'relative w-7 h-7 flex items-center justify-center rounded-md bg-gradient-to-br active:scale-95 transition-[background-color,color,box-shadow,transform] duration-100 disabled:opacity-35 disabled:pointer-events-none';
+const pickBtnIdle =
+  'from-accent-primary/18 to-accent-secondary/18 text-accent-primary ring-1 ring-inset ring-accent-primary/30 hover:from-accent-primary/30 hover:to-accent-secondary/30 hover:ring-accent-primary/50';
+const pickBtnActive = 'from-accent-primary to-accent-secondary text-white shadow-glow-sm';
+
 function tabLabel(tab: BrowserTab): string {
   if (!tab.url) return 'New tab';
   return tab.title || hostOf(tab.url);
@@ -237,13 +245,19 @@ function Toolbar({ tab }: { tab: BrowserTab | undefined }) {
       <Tooltip label={picking ? 'Cancel element picking' : 'Pick an element to send to the agent'}>
         <button
           type="button"
-          className={`${iconBtn} ${picking ? 'bg-fill-active text-accent-primary' : ''}`}
+          className={`${pickBtn} ${picking ? pickBtnActive : pickBtnIdle}`}
           aria-label="Pick an element to send to the agent"
           aria-pressed={picking}
           disabled={!tab || !tab.hasWebview || !!tab.error}
           onClick={() => tab && (picking ? cancelPick(tab.id) : startPick(tab.id))}
         >
-          <Crosshair size={15} />
+          {picking && (
+            <span
+              aria-hidden
+              className="absolute inset-0 rounded-md ring-2 ring-accent-primary/60 animate-ping pointer-events-none"
+            />
+          )}
+          <Crosshair size={15} strokeWidth={2.25} className="relative" />
         </button>
       </Tooltip>
 
