@@ -92,4 +92,26 @@ describe('cleanUpPrSessions', () => {
     const plan = await cleanUpPrSessions(KEY);
     expect(plan.skipped.some(s => s.reason.includes('locked'))).toBe(true);
   });
+
+  it('keeps going when a close throws and never finishes that worktree', async () => {
+    const task = (w: string) => ({ title: 'T', branch: 'feat/x', baseBranch: 'main', worktreePath: w, repoPath: '/main' });
+    useTerminalStore.setState({
+      terminals: new Map([
+        ['t1', { config: { ...config('t1'), task: task('/wt/a') }, xterm: null, isWorktree: true }],
+        ['t2', { config: { ...config('t2'), task: task('/wt/a') }, xterm: null, isWorktree: true }],
+        ['t3', { config: { ...config('t3'), task: task('/wt/b') }, xterm: null, isWorktree: true }],
+      ]),
+      gitInfoCache: new Map([['t1', git], ['t2', git], ['t3', git]]),
+      terminalStates: new Map(),
+      closeTerminal: async (id: string) => {
+        if (id === 't1') throw new Error('pty gone');
+        order.push(`close:${id}`);
+      },
+    } as never);
+    const plan = await cleanUpPrSessions(KEY);
+    expect(plan.close).toEqual(['t2', 't3']);
+    expect(plan.skipped).toEqual([{ terminalId: 't1', reason: 'Could not close the session' }]);
+    const finished = vi.mocked(invoke).mock.calls.filter(c => c[0] === 'finish_task').map(c => (c[1] as { worktreePath: string }).worktreePath);
+    expect(finished).toEqual(['/wt/b']);
+  });
 });

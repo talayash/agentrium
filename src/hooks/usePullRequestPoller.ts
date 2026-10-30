@@ -124,8 +124,9 @@ export async function pollPullRequests(opts: PollOptions): Promise<void> {
     }
     // Only merged: a closed PR may be reopened, so it never cleans up by itself.
     if (app.autoCleanupMergedPrs && events.some(e => e.kind === 'merged')) {
-      const plan = await cleanUpPrSessions(key);
-      toast.info(cleanupToastMessage(status.number, plan));
+      // cleanUpPrSessions reports its own failures; this guards the tick.
+      const plan = await cleanUpPrSessions(key).catch(() => null);
+      if (plan) toast.info(cleanupToastMessage(status.number, plan));
     }
   }));
 }

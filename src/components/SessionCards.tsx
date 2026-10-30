@@ -492,7 +492,10 @@ export function SessionCards() {
                     onClick={() => {
                       setContextMenu(null);
                       const number = prStatuses[target.key]?.number ?? 0;
-                      void cleanUpPrSessions(target.key).then(plan => toast.info(cleanupToastMessage(number, plan)));
+                      cleanUpPrSessions(target.key)
+                        .then(plan => toast.info(cleanupToastMessage(number, plan)))
+                        // cleanUpPrSessions already reports its own failures.
+                        .catch(() => toast.error('Clean up failed', 'Could not clean up the sessions.'));
                     }}
                   />
                 )}
