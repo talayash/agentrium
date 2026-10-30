@@ -138,6 +138,8 @@ export interface CreateTerminalOptions {
   /** Race mode: first prompt delivered at spawn through argv (or a prompt
    *  file) when the agent supports it. */
   initialPrompt?: string;
+  /** Branch `resumeSessionId` into a new conversation (Claude and Codex). */
+  fork?: boolean;
 }
 
 export interface LoopInfo {
@@ -298,6 +300,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
           credential_bindings: credentialBindings ?? [],
           task: task ?? null,
           initial_prompt: options?.initialPrompt ?? null,
+          fork: !!options?.fork,
         },
       });
       // Parse model, effort, worktree from claude_args

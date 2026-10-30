@@ -250,15 +250,32 @@ pub(crate) struct ResumeInjection {
     pub leading: Vec<String>,
 }
 
+/// Whether the agent's CLI can branch an existing conversation into a new
+/// one (Claude `--resume=<id> --fork-session`, Codex `codex fork <id>`).
+pub(crate) fn supports_fork(kind: &crate::config::AgentKind) -> bool {
+    matches!(kind, crate::config::AgentKind::Claude | crate::config::AgentKind::Codex)
+}
+
 /// Compute the resume/continue argv injection for `agent`. Returns an
 /// empty injection when neither a session id nor `continue_recent` is set.
+/// With `fork` and a session id, Claude and Codex branch the conversation
+/// instead of resuming it in place.
 pub(crate) fn resume_flags_for(
     spec: &crate::agents::AgentSpec,
     resume_id: Option<&str>,
     continue_recent: bool,
+    fork: bool,
 ) -> ResumeInjection {
     use crate::config::AgentKind;
     match (&spec.kind, resume_id) {
+        (AgentKind::Claude, Some(id)) if fork => ResumeInjection {
+            subcommand: None,
+            leading: vec![format!("--resume={}", id), "--fork-session".to_string()],
+        },
+        (AgentKind::Codex, Some(id)) if fork => ResumeInjection {
+            subcommand: Some("fork".to_string()),
+            leading: vec![id.to_string()],
+        },
         // Claude: `--resume=<id>` is the only safe binding form because
         // Commander.js parses `--resume <id>` as "open picker" plus a
         // stray positional (see the existing comment we inherited).
@@ -432,6 +449,10 @@ impl TerminalManager {
         // Race mode: first prompt delivered through argv (spawn-only, never
         // persisted in `claude_args`, so a restore never re-sends it).
         initial_prompt: Option<String>,
+        // Branch `resume_session_id` into a new conversation instead of
+        // continuing it. The fork's own id is captured later, so the
+        // source id is not persisted on the new config.
+        fork: bool,
     ) -> Result<TerminalConfig, String> {
         // Validate claude_args: reject any argument containing shell
         // metacharacters. Narrow exception: bracketed known-model aliases
@@ -465,7 +486,10 @@ impl TerminalManager {
                 return Err(error_reporter::user_err("Invalid session id"));
             }
         }
-        let injection = resume_flags_for(&spec, resume_session_id.as_deref(), continue_recent);
+        if fork && (resume_session_id.is_none() || !supports_fork(&spec.kind)) {
+            return Err(error_reporter::user_err("This agent can't fork a conversation."));
+        }
+        let injection = resume_flags_for(&spec, resume_session_id.as_deref(), continue_recent, fork);
         let injected_len = injection.subcommand.as_ref().map_or(0, |_| 1) + injection.leading.len();
         let claude_args: Vec<String> = if injected_len > 0 {
             let mut v = Vec::with_capacity(claude_args.len() + injected_len);
@@ -640,7 +664,7 @@ impl TerminalManager {
             created_at: Utc::now(),
             status: TerminalStatus::Running,
             color_tag,
-            claude_session_id: resume_session_id,
+            claude_session_id: if fork { None } else { resume_session_id },
             agent: spec.kind.clone(),
             credential_bindings,
             task: None,
@@ -1439,6 +1463,7 @@ mod tests {
                 false,
                 None,
                 None,
+                false,
             )
             .unwrap_err();
         assert!(crate::error_reporter::is_user_error(&err));
@@ -1503,83 +1528,106 @@ mod tests {
 
     #[test]
     fn resume_flags_for_claude_use_equals_form() {
-        let out = super::resume_flags_for(&crate::agents::builtin_spec(&AgentKind::Claude).unwrap(), Some("abc-123"), false);
+        let out = super::resume_flags_for(&crate::agents::builtin_spec(&AgentKind::Claude).unwrap(), Some("abc-123"), false, false);
         assert_eq!(out.leading, vec!["--resume=abc-123".to_string()]);
         assert!(out.subcommand.is_none());
     }
 
     #[test]
     fn continue_flag_for_claude() {
-        let out = super::resume_flags_for(&crate::agents::builtin_spec(&AgentKind::Claude).unwrap(), None, true);
+        let out = super::resume_flags_for(&crate::agents::builtin_spec(&AgentKind::Claude).unwrap(), None, true, false);
         assert_eq!(out.leading, vec!["--continue".to_string()]);
         assert!(out.subcommand.is_none());
     }
 
     #[test]
     fn resume_for_codex_uses_subcommand() {
-        let out = super::resume_flags_for(&crate::agents::builtin_spec(&AgentKind::Codex).unwrap(), Some("sess-9"), false);
+        let out = super::resume_flags_for(&crate::agents::builtin_spec(&AgentKind::Codex).unwrap(), Some("sess-9"), false, false);
         assert_eq!(out.subcommand.as_deref(), Some("resume"));
         assert_eq!(out.leading, vec!["sess-9".to_string()]);
     }
 
     #[test]
     fn continue_for_codex_uses_resume_last_subcommand() {
-        let out = super::resume_flags_for(&crate::agents::builtin_spec(&AgentKind::Codex).unwrap(), None, true);
+        let out = super::resume_flags_for(&crate::agents::builtin_spec(&AgentKind::Codex).unwrap(), None, true, false);
         assert_eq!(out.subcommand.as_deref(), Some("resume"));
         assert_eq!(out.leading, vec!["--last".to_string()]);
     }
 
     #[test]
     fn resume_for_cursor_uses_flag() {
-        let out = super::resume_flags_for(&crate::agents::builtin_spec(&AgentKind::Cursor).unwrap(), Some("chat-77"), false);
+        let out = super::resume_flags_for(&crate::agents::builtin_spec(&AgentKind::Cursor).unwrap(), Some("chat-77"), false, false);
         assert_eq!(out.leading, vec!["--resume".to_string(), "chat-77".to_string()]);
         assert!(out.subcommand.is_none());
     }
 
     #[test]
     fn continue_for_cursor() {
-        let out = super::resume_flags_for(&crate::agents::builtin_spec(&AgentKind::Cursor).unwrap(), None, true);
+        let out = super::resume_flags_for(&crate::agents::builtin_spec(&AgentKind::Cursor).unwrap(), None, true, false);
         assert_eq!(out.leading, vec!["--continue".to_string()]);
     }
 
     #[test]
     fn resume_for_antigravity_uses_conversation_flag() {
-        let out = super::resume_flags_for(&crate::agents::builtin_spec(&AgentKind::Antigravity).unwrap(), Some("conv-1"), false);
+        let out = super::resume_flags_for(&crate::agents::builtin_spec(&AgentKind::Antigravity).unwrap(), Some("conv-1"), false, false);
         assert_eq!(out.leading, vec!["--conversation".to_string(), "conv-1".to_string()]);
     }
 
     #[test]
     fn continue_for_antigravity() {
-        let out = super::resume_flags_for(&crate::agents::builtin_spec(&AgentKind::Antigravity).unwrap(), None, true);
+        let out = super::resume_flags_for(&crate::agents::builtin_spec(&AgentKind::Antigravity).unwrap(), None, true, false);
         assert_eq!(out.leading, vec!["--continue".to_string()]);
     }
 
     #[test]
     fn no_flags_when_neither_resume_nor_continue_codex() {
-        let out = super::resume_flags_for(&crate::agents::builtin_spec(&AgentKind::Codex).unwrap(), None, false);
+        let out = super::resume_flags_for(&crate::agents::builtin_spec(&AgentKind::Codex).unwrap(), None, false, false);
         assert!(out.leading.is_empty());
         assert!(out.subcommand.is_none());
     }
 
     #[test]
     fn no_flags_when_neither_resume_nor_continue_claude() {
-        let out = super::resume_flags_for(&crate::agents::builtin_spec(&AgentKind::Claude).unwrap(), None, false);
+        let out = super::resume_flags_for(&crate::agents::builtin_spec(&AgentKind::Claude).unwrap(), None, false, false);
         assert!(out.leading.is_empty());
         assert!(out.subcommand.is_none());
     }
 
     #[test]
     fn no_flags_when_neither_resume_nor_continue_cursor() {
-        let out = super::resume_flags_for(&crate::agents::builtin_spec(&AgentKind::Cursor).unwrap(), None, false);
+        let out = super::resume_flags_for(&crate::agents::builtin_spec(&AgentKind::Cursor).unwrap(), None, false, false);
         assert!(out.leading.is_empty());
         assert!(out.subcommand.is_none());
     }
 
     #[test]
     fn no_flags_when_neither_resume_nor_continue_antigravity() {
-        let out = super::resume_flags_for(&crate::agents::builtin_spec(&AgentKind::Antigravity).unwrap(), None, false);
+        let out = super::resume_flags_for(&crate::agents::builtin_spec(&AgentKind::Antigravity).unwrap(), None, false, false);
         assert!(out.leading.is_empty());
         assert!(out.subcommand.is_none());
+    }
+
+    #[test]
+    fn fork_for_claude_adds_fork_session() {
+        let out = super::resume_flags_for(&crate::agents::builtin_spec(&AgentKind::Claude).unwrap(), Some("abc"), false, true);
+        assert_eq!(out.leading, vec!["--resume=abc".to_string(), "--fork-session".to_string()]);
+        assert!(out.subcommand.is_none());
+    }
+
+    #[test]
+    fn fork_for_codex_uses_fork_subcommand() {
+        let out = super::resume_flags_for(&crate::agents::builtin_spec(&AgentKind::Codex).unwrap(), Some("s-9"), false, true);
+        assert_eq!(out.subcommand.as_deref(), Some("fork"));
+        assert_eq!(out.leading, vec!["s-9".to_string()]);
+    }
+
+    #[test]
+    fn supports_fork_only_claude_and_codex() {
+        assert!(super::supports_fork(&AgentKind::Claude));
+        assert!(super::supports_fork(&AgentKind::Codex));
+        assert!(!super::supports_fork(&AgentKind::Cursor));
+        assert!(!super::supports_fork(&AgentKind::Antigravity));
+        assert!(!super::supports_fork(&AgentKind::Custom("x".into())));
     }
 
     fn custom_spec(tpl: Option<&str>) -> crate::agents::AgentSpec {
@@ -1597,7 +1645,7 @@ mod tests {
     #[test]
     fn custom_resume_substitutes_id_into_flag_template() {
         let spec = custom_spec(Some("--session {id}"));
-        let out = super::resume_flags_for(&spec, Some("s-42"), false);
+        let out = super::resume_flags_for(&spec, Some("s-42"), false, false);
         assert_eq!(out.subcommand, None);
         assert_eq!(out.leading, vec!["--session".to_string(), "s-42".to_string()]);
     }
@@ -1605,7 +1653,7 @@ mod tests {
     #[test]
     fn custom_resume_leading_non_flag_token_becomes_subcommand() {
         let spec = custom_spec(Some("resume {id}"));
-        let out = super::resume_flags_for(&spec, Some("s-42"), false);
+        let out = super::resume_flags_for(&spec, Some("s-42"), false, false);
         assert_eq!(out.subcommand, Some("resume".to_string()));
         assert_eq!(out.leading, vec!["s-42".to_string()]);
     }
@@ -1613,14 +1661,14 @@ mod tests {
     #[test]
     fn custom_continue_uses_template_without_id_verbatim() {
         let spec = custom_spec(Some("--continue"));
-        let out = super::resume_flags_for(&spec, None, true);
+        let out = super::resume_flags_for(&spec, None, true, false);
         assert_eq!(out.leading, vec!["--continue".to_string()]);
     }
 
     #[test]
     fn custom_id_template_with_no_id_is_empty() {
         let spec = custom_spec(Some("--session {id}"));
-        let out = super::resume_flags_for(&spec, None, true);
+        let out = super::resume_flags_for(&spec, None, true, false);
         assert!(out.subcommand.is_none() && out.leading.is_empty());
     }
 
@@ -1629,14 +1677,14 @@ mod tests {
         // A `--continue`-style template has nowhere to put the id: spawn fresh
         // rather than pass an id the CLI would misread as a prompt.
         let spec = custom_spec(Some("--continue"));
-        let out = super::resume_flags_for(&spec, Some("s-1"), false);
+        let out = super::resume_flags_for(&spec, Some("s-1"), false, false);
         assert!(out.leading.is_empty());
     }
 
     #[test]
     fn custom_without_template_never_injects() {
         let spec = custom_spec(None);
-        assert!(super::resume_flags_for(&spec, Some("x"), true).leading.is_empty());
+        assert!(super::resume_flags_for(&spec, Some("x"), true, false).leading.is_empty());
     }
 
     #[test]

@@ -421,6 +421,9 @@ pub struct CreateTerminalRequest {
     /// file) when the agent supports it. Never persisted with the terminal.
     #[serde(default)]
     pub initial_prompt: Option<String>,
+    /// Branch `resume_session_id` into a new conversation (Claude/Codex).
+    #[serde(default)]
+    pub fork: bool,
 }
 
 /// Built-ins resolve statically; `Custom(id)` reads the `custom_agents` row.
@@ -511,6 +514,7 @@ pub async fn create_terminal(
         let session_snapshot = crate::session_provider::provider_for(&agent).snapshot();
         let resume_id = request.resume_session_id.clone();
         let continue_recent = request.continue_recent && resume_id.is_none();
+        let fork = request.fork;
         let working_directory = request.working_directory.clone();
 
         // Build the OTLP endpoint only when the user enabled tracking AND the
@@ -540,6 +544,7 @@ pub async fn create_terminal(
                 continue_recent,
                 otel_endpoint,
                 request.initial_prompt,
+                fork,
             )?
         };
         if task.is_some() {
@@ -553,7 +558,10 @@ pub async fn create_terminal(
         // full lifetime of the terminal and keeps overwriting the captured
         // id whenever a newer .jsonl appears in the same cwd dir. That way
         // `/clear` (which rotates the session id) is handled transparently.
-        if let Some(id) = resume_id.as_deref() {
+        // A fork has a new conversation of its own, so it takes the detector
+        // branch below like a fresh terminal (the source id is in the
+        // snapshot and never matches as "new").
+        if let (Some(id), false) = (resume_id.as_deref(), fork) {
             eprintln!("[session-resume] spawning '{}' with --resume {}", config.label, id);
         } else if continue_recent {
             eprintln!("[session-resume] spawning '{}' with --continue", config.label);

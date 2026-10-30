@@ -16,6 +16,7 @@ import { isCustomAgent } from '../lib/agents';
 import { resolveRenameCommit } from '../lib/renameTab';
 import { contextTooltip, refreshSessionContext, sessionDisplayName } from '../lib/sessionContext';
 import { HandoffModal } from './HandoffModal';
+import { canFork, forkSession } from '../lib/fork';
 import { TaskBadge } from './TaskBadge';
 import { closeWithConfirm } from '../lib/closeConfirm';
 import { usePrStore } from '../store/prStore';
@@ -434,6 +435,19 @@ export function SessionCards() {
             label="Continue with another agent..."
             onClick={() => { setContextMenu(null); setHandoffId(ctxId); }}
           />
+          <CardMenuItem
+            icon={<GitBranch size={13} strokeWidth={1.75} />}
+            label="Fork conversation"
+            title="Only Claude Code and Codex sessions with a saved conversation can fork"
+            disabled={!(byId.get(ctxId) && canFork(byId.get(ctxId)!))}
+            onClick={() => {
+              setContextMenu(null);
+              forkSession(ctxId).catch((err) => {
+                toast.error('Could not fork the conversation', err instanceof Error ? err.message : String(err));
+                reportInvokeFailure('create_terminal', err);
+              });
+            }}
+          />
           {byId.get(ctxId)?.config.task && (
             <CardMenuItem
               icon={<GitMerge size={13} strokeWidth={1.75} />}
@@ -541,13 +555,15 @@ interface CardMenuItemProps {
   label: string;
   onClick: () => void;
   disabled?: boolean;
+  title?: string;
 }
 
-function CardMenuItem({ icon, label, onClick, disabled }: CardMenuItemProps) {
+function CardMenuItem({ icon, label, onClick, disabled, title }: CardMenuItemProps) {
   return (
     <button
       type="button"
       role="menuitem"
+      title={title}
       disabled={disabled}
       onClick={onClick}
       className={`w-full flex items-center gap-2.5 px-3 py-1.5 text-left text-[12px] transition-colors ${
