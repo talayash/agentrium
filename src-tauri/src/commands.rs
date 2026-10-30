@@ -596,7 +596,9 @@ pub async fn create_terminal(
                     let mut m = state.terminals.lock().await;
                     m.update_claude_session_id(&config.id, newest.id.clone());
                 }
-                emit_session_bound(&app, &config.id, &newest.id);
+                // The frontend adds this terminal from the returned config, so
+                // carry the id there (an event now would precede the terminal).
+                config.claude_session_id = Some(newest.id.clone());
                 // Persist to history so the Session Timeline can `--resume` it.
                 {
                     let cfg_id = config.id.clone();
