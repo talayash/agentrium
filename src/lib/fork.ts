@@ -19,7 +19,7 @@ export async function forkSession(sourceId: string): Promise<string> {
   const { config } = source;
   return useTerminalStore.getState().createTerminal(
     `Fork: ${sessionDisplayName(source)}`, config.working_directory,
-    config.claude_args, {},
+    config.claude_args, config.env_vars,
     undefined, undefined, undefined, config.claude_session_id ?? undefined, false, undefined,
     config.agent ?? 'claude', config.credential_bindings ?? [], config.task ?? null,
     { fork: true },

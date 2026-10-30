@@ -7,7 +7,7 @@ import { useTerminalStore, type TerminalConfig, type TerminalInstance } from '..
 const config: TerminalConfig = {
   id: 't1', label: 'Authentication', nickname: null, profile_id: null,
   working_directory: '/project', claude_args: ['--model', 'opus'],
-  env_vars: {}, created_at: '', status: 'Running',
+  env_vars: { FOO: 'bar' }, created_at: '', status: 'Running',
   color_tag: null, agent: 'claude', claude_session_id: 'abc',
   credential_bindings: [{ env: 'KEY', credential_id: 'secret-1' }],
   task: { repoPath: '/project', title: 'Task', branch: 'agentrium/task' } as TerminalConfig['task'],
@@ -45,6 +45,7 @@ describe('forkSession', () => {
     expect(id).toBe('forked');
     expect(invoke).toHaveBeenCalledWith('create_terminal', { request: expect.objectContaining({
       working_directory: '/project', claude_args: ['--model', 'opus'],
+      env_vars: { FOO: 'bar' },
       resume_session_id: 'abc', fork: true, agent: 'claude',
       credential_bindings: [{ env: 'KEY', credential_id: 'secret-1' }],
       task: config.task,
