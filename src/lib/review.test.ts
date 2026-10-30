@@ -26,3 +26,11 @@ describe('buildReviewBrief', () => {
     expect(out).toContain('- Line 9999 (new) `const x = 1;`: stale');
   });
 });
+
+describe('buildReviewBrief repo identity', () => {
+  it('heading includes the repo when set and keeps repos apart', () => {
+    const out = buildReviewBrief([c({ repoPath: 'D:/other' }), c({})]);
+    expect(out).toContain('## a.ts (repo: D:/other)');
+    expect(out).toContain('## a.ts\n');
+  });
+});

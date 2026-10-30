@@ -38,3 +38,27 @@ describe('InlineDiffView review comments', () => {
     await waitFor(() => expect(invoke).toHaveBeenCalled());
   });
 });
+
+describe('InlineDiffView repo identity', () => {
+  it('a comment with a repoPath renders only in a view with that pathOverride', async () => {
+    useReviewStore.getState().add({ terminalId: 't1', filePath: 'a.ts', repoPath: 'D:/other', side: 'new', line: 41, snippet: 's', body: 'repo-b note' });
+    const own = render(<InlineDiffView filePath="a.ts" terminalId="t1" />);
+    await screen.findByLabelText('Comment on line 41');
+    expect(screen.queryByText('repo-b note')).toBeNull();
+    own.unmount();
+    const wrong = render(<InlineDiffView filePath="a.ts" terminalId="t1" pathOverride="D:/third" />);
+    await screen.findByLabelText('Comment on line 41');
+    expect(screen.queryByText('repo-b note')).toBeNull();
+    wrong.unmount();
+    render(<InlineDiffView filePath="a.ts" terminalId="t1" pathOverride="D:/other" />);
+    expect(await screen.findByText('repo-b note')).toBeTruthy();
+  });
+
+  it('a comment saved under a pathOverride carries it as repoPath', async () => {
+    render(<InlineDiffView filePath="a.ts" terminalId="t1" pathOverride="D:/other" />);
+    fireEvent.click(await screen.findByLabelText('Comment on line 41'));
+    fireEvent.change(screen.getByLabelText('Review comment'), { target: { value: 'x' } });
+    fireEvent.keyDown(screen.getByLabelText('Review comment'), { key: 'Enter', ctrlKey: true });
+    expect(commentsFor('t1')[0].repoPath).toBe('D:/other');
+  });
+});

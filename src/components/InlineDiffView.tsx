@@ -125,7 +125,7 @@ export function InlineDiffView({ filePath, terminalId, pathOverride }: InlineDif
   const saveComment = (snippet: string) => {
     const body = draft.trim();
     if (editing && body) {
-      addComment({ terminalId, filePath, side: editing.side, line: editing.line, snippet, body });
+      addComment({ terminalId, filePath, repoPath: pathOverride ?? undefined, side: editing.side, line: editing.line, snippet, body });
     }
     closeEditor();
   };
@@ -178,6 +178,7 @@ export function InlineDiffView({ filePath, terminalId, pathOverride }: InlineDif
               const lineComments = anchor
                 ? allComments.filter(
                     (c) => c.terminalId === terminalId && c.filePath === filePath
+                      && c.repoPath === (pathOverride ?? undefined)
                       && c.side === anchor.side && c.line === anchor.line,
                   )
                 : [];

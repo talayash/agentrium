@@ -4,6 +4,8 @@ export interface ReviewComment {
   id: string;
   terminalId: string;
   filePath: string;
+  /** Set when the diff belongs to a repo other than the terminal cwd (pathOverride). */
+  repoPath?: string;
   side: 'new' | 'old';
   line: number;
   snippet: string;
