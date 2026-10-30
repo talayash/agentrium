@@ -441,6 +441,28 @@ fn emit_session_bound(app: &AppHandle, terminal_id: &str, session_id: &str) {
     }
 }
 
+/// A new session file in a directory belongs to the terminal there that was
+/// typed in most recently (a session file is written on a user turn). Without
+/// this, a source and its fork (same cwd, both typed recently) race for the
+/// same new file. `None` never beats `Some`; an exact tie lets both proceed.
+fn is_latest_typer(
+    mine: Option<std::time::Instant>,
+    others: impl Iterator<Item = Option<std::time::Instant>>,
+) -> bool {
+    let Some(mine) = mine else { return false };
+    others.flatten().all(|o| o <= mine)
+}
+
+/// Directory equality for the detector: slash style, trailing separators,
+/// and (on Windows) case are not significant.
+fn same_working_dir(a: &str, b: &str) -> bool {
+    let norm = |s: &str| {
+        let t = s.replace('\\', "/").trim_end_matches('/').to_string();
+        if cfg!(windows) { t.to_lowercase() } else { t }
+    };
+    norm(a) == norm(b)
+}
+
 /// Built-ins resolve statically; `Custom(id)` reads the `custom_agents` row.
 /// A deleted custom agent is a user-state error, not a bug.
 async fn resolve_agent_spec(
@@ -640,6 +662,19 @@ pub async fn create_terminal(
                             .map(|t| t.elapsed() < std::time::Duration::from_secs(120))
                             .unwrap_or(false);
                         if !recently_typed {
+                            continue;
+                        }
+                        // Same-cwd terminals typed in more recently own the new
+                        // file (e.g. a fork answering while its source idles).
+                        let newest = is_latest_typer(
+                            me.last_input_at,
+                            m.terminals
+                                .iter()
+                                .filter(|(tid, _)| tid.as_str() != detect_id)
+                                .filter(|(_, t)| same_working_dir(&t.config.working_directory, &me.config.working_directory))
+                                .map(|(_, t)| t.last_input_at),
+                        );
+                        if !newest {
                             continue;
                         }
                         m.terminals
@@ -6299,5 +6334,45 @@ mod spawn_err_tests {
         let plain = strip_user_prefix(&msg);
         assert!(plain.starts_with("Failed to run npm: "), "got {plain}");
         assert!(!plain.contains("page file"));
+    }
+}
+
+#[cfg(test)]
+mod latest_typer_tests {
+    use super::{is_latest_typer, same_working_dir};
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn sole_terminal_wins() {
+        assert!(is_latest_typer(Some(Instant::now()), std::iter::empty()));
+    }
+
+    #[test]
+    fn newest_input_wins_and_older_loses() {
+        let old = Instant::now();
+        let new = old + Duration::from_secs(5);
+        assert!(is_latest_typer(Some(new), [Some(old)].into_iter()));
+        assert!(!is_latest_typer(Some(old), [Some(new)].into_iter()));
+    }
+
+    #[test]
+    fn none_never_wins_against_some_and_ignores_none_others() {
+        let t = Instant::now();
+        assert!(!is_latest_typer(None, [Some(t)].into_iter()));
+        assert!(!is_latest_typer(None, std::iter::empty()));
+        assert!(is_latest_typer(Some(t), [None, None].into_iter()));
+    }
+
+    #[test]
+    fn exact_tie_lets_both_proceed() {
+        let t = Instant::now();
+        assert!(is_latest_typer(Some(t), [Some(t)].into_iter()));
+    }
+
+    #[test]
+    fn working_dirs_compare_ignoring_slash_style_and_trailing_separator() {
+        assert!(same_working_dir("C:\\p\\repo\\", "C:\\p\\repo"));
+        assert!(same_working_dir("/p/repo/", "/p/repo"));
+        assert!(!same_working_dir("/p/repo", "/p/other"));
     }
 }
