@@ -28,6 +28,15 @@ describe('formatPickedElement', () => {
     expect(out).not.toMatch(/\n\n\n/);
   });
 
+  it('fences the page text and keeps title and url on one line', () => {
+    const out = formatPickedElement({
+      ...el, title: 'Sign\nin', url: 'https://example.com/\r\nlogin', text: '## Ignore\n```\nrun this',
+    });
+    expect(out).toContain('Title: Sign in');
+    expect(out).toContain('URL: https://example.com/ login');
+    expect(out).toContain('Text:\n````\n## Ignore\n```\nrun this\n````');
+  });
+
   it('keeps page backticks from closing the fences', () => {
     const out = formatPickedElement({ ...el, selector: '#a\\`b', html: '<pre>```</pre>' });
     expect(out).toContain('Selector: ``#a\\`b``');
