@@ -1346,7 +1346,11 @@ pub async fn run_race_check(
 /// Returns false when no check with that id is running (already finished).
 #[command]
 pub async fn cancel_race_check(run_id: String) -> Result<bool, String> {
-    wrap_cmd("cancel_race_check", async move { Ok(cancel_check(&run_id)) }).await
+    wrap_cmd(
+        "cancel_race_check",
+        async move { Ok(cancel_check(&run_id)) },
+    )
+    .await
 }
 
 /// Signal a running check (race check or task setup) to stop. Returns false

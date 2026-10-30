@@ -1017,7 +1017,11 @@ pub async fn run_task_setup(
 
 #[command]
 pub async fn cancel_task_setup(run_id: String) -> Result<bool, String> {
-    wrap_cmd("cancel_task_setup", async move { Ok(cancel_check(&run_id)) }).await
+    wrap_cmd(
+        "cancel_task_setup",
+        async move { Ok(cancel_check(&run_id)) },
+    )
+    .await
 }
 
 #[command]
@@ -1406,7 +1410,9 @@ mod tests {
         .unwrap()
         .unwrap();
         assert_eq!(r.exit_code, Some(0));
-        assert!(PathBuf::from(&res.worktree_path).join("setup.txt").is_file());
+        assert!(PathBuf::from(&res.worktree_path)
+            .join("setup.txt")
+            .is_file());
         assert!(!repo.join("setup.txt").exists());
         let none = run_task_setup_impl(None, &info, "t-setup-none", Duration::from_secs(5))
             .await

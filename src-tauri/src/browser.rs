@@ -694,7 +694,8 @@ mod tests {
         .unwrap();
         assert_eq!(picked["kind"], "elementPicked");
         assert_eq!(picked["element"]["selector"], "");
-        let cancelled = serde_json::to_value(BrowserEvent::PickCancelled { id: "t1".into() }).unwrap();
+        let cancelled =
+            serde_json::to_value(BrowserEvent::PickCancelled { id: "t1".into() }).unwrap();
         assert_eq!(cancelled["kind"], "pickCancelled");
     }
 
@@ -712,7 +713,10 @@ mod tests {
         let cancel = u("agentrium-pick://cancel?n=abc");
         assert_eq!(parse_pick_url(&cancel, None), PickOutcome::Rejected);
         // An empty armed nonce never matches a missing one.
-        assert_eq!(parse_pick_url(&u("agentrium-pick://pick?d=%7B%7D"), Some("")), PickOutcome::Rejected);
+        assert_eq!(
+            parse_pick_url(&u("agentrium-pick://pick?d=%7B%7D"), Some("")),
+            PickOutcome::Rejected
+        );
     }
 
     #[test]
@@ -725,7 +729,8 @@ mod tests {
             "text": "ü".repeat(700),
             "html": "<b>".repeat(2000),
         });
-        let PickOutcome::Picked(el) = parse_pick_url(&pick_url("abc", &payload), Some("abc")) else {
+        let PickOutcome::Picked(el) = parse_pick_url(&pick_url("abc", &payload), Some("abc"))
+        else {
             panic!("expected a pick");
         };
         assert_eq!(el.url, "https://example.com/a");
@@ -754,8 +759,14 @@ mod tests {
 
     #[test]
     fn non_pick_url_is_not_pick() {
-        assert_eq!(parse_pick_url(&u("https://example.com"), Some("abc")), PickOutcome::NotPick);
-        assert_eq!(parse_pick_url(&u("https://example.com"), None), PickOutcome::NotPick);
+        assert_eq!(
+            parse_pick_url(&u("https://example.com"), Some("abc")),
+            PickOutcome::NotPick
+        );
+        assert_eq!(
+            parse_pick_url(&u("https://example.com"), None),
+            PickOutcome::NotPick
+        );
     }
 
     #[test]
@@ -796,6 +807,9 @@ mod tests {
         let id = "pick-test-disarm";
         arm_picker(id, "abc".into());
         disarm_picker(id);
-        assert!(matches!(take_pick(id, &u("agentrium-pick://cancel?n=abc")), Some(None)));
+        assert!(matches!(
+            take_pick(id, &u("agentrium-pick://cancel?n=abc")),
+            Some(None)
+        ));
     }
 }
