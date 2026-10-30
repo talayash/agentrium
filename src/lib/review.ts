@@ -1,4 +1,5 @@
 import type { ReviewComment } from '../store/reviewStore';
+import { inlineCode } from './markdown';
 
 /** One brief for the agent: comments grouped by file in first-seen order.
  *  Comments are rendered as given, with no lookup against the current diff. */
@@ -13,7 +14,11 @@ export function buildReviewBrief(comments: ReviewComment[]): string {
   const out = ['# Review comments', '', 'Address each comment below, then summarize what you changed.'];
   for (const { heading, items } of byFile.values()) {
     out.push('', `## ${heading}`);
-    for (const c of items) out.push(`- Line ${c.line} (${c.side}) \`${c.snippet}\`: ${c.body}`);
+    for (const c of items) {
+      // Continuation lines stay inside the list item.
+      const body = c.body.replace(/\r\n|\r|\n/g, '\n  ');
+      out.push(`- Line ${c.line} (${c.side}) ${inlineCode(c.snippet)}: ${body}`);
+    }
   }
   return out.join('\n');
 }

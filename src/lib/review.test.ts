@@ -21,6 +21,11 @@ describe('buildReviewBrief', () => {
     expect(out.match(/## b\.ts/g)).toHaveLength(1);
   });
 
+  it('keeps a backtick snippet in one code span and indents a multi-line body', () => {
+    const out = buildReviewBrief([c({ snippet: 'const s = `a`;', body: 'first line\nsecond line' })]);
+    expect(out).toContain('- Line 42 (new) ``const s = `a`;``: first line\n  second line');
+  });
+
   it('brief keeps comments whose line left the diff', () => {
     const out = buildReviewBrief([c({ line: 9999, body: 'stale' })]);
     expect(out).toContain('- Line 9999 (new) `const x = 1;`: stale');
