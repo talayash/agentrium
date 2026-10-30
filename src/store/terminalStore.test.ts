@@ -353,3 +353,32 @@ describe('terminalStore session state', () => {
     expect(useTerminalStore.getState().terminalStates.get('a')).toBe('idle');
   });
 });
+
+describe('setSessionId', () => {
+  beforeEach(() => {
+    useTerminalStore.setState({
+      terminals: new Map([['a', { config: makeConfig('a'), xterm: null, isWorktree: false }]]),
+    });
+  });
+
+  it('binds the session id immutably so config consumers re-render', () => {
+    const before = useTerminalStore.getState().terminals;
+    const beforeConfig = before.get('a')!.config;
+    useTerminalStore.getState().setSessionId('a', 'sess-1');
+    const after = useTerminalStore.getState().terminals;
+    expect(after).not.toBe(before);
+    expect(after.get('a')!.config).not.toBe(beforeConfig);
+    expect(after.get('a')!.config.claude_session_id).toBe('sess-1');
+    expect(beforeConfig.claude_session_id).toBeFalsy();
+  });
+
+  it('ignores unknown ids and unchanged values', () => {
+    const before = useTerminalStore.getState().terminals;
+    useTerminalStore.getState().setSessionId('nope', 'sess-1');
+    expect(useTerminalStore.getState().terminals).toBe(before);
+    useTerminalStore.getState().setSessionId('a', 'sess-1');
+    const bound = useTerminalStore.getState().terminals;
+    useTerminalStore.getState().setSessionId('a', 'sess-1');
+    expect(useTerminalStore.getState().terminals).toBe(bound);
+  });
+});

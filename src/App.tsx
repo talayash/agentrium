@@ -744,6 +744,26 @@ function App() {
     };
   }, [isDetached]);
 
+  // The backend binds the agent's conversation id after spawn (and on /clear).
+  // Mirror it into the store so Fork and other session-id consumers see it.
+  useEffect(() => {
+    let cancelled = false;
+    let unlistenFn: (() => void) | undefined;
+    listen<{ id: string; session_id: string }>('terminal-session-bound', (event) => {
+      if (cancelled) return;
+      useTerminalStore.getState().setSessionId(event.payload.id, event.payload.session_id);
+    }).then((fn) => {
+      if (cancelled) fn();
+      else unlistenFn = fn;
+    }).catch(() => {
+      // Best-effort: Fork stays disabled until the next restore.
+    });
+    return () => {
+      cancelled = true;
+      unlistenFn?.();
+    };
+  }, []);
+
   useEffect(() => {
     // Same listen()/cleanup race guard as the other event listeners above.
     let cancelled = false;

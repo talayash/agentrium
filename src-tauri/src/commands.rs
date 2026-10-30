@@ -426,6 +426,21 @@ pub struct CreateTerminalRequest {
     pub fork: bool,
 }
 
+/// Tell the frontend which conversation id the backend bound to a live
+/// terminal, so `TerminalConfig.claude_session_id` stays current.
+fn emit_session_bound(app: &AppHandle, terminal_id: &str, session_id: &str) {
+    if let Err(e) = app.emit(
+        "terminal-session-bound",
+        serde_json::json!({ "id": terminal_id, "session_id": session_id }),
+    ) {
+        eprintln!("Failed to emit terminal-session-bound: {}", e);
+        error_reporter::report_bg(
+            "emit_terminal_session_bound",
+            format!("Failed to emit terminal-session-bound: {}", e),
+        );
+    }
+}
+
 /// Built-ins resolve statically; `Custom(id)` reads the `custom_agents` row.
 /// A deleted custom agent is a user-state error, not a bug.
 async fn resolve_agent_spec(
@@ -581,6 +596,7 @@ pub async fn create_terminal(
                     let mut m = state.terminals.lock().await;
                     m.update_claude_session_id(&config.id, newest.id.clone());
                 }
+                emit_session_bound(&app, &config.id, &newest.id);
                 // Persist to history so the Session Timeline can `--resume` it.
                 {
                     let cfg_id = config.id.clone();
@@ -598,6 +614,7 @@ pub async fn create_terminal(
             let detect_label = config.label.clone();
             let cwd_for_log = working_directory.clone();
             let agent_for_detect = agent.clone();
+            let app_for_detect = app.clone();
             tokio::spawn(async move {
                 let mut last_recorded: Option<String> = None;
                 loop {
@@ -643,6 +660,7 @@ pub async fn create_terminal(
                                 let mut m = manager.lock().await;
                                 m.update_claude_session_id(&detect_id, session_id.clone());
                             }
+                            emit_session_bound(&app_for_detect, &detect_id, &session_id);
                             // Mirror onto the history row for later `--resume`.
                             {
                                 let detect_id_c = detect_id.clone();
