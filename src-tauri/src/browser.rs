@@ -12,6 +12,9 @@
 //! - Tabs use their own browser profile directory, so site cookies and
 //!   storage never mix with the app webview's own storage.
 
+use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
+
 use serde::{Deserialize, Serialize};
 use tauri::webview::{DownloadEvent, NewWindowResponse, PageLoadEvent, WebviewBuilder};
 use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, Url, WebviewUrl};
@@ -64,6 +67,132 @@ pub enum BrowserEvent {
         url: String,
         reason: String,
     },
+    /// The user picked an element with the armed picker.
+    ElementPicked {
+        id: String,
+        element: PickedElement,
+    },
+    /// The armed picker ended without a pick (Esc, or a forged pick URL).
+    PickCancelled {
+        id: String,
+    },
+}
+
+/// What the element picker reports. Every field is page-controlled text, so
+/// it is length-capped here and only ever shown to the user to review.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct PickedElement {
+    pub url: String,
+    pub title: String,
+    pub selector: String,
+    pub tag: String,
+    pub text: String,
+    pub html: String,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum PickOutcome {
+    NotPick,
+    Picked(PickedElement),
+    Cancelled,
+    Rejected,
+}
+
+/// The injected picker script reports by navigating to this scheme; the tab's
+/// `on_navigation` intercepts and cancels it, so it never loads anything.
+pub const PICK_SCHEME: &str = "agentrium-pick";
+/// Upper bound for a whole pick URL; the script trims `html` to fit.
+const MAX_PICK_URL_LEN: usize = 32 * 1024;
+
+fn cap_chars(mut s: String, max: usize) -> String {
+    if let Some((i, _)) = s.char_indices().nth(max) {
+        s.truncate(i);
+    }
+    s
+}
+
+/// Parse a navigation to `agentrium-pick://pick?n=<nonce>&d=<json>` or
+/// `agentrium-pick://cancel?n=<nonce>`. Anything without the armed tab's
+/// nonce is `Rejected`, so a page can't forge a pick unless the picker is on.
+pub fn parse_pick_url(u: &Url, armed_nonce: Option<&str>) -> PickOutcome {
+    if u.scheme() != PICK_SCHEME {
+        return PickOutcome::NotPick;
+    }
+    let Some(armed) = armed_nonce.filter(|n| !n.is_empty()) else {
+        return PickOutcome::Rejected;
+    };
+    if u.as_str().len() > MAX_PICK_URL_LEN {
+        return PickOutcome::Rejected;
+    }
+    let mut nonce = None;
+    let mut data = None;
+    for (k, v) in u.query_pairs() {
+        match k.as_ref() {
+            "n" => nonce = Some(v.into_owned()),
+            "d" => data = Some(v.into_owned()),
+            _ => {}
+        }
+    }
+    if nonce.as_deref() != Some(armed) {
+        return PickOutcome::Rejected;
+    }
+    match u.host_str() {
+        Some("cancel") => PickOutcome::Cancelled,
+        Some("pick") => {
+            let Some(Ok(el)) = data.map(|d| serde_json::from_str::<PickedElement>(&d)) else {
+                return PickOutcome::Rejected;
+            };
+            PickOutcome::Picked(PickedElement {
+                url: cap_chars(el.url, 2048),
+                title: cap_chars(el.title, 300),
+                selector: cap_chars(el.selector, 500),
+                tag: cap_chars(el.tag, 64),
+                text: cap_chars(el.text, 500),
+                html: cap_chars(el.html, 4000),
+            })
+        }
+        _ => PickOutcome::Rejected,
+    }
+}
+
+/// Tab id -> nonce of the picker currently armed in that tab.
+fn armed_pickers() -> &'static Mutex<HashMap<String, String>> {
+    static ARMED: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
+    ARMED.get_or_init(Default::default)
+}
+
+fn arm_picker(id: &str, nonce: String) {
+    armed_pickers()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert(id.to_string(), nonce);
+}
+
+fn disarm_picker(id: &str) -> Option<String> {
+    armed_pickers()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .remove(id)
+}
+
+/// Transport-independent half of the picker channel. `None` means `u` is not
+/// a picker URL and normal navigation rules apply. Otherwise the tab is
+/// disarmed (any picker URL, valid or not, ends the pick, so a page gets one
+/// guess per arm) and the result holds the event to emit, if any.
+fn take_pick(id: &str, u: &Url) -> Option<Option<BrowserEvent>> {
+    if u.scheme() != PICK_SCHEME {
+        return None;
+    }
+    let armed = disarm_picker(id);
+    let id = id.to_string();
+    Some(match parse_pick_url(u, armed.as_deref()) {
+        PickOutcome::NotPick => None,
+        PickOutcome::Picked(element) => Some(BrowserEvent::ElementPicked { id, element }),
+        PickOutcome::Cancelled => Some(BrowserEvent::PickCancelled { id }),
+        // Only tell the UI when it was actually waiting on this tab.
+        PickOutcome::Rejected => armed.map(|_| BrowserEvent::PickCancelled { id }),
+    })
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -171,14 +300,23 @@ fn create_tab(app: &AppHandle, id: &str, url: Url, bounds: Bounds) -> Result<(),
     let dl_id = id.to_string();
 
     let mut builder = WebviewBuilder::new(label(id), WebviewUrl::External(url))
-        .on_navigation(move |u| match nav_decision(u, &nav_origins) {
-            NavDecision::Allow => true,
-            NavDecision::Block(reason) => {
-                emit(
-                    &nav_app,
-                    BrowserEvent::Blocked { id: nav_id.clone(), url: u.to_string(), reason: reason.into() },
-                );
-                false
+        .on_navigation(move |u| {
+            // Picker reports come before nav_decision and never load.
+            if let Some(event) = take_pick(&nav_id, u) {
+                if let Some(event) = event {
+                    emit(&nav_app, event);
+                }
+                return false;
+            }
+            match nav_decision(u, &nav_origins) {
+                NavDecision::Allow => true,
+                NavDecision::Block(reason) => {
+                    emit(
+                        &nav_app,
+                        BrowserEvent::Blocked { id: nav_id.clone(), url: u.to_string(), reason: reason.into() },
+                    );
+                    false
+                }
             }
         })
         .on_page_load(move |_wv, payload| {
@@ -394,10 +532,43 @@ pub async fn browser_set_visible(app: AppHandle, id: String, visible: bool) -> R
 pub async fn browser_close(app: AppHandle, id: String) -> Result<(), String> {
     wrap_cmd("browser_close", async move {
         validate_id(&id)?;
+        disarm_picker(&id);
         match app.get_webview(&label(&id)) {
             Some(webview) => webview.close().map_err(|e| e.to_string()),
             None => Ok(()),
         }
+    })
+    .await
+}
+
+/// Arm the element picker in one tab: a fresh nonce, then the picker script.
+/// The page reports back only through a `PICK_SCHEME` navigation carrying
+/// that nonce; tabs never get an IPC path.
+#[tauri::command]
+pub async fn browser_pick_element(app: AppHandle, id: String) -> Result<(), String> {
+    wrap_cmd("browser_pick_element", async move {
+        let webview = get_tab(&app, &id)?;
+        let nonce = uuid::Uuid::new_v4().simple().to_string();
+        arm_picker(&id, nonce.clone());
+        let script = include_str!("browser_picker.js").replace("__NONCE__", &nonce);
+        webview.eval(&script).map_err(|e| {
+            disarm_picker(&id);
+            e.to_string()
+        })
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn browser_cancel_pick(app: AppHandle, id: String) -> Result<(), String> {
+    wrap_cmd("browser_cancel_pick", async move {
+        validate_id(&id)?;
+        disarm_picker(&id);
+        // Best effort: the tab may have closed or navigated (script gone).
+        if let Some(webview) = app.get_webview(&label(&id)) {
+            let _ = webview.eval("window.__agentriumPick && window.__agentriumPick.cancel()");
+        }
+        Ok(())
     })
     .await
 }
@@ -515,5 +686,116 @@ mod tests {
         .unwrap();
         assert_eq!(json["kind"], "loadFailed");
         assert_eq!(json["id"], "t1");
+
+        let picked = serde_json::to_value(BrowserEvent::ElementPicked {
+            id: "t1".into(),
+            element: PickedElement::default(),
+        })
+        .unwrap();
+        assert_eq!(picked["kind"], "elementPicked");
+        assert_eq!(picked["element"]["selector"], "");
+        let cancelled = serde_json::to_value(BrowserEvent::PickCancelled { id: "t1".into() }).unwrap();
+        assert_eq!(cancelled["kind"], "pickCancelled");
+    }
+
+    fn pick_url(nonce: &str, payload: &serde_json::Value) -> Url {
+        let mut url = u(&format!("agentrium-pick://pick?n={nonce}"));
+        url.query_pairs_mut().append_pair("d", &payload.to_string());
+        url
+    }
+
+    #[test]
+    fn pick_url_without_armed_nonce_is_dropped() {
+        let url = u("agentrium-pick://pick?n=abc&d=%7B%7D");
+        assert_eq!(parse_pick_url(&url, None), PickOutcome::Rejected);
+        assert_eq!(parse_pick_url(&url, Some("zzz")), PickOutcome::Rejected);
+        let cancel = u("agentrium-pick://cancel?n=abc");
+        assert_eq!(parse_pick_url(&cancel, None), PickOutcome::Rejected);
+        // An empty armed nonce never matches a missing one.
+        assert_eq!(parse_pick_url(&u("agentrium-pick://pick?d=%7B%7D"), Some("")), PickOutcome::Rejected);
+    }
+
+    #[test]
+    fn pick_url_parses_and_truncates() {
+        let payload = serde_json::json!({
+            "url": "https://example.com/a",
+            "title": "Example",
+            "selector": "é".repeat(600),
+            "tag": "button",
+            "text": "ü".repeat(700),
+            "html": "<b>".repeat(2000),
+        });
+        let PickOutcome::Picked(el) = parse_pick_url(&pick_url("abc", &payload), Some("abc")) else {
+            panic!("expected a pick");
+        };
+        assert_eq!(el.url, "https://example.com/a");
+        assert_eq!(el.title, "Example");
+        assert_eq!(el.tag, "button");
+        assert_eq!(el.selector.chars().count(), 500);
+        assert_eq!(el.text.chars().count(), 500);
+        assert_eq!(el.html.chars().count(), 4000);
+    }
+
+    #[test]
+    fn pick_url_with_bad_payload_is_rejected() {
+        let url = u("agentrium-pick://pick?n=abc&d=not-json");
+        assert_eq!(parse_pick_url(&url, Some("abc")), PickOutcome::Rejected);
+        let other = u("agentrium-pick://elsewhere?n=abc");
+        assert_eq!(parse_pick_url(&other, Some("abc")), PickOutcome::Rejected);
+    }
+
+    #[test]
+    fn pick_cancel_url() {
+        assert_eq!(
+            parse_pick_url(&u("agentrium-pick://cancel?n=abc"), Some("abc")),
+            PickOutcome::Cancelled
+        );
+    }
+
+    #[test]
+    fn non_pick_url_is_not_pick() {
+        assert_eq!(parse_pick_url(&u("https://example.com"), Some("abc")), PickOutcome::NotPick);
+        assert_eq!(parse_pick_url(&u("https://example.com"), None), PickOutcome::NotPick);
+    }
+
+    #[test]
+    fn oversized_pick_payload_is_rejected() {
+        let payload = serde_json::json!({ "html": "x".repeat(33 * 1024) });
+        assert_eq!(
+            parse_pick_url(&pick_url("abc", &payload), Some("abc")),
+            PickOutcome::Rejected
+        );
+    }
+
+    #[test]
+    fn pick_navigation_disarms_and_never_allows() {
+        let id = "pick-test-tab";
+        arm_picker(id, "abc".into());
+        let cancel = u("agentrium-pick://cancel?n=abc");
+        assert!(matches!(
+            take_pick(id, &cancel),
+            Some(Some(BrowserEvent::PickCancelled { .. }))
+        ));
+        // Disarmed: a replay of the same URL yields nothing.
+        assert!(matches!(take_pick(id, &cancel), Some(None)));
+        // A wrong nonce still disarms, so a page gets one guess per arm.
+        arm_picker(id, "abc".into());
+        assert!(matches!(
+            take_pick(id, &u("agentrium-pick://cancel?n=zzz")),
+            Some(Some(BrowserEvent::PickCancelled { .. }))
+        ));
+        assert!(matches!(take_pick(id, &cancel), Some(None)));
+        // Ordinary pages are left to nav_decision.
+        assert!(take_pick(id, &u("https://example.com/")).is_none());
+        // The pick scheme itself is never an allowed navigation.
+        assert!(matches!(nav_decision(&cancel, &[]), NavDecision::Block(_)));
+    }
+
+    #[test]
+    fn disarm_removes_the_nonce() {
+        let id = "pick-test-disarm";
+        arm_picker(id, "abc".into());
+        disarm_picker(id);
+        assert!(matches!(take_pick(id, &u("agentrium-pick://cancel?n=abc")), Some(None)));
     }
 }

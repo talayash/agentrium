@@ -14,11 +14,13 @@ import {
   Columns,
   Loader2,
   Info,
+  Crosshair,
 } from 'lucide-react';
 import { useBrowserStore, activeTab, type BrowserTab } from '../../store/browserStore';
 import { canGoBack, canGoForward } from '../../lib/browser/history';
 import { hostOf, isSecure } from '../../lib/browser/address';
 import {
+  cancelPick,
   closeTab,
   goBack,
   goForward,
@@ -27,6 +29,7 @@ import {
   reloadTab,
   setPageSlot,
   showOnly,
+  startPick,
 } from '../../lib/browser/controller';
 import { useOcclusion } from './useOcclusion';
 import { Tooltip } from '../ui/Tooltip';
@@ -48,12 +51,32 @@ interface Props {
 
 export function BrowserView({ resizing }: Props) {
   const tab = useBrowserStore(activeTab);
+  const pickingTabId = useBrowserStore((s) => s.pickingTabId);
+
+  // Esc while the app (not the page) has focus also cancels the picker.
+  useEffect(() => {
+    if (!pickingTabId) return;
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key === 'Escape') cancelPick(pickingTabId);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [pickingTabId]);
 
   return (
     <div className="h-full flex flex-col min-w-0 bg-elevation-0" data-testid="browser-view">
       <TabStrip />
       <Toolbar tab={tab} />
       <BookmarksBar />
+      {tab && pickingTabId === tab.id && (
+        <div
+          role="status"
+          className="flex items-center gap-2 px-3 py-1.5 bg-elevation-1 border-b border-seam text-[12px] text-text-secondary shrink-0"
+        >
+          <Crosshair size={13} className="text-accent-primary shrink-0" />
+          <span className="flex-1 min-w-0 truncate">Click an element on the page. Esc cancels.</span>
+        </div>
+      )}
       {tab?.notice && (
         <div className="flex items-center gap-2 px-3 py-1.5 bg-elevation-1 border-b border-seam text-[12px] text-text-secondary shrink-0">
           <Info size={13} className="text-accent-primary shrink-0" />
@@ -147,6 +170,7 @@ function TabStrip() {
 function Toolbar({ tab }: { tab: BrowserTab | undefined }) {
   const bookmarks = useBrowserStore((s) => s.bookmarks);
   const toggleBookmark = useBrowserStore((s) => s.toggleBookmark);
+  const picking = useBrowserStore((s) => !!tab && s.pickingTabId === tab.id);
   const [draft, setDraft] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -208,6 +232,18 @@ function Toolbar({ tab }: { tab: BrowserTab | undefined }) {
           onClick={() => tab && reloadTab(tab.id)}
         >
           <RotateCw size={14} className={tab?.loading ? 'animate-spin' : ''} />
+        </button>
+      </Tooltip>
+      <Tooltip label={picking ? 'Cancel element picking' : 'Pick an element to send to the agent'}>
+        <button
+          type="button"
+          className={`${iconBtn} ${picking ? 'bg-fill-active text-accent-primary' : ''}`}
+          aria-label="Pick an element to send to the agent"
+          aria-pressed={picking}
+          disabled={!tab || !tab.hasWebview || !!tab.error}
+          onClick={() => tab && (picking ? cancelPick(tab.id) : startPick(tab.id))}
+        >
+          <Crosshair size={15} />
         </button>
       </Tooltip>
 

@@ -249,6 +249,8 @@ fn main() {
             browser::browser_set_bounds,
             browser::browser_set_visible,
             browser::browser_close,
+            browser::browser_pick_element,
+            browser::browser_cancel_pick,
             commands::send_feedback,
             commands::open_feedback_inbox,
             commands::reveal_in_file_manager,

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { emptyHistory, recordLoad, markPending, type NavHistory } from '../lib/browser/history';
+import type { PickedElement } from '../lib/browser/pickedElement';
 
 // Built-in browser UI state. Tabs are ephemeral (their native webviews die
 // with the app), so only layout and bookmarks persist. Side effects (IPC to
@@ -34,7 +35,9 @@ export type BrowserEventPayload =
   | { kind: 'titleChanged'; id: string; title: string }
   | { kind: 'loadFailed'; id: string; url: string; error: string }
   | { kind: 'newTab'; id: string; url: string }
-  | { kind: 'blocked'; id: string; url: string; reason: string };
+  | { kind: 'blocked'; id: string; url: string; reason: string }
+  | { kind: 'elementPicked'; id: string; element: PickedElement }
+  | { kind: 'pickCancelled'; id: string };
 
 export const MIN_TERMINAL_PX = 260;
 export const MIN_BROWSER_PX = 360;
@@ -47,6 +50,8 @@ interface BrowserState {
   tabs: BrowserTab[];
   activeTabId: string | null;
   bookmarks: Bookmark[];
+  /** Tab whose element picker is armed; at most one at a time. */
+  pickingTabId: string | null;
 
   setOpen: (open: boolean) => void;
   toggleOpen: () => void;
@@ -62,6 +67,7 @@ interface BrowserState {
   applyEvent: (ev: BrowserEventPayload) => void;
   toggleBookmark: (bookmark: Bookmark) => void;
   removeBookmark: (url: string) => void;
+  setPickingTabId: (id: string | null) => void;
 }
 
 let seq = 0;
@@ -88,6 +94,7 @@ export const useBrowserStore = create<BrowserState>()(
       tabs: [],
       activeTabId: null,
       bookmarks: [],
+      pickingTabId: null,
 
       setOpen: (open) =>
         set((s) => {
@@ -119,7 +126,8 @@ export const useBrowserStore = create<BrowserState>()(
           if (tabs.length === 0) tabs = [blankTab(newTabId())];
           const activeTabId =
             s.activeTabId === id ? tabs[Math.min(idx, tabs.length - 1)].id : s.activeTabId;
-          return { tabs, activeTabId };
+          const pickingTabId = s.pickingTabId === id ? null : s.pickingTabId;
+          return { tabs, activeTabId, pickingTabId };
         }),
 
       activateTab: (id) => set({ activeTabId: id }),
@@ -162,6 +170,8 @@ export const useBrowserStore = create<BrowserState>()(
         ),
 
       removeBookmark: (url) => set((s) => ({ bookmarks: s.bookmarks.filter((b) => b.url !== url) })),
+
+      setPickingTabId: (pickingTabId) => set({ pickingTabId }),
     }),
     {
       name: 'browser-store',
