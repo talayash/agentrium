@@ -8,6 +8,8 @@ import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
 import { usePrStore } from '../store/prStore';
 import { useAttentionStore } from '../store/attentionStore';
+import { toast } from '../store/toastStore';
+import { cleanUpPrSessions, cleanupToastMessage } from '../lib/prCleanup';
 import { terminalPrTarget, type PrTarget } from '../lib/pullRequestActions';
 import { prTransitions, type PrEvent, type PullRequestStatus } from '../lib/pullRequests';
 import { isWithinDnd, playNotificationSound } from '../lib/notificationGate';
@@ -44,6 +46,7 @@ export interface PollOptions {
 function eventCopy(e: PrEvent, branch: string): { title: string; detail: string } {
   const s = e.status;
   if (e.kind === 'merged') return { title: `PR #${s.number} merged`, detail: `${branch} was merged. You can finish the task or close the session.` };
+  if (e.kind === 'closed') return { title: `PR #${s.number} closed`, detail: `${branch} was closed without merging. You can clean up its sessions from the session menu.` };
   const names = s.ci.failing.map(c => c.name).slice(0, 3).join(', ');
   return {
     title: `CI failing on PR #${s.number}`,
@@ -111,13 +114,18 @@ export async function pollPullRequests(opts: PollOptions): Promise<void> {
     for (const e of events) {
       const copy = eventCopy(e, g.target.branch);
       useAttentionStore.getState().put({
-        terminalId, targetId: terminalId, kind: e.kind === 'merged' ? 'merged' : 'ci',
+        terminalId, targetId: terminalId, kind: e.kind === 'merged' ? 'merged' : e.kind === 'closed' ? 'closed' : 'ci',
         title: name, detail: copy.detail, url: status.url,
       });
       if (!lookingAtIt && !dnd) {
         opts.notify(copy.title, `${name}: ${copy.detail}`);
         if (app.notificationSoundEnabled) playNotificationSound();
       }
+    }
+    // Only merged: a closed PR may be reopened, so it never cleans up by itself.
+    if (app.autoCleanupMergedPrs && events.some(e => e.kind === 'merged')) {
+      const plan = await cleanUpPrSessions(key);
+      toast.info(cleanupToastMessage(status.number, plan));
     }
   }));
 }

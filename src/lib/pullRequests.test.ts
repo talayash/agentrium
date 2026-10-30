@@ -115,12 +115,18 @@ describe('prTransitions', () => {
     expect(prTransitions({ lastState: 'open', lastCi: 'pending' }, failed).map(e => e.kind)).toEqual(['ci-failed']);
     expect(prTransitions({ lastState: 'open', lastCi: 'failure' }, failed)).toEqual([]);
     // A closed PR's red CI is not actionable.
-    expect(prTransitions({ lastState: 'open', lastCi: 'pending' }, status({ state: 'closed' }, { state: 'failure' }))).toEqual([]);
+    expect(prTransitions({ lastState: 'open', lastCi: 'pending' }, status({ state: 'closed' }, { state: 'failure' })).map(e => e.kind)).toEqual(['closed']);
   });
 
   it('fires when the PR becomes merged', () => {
     expect(prTransitions({ lastState: 'open', lastCi: 'success' }, status({ state: 'merged' })).map(e => e.kind)).toEqual(['merged']);
     expect(prTransitions({ lastState: 'merged', lastCi: 'success' }, status({ state: 'merged' }))).toEqual([]);
+    expect(prTransitions({ lastState: 'open', lastCi: 'success' }, status({ state: 'merged' })).map(e => e.kind)).toEqual(['merged']);
+  });
+
+  it('fires once when the PR is closed without merging', () => {
+    expect(prTransitions({ lastState: 'open', lastCi: 'success' }, status({ state: 'closed' })).map(e => e.kind)).toEqual(['closed']);
+    expect(prTransitions({ lastState: 'closed', lastCi: 'success' }, status({ state: 'closed' }))).toEqual([]);
   });
 });
 

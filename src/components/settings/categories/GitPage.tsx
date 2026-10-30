@@ -23,6 +23,11 @@ const cat = { group: 'vcs', page: 'git' } as const;
   registerSetting({ category: cat, id, label: id.replace(/-/g, ' '), keywords: ['git', 'task', 'worktree', 'isolation'] })
 );
 
+registerSetting({
+  category: cat, id: 'pr-auto-cleanup', label: 'pr auto cleanup',
+  keywords: ['pr', 'merge', 'archive', 'cleanup', 'worktree'],
+});
+
 const FIELD = 'w-72 bg-elevation-0 text-text-primary text-[12px] px-2 py-1 rounded ring-1 ring-border-light font-mono';
 
 export default function GitPage() {
@@ -35,10 +40,11 @@ export default function GitPage() {
   const prMethod = useAppStore((s) => s.prMethod);
   const prDraftByDefault = useAppStore((s) => s.prDraftByDefault);
   const prBodyTemplate = useAppStore((s) => s.prBodyTemplate);
+  const autoCleanupMergedPrs = useAppStore((s) => s.autoCleanupMergedPrs);
   const {
     setVcsCommitMessageTemplate, setVcsDefaultAutoStage, setVcsDefaultMergeStrategy,
     setNewTerminalIsolation, setTaskWorktreeRoot, setTaskSetupFiles,
-    setPrMethod, setPrDraftByDefault, setPrBodyTemplate,
+    setPrMethod, setPrDraftByDefault, setPrBodyTemplate, setAutoCleanupMergedPrs,
   } = useAppStore.getState();
 
   return (
@@ -106,6 +112,12 @@ export default function GitPage() {
         </SettingRow>
         <SettingRow label="Create as draft by default" description="Draft applies when the CLI creates the PR.">
           <Toggle value={prDraftByDefault} onChange={setPrDraftByDefault} label="Create as draft by default" />
+        </SettingRow>
+        <SettingRow
+          label="Clean up sessions automatically when their PR merges"
+          description="Closes the PR's sessions and removes task worktrees (branches are kept). Sessions with a busy agent or uncommitted changes are skipped."
+        >
+          <Toggle value={autoCleanupMergedPrs} onChange={setAutoCleanupMergedPrs} label="Clean up sessions automatically when their PR merges" />
         </SettingRow>
         <SettingRow
           label="Description template"

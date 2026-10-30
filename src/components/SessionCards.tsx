@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Reorder } from 'framer-motion';
-import { X, Copy, Grid3X3, AppWindow, Pin, PinOff, SplitSquareHorizontal, GitBranch, GitFork, GitMerge, Pencil, GitPullRequestCreate, ExternalLink, Wrench } from 'lucide-react';
+import { X, Copy, Grid3X3, AppWindow, Pin, PinOff, SplitSquareHorizontal, GitBranch, GitFork, GitMerge, Pencil, GitPullRequestCreate, ExternalLink, Wrench, Trash2 } from 'lucide-react';
 import { useTerminalStore } from '../store/terminalStore';
 import { toast } from '../store/toastStore';
 import { reportInvokeFailure } from '../lib/errorReporter';
@@ -22,6 +22,7 @@ import { closeWithConfirm } from '../lib/closeConfirm';
 import { usePrStore } from '../store/prStore';
 import { openCreatePrForTerminal, openPullRequestUrl, sendFailingChecksToAgent, terminalPrTarget } from '../lib/pullRequestActions';
 import { PrChip } from './PrChip';
+import { cleanUpPrSessions, cleanupToastMessage } from '../lib/prCleanup';
 import { useSessionAttentionStore } from '../store/sessionAttentionStore';
 
 // Soft per-agent tint for the card badge (Apple-clean, theme-aware via /alpha).
@@ -460,6 +461,8 @@ export function SessionCards() {
             if (!target) return null;
             const ref = prRefs[target.key];
             const failing = prStatuses[target.key]?.ci.state === 'failure';
+            const prState = prStatuses[target.key]?.state;
+            const finished = prState === 'merged' || prState === 'closed';
             return (
               <>
                 {ref ? (
@@ -480,6 +483,17 @@ export function SessionCards() {
                     icon={<Wrench size={13} strokeWidth={1.75} />}
                     label="Send failing checks to agent"
                     onClick={() => { setContextMenu(null); void sendFailingChecksToAgent(ctxId); }}
+                  />
+                )}
+                {finished && (
+                  <CardMenuItem
+                    icon={<Trash2 size={13} strokeWidth={1.75} />}
+                    label="Clean up sessions..."
+                    onClick={() => {
+                      setContextMenu(null);
+                      const number = prStatuses[target.key]?.number ?? 0;
+                      void cleanUpPrSessions(target.key).then(plan => toast.info(cleanupToastMessage(number, plan)));
+                    }}
                   />
                 )}
               </>

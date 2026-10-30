@@ -191,6 +191,8 @@ interface AppState {
   // Create Pull Request (Settings > Git)
   prMethod: PrMethodPreference;
   prDraftByDefault: boolean;
+  autoCleanupMergedPrs: boolean;
+  setAutoCleanupMergedPrs: (on: boolean) => void;
   /** Supports {title}, {summary}, {files}, {commits}. */
   prBodyTemplate: string;
   createPrModalOpen: boolean;
@@ -697,6 +699,7 @@ export const useAppStore = create<AppState>()(
       taskSetupFiles: {},
       prMethod: 'auto' as PrMethodPreference,
       prDraftByDefault: false,
+      autoCleanupMergedPrs: false,
       prBodyTemplate: DEFAULT_PR_BODY_TEMPLATE,
       createPrModalOpen: false,
       createPrRepoPath: null,
@@ -933,6 +936,7 @@ export const useAppStore = create<AppState>()(
       setNewTerminalIsolation: (mode) => set({ newTerminalIsolation: mode }),
       setPrMethod: (method) => set({ prMethod: method }),
       setPrDraftByDefault: (draft) => set({ prDraftByDefault: draft }),
+      setAutoCleanupMergedPrs: (on) => set({ autoCleanupMergedPrs: on }),
       setPrBodyTemplate: (template) => set({ prBodyTemplate: template }),
       setTaskWorktreeRoot: (path) => set({ taskWorktreeRoot: path }),
       setTaskSetupFiles: (repoPath, files) => set((state) => {
@@ -1521,6 +1525,7 @@ export const useAppStore = create<AppState>()(
         raceCheckTimeoutMin: state.raceCheckTimeoutMin,
         prMethod: state.prMethod,
         prDraftByDefault: state.prDraftByDefault,
+        autoCleanupMergedPrs: state.autoCleanupMergedPrs,
         prBodyTemplate: state.prBodyTemplate,
         sessionFilter: state.sessionFilter,
         vcsChangelistsConfirmDelete: state.vcsChangelistsConfirmDelete,
