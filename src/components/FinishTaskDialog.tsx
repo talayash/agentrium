@@ -6,21 +6,10 @@ import {
   mergeBlockReason, type FinishChoice, type MergeMode, type TaskInfo, type TaskStatus,
 } from '../lib/tasks';
 import { useAppStore } from '../store/appStore';
+import { terminalsInWorktree } from '../lib/worktreeTerminals';
 import { useTerminalStore } from '../store/terminalStore';
 import { toast } from '../store/toastStore';
 import { Modal } from './ui/Modal';
-
-const samePath = (a: string, b: string) =>
-  a.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase() === b.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
-
-/** Every open terminal working in the task's worktree (a same-worktree
- *  handoff leaves more than one). */
-function terminalsInWorktree(task: TaskInfo): string[] {
-  return Array.from(useTerminalStore.getState().terminals.values())
-    .filter((t) => (t.config.task && samePath(t.config.task.worktreePath, task.worktreePath))
-      || samePath(t.config.working_directory, task.worktreePath))
-    .map((t) => t.config.id);
-}
 
 async function closeTerminals(ids: string[]) {
   for (const id of ids) {
@@ -123,7 +112,7 @@ export function FinishTaskDialog() {
     setBusy(true);
     setError('');
     try {
-      const ids = terminalsInWorktree(task);
+      const ids = terminalsInWorktree(task.worktreePath);
       if (action.kind === 'merge') {
         // Merge while the session is still open, so a refused merge costs
         // nothing. Cleanup can then fail on Windows because the agent's

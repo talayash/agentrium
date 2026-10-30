@@ -4,6 +4,7 @@ import { useAttentionStore } from '../store/attentionStore';
 import { terminalPrTarget } from './pullRequestActions';
 import { getTaskStatus } from './tasks';
 import { reportInvokeFailure } from './errorReporter';
+import { terminalsInWorktree } from './worktreeTerminals';
 
 export interface CleanupCandidate {
   terminalId: string;
@@ -86,6 +87,15 @@ export async function cleanUpPrSessions(prKey: string): Promise<CleanupPlan> {
   plan.close = closed;
   // Never remove a worktree whose session is still open.
   plan.removeWorktrees = plan.removeWorktrees.filter(p => !stillOpen.has(p));
+  // A shell, script tab or session without git info yet is not a PR candidate
+  // but still runs in the worktree; removing it would pull the folder out
+  // from under a live process.
+  const closedIds = new Set(closed);
+  plan.removeWorktrees = plan.removeWorktrees.filter((p) => {
+    const inUse = terminalsInWorktree(p).some(id => !closedIds.has(id));
+    if (inUse) plan.skipped.push({ terminalId: '', reason: 'Another open terminal uses this worktree' });
+    return !inUse;
+  });
   for (const worktreePath of plan.removeWorktrees) {
     try {
       await invoke('finish_task', { worktreePath, action: { kind: 'keep' } });

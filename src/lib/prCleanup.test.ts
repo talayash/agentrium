@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 import { invoke } from '@tauri-apps/api/core';
-import { cleanUpPrSessions, planCleanup, type CleanupCandidate } from './prCleanup';
+import { cleanUpPrSessions, cleanupToastMessage, planCleanup, type CleanupCandidate } from './prCleanup';
 import { useTerminalStore, type TerminalConfig } from '../store/terminalStore';
 import { useAttentionStore } from '../store/attentionStore';
 import { prKey } from './pullRequests';
@@ -81,6 +81,23 @@ describe('cleanUpPrSessions', () => {
     expect(order).toEqual(['close:t1', 'finish']);
     expect(invoke).toHaveBeenCalledWith('finish_task', { worktreePath: '/repo', action: { kind: 'keep' } });
     expect(useAttentionStore.getState().items).toEqual([]);
+  });
+
+  it('keeps a worktree used by a shell terminal that is not a PR candidate', async () => {
+    const task = { title: 'T', branch: 'feat/x', baseBranch: 'main', worktreePath: '/repo', repoPath: '/main' };
+    useTerminalStore.setState({
+      terminals: new Map([
+        ['t1', { config: { ...config('t1'), task }, xterm: null, isWorktree: true }],
+        ['sh', { config: { ...config('sh'), working_directory: '\\repo\\' }, xterm: null, isWorktree: true, isShellTerminal: true }],
+      ]),
+      gitInfoCache: new Map([['t1', git]]),
+    } as never);
+    const plan = await cleanUpPrSessions(KEY);
+    expect(plan.close).toEqual(['t1']);
+    expect(order).toEqual(['close:t1']);
+    expect(plan.removeWorktrees).toEqual([]);
+    expect(plan.skipped).toEqual([{ terminalId: '', reason: 'Another open terminal uses this worktree' }]);
+    expect(cleanupToastMessage(7, plan)).toBe('Cleaned up 1 session(s) for PR #7');
   });
 
   it('records a finish_task failure as skipped instead of throwing', async () => {
