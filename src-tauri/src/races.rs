@@ -38,7 +38,7 @@ const PART_SLUG_LEN: usize = 20;
 /// Bytes of check output kept (the tail is what matters for a failing test).
 const CHECK_TAIL_BYTES: usize = 16 * 1024;
 pub const DEFAULT_CHECK_TIMEOUT_SECS: u64 = 600;
-const MAX_CHECK_TIMEOUT_SECS: u64 = 3 * 60 * 60;
+pub const MAX_CHECK_TIMEOUT_SECS: u64 = 3 * 60 * 60;
 /// Files bigger than this are not loaded into the compare view.
 const MAX_FILE_BYTES: u64 = 2 * 1024 * 1024;
 
@@ -893,7 +893,7 @@ pub async fn run_check(
     })
 }
 
-fn running_checks() -> &'static std::sync::Mutex<HashMap<String, Arc<Notify>>> {
+pub(crate) fn running_checks() -> &'static std::sync::Mutex<HashMap<String, Arc<Notify>>> {
     static RUNNING: OnceLock<std::sync::Mutex<HashMap<String, Arc<Notify>>>> = OnceLock::new();
     RUNNING.get_or_init(Default::default)
 }
@@ -927,7 +927,7 @@ impl Drop for DecideGuard {
 }
 
 /// Removes the cancel handle when the check finishes, however it finishes.
-struct CheckGuard(String);
+pub(crate) struct CheckGuard(pub(crate) String);
 
 impl Drop for CheckGuard {
     fn drop(&mut self) {
@@ -1346,21 +1346,23 @@ pub async fn run_race_check(
 /// Returns false when no check with that id is running (already finished).
 #[command]
 pub async fn cancel_race_check(run_id: String) -> Result<bool, String> {
-    wrap_cmd("cancel_race_check", async move {
-        let handle = running_checks()
-            .lock()
-            .map_err(|e| e.to_string())?
-            .get(&run_id)
-            .cloned();
-        Ok(match handle {
-            Some(n) => {
-                n.notify_one();
-                true
-            }
-            None => false,
-        })
-    })
-    .await
+    wrap_cmd("cancel_race_check", async move { Ok(cancel_check(&run_id)) }).await
+}
+
+/// Signal a running check (race check or task setup) to stop. Returns false
+/// when no check with that id is running.
+pub(crate) fn cancel_check(run_id: &str) -> bool {
+    let handle = running_checks()
+        .lock()
+        .ok()
+        .and_then(|m| m.get(run_id).cloned());
+    match handle {
+        Some(n) => {
+            n.notify_one();
+            true
+        }
+        None => false,
+    }
 }
 
 #[command]

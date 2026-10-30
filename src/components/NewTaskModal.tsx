@@ -5,6 +5,7 @@ import { Flag, FolderOpen, GitBranch } from 'lucide-react';
 import { allAgentSpecs, type AgentKind } from '../lib/agents';
 import { reportInvokeFailure } from '../lib/errorReporter';
 import { knownRepoPaths, launchTask, repoPathForTerminal, type TaskProfile } from '../lib/tasks';
+import { cancelTaskSetup, type LaunchPhase } from '../lib/taskSetup';
 import { useAppStore } from '../store/appStore';
 import { useAgentRegistryStore } from '../store/agentRegistryStore';
 import { useTerminalStore } from '../store/terminalStore';
@@ -40,6 +41,8 @@ export function NewTaskModal() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const launching = useRef(false);
+  const [phase, setPhase] = useState<LaunchPhase | null>(null);
+  const setupRunId = useRef('');
   // Source of the repo (and launch config): a saved profile, or a folder.
   const [source, setSource] = useState<'profile' | 'folder'>(presetRepo ? 'folder' : 'profile');
   const [profiles, setProfiles] = useState<TaskProfile[] | null>(null);
@@ -109,9 +112,11 @@ export function NewTaskModal() {
     launching.current = true;
     setBusy(true);
     setError('');
+    setupRunId.current = crypto.randomUUID();
     try {
       await launchTask({
         repoPath, title, agent, baseBranch, branchName, titleAsPrompt,
+        setupRunId: setupRunId.current, onPhase: setPhase,
         profile: source === 'profile' ? profile : null,
       });
       const app = useAppStore.getState();
@@ -129,6 +134,7 @@ export function NewTaskModal() {
     } finally {
       launching.current = false;
       setBusy(false);
+      setPhase(null);
     }
   };
 
@@ -249,11 +255,16 @@ export function NewTaskModal() {
         </label>
         {error && <p role="alert" className="text-[12px] text-error whitespace-pre-wrap">{error}</p>}
         <div className="flex justify-end gap-2 pt-1">
-          <button type="button" disabled={busy} onClick={close} className="px-3 py-1.5 text-[13px] text-text-secondary">Cancel</button>
+          {phase === 'setup' ? (
+            <button type="button" onClick={() => { cancelTaskSetup(setupRunId.current).catch(() => {}); /* already finished is fine */ }}
+              className="px-3 py-1.5 text-[13px] text-text-secondary">Cancel</button>
+          ) : (
+            <button type="button" disabled={busy} onClick={close} className="px-3 py-1.5 text-[13px] text-text-secondary">Cancel</button>
+          )}
           <button type="submit" disabled={!canSubmit}
             className="px-4 py-1.5 rounded-lg bg-accent-primary text-white text-[13px] font-medium disabled:opacity-50 flex items-center gap-1.5">
             <GitBranch size={13} />
-            {busy ? 'Creating worktree...' : 'Start task'}
+            {phase === 'setup' ? 'Running setup...' : busy ? 'Creating worktree...' : 'Start task'}
           </button>
         </div>
       </form>

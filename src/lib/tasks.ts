@@ -5,6 +5,7 @@ import { reportInvokeFailure } from './errorReporter';
 import { useTerminalStore, type PromptDelivery } from '../store/terminalStore';
 import { useAppStore, type MergeStrategy } from '../store/appStore';
 import { useAgentRegistryStore } from '../store/agentRegistryStore';
+import { runTaskSetup, setupFailed, setupFailureMessage, type LaunchPhase } from './taskSetup';
 
 /** Task metadata carried on a terminal (`TerminalConfig.task`). Mirrors
  *  `tasks::TaskInfo` in Rust, which serializes camelCase. */
@@ -202,6 +203,10 @@ export interface LaunchTaskParams extends StartTaskParams {
   /** Hand the prompt to the agent at spawn when its CLI supports an initial
    *  prompt; it is staged only when the backend could not deliver it. */
   deliverPromptAtSpawn?: boolean;
+  /** Run id for the repo's setup command, so a caller can cancel it. */
+  setupRunId?: string;
+  /** Reports 'worktree' -> 'setup' -> 'agent' as the launch progresses. */
+  onPhase?: (phase: LaunchPhase) => void;
 }
 
 /** Whether an agent can receive a prompt at spawn (argv / prompt file) or
@@ -217,13 +222,30 @@ export function needsStaging(delivery: PromptDelivery | null | undefined): boole
   return !delivery || delivery.mode === 'staged';
 }
 
+/** Fresh branch, no commits: discarding loses nothing. */
+async function discardFreshTask(worktreePath: string): Promise<void> {
+  await invoke('finish_task', { worktreePath, action: { kind: 'discard', confirm_unmerged: false } })
+    .catch((e) => reportInvokeFailure('finish_task', e));
+}
+
 /** Create the task worktree, then a terminal working in it. If the terminal
  *  cannot start, the fresh worktree and branch are rolled back. */
 export async function launchTask(p: LaunchTaskParams): Promise<string> {
   if (!p.title.trim()) throw new Error('Give the task a title.');
   if (!allAgentSpecs().some(spec => spec.kind === p.agent)) throw new Error('The selected agent is no longer available.');
+  p.onPhase?.('worktree');
   const result = await startTask(p);
   const task = taskFromStart(p.title, result);
+  p.onPhase?.('setup');
+  const setup = await runTaskSetup(task.worktreePath, p.setupRunId ?? crypto.randomUUID()).catch(async (err) => {
+    await discardFreshTask(task.worktreePath);
+    throw err;
+  });
+  if (setup && setupFailed(setup)) {
+    await discardFreshTask(task.worktreePath);
+    throw new Error(setupFailureMessage(setup));
+  }
+  p.onPhase?.('agent');
   const launch = resolveLaunchConfig(
     p.agent, p.profile, useAppStore.getState().defaultAgentArgs,
     useAgentRegistryStore.getState().defaultBindingsFor(p.agent),
@@ -238,9 +260,7 @@ export async function launchTask(p: LaunchTaskParams): Promise<string> {
       launch.bindings, task, atSpawn ? { initialPrompt: prompt } : undefined,
     );
   } catch (err) {
-    // Fresh branch, no commits: discarding loses nothing.
-    await invoke('finish_task', { worktreePath: task.worktreePath, action: { kind: 'discard', confirm_unmerged: false } })
-      .catch((e) => reportInvokeFailure('finish_task', e));
+    await discardFreshTask(task.worktreePath);
     throw err;
   }
   const delivered = atSpawn && !needsStaging(useTerminalStore.getState().terminals.get(id)?.config.prompt_delivery);

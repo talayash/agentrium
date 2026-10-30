@@ -11,6 +11,7 @@ import {
   MAX_CONTENDERS, MIN_CONTENDERS, averageContenderCost, contenderLabel, formatCost, launchRace, promptDeliveryFor,
   winRateFor, winRates, type RaceContenderInput,
 } from '../lib/races';
+import { cancelTaskSetup, raceSetupRunId, type LaunchPhase } from '../lib/taskSetup';
 import { useAppStore } from '../store/appStore';
 import { useRaceStore } from '../store/raceStore';
 import { useTerminalStore } from '../store/terminalStore';
@@ -58,6 +59,8 @@ export function NewRaceModal() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const launching = useRef(false);
+  const [phase, setPhase] = useState<LaunchPhase | null>(null);
+  const setupRunId = useRef('');
   const profile = profiles.find((p) => p.id === profileId) ?? null;
 
   const history = useMemo(() => Object.values(races), [races]);
@@ -113,10 +116,12 @@ export function NewRaceModal() {
     launching.current = true;
     setBusy(true);
     setError('');
+    setupRunId.current = crypto.randomUUID();
     try {
       useAppStore.getState().setRaceCheckCommand(repoPath, checkCommand);
       const result = await launchRace({
         repoPath, title: title.trim(), prompt, baseBranch, contenders, checkCommand, profile,
+        setupRunId: setupRunId.current, onPhase: setPhase,
       });
       useRaceStore.getState().upsert(result.race);
       close();
@@ -130,6 +135,7 @@ export function NewRaceModal() {
     } finally {
       launching.current = false;
       setBusy(false);
+      setPhase(null);
     }
   };
 
@@ -248,11 +254,18 @@ export function NewRaceModal() {
 
         {error && <p role="alert" className="text-[12px] text-error whitespace-pre-wrap">{error}</p>}
         <div className="flex justify-end gap-2 pt-1">
-          <button type="button" disabled={busy} onClick={close} className="px-3 py-1.5 text-[13px] text-text-secondary">Cancel</button>
+          {phase === 'setup' ? (
+            <button type="button" onClick={() => {
+              // Already finished is fine; the launch then fails or proceeds on its own.
+              for (let i = 0; i < MAX_CONTENDERS; i++) cancelTaskSetup(raceSetupRunId(setupRunId.current, i)).catch(() => {});
+            }} className="px-3 py-1.5 text-[13px] text-text-secondary">Cancel</button>
+          ) : (
+            <button type="button" disabled={busy} onClick={close} className="px-3 py-1.5 text-[13px] text-text-secondary">Cancel</button>
+          )}
           <button type="submit" disabled={!canSubmit}
             className="px-4 py-1.5 rounded-lg bg-accent-primary text-white text-[13px] font-medium disabled:opacity-50 flex items-center gap-1.5">
             <Flag size={13} />
-            {busy ? 'Creating worktrees...' : `Start race (${n})`}
+            {phase === 'setup' ? 'Running setup...' : busy ? 'Creating worktrees...' : `Start race (${n})`}
           </button>
         </div>
       </form>

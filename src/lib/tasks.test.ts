@@ -182,6 +182,31 @@ describe('launchTask', () => {
     expect(invoke).toHaveBeenCalledWith('finish_task', { worktreePath: task.worktreePath, action: { kind: 'discard', confirm_unmerged: false } });
   });
 
+  it('rolls back and never starts an agent when the setup command fails', async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd) => {
+      if (cmd === 'start_task') return { worktree_path: task.worktreePath, branch: task.branch, base_branch: 'main', repo_path: '/src/app', copied_files: [] };
+      if (cmd === 'run_task_setup') return { exit_code: 1, timed_out: false, cancelled: false, duration_ms: 5, output_tail: 'npm ERR! boom', truncated: false };
+      return null;
+    });
+    await expect(launchTask({ repoPath: '/src/app', title: 'x', agent: 'codex', titleAsPrompt: false }))
+      .rejects.toThrow('Setup command failed (exit 1).\n\nnpm ERR! boom');
+    expect(invoke).toHaveBeenCalledWith('finish_task', { worktreePath: task.worktreePath, action: { kind: 'discard', confirm_unmerged: false } });
+    expect(vi.mocked(invoke).mock.calls.some(([cmd]) => cmd === 'create_terminal')).toBe(false);
+  });
+
+  it('skips setup when none is configured and reports phases in order', async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd) => {
+      if (cmd === 'start_task') return { worktree_path: task.worktreePath, branch: task.branch, base_branch: 'main', repo_path: '/src/app', copied_files: [] };
+      if (cmd === 'run_task_setup') return null;
+      if (cmd === 'create_terminal') return baseConfig;
+      return null;
+    });
+    const phases: string[] = [];
+    await launchTask({ repoPath: '/src/app', title: 'x', agent: 'codex', titleAsPrompt: false, onPhase: (p) => phases.push(p) });
+    expect(phases).toEqual(['worktree', 'setup', 'agent']);
+    expect(vi.mocked(invoke).mock.calls.some(([cmd]) => cmd === 'create_terminal')).toBe(true);
+  });
+
   it('refuses an empty title before touching git', async () => {
     await expect(launchTask({ repoPath: '/src/app', title: '  ', agent: 'codex', titleAsPrompt: false })).rejects.toThrow('title');
     expect(invoke).not.toHaveBeenCalled();

@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { allAgentSpecs, isCustomAgent, type AgentKind } from './agents';
 import { reportInvokeFailure } from './errorReporter';
 import { needsStaging, promptDeliveryFor, resolveLaunchConfig, setupFilesFor, type MergeMode, type TaskInfo, type TaskProfile } from './tasks';
+import { cancelTaskSetup, raceSetupRunId, runTaskSetup, setupFailed, setupFailureMessage, type LaunchPhase } from './taskSetup';
 import type { AttentionKind } from '../store/attentionStore';
 import type { TerminalConfig } from '../store/terminalStore';
 import type { SessionState } from './terminalState';
@@ -510,6 +511,10 @@ export interface LaunchRaceParams {
   contenders: RaceContenderInput[];
   checkCommand?: string | null;
   profile?: TaskProfile | null;
+  /** Base run id for the contenders' setup commands (`raceSetupRunId(base, i)`). */
+  setupRunId?: string;
+  /** Reports 'worktree' -> 'setup' -> 'agent' as the launch progresses. */
+  onPhase?: (phase: LaunchPhase) => void;
 }
 
 export interface LaunchRaceResult {
@@ -567,6 +572,7 @@ export async function launchRace(p: LaunchRaceParams): Promise<LaunchRaceResult>
       useAgentRegistryStore.getState().defaultBindingsFor(c.agent));
     return { ...c, ...cfg, args: argsWithModel(cfg.args, c.model), label: contenderLabel(c.agent, c.model) };
   });
+  p.onPhase?.('worktree');
   const race = await invoke<Race>('start_race', {
     request: {
       repo_path: p.repoPath,
@@ -579,6 +585,32 @@ export async function launchRace(p: LaunchRaceParams): Promise<LaunchRaceResult>
       check_command: p.checkCommand?.trim() || null,
     },
   });
+
+  // Every contender's setup runs in parallel before any agent starts. One
+  // failure cancels the rest and rolls the whole race back.
+  p.onPhase?.('setup');
+  const setupBase = p.setupRunId ?? crypto.randomUUID();
+  const setupIds = race.contenders.map((_, i) => raceSetupRunId(setupBase, i));
+  let setupError: Error | null = null;
+  const fail = (e: Error) => {
+    if (!setupError) {
+      setupError = e;
+      for (const id of setupIds) cancelTaskSetup(id).catch(() => {}); // best effort: already finished is fine
+    }
+  };
+  await Promise.all(race.contenders.map((c, i) => runTaskSetup(c.worktreePath, setupIds[i]).then(
+    (r) => { if (r && setupFailed(r)) fail(new Error(setupFailureMessage(r))); },
+    (err) => fail(err instanceof Error ? err : new Error(String(err))),
+  )));
+  if (setupError) {
+    // Fresh branches with no work: discarding loses nothing.
+    await abandonRace(race.id, race.contenders.map((c) => ({
+      worktree_path: c.worktreePath, keep_branch: false, confirm_unmerged: true, confirm_uncommitted: true,
+    })), {})
+      .catch((e) => reportInvokeFailure('abandon_race', e));
+    throw setupError;
+  }
+  p.onPhase?.('agent');
 
   const terminalIds: string[] = [];
   const staged: string[] = [];
