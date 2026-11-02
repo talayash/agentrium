@@ -26,7 +26,7 @@ You are pulling end-user error/exception reports stored by the `ct-analytics` Cl
 3. If the request returns HTTP 200 with JSON, parse it and skip to Step 4.
 4. If the request returns 404 (endpoint not deployed yet), tell the user the Worker needs a one-time deploy and offer to run it:
    ```
-   Run from workers/ct-analytics/: npx wrangler deploy
+   Run from workers/ct-analytics/: CLOUDFLARE_ACCOUNT_ID=9aee479fccde79fa86e9aa788a3c418e npx -y wrangler@4 deploy
    ```
    Ask before running. If they decline, fall through to Step 3.
 5. If the request fails for any other reason (no token, non-2xx, network error), fall through to Step 3.
@@ -35,14 +35,14 @@ You are pulling end-user error/exception reports stored by the `ct-analytics` Cl
 
 Run wrangler from `workers/ct-analytics/` against the production D1 (`--remote`). Use `--json` so the output is parseable. Run all queries; capture stdout per query.
 
-The five queries (replace `{SINCE}` with `'-{N} days'`):
+The five queries (replace `{SINCE}` with `strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-{N} days')`). Never use `datetime('now', ...)` here: `ts` is stored as ISO text (`2026-10-30T00:16:52.696Z`) and SQLite compares TEXT byte-wise, so against `datetime()`'s `2026-10-30 07:51:52` every row from the cutoff day passes (`'T'` sorts after `' '`) and the window silently grows by up to a day. The Worker binds the same ISO cutoff (`errorsSince` in `src/errors.ts`).
 
 ```sql
 -- totals
 SELECT COUNT(*) AS total,
        COUNT(DISTINCT installation_id) AS affected_installations,
        COUNT(DISTINCT fingerprint) AS unique_fingerprints
-FROM errors WHERE ts >= datetime('now', {SINCE});
+FROM errors WHERE ts >= {SINCE};
 
 -- top groups
 SELECT fingerprint, COUNT(*) AS occurrences,
@@ -51,29 +51,31 @@ SELECT fingerprint, COUNT(*) AS occurrences,
        MAX(source) AS source, MAX(kind) AS kind,
        MAX(message) AS message, MAX(stack) AS stack,
        GROUP_CONCAT(DISTINCT app_version) AS versions
-FROM errors WHERE ts >= datetime('now', {SINCE})
+FROM errors WHERE ts >= {SINCE}
 GROUP BY fingerprint ORDER BY occurrences DESC LIMIT 20;
 
 -- by source
 SELECT source, COUNT(*) AS count FROM errors
-WHERE ts >= datetime('now', {SINCE}) GROUP BY source ORDER BY count DESC;
+WHERE ts >= {SINCE} GROUP BY source ORDER BY count DESC;
 
 -- by version
 SELECT app_version AS version, COUNT(*) AS count FROM errors
-WHERE ts >= datetime('now', {SINCE}) GROUP BY app_version ORDER BY count DESC;
+WHERE ts >= {SINCE} GROUP BY app_version ORDER BY count DESC;
 
 -- by os
 SELECT os, COUNT(*) AS count FROM errors
-WHERE ts >= datetime('now', {SINCE}) GROUP BY os ORDER BY count DESC;
+WHERE ts >= {SINCE} GROUP BY os ORDER BY count DESC;
 ```
 
 Invocation pattern (single line; queries can be `;`-separated in a single `--command` call, but it's cleaner to run one query per invocation and `--json` each result):
 
 ```
-npx wrangler d1 execute ct-analytics-db --remote --json --command "<query>"
+CLOUDFLARE_ACCOUNT_ID=9aee479fccde79fa86e9aa788a3c418e npx -y wrangler@4 d1 execute ct-analytics-db --remote --json --command "<query>"
 ```
 
-If wrangler is not authenticated, it will fail with an auth error - tell the user to run `npx wrangler login` and abort.
+Use **wrangler 4**, not the repo's pinned wrangler 3: wrangler 3's D1 query endpoint fails with `code: 7403 "The given account is not valid or is not authorized to access this service"`, which looks like an auth problem but is not (`wrangler login` will not fix it). Set `CLOUDFLARE_ACCOUNT_ID` too: the OAuth login sees several accounts and wrangler 4 will not pick one in a non-interactive shell. On PowerShell, set it with `$env:CLOUDFLARE_ACCOUNT_ID = '...'` first.
+
+Only if wrangler 4 itself reports that you are not logged in, tell the user to run `npx wrangler login` and abort.
 
 ## Step 4: Format and print the summary inline
 
@@ -119,5 +121,5 @@ End with **one** concrete next step the user might take (e.g., "Reproduce finger
 
 - Never print or save the `STATS_TOKEN` value.
 - Do not write any report file - output is inline only.
-- The Worker endpoint must be deployed at least once before HTTPS path works. If `/errors/summary` 404s on production but exists in the code, run `npx wrangler deploy` from `workers/ct-analytics/`.
+- The Worker endpoint must be deployed at least once before HTTPS path works. If `/errors/summary` 404s on production but exists in the code, run `npx -y wrangler@4 deploy` (with `CLOUDFLARE_ACCOUNT_ID` set, see Step 3) from `workers/ct-analytics/`.
 - If the user passes anything that looks like a version (e.g. `since-v1.21.0`), tell them this command only supports day windows and ask them to use a day count instead.

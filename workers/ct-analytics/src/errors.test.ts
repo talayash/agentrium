@@ -3,6 +3,7 @@ import {
   parseResolveBody,
   isGroupResolved,
   isKnownBenignReport,
+  errorsSince,
   FINGERPRINT_MAX,
   RESOLVE_MAX_FINGERPRINTS,
 } from './errors';
@@ -108,6 +109,23 @@ describe('isGroupResolved', () => {
   it('is false when either timestamp is unparsable', () => {
     expect(isGroupResolved('not-a-date', '2026-09-18T11:00:00.000Z')).toBe(false);
     expect(isGroupResolved('2026-09-18T10:00:00.000Z', 'not-a-date')).toBe(false);
+  });
+});
+
+describe('errorsSince', () => {
+  const now = Date.parse('2026-11-02T07:51:52.000Z');
+
+  it('returns the cutoff in the same ISO shape the ingest path stores', () => {
+    expect(errorsSince(3, now)).toBe('2026-10-30T07:51:52.000Z');
+  });
+
+  it('excludes rows earlier on the cutoff day under a plain string compare', () => {
+    // SQLite compares TEXT byte-wise. Against datetime('now','-3 days')
+    // ("2026-10-30 07:51:52") this row passed, because 'T' sorts after ' ',
+    // which stretched every window back to midnight of the cutoff day.
+    const cutoff = errorsSince(3, now);
+    expect('2026-10-30T00:16:52.696Z' >= cutoff).toBe(false);
+    expect('2026-10-30T07:51:52.001Z' >= cutoff).toBe(true);
   });
 });
 

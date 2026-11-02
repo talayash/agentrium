@@ -28,7 +28,7 @@ import { admitErrorReport, admitIngest, boundedJson, validDimensions, versionWit
  */
 
 import { constantTimeEqual, checkLoginAttempt, parseMatchBody, matchInstallations, listLiveInstallations } from './admin';
-import { parseResolveBody, isGroupResolved, isKnownBenignReport } from './errors';
+import { parseResolveBody, isGroupResolved, isKnownBenignReport, errorsSince } from './errors';
 import { handleInsights } from './insights-route';
 import { CORS_HEADERS, json, todayUTC } from './http';
 
@@ -576,11 +576,11 @@ async function handleErrorsSummary(url: URL, env: Env): Promise<Response> {
     ERROR_RETENTION_DAYS,
   );
   const limit = Math.min(Math.max(parseInt(url.searchParams.get('limit') ?? '20', 10) || 20, 1), 100);
-  const since = `-${days} days`;
+  const since = errorsSince(days);
 
   const [totals, groupsRes, bySourceRes, byVersionRes, byOsRes, byDayRes, unresolvedRow] = await Promise.all([
     env.DB.prepare(
-      "SELECT COUNT(*) AS total, COUNT(DISTINCT installation_id) AS affected_installations, COUNT(DISTINCT fingerprint) AS unique_fingerprints FROM errors WHERE ts >= datetime('now', ?)",
+      "SELECT COUNT(*) AS total, COUNT(DISTINCT installation_id) AS affected_installations, COUNT(DISTINCT fingerprint) AS unique_fingerprints FROM errors WHERE ts >= ?",
     )
       .bind(since)
       .first<{ total: number; affected_installations: number; unique_fingerprints: number }>(),
@@ -593,7 +593,7 @@ async function handleErrorsSummary(url: URL, env: Env): Promise<Response> {
         // fingerprint), so MAX just satisfies the aggregate rule.
         'MAX(es.resolved_at) AS resolved_at, MAX(es.resolved_version) AS resolved_version ' +
         'FROM errors e LEFT JOIN error_state es ON es.fingerprint = e.fingerprint ' +
-        "WHERE e.ts >= datetime('now', ?) " +
+        "WHERE e.ts >= ? " +
         'GROUP BY e.fingerprint ORDER BY occurrences DESC LIMIT ?',
     )
       .bind(since, limit)
@@ -612,22 +612,22 @@ async function handleErrorsSummary(url: URL, env: Env): Promise<Response> {
         resolved_version: string | null;
       }>(),
     env.DB.prepare(
-      "SELECT source, COUNT(*) AS count FROM errors WHERE ts >= datetime('now', ?) GROUP BY source ORDER BY count DESC",
+      "SELECT source, COUNT(*) AS count FROM errors WHERE ts >= ? GROUP BY source ORDER BY count DESC",
     )
       .bind(since)
       .all<{ source: string; count: number }>(),
     env.DB.prepare(
-      "SELECT app_version AS version, COUNT(*) AS count FROM errors WHERE ts >= datetime('now', ?) GROUP BY app_version ORDER BY count DESC",
+      "SELECT app_version AS version, COUNT(*) AS count FROM errors WHERE ts >= ? GROUP BY app_version ORDER BY count DESC",
     )
       .bind(since)
       .all<{ version: string; count: number }>(),
     env.DB.prepare(
-      "SELECT os, COUNT(*) AS count FROM errors WHERE ts >= datetime('now', ?) GROUP BY os ORDER BY count DESC",
+      "SELECT os, COUNT(*) AS count FROM errors WHERE ts >= ? GROUP BY os ORDER BY count DESC",
     )
       .bind(since)
       .all<{ os: string; count: number }>(),
     env.DB.prepare(
-      "SELECT substr(ts, 1, 10) AS date, COUNT(*) AS count FROM errors WHERE ts >= datetime('now', ?) GROUP BY substr(ts, 1, 10) ORDER BY date",
+      "SELECT substr(ts, 1, 10) AS date, COUNT(*) AS count FROM errors WHERE ts >= ? GROUP BY substr(ts, 1, 10) ORDER BY date",
     )
       .bind(since)
       .all<{ date: string; count: number }>(),
@@ -638,7 +638,7 @@ async function handleErrorsSummary(url: URL, env: Env): Promise<Response> {
       'SELECT COUNT(*) AS n FROM (' +
         'SELECT e.fingerprint, MAX(e.ts) AS last_seen, MAX(es.resolved_at) AS resolved_at ' +
         'FROM errors e LEFT JOIN error_state es ON es.fingerprint = e.fingerprint ' +
-        "WHERE e.ts >= datetime('now', ?) GROUP BY e.fingerprint) g " +
+        "WHERE e.ts >= ? GROUP BY e.fingerprint) g " +
         'WHERE g.resolved_at IS NULL OR g.last_seen > g.resolved_at',
     )
       .bind(since)
@@ -763,7 +763,7 @@ export default {
   async scheduled(_controller: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
     try {
       await env.DB.prepare('DELETE FROM ingest_limits WHERE window < ?').bind(Math.floor(Date.now() / 60000) - 1440).run();
-      await env.DB.prepare("DELETE FROM errors WHERE ts < datetime('now', ?)").bind(`-${ERROR_RETENTION_DAYS} days`).run();
+      await env.DB.prepare('DELETE FROM errors WHERE ts < ?').bind(errorsSince(ERROR_RETENTION_DAYS)).run();
       await env.DB.prepare("DELETE FROM daily_dau WHERE date < date('now', ?)").bind(`-${DAU_RETENTION_DAYS} days`).run();
       // Retention drops the errors themselves, so resolution rows whose
       // fingerprint no longer occurs anywhere would linger forever.

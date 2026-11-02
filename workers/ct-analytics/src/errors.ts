@@ -69,6 +69,16 @@ export function isGroupResolved(lastSeen: string | null, resolvedAt: string | nu
   return seen <= resolved;
 }
 
+/**
+ * Lower bound for "the last `days` days", in the toISOString() shape that
+ * error rows store. Bind this instead of datetime('now', ?): SQLite compares
+ * TEXT byte-wise, and its "YYYY-MM-DD HH:MM:SS" output sorts every ISO row
+ * from the cutoff day ('T' > ' ') inside the window regardless of its time.
+ */
+export function errorsSince(days: number, now: number = Date.now()): string {
+  return new Date(now - days * 86_400_000).toISOString();
+}
+
 export interface ReportIdentity {
   source: string;
   kind: string | null;
