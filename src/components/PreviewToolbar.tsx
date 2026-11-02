@@ -43,7 +43,7 @@ export function PreviewToolbar({ terminalId, url, allowed }: Props) {
         onKeyDown={(e) => { if (e.key === 'Enter') commit(); }}
         onBlur={commit}
         spellCheck={false}
-        placeholder="Waiting for dev-server URL…"
+        placeholder="http://localhost:3000"
         className={`flex-1 bg-elevation-2 border rounded px-2 py-1 text-[11.5px] text-text-primary outline-none ${
           invalid ? 'border-red-500/60' : 'border-seam focus:border-accent-primary/60'
         }`}

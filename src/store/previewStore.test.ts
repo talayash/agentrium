@@ -16,31 +16,19 @@ describe('previewStore', () => {
     usePreviewStore.getState().seedTerminal('t1', {});
     const s = usePreviewStore.getState().perTerminal.get('t1');
     expect(s).toBeDefined();
-    expect(s?.detectedUrl).toBeNull();
     expect(s?.userOverride).toBeNull();
     expect(s?.frameworkHint).toBe('unknown');
     expect(s?.isOpen).toBe(false);
   });
 
-  it('setDetectedUrl updates the state', () => {
+  it('resolveUrl returns the URL the user typed', () => {
     usePreviewStore.getState().seedTerminal('t1', {});
-    usePreviewStore.getState().setDetectedUrl('t1', 'http://localhost:5173');
-    expect(usePreviewStore.getState().perTerminal.get('t1')?.detectedUrl).toBe('http://localhost:5173');
-  });
-
-  it('userOverride wins over detectedUrl in resolveUrl', () => {
-    usePreviewStore.getState().seedTerminal('t1', {});
-    usePreviewStore.getState().setDetectedUrl('t1', 'http://localhost:5173');
     usePreviewStore.getState().setUserOverride('t1', 'http://localhost:3000');
-    // Consumers call resolveUrl to get the effective URL
-    const { resolveUrl } = usePreviewStore.getState();
-    expect(resolveUrl('t1')).toBe('http://localhost:3000');
+    expect(usePreviewStore.getState().resolveUrl('t1')).toBe('http://localhost:3000');
   });
 
-  it('resolveUrl falls back to detectedUrl when no override', () => {
-    usePreviewStore.getState().seedTerminal('t1', {});
-    usePreviewStore.getState().setDetectedUrl('t1', 'http://localhost:5173');
-    expect(usePreviewStore.getState().resolveUrl('t1')).toBe('http://localhost:5173');
+  it('resolveUrl returns null for an unknown terminal', () => {
+    expect(usePreviewStore.getState().resolveUrl('nope')).toBeNull();
   });
 
   it('resolveUrl returns null when nothing is set', () => {

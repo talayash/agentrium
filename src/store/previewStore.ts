@@ -13,7 +13,6 @@ export const DEVICE_MODES: Record<DeviceName, DeviceMode> = {
 
 export interface PreviewState {
   isOpen: boolean;
-  detectedUrl: string | null;
   userOverride: string | null;
   frameworkHint: FrameworkHint;
   deviceMode: DeviceMode;
@@ -21,12 +20,10 @@ export interface PreviewState {
   historyIndex: number;
   lastError: string | null;
   reloadCounter: number;
-  inlineHintDismissed: boolean;
 }
 
 const defaultPreviewState = (): PreviewState => ({
   isOpen: false,
-  detectedUrl: null,
   userOverride: null,
   frameworkHint: 'unknown',
   deviceMode: DEVICE_MODES.desktop,
@@ -34,7 +31,6 @@ const defaultPreviewState = (): PreviewState => ({
   historyIndex: -1,
   lastError: null,
   reloadCounter: 0,
-  inlineHintDismissed: false,
 });
 
 interface PreviewStoreState {
@@ -45,9 +41,7 @@ interface PreviewStoreState {
   panelWidthPx: number;
 
   seedTerminal(id: string, initial: Partial<PreviewState>): void;
-  setDetectedUrl(id: string, url: string): void;
   setUserOverride(id: string, url: string): void;
-  dismissInlineHint(id: string): void;
   markOpen(id: string, open: boolean): void;
   removeTerminal(id: string): void;
   toggleGlobal(): void;
@@ -85,14 +79,8 @@ export const usePreviewStore = create<PreviewStoreState>()(
       seedTerminal: (id, initial) =>
         withMutatedTerminal(set, id, (s) => ({ ...s, ...initial })),
 
-      setDetectedUrl: (id, url) =>
-        withMutatedTerminal(set, id, (s) => ({ ...s, detectedUrl: url, lastError: null })),
-
       setUserOverride: (id, url) =>
         withMutatedTerminal(set, id, (s) => ({ ...s, userOverride: url })),
-
-      dismissInlineHint: (id) =>
-        withMutatedTerminal(set, id, (s) => ({ ...s, inlineHintDismissed: true })),
 
       markOpen: (id, open) =>
         withMutatedTerminal(set, id, (s) => ({ ...s, isOpen: open })),
@@ -123,11 +111,9 @@ export const usePreviewStore = create<PreviewStoreState>()(
       setPanelWidth: (px) => set({ panelWidthPx: Math.max(320, Math.min(1400, px)) }),
       setKeepAliveAcrossTabs: (v) => set({ keepAliveAcrossTabs: v }),
 
-      resolveUrl: (id) => {
-        const s = get().perTerminal.get(id);
-        if (!s) return null;
-        return s.userOverride ?? s.detectedUrl;
-      },
+      // The preview shows only a URL the user typed. Dev-server URLs are no
+      // longer sniffed from terminal output; the built-in browser covers that.
+      resolveUrl: (id) => get().perTerminal.get(id)?.userOverride ?? null,
     }),
     {
       name: 'preview-store',

@@ -27,7 +27,7 @@ export function PreviewPanel() {
   // preview pointed there would load Agentrium recursively into an
   // iframe - a Reload click looks like the whole app restarted. Refuse to
   // iframe our own origin. In production `window.location.origin` is
-  // `tauri://localhost` (or similar), which never matches a detected URL.
+  // `tauri://localhost` (or similar), which never matches a typed URL.
   const isSelfPreview = useMemo(() => {
     if (!url) return false;
     try {
@@ -42,7 +42,7 @@ export function PreviewPanel() {
     const out: Array<{ id: string; url: string; reloadCounter: number }> = [];
     const selfOrigin = window.location.origin;
     for (const [id, s] of perTerminal) {
-      const u = s.userOverride ?? s.detectedUrl;
+      const u = s.userOverride;
       if (!u || !isUrlAllowed(u, allowList)) continue;
       // Skip self-preview entries so a keep-alive iframe never embeds the app in itself.
       try { if (new URL(u).origin === selfOrigin) continue; } catch { continue; }
@@ -115,7 +115,7 @@ export function PreviewPanel() {
         <div className="flex-1 relative bg-black">
           {!url && (
             <div className="absolute inset-0 flex items-center justify-center text-text-tertiary text-[12px]">
-              Waiting for a dev-server URL…
+              Enter a URL in the bar above.
             </div>
           )}
           {url && !allowed && !isSelfPreview && (

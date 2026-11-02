@@ -39,7 +39,6 @@ import { LoginModal } from './components/LoginModal';
 import { ClaudeConfigModal } from './components/ClaudeConfigModal';
 import { PreviewPanel } from './components/PreviewPanel';
 import { BrowserWorkspace } from './components/browser/BrowserWorkspace';
-import { PreviewInlineHint } from './components/PreviewInlineHint';
 import { GlobalSearchModal } from './components/GlobalSearchModal';
 import { SessionTimeline } from './components/SessionTimeline';
 import { MemoryEditor } from './components/MemoryEditor';
@@ -66,9 +65,7 @@ import { useTerminalStore } from './store/terminalStore';
 import { openLearnFor } from './lib/openLearnFor';
 import { shouldAutoLearn } from './lib/learn';
 import { useLearnStore } from './store/learnStore';
-import { usePreviewStore } from './store/previewStore';
 import { toast } from './store/toastStore';
-import { detectUrl } from './lib/preview/detector';
 import { getAuthPromptSeen, subscribeToAuthEvents, rehydrateAuth } from './lib/auth';
 import { applyRehydrateOutcome } from './lib/rehydrate';
 import { getSyncEnabled, subscribeToSyncEvents } from './lib/sync';
@@ -642,23 +639,6 @@ function App() {
       } catch {
         // Ignore decode errors
       }
-
-      // Passive dev-server URL detection for the preview panel.
-      // Script-runner children (`npm run dev`, etc.) emit output under their
-      // own terminal id but the user is looking at the parent tab, so route
-      // the URL to the parent when this terminal is a script child.
-      try {
-        const text = new TextDecoder().decode(new Uint8Array(data));
-        const found = detectUrl(text);
-        if (found) {
-          const term = useTerminalStore.getState().terminals.get(id);
-          const targetId = term?.scriptParentId ?? id;
-          const cur = usePreviewStore.getState().perTerminal.get(targetId);
-          if (cur?.detectedUrl !== found) {
-            usePreviewStore.getState().setDetectedUrl(targetId, found);
-          }
-        }
-      } catch { /* ignore decode errors */ }
     }).then((fn) => {
       if (cancelled) fn();
       else unlistenFn = fn;
@@ -1234,7 +1214,6 @@ function App() {
         </div>
       )}
 
-      <PreviewInlineHint />
       <InputContextMenu />
       {!isDetached && <QuitDialog />}
       <CloseSessionConfirm />
