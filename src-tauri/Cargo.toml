@@ -51,8 +51,8 @@ keyring = { version = "3", features = ["windows-native", "apple-native", "sync-s
 # app and closes every open terminal. Matches the version Tauri already
 # pulls in transitively so nothing extra needs to compile.
 [target.'cfg(target_os = "windows")'.dependencies]
-webview2-com = "0.38"
-windows-core = "0.61"
+webview2-com = "0.39"
+windows-core = "0.62"
 # Race mode checks run in a Job Object so a timeout or cancel kills every
 # process the check started, including ones spawned mid-kill. Already in
 # the lock file transitively.
