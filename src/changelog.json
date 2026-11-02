@@ -1,5 +1,28 @@
 [
   {
+    "version": "1.41.8",
+    "date": "2026-11-02",
+    "features": [
+      { "title": "Fix bugs & performance" },
+      {
+        "title": "Fork a conversation",
+        "description": "Branch a Claude or Codex conversation into a new session and keep going from there."
+      },
+      {
+        "title": "Worktree setup command",
+        "description": "Run a per-repo setup command automatically in every new task worktree."
+      },
+      {
+        "title": "PR cleanup",
+        "description": "Sessions and worktrees are cleaned up when their pull request merges or closes."
+      },
+      {
+        "title": "Pick page elements",
+        "description": "Point at an element in the built-in browser and send it to your agent as context."
+      }
+    ]
+  },
+  {
     "version": "1.41.7",
     "date": "2026-10-29",
     "features": [
