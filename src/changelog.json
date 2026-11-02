@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.41.9",
+    "date": "2026-11-02",
+    "features": [
+      { "title": "Fix bugs & performance" },
+      {
+        "title": "No more freezes while typing on Windows",
+        "description": "Fixed a rare hang where the app could stop responding for good during typing or focus changes."
+      }
+    ]
+  },
+  {
     "version": "1.41.8",
     "date": "2026-11-02",
     "features": [
