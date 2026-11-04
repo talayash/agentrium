@@ -98,7 +98,7 @@ export function ProfileModal() {
     setIsCreating(true);
     setSelectedProfile({
       id: uuidv4(),
-      name: 'New Profile',
+      name: '',
       description: '',
       working_directory: '',
       claude_args: [],
@@ -115,11 +115,13 @@ export function ProfileModal() {
   const handleSaveProfile = async () => {
     if (!selectedProfile) return;
     setSaveError(null);
+    // Fall back to the placeholder name when the field is left blank.
+    const profile = { ...selectedProfile, name: selectedProfile.name.trim() || 'New Profile' };
     try {
-      await invoke('save_profile', { profile: selectedProfile });
+      await invoke('save_profile', { profile });
       await loadProfiles();
       setIsCreating(false);
-      toast.success('Profile Saved', `"${selectedProfile.name}" has been saved.`);
+      toast.success('Profile Saved', `"${profile.name}" has been saved.`);
       if (focused) closeProfileModal();
     } catch (err) {
       setSaveError(String(err));
@@ -261,6 +263,7 @@ export function ProfileModal() {
                   <input
                     type="text"
                     value={selectedProfile.name}
+                    placeholder="New Profile"
                     onChange={(e) => setSelectedProfile({ ...selectedProfile, name: e.target.value })}
                     className="w-full bg-bg-primary ring-1 ring-border-light rounded-md h-9 px-3 text-text-primary text-[13px] focus:outline-none focus:ring-[3px] focus:ring-accent-primary/45 transition-colors"
                   />
