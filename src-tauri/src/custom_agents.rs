@@ -13,7 +13,7 @@ pub const ALLOWED_COLORS: &[&str] = &[
 /// Characters rejected in a binary name/path. `SHELL_METACHARACTERS` minus
 /// `\` and `~` so Windows absolute paths (`C:\Users\...\x.cmd`) still pass.
 pub const BINARY_FORBIDDEN: &[char] = &[
-    '&', '|', ';', '`', '$', '(', ')', '{', '}', '<', '>', '^', '\n', '\r',
+    '&', '|', ';', '`', '$', '(', ')', '{', '}', '<', '>', '^', '%', '\n', '\r',
     '\'', '"', '*', '?', '[', ']', '!', '\t', '#',
 ];
 

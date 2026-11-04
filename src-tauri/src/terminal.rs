@@ -369,9 +369,13 @@ impl TerminalManager {
         }
     }
 
-    /// Characters that could enable shell injection when passed through `cmd /C` or `sh -c`
+    /// Characters that could enable shell injection when passed through `cmd /C` or `sh -c`.
+    /// `%` is included because `cmd.exe` performs `%VAR%` environment expansion on
+    /// its command tail (even inside portable-pty's quotes) before tokenizing
+    /// `&`/`|`/`<`/`>`, so an arg like `%VAR%` combined with an attacker-set env
+    /// value could smuggle in metacharacters. See `CMD_UNSAFE`.
     pub(crate) const SHELL_METACHARACTERS: &'static [char] = &[
-        '&', '|', ';', '`', '$', '(', ')', '{', '}', '<', '>', '^', '\n', '\r',
+        '&', '|', ';', '`', '$', '(', ')', '{', '}', '<', '>', '^', '%', '\n', '\r',
         '\'', '"', '\\', '~', '*', '?', '[', ']', '!', '\t', '#',
     ];
 
@@ -383,7 +387,7 @@ impl TerminalManager {
     /// names still use the full `SHELL_METACHARACTERS` list. Mirrored by the
     /// `dangerousPattern` regex in src/components/NewTerminalModal.tsx.
     pub(crate) const ARG_FORBIDDEN: &'static [char] = &[
-        '&', '|', ';', '`', '$', '(', ')', '{', '}', '<', '>', '^', '\n', '\r',
+        '&', '|', ';', '`', '$', '(', ')', '{', '}', '<', '>', '^', '%', '\n', '\r',
         '\'', '"', '\\', '~', '*', '?', '[', ']', '!', '\t',
     ];
 
@@ -1471,6 +1475,70 @@ mod tests {
         let (tx2, _rx2) = mpsc::channel(1);
         let err = mgr
             .create_script_terminal("l".into(), String::new(), "bad;name".into(), tx2)
+            .unwrap_err();
+        assert!(crate::error_reporter::is_user_error(&err));
+    }
+
+    #[test]
+    fn percent_arg_is_rejected_to_block_cmd_var_expansion() {
+        // Regression: on Windows the agent launches via `cmd /C <bin> <args>`,
+        // and cmd.exe expands `%VAR%` on its command tail (even inside the
+        // quotes portable-pty adds) BEFORE tokenizing `&`/`|`/`<`/`>`. Env-var
+        // values are unvalidated, so an arg of `%EVIL%` plus an attacker-set
+        // `EVIL=x&calc.exe` used to smuggle `&calc.exe` through the shell. `%`
+        // must therefore be rejected at argument validation.
+        let mut mgr = TerminalManager::new();
+        let (tx, _rx) = mpsc::channel(1);
+        let env: HashMap<String, String> =
+            std::iter::once(("EVIL".to_string(), "x&calc.exe".to_string())).collect();
+        let err = mgr
+            .create_terminal(
+                "l".into(),
+                crate::agents::builtin_spec(&crate::config::AgentKind::Claude).unwrap(),
+                String::new(),
+                vec!["%EVIL%".into()],
+                env,
+                HashMap::new(),
+                Vec::new(),
+                None,
+                None,
+                tx,
+                None,
+                None,
+                false,
+                None,
+                None,
+                false,
+            )
+            .unwrap_err();
+        assert!(crate::error_reporter::is_user_error(&err));
+    }
+
+    #[test]
+    fn percent_in_resume_session_id_is_rejected() {
+        // The same `%VAR%` expansion reaches argv as `--resume=%EVIL%`, so `%`
+        // must be blocked in a session id too (it lives in SHELL_METACHARACTERS).
+        let mut mgr = TerminalManager::new();
+        let (tx, _rx) = mpsc::channel(1);
+        let err = mgr
+            .create_terminal(
+                "l".into(),
+                crate::agents::builtin_spec(&crate::config::AgentKind::Claude).unwrap(),
+                String::new(),
+                Vec::new(),
+                HashMap::new(),
+                HashMap::new(),
+                Vec::new(),
+                None,
+                None,
+                tx,
+                None,
+                Some("%EVIL%".into()),
+                false,
+                None,
+                None,
+                false,
+            )
             .unwrap_err();
         assert!(crate::error_reporter::is_user_error(&err));
     }

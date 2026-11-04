@@ -419,7 +419,7 @@ export function NewTerminalModal() {
         // recognize the `[1m]` form.
         // Mirrors TerminalManager::ARG_FORBIDDEN: `#` is allowed (model ids
         // like `muse/muse-spark-1.3#high`; it is literal in both spawn paths).
-        const dangerousPattern = /[;&|`$(){}<>^\n\r'"\\~*?[\]!\t]/;
+        const dangerousPattern = /[;&|`$(){}<>^%\n\r'"\\~*?[\]!\t]/;
         for (let i = 0; i < claudeArgs.length; i++) {
           const arg = claudeArgs[i];
           const prev = claudeArgs[i - 1];
