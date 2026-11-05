@@ -27,3 +27,24 @@ export async function writePromptToTerminal(terminalId: string, text: string, su
     useAppStore.getState().clearPromptDraft(terminalId);
   }
 }
+
+export const PASTE_START = '\x1b[200~';
+export const PASTE_END = '\x1b[201~';
+
+/** Keys that submit a prompt: plain text + Enter, or one bracketed paste + Enter when multiline. */
+export function buildPromptKeys(text: string): string[] {
+  const t = text.trimEnd();
+  if (t.trim() === '') return [];
+  if (t.includes('\n')) return [PASTE_START + t + PASTE_END, '\r'];
+  return [t, '\r'];
+}
+
+export function sendPrompt(terminalId: string, text: string): Promise<void> {
+  const keys = buildPromptKeys(text);
+  if (keys.length === 0) return Promise.resolve();
+  return useTerminalStore.getState().sendKeySequence(terminalId, keys);
+}
+
+export function interruptAgent(terminalId: string): Promise<void> {
+  return useTerminalStore.getState().sendKeySequence(terminalId, ['\x1b']);
+}

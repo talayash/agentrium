@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { InsightRecord } from '../lib/insightModel';
 
 export const MAX_RECORDS = 5000;
+export const MAX_PROMPT_HISTORY = 50;
 
 export interface InsightTerminalState {
   records: InsightRecord[];
@@ -9,6 +10,7 @@ export interface InsightTerminalState {
   heightPx: number | null;
   collapsed: boolean | null;
   expandedTurn: number | null;
+  prompts?: string[];
 }
 
 const empty = (): InsightTerminalState =>
@@ -21,12 +23,14 @@ interface InsightStore {
   setHeight: (id: string, px: number) => void;
   setCollapsed: (id: string, v: boolean) => void;
   setExpandedTurn: (id: string, idx: number | null) => void;
+  pushPromptHistory: (id: string, text: string) => void;
+  promptHistory: (id: string) => string[];
   clear: (id: string) => void;
 }
 
 // Per-terminal insight records and layer UI state. Not persisted: records are
 // re-read from the transcript whenever the layer is turned on.
-export const useInsightStore = create<InsightStore>((set) => {
+export const useInsightStore = create<InsightStore>((set, get) => {
   const patch = (id: string, fn: (cur: InsightTerminalState) => Partial<InsightTerminalState>) =>
     set(s => {
       const byId = new Map(s.byId);
@@ -43,6 +47,11 @@ export const useInsightStore = create<InsightStore>((set) => {
     setHeight: (id, heightPx) => patch(id, () => ({ heightPx })),
     setCollapsed: (id, collapsed) => patch(id, () => ({ collapsed })),
     setExpandedTurn: (id, expandedTurn) => patch(id, () => ({ expandedTurn })),
+    pushPromptHistory: (id, text) => patch(id, cur => {
+      if (text.trim() === '' || cur.prompts?.[cur.prompts.length - 1] === text) return {};
+      return { prompts: [...(cur.prompts ?? []), text].slice(-MAX_PROMPT_HISTORY) };
+    }),
+    promptHistory: (id) => get().byId.get(id)?.prompts ?? [],
     clear: (id) => set(s => {
       if (!s.byId.has(id)) return {};
       const byId = new Map(s.byId);
