@@ -112,7 +112,8 @@ export function useKeyboardShortcuts() {
       if (ctrl && shift && !e.altKey && matchesKeyCode(e, 'L')) {
         e.preventDefault();
         const activeId = activeIdRef.current;
-        if (activeId) toggleInsightLayer(activeId);
+        // Holding the chord auto-repeats keydown: toggle once per press.
+        if (activeId && !e.repeat) toggleInsightLayer(activeId);
         return;
       }
 

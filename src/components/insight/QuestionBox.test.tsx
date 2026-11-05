@@ -2,8 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 
 const toastError = vi.fn();
+const toastInfo = vi.fn();
 const reportInvokeFailure = vi.fn();
-vi.mock('../../store/toastStore', () => ({ toast: { error: (...a: unknown[]) => toastError(...a) } }));
+vi.mock('../../store/toastStore', () => ({ toast: { error: (...a: unknown[]) => toastError(...a), info: (...a: unknown[]) => toastInfo(...a) } }));
 vi.mock('../../lib/errorReporter', () => ({ reportInvokeFailure: (...a: unknown[]) => reportInvokeFailure(...a) }));
 
 import { QuestionBox } from './QuestionBox';
@@ -31,11 +32,23 @@ const resultRec = (): InsightRecord =>
 const sendKeySequence = vi.fn();
 const focus = vi.fn();
 
-function setup(p: PendingQuestion, state: string = 'waiting') {
+function fakeXterm(lines: string[]) {
+  return {
+    focus,
+    buffer: {
+      active: {
+        length: lines.length,
+        getLine: (i: number) => ({ translateToString: () => lines[i] ?? '' }),
+      },
+    },
+  };
+}
+
+function setup(p: PendingQuestion, state: string = 'waiting', screenLines: string[] = ['Database', 'Which database?', '1. Postgres']) {
   useTerminalStore.setState({
     terminalStates: new Map([[ID, state as never]]),
     sendKeySequence,
-    terminals: new Map([[ID, { xterm: { focus } } as never]]),
+    terminals: new Map([[ID, { xterm: fakeXterm(screenLines) } as never]]),
   });
   useInsightStore.setState({ byId: new Map([[ID, { records: [useRec()] } as never]]) });
   return render(<QuestionBox terminalId={ID} pending={p} />);
@@ -45,6 +58,7 @@ beforeEach(() => {
   sendKeySequence.mockReset().mockResolvedValue(undefined);
   focus.mockReset();
   toastError.mockReset();
+  toastInfo.mockReset();
   reportInvokeFailure.mockReset();
 });
 afterEach(cleanup);
@@ -179,5 +193,28 @@ describe('QuestionBox', () => {
     expect(reportInvokeFailure).toHaveBeenCalledWith('write_to_terminal', expect.any(Error));
     fireEvent.click(answerBtn());
     expect(sendKeySequence).toHaveBeenCalledTimes(2);
+  });
+  it('does not send when the screen no longer shows the question', () => {
+    setup(pending([q1]), 'waiting', ['Allow this command?', '1. Yes', '2. No']);
+    fireEvent.click(screen.getAllByRole('radio')[0]!);
+    fireEvent.click(answerBtn());
+    expect(sendKeySequence).not.toHaveBeenCalled();
+    expect(toastInfo).toHaveBeenCalledWith('The question is no longer on screen');
+    expect(reportInvokeFailure).not.toHaveBeenCalled();
+  });
+
+  it('matches a wrapped question across lines', () => {
+    const long: AskQuestion = { ...q1, header: '', question: 'Which database engine should we use for the new service?' };
+    setup(pending([long]), 'waiting', ['Which database engine should we', 'use for the new service?']);
+    fireEvent.click(screen.getAllByRole('radio')[0]!);
+    fireEvent.click(answerBtn());
+    expect(sendKeySequence).toHaveBeenCalledTimes(1);
+  });
+
+  it('focuses the terminal after a successful answer', async () => {
+    setup(pending([q1]));
+    fireEvent.click(screen.getAllByRole('radio')[0]!);
+    await act(async () => { fireEvent.click(answerBtn()); });
+    expect(focus).toHaveBeenCalled();
   });
 });

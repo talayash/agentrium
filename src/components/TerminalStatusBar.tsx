@@ -58,10 +58,10 @@ export function TerminalStatusBar({ terminalId }: TerminalStatusBarProps) {
 
   const handleRestart = useCallback(async () => {
     if (!instance) return;
-    const { label, working_directory, claude_args, env_vars, color_tag, nickname, agent } = instance.config;
+    const { label, working_directory, claude_args, env_vars, color_tag, nickname, agent, insight_layer } = instance.config;
     try {
       await closeTerminal(terminalId);
-      await createTerminal(label, working_directory, claude_args, env_vars, color_tag || undefined, nickname || undefined, undefined, undefined, undefined, undefined, agent);
+      await createTerminal(label, working_directory, claude_args, env_vars, color_tag || undefined, nickname || undefined, undefined, undefined, undefined, undefined, agent, undefined, undefined, { insightLayer: insight_layer });
     } catch (err) {
       // A failure here can leave the user with no terminal at all - never silent.
       toast.error('Restart failed', 'Could not restart the terminal.');

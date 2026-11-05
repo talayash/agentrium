@@ -59,3 +59,20 @@ describe('TerminalStatusBar insight toggle', () => {
     expect(screen.queryByRole('button', { name: 'Insight layer' })).toBeNull();
   });
 });
+
+describe('TerminalStatusBar restart', () => {
+  it('keeps the insight layer flag when restarting', async () => {
+    const closeTerminal = vi.fn(async () => undefined);
+    const createTerminal = vi.fn(async () => 'new');
+    seed(makeConfig('r', { insight_layer: true }));
+    useTerminalStore.setState({ closeTerminal, createTerminal } as never);
+    const { container } = render(<TerminalStatusBar terminalId="r" />);
+    const btn = container.querySelector('svg.lucide-rotate-cw')!.closest('button')!;
+    await act(async () => { fireEvent.click(btn); });
+    expect(closeTerminal).toHaveBeenCalledWith('r');
+    expect(createTerminal).toHaveBeenCalledTimes(1);
+    const args = createTerminal.mock.calls[0] as unknown[];
+    expect(args[10]).toBe('claude');
+    expect(args[13]).toEqual({ insightLayer: true });
+  });
+});

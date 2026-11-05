@@ -3,6 +3,7 @@ import { Loader2 } from 'lucide-react';
 import { buildInsightModel, type AskQuestion, type PendingQuestion } from '../../lib/insightModel';
 import { buildAnswerKeys, type QuestionAnswer } from '../../lib/questionKeys';
 import { reportInvokeFailure } from '../../lib/errorReporter';
+import { readBufferTail } from '../../hooks/useSessionStateDetection';
 import { useInsightStore } from '../../store/insightStore';
 import { useTerminalStore } from '../../store/terminalStore';
 import { toast } from '../../store/toastStore';
@@ -12,6 +13,20 @@ import { MiniMarkdown } from './MiniMarkdown';
 const FOCUS_RING =
   'focus:outline-none focus-visible:ring-[3px] focus-visible:ring-accent-primary/45';
 const RECOMMENDED = '(Recommended)';
+const SCREEN_TAIL_ROWS = 40;
+const MATCH_PREFIX = 40;
+
+const collapse = (t: string) => t.replace(/\s+/g, ' ').trim();
+
+/** True when the terminal's visible tail still shows the first question (or its header). */
+function questionOnScreen(terminalId: string, q: AskQuestion | undefined): boolean {
+  const xterm = useTerminalStore.getState().terminals.get(terminalId)?.xterm;
+  if (!xterm || !q) return false;
+  const screenText = collapse(readBufferTail(xterm, SCREEN_TAIL_ROWS).join(' '));
+  const needle = collapse(q.question).slice(0, MATCH_PREFIX);
+  const header = collapse(q.header);
+  return (needle !== '' && screenText.includes(needle)) || (header !== '' && screenText.includes(header));
+}
 
 interface Draft { selected: number[]; other: string }
 
@@ -61,6 +76,13 @@ function QuestionBoxInner({ terminalId, pending }: { terminalId: string; pending
     const ts = useTerminalStore.getState();
     if (!stillPending || ts.terminalStates.get(terminalId) !== 'waiting') return;
 
+    // A dangling question from a killed session must never receive keystrokes
+    // meant for an unrelated prompt: confirm it is really on screen.
+    if (!questionOnScreen(terminalId, pending.questions[0])) {
+      toast.info('The question is no longer on screen');
+      return;
+    }
+
     inFlight.current = true;
     setSent(true);
     try {
@@ -70,6 +92,7 @@ function QuestionBoxInner({ terminalId, pending }: { terminalId: string; pending
         return { selected: d.selected, other };
       });
       await ts.sendKeySequence(terminalId, buildAnswerKeys(pending.questions, answers));
+      useTerminalStore.getState().terminals.get(terminalId)?.xterm?.focus();
     } catch (err) {
       toast.error('Could not send your answer', String(err));
       reportInvokeFailure('write_to_terminal', err);

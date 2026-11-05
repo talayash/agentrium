@@ -318,14 +318,14 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
     terminal.attachCustomKeyEventHandler((e: KeyboardEvent) => {
       const isCtrl = e.ctrlKey || e.metaKey;
 
-      // Ctrl+F: Toggle in-terminal search (Ctrl+Shift+F is reserved for the
-      // global file/content search - see useKeyboardShortcuts).
       // Ctrl+Shift+L is the global insight layer toggle: keep xterm from also
       // sending a form feed to the PTY. The window listener still handles it.
       if (isCtrl && e.shiftKey && !e.altKey && matchesKeyCode(e, 'L')) {
         return false;
       }
 
+      // Ctrl+F: Toggle in-terminal search (Ctrl+Shift+F is reserved for the
+      // global file/content search - see useKeyboardShortcuts).
       if (isCtrl && !e.shiftKey && matchesKeyCode(e, 'F') && e.type === 'keydown') {
         e.preventDefault();
         toggleSearch();
