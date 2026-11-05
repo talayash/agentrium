@@ -1,5 +1,32 @@
 [
   {
+    "version": "1.42.0",
+    "date": "2026-11-05",
+    "features": [
+      { "title": "Fix bugs & performance" },
+      {
+        "title": "Clear prompt button",
+        "description": "A new button in the terminal status bar clears the prompt you are typing."
+      },
+      {
+        "title": "Safer custom agents",
+        "description": "A synced custom agent must now be a single local program, never a network share or a command line. Agents with spaces in the path still run on the device that saved them but no longer sync."
+      },
+      {
+        "title": "Safer repositories",
+        "description": "Opening a repository no longer runs commands from its own git settings in the background."
+      },
+      {
+        "title": "Cleaner error reports",
+        "description": "Error reports now also remove credentials found inside URLs."
+      },
+      {
+        "title": "New Profile starts empty",
+        "description": "The New Profile form no longer pre-fills the name."
+      }
+    ]
+  },
+  {
     "version": "1.41.9",
     "date": "2026-11-02",
     "features": [
