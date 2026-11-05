@@ -209,6 +209,110 @@ pub fn parse_claude_line(line: &str) -> Vec<InsightRecord> {
     out
 }
 
+/// Codex tool-call keys: the Claude list plus `cmd`.
+const CODEX_TARGET_KEYS: [&str; 9] = [
+    "file_path",
+    "notebook_path",
+    "path",
+    "command",
+    "cmd",
+    "pattern",
+    "url",
+    "query",
+    "description",
+];
+
+pub fn parse_codex_line(line: &str) -> Vec<InsightRecord> {
+    let Ok(v) = serde_json::from_str::<Value>(line) else {
+        return vec![];
+    };
+    let ts = timestamp(&v);
+    let Some(payload) = v.get("payload") else {
+        return vec![];
+    };
+    let ptype = payload.get("type").and_then(Value::as_str).unwrap_or("");
+    let str_field = |k: &str| payload.get(k).and_then(Value::as_str).unwrap_or("").to_string();
+
+    match v.get("type").and_then(Value::as_str) {
+        Some("response_item") => match ptype {
+            "message" => {
+                let content = payload.get("content").unwrap_or(&Value::Null);
+                match payload.get("role").and_then(Value::as_str) {
+                    Some("user") => {
+                        let mut out = Vec::new();
+                        let text = join_blocks(content, "input_text");
+                        if !text.is_empty() {
+                            push_prompt(&mut out, &ts, &text);
+                        }
+                        out
+                    }
+                    Some("assistant") => {
+                        let text = join_blocks(content, "output_text");
+                        if text.is_empty() {
+                            vec![]
+                        } else {
+                            vec![InsightRecord::AssistantText { ts, text }]
+                        }
+                    }
+                    _ => vec![],
+                }
+            }
+            "function_call" => {
+                let target = payload
+                    .get("arguments")
+                    .and_then(Value::as_str)
+                    .and_then(|a| serde_json::from_str::<Value>(a).ok())
+                    .and_then(|args| target_from_keys(&args, &CODEX_TARGET_KEYS));
+                vec![InsightRecord::ToolUse { ts, id: str_field("call_id"), name: str_field("name"), target, input: None }]
+            }
+            "custom_tool_call" => {
+                let target = payload
+                    .get("input")
+                    .and_then(Value::as_str)
+                    .and_then(|i| i.lines().next())
+                    .map(|l| truncate_chars(l, TARGET_MAX_CHARS));
+                vec![InsightRecord::ToolUse { ts, id: str_field("call_id"), name: str_field("name"), target, input: None }]
+            }
+            "function_call_output" | "custom_tool_call_output" => {
+                let text = match payload.get("output") {
+                    Some(Value::String(s)) => clip_result_text(s),
+                    Some(Value::Array(items)) => clip_result_text(
+                        &items
+                            .iter()
+                            .filter_map(|i| i.get("text").and_then(Value::as_str))
+                            .collect::<Vec<_>>()
+                            .join("
+"),
+                    ),
+                    _ => String::new(),
+                };
+                vec![InsightRecord::ToolResult {
+                    ts,
+                    tool_use_id: str_field("call_id"),
+                    is_error: false,
+                    text,
+                    lines_added: None,
+                    lines_removed: None,
+                }]
+            }
+            _ => vec![],
+        },
+        Some("event_msg") if ptype == "token_count" => {
+            let Some(last) = payload.get("info").and_then(|i| i.get("last_token_usage")) else {
+                return vec![];
+            };
+            let n = |k: &str| last.get(k).and_then(Value::as_u64).unwrap_or(0);
+            vec![InsightRecord::Usage {
+                message_id: ts.clone().unwrap_or_default(),
+                ts,
+                input_tokens: n("input_tokens"),
+                output_tokens: n("output_tokens"),
+            }]
+        }
+        _ => vec![],
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -306,5 +410,78 @@ mod tests {
         assert!(out.ends_with(&tail));
         assert!(out.contains("\n...\n"));
         assert_eq!(clip_result_text("short"), "short");
+    }
+
+    const CODEX_FIXTURE: &str = include_str!("../tests/insight_codex_fixture.jsonl");
+
+    fn codex(i: usize) -> Vec<InsightRecord> {
+        parse_codex_line(CODEX_FIXTURE.lines().nth(i).unwrap())
+    }
+
+    #[test]
+    fn codex_skips_meta_and_developer() {
+        assert!(codex(0).is_empty());
+        assert!(codex(1).is_empty());
+    }
+
+    #[test]
+    fn codex_user_and_assistant_text() {
+        let u = codex(2);
+        assert_eq!(u.len(), 1);
+        assert!(matches!(&u[0], InsightRecord::UserPrompt { text, .. } if text == "add a browser"));
+        let a = codex(8);
+        assert_eq!(a.len(), 1);
+        assert!(matches!(&a[0], InsightRecord::AssistantText { text, .. } if text == "Done."));
+    }
+
+    #[test]
+    fn codex_custom_tool_call_target_is_first_line() {
+        let r = codex(3);
+        assert_eq!(r.len(), 1);
+        assert!(matches!(
+            &r[0],
+            InsightRecord::ToolUse { id, name, target: Some(t), input: None, .. }
+                if id == "c1" && name == "exec" && t == "const r = await tools.exec_command({cmd: \"ls\"})"
+        ));
+    }
+
+    #[test]
+    fn codex_function_call_target_from_arguments() {
+        let r = codex(5);
+        assert_eq!(r.len(), 1);
+        assert!(matches!(
+            &r[0],
+            InsightRecord::ToolUse { id, name, target: Some(t), .. }
+                if id == "c2" && name == "shell" && t == "cargo test"
+        ));
+    }
+
+    #[test]
+    fn codex_outputs_map_to_results() {
+        let a = codex(4);
+        assert_eq!(a.len(), 1);
+        assert!(matches!(
+            &a[0],
+            InsightRecord::ToolResult { tool_use_id, is_error: false, text, lines_added: None, lines_removed: None, .. }
+                if tool_use_id == "c1" && text == "file1
+file2"
+        ));
+        let b = codex(6);
+        assert_eq!(b.len(), 1);
+        assert!(matches!(
+            &b[0],
+            InsightRecord::ToolResult { tool_use_id, text, .. } if tool_use_id == "c2" && text == "ok. 5 passed"
+        ));
+    }
+
+    #[test]
+    fn codex_token_count_to_usage() {
+        let r = codex(7);
+        assert_eq!(r.len(), 1);
+        assert!(matches!(
+            &r[0],
+            InsightRecord::Usage { message_id, input_tokens: 100, output_tokens: 20, .. }
+                if message_id == "2026-11-05T11:00:07.000Z"
+        ));
     }
 }
