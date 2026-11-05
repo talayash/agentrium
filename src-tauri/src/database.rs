@@ -928,7 +928,18 @@ impl Database {
             )
             .map_err(|e| e.to_string())?;
 
-        serde_json::from_str(&terminals_json).map_err(|e| e.to_string())
+        Self::parse_terminals(&terminals_json)
+    }
+
+    /// Deserialize a saved terminal list and fold legacy fields into the
+    /// current shape (shared by named workspaces and the last session).
+    fn parse_terminals(json: &str) -> Result<Vec<TerminalConfig>, String> {
+        let mut configs: Vec<TerminalConfig> =
+            serde_json::from_str(json).map_err(|e| e.to_string())?;
+        for c in &mut configs {
+            c.apply_legacy_view_mode();
+        }
+        Ok(configs)
     }
 
     // Session persistence methods
@@ -963,14 +974,7 @@ impl Database {
             .optional()
             .map_err(|e| e.to_string())?;
         match row {
-            Some(json) => {
-                let mut configs: Vec<TerminalConfig> =
-                    serde_json::from_str(&json).map_err(|e| e.to_string())?;
-                for c in &mut configs {
-                    c.apply_legacy_view_mode();
-                }
-                Ok(Some(configs))
-            }
+            Some(json) => Self::parse_terminals(&json).map(Some),
             None => Ok(None),
         }
     }
@@ -2267,6 +2271,21 @@ mod tests {
             )
             .unwrap();
         let loaded = db.load_last_session().unwrap().unwrap();
+        assert_eq!(loaded[0].view_mode, crate::terminal::ViewMode::Mixed);
+    }
+
+    #[test]
+    fn view_mode_legacy_insight_layer_workspace_loads_as_mixed() {
+        let db = Database::new_in_memory().unwrap();
+        let mut v = serde_json::to_value(vec![make_terminal("a", 0)]).unwrap();
+        v[0]["insight_layer"] = serde_json::json!(true);
+        db.conn
+            .execute(
+                "INSERT INTO workspaces (name, terminals, created_at) VALUES (?1, ?2, ?3)",
+                params!["ws", v.to_string(), "2026-01-01T00:00:00Z"],
+            )
+            .unwrap();
+        let loaded = db.load_workspace("ws").unwrap();
         assert_eq!(loaded[0].view_mode, crate::terminal::ViewMode::Mixed);
     }
 

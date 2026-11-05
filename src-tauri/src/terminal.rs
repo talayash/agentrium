@@ -1442,7 +1442,7 @@ mod tests {
                     task: None,
                     prompt_delivery: None,
                     view_mode: ViewMode::Cli,
-            legacy_insight_layer: false,
+                    legacy_insight_layer: false,
                 },
                 pty_pair,
                 writer,
