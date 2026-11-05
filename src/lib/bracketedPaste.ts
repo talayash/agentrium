@@ -28,7 +28,13 @@ export function toBracketedPaste(text: string): string {
   // Strip markers the payload already carries. Besides making the function
   // idempotent, this stops a clipboard payload containing ESC[201~ from
   // closing the paste early and letting its remainder run as typed input.
-  const stripped = text.split(PASTE_START).join('').split(PASTE_END).join('');
+  // Repeat until stable: removing one marker can splice its neighbours into a
+  // new one (ESC[2<ESC[201~>01~ collapses to ESC[201~).
+  let stripped = text;
+  for (let prev = ''; prev !== stripped;) {
+    prev = stripped;
+    stripped = stripped.split(PASTE_START).join('').split(PASTE_END).join('');
+  }
   if (stripped === '') return '';
   const normalized = stripped.replace(/\r\n?/g, '\n');
   return `${PASTE_START}${normalized}${PASTE_END}`;
