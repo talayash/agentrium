@@ -146,6 +146,50 @@ describe("buildInsightModel", () => {
     expect(buildInsightModel([...recs, result("q1", "answered")]).pendingQuestion).toBeNull();
   });
 
+  describe("hook-reported questions", () => {
+    const input = { questions: [{ question: "Which?", header: "H", multiSelect: false, options: [{ label: "A", description: "a" }] }] };
+
+    it("hook record alone is pending", () => {
+      const m = buildInsightModel([prompt("x"), use("toolu_1", "AskUserQuestion", null, input)]);
+      expect(m.pendingQuestion?.toolUseId).toBe("toolu_1");
+    });
+
+    it("hook + transcript record with the same id and a result counts once and is not pending", () => {
+      const recs = [
+        prompt("x"),
+        use("toolu_1", "AskUserQuestion", null, input),
+        use("toolu_1", "AskUserQuestion", null, input),
+        result("toolu_1", "answered"),
+      ];
+      const m = buildInsightModel(recs);
+      expect(m.pendingQuestion).toBeNull();
+      expect(m.turns[0].tools).toHaveLength(1);
+      expect(m.turns[0].activity.other).toBe(1);
+    });
+
+    it("merges input from the later record and keeps the first position", () => {
+      const recs = [prompt("x"), use("t1", "AskUserQuestion", null, null), use("t2", "Read"), use("t1", "AskUserQuestion", null, input)];
+      const m = buildInsightModel(recs);
+      expect(m.turns[0].tools.map((t) => t.id)).toEqual(["t1", "t2"]);
+      expect(m.pendingQuestion?.toolUseId).toBe("t1");
+    });
+
+    it("synthetic-id hook record is answered by a later tool_result", () => {
+      const recs = [prompt("x"), use("hook-s-1", "AskUserQuestion", null, input), result("other", "done")];
+      expect(buildInsightModel(recs).pendingQuestion).toBeNull();
+    });
+
+    it("synthetic-id hook record is answered by a later transcript AskUserQuestion", () => {
+      const recs = [prompt("x"), use("hook-s-1", "AskUserQuestion", null, input), use("toolu_9", "AskUserQuestion", null, input), result("toolu_9", "a")];
+      expect(buildInsightModel(recs).pendingQuestion).toBeNull();
+    });
+
+    it("synthetic-id hook record is stale after a later user_prompt", () => {
+      const recs = [prompt("x"), use("hook-s-1", "AskUserQuestion", null, input), prompt("y")];
+      expect(buildInsightModel(recs).pendingQuestion).toBeNull();
+    });
+  });
+
   it("malformed question input yields null", () => {
     for (const input of [null, {}, { questions: "x" }, { questions: [{ header: "h" }, 5, null] }]) {
       expect(buildInsightModel([prompt("x"), use("q", "AskUserQuestion", null, input)]).pendingQuestion).toBeNull();

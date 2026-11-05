@@ -242,21 +242,56 @@ function parseQuestions(input: unknown): AskQuestion[] {
   return out;
 }
 
+const HOOK_ID_PREFIX = "hook-";
+
+// The hook-reported record and the later transcript record carry the same
+// tool_use id: keep the first position and fill in `input` if only the later
+// one has it, so the tool is counted once.
+function dedupeToolUses(records: InsightRecord[]): InsightRecord[] {
+  const firstIndex = new Map<string, number>();
+  const out: InsightRecord[] = [];
+  for (const r of records) {
+    if (r.kind !== "tool_use") {
+      out.push(r);
+      continue;
+    }
+    const at = firstIndex.get(r.id);
+    if (at === undefined) {
+      firstIndex.set(r.id, out.length);
+      out.push(r);
+      continue;
+    }
+    const first = out[at] as Extract<InsightRecord, { kind: "tool_use" }>;
+    if (first.input == null && r.input != null) out[at] = { ...first, input: r.input };
+  }
+  return out;
+}
+
 function findPendingQuestion(records: InsightRecord[]): PendingQuestion | null {
   const answered = new Set<string>();
+  let laterResult = false; // any tool_result after the current position
+  let laterAsk = false; // a transcript AskUserQuestion after the current position
   for (let i = records.length - 1; i >= 0; i--) {
     const r = records[i];
     if (r.kind === "user_prompt") return null; // a later prompt means the question is stale
-    if (r.kind === "tool_result") answered.add(r.tool_use_id);
-    else if (r.kind === "tool_use" && r.name === "AskUserQuestion" && !answered.has(r.id)) {
-      const questions = parseQuestions(r.input);
-      return questions.length > 0 ? { toolUseId: r.id, questions } : null;
+    if (r.kind === "tool_result") {
+      answered.add(r.tool_use_id);
+      laterResult = true;
+    } else if (r.kind === "tool_use" && r.name === "AskUserQuestion") {
+      const synthetic = r.id.startsWith(HOOK_ID_PREFIX);
+      const isAnswered = answered.has(r.id) || (synthetic && (laterResult || laterAsk));
+      if (!isAnswered) {
+        const questions = parseQuestions(r.input);
+        return questions.length > 0 ? { toolUseId: r.id, questions } : null;
+      }
+      if (!synthetic) laterAsk = true;
     }
   }
   return null;
 }
 
-export function buildInsightModel(records: InsightRecord[], headline: HeadlineProvider = defaultHeadline): InsightModel {
+export function buildInsightModel(rawRecords: InsightRecord[], headline: HeadlineProvider = defaultHeadline): InsightModel {
+  const records = dedupeToolUses(rawRecords);
   const groups: Array<{ prompt: string; records: InsightRecord[] }> = [];
   let current: { prompt: string; records: InsightRecord[] } | null = null;
   for (const r of records) {
