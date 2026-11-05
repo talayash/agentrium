@@ -37,21 +37,24 @@ export function useInsightFeed(terminalId: string, enabled: boolean): void {
         : { records: [...buffer.records, ...records], reset: buffer.reset };
       if (timer === undefined) timer = setTimeout(flush, FLUSH_MS);
     }).then((fn) => {
-      if (active) unlisten = fn;
-      else fn(); // effect already cleaned up before the listener resolved
-    }).catch(() => { /* listener registration failed; insight_start reports the user-visible failure */ });
-
-    invoke<{ supported: boolean }>('insight_start', { id: terminalId })
-      .then((res) => {
-        if (active) useInsightStore.getState().setSupported(terminalId, res.supported);
-      })
-      .catch((err) => {
-        // User-initiated (they turned the layer on): surface it and show the fallback.
-        if (!active) return;
-        toast.error('Could not start the insight layer', String(err));
-        reportInvokeFailure('insight_start', err);
-        useInsightStore.getState().setSupported(terminalId, false);
-      });
+      if (!active) {
+        fn(); // effect already cleaned up before the listener resolved
+        return;
+      }
+      unlisten = fn;
+      // Start only once the listener is registered: the tailer's initial reset
+      // batch is never re-sent, so it must not be emitted before we listen.
+      return invoke<{ supported: boolean }>('insight_start', { id: terminalId })
+        .then((res) => {
+          if (active) useInsightStore.getState().setSupported(terminalId, res.supported);
+        });
+    }).catch((err) => {
+      // User-initiated (they turned the layer on): a failed listen or start is surfaced, and the panel shows the fallback.
+      if (!active) return;
+      toast.error('Could not start the insight layer', String(err));
+      reportInvokeFailure('insight_start', err);
+      useInsightStore.getState().setSupported(terminalId, false);
+    });
 
     return () => {
       active = false;

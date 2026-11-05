@@ -94,4 +94,26 @@ describe('useInsightFeed', () => {
     expect(r[r.length - 1]).toEqual(rec(-2));
     expect(r[0]).toEqual(rec(2));
   });
+
+  it('does not start the tailer until listen has resolved', async () => {
+    let resolveListen!: (fn: () => void) => void;
+    listen.mockImplementation((_n: string, h: Handler) => {
+      handler = h;
+      return new Promise<() => void>((r) => { resolveListen = r; });
+    });
+    renderHook(() => useInsightFeed('t1', true));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(invoke).not.toHaveBeenCalledWith('insight_start', expect.anything());
+    resolveListen(unlisten);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(invoke).toHaveBeenCalledWith('insight_start', { id: 't1' });
+  });
+
+  it('does not start the tailer when listen rejects and marks unsupported', async () => {
+    listen.mockRejectedValue(new Error('boom'));
+    renderHook(() => useInsightFeed('t1', true));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(invoke).not.toHaveBeenCalledWith('insight_start', expect.anything());
+    expect(useInsightStore.getState().byId.get('t1')?.supported).toBe(false);
+  });
 });
