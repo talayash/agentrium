@@ -9,6 +9,7 @@ import type { TaskInfo, TaskStatus } from '../lib/tasks';
 import { markTerminalActive, clearTerminalActivity, markTerminalSubmission } from '../lib/terminalActivity';
 import { useSessionAttentionStore } from './sessionAttentionStore';
 import { reportInvokeFailure } from '../lib/errorReporter';
+import { toast } from './toastStore';
 import { chunkUtf8Bytes } from '../lib/chunkUtf8';
 import type { SessionState } from '../lib/terminalState';
 import { mergeMetrics, emptyMetrics, type SessionMetrics, type TerminalMetricsPayload } from '../lib/sessionMetrics';
@@ -126,6 +127,9 @@ export interface TerminalConfig {
   /** How a spawn-time initial prompt reached the agent (Race mode). Only on
    *  the config `create_terminal` returns; never restored. */
   prompt_delivery?: PromptDelivery | null;
+  /** Per-session insight layer flag (Rust `#[serde(default)]`). Persisted with
+   *  session restore; never part of any sync payload. */
+  insight_layer?: boolean;
 }
 
 /** Mirrors Rust `terminal::PromptDelivery`. */
@@ -140,6 +144,10 @@ export interface CreateTerminalOptions {
   initialPrompt?: string;
   /** Branch `resumeSessionId` into a new conversation (Claude and Codex). */
   fork?: boolean;
+  /** Insight layer for this session. Falls back to the global default
+   *  (`insightLayerDefault`) when omitted; session restore always passes the
+   *  saved value so the default is ignored. */
+  insightLayer?: boolean;
 }
 
 export interface LoopInfo {
@@ -226,6 +234,7 @@ interface TerminalState {
   // Backend bound (or rotated) the agent conversation id for a live terminal.
   setSessionId: (id: string, sessionId: string) => void;
   updateNickname: (id: string, nickname: string) => Promise<void>;
+  setInsightLayer: (id: string, enabled: boolean) => Promise<void>;
   writeToTerminal: (id: string, data: string) => Promise<void>;
   resizeTerminal: (id: string, cols: number, rows: number) => Promise<void>;
   setXterm: (id: string, xterm: Terminal | null) => void;
@@ -287,6 +296,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
     try {
       const { useAppStore } = await import('./appStore');
       const costTracking = useAppStore.getState().costTrackingEnabled;
+      const insightLayer = options?.insightLayer ?? useAppStore.getState().insightLayerDefault;
       const config = await invoke<TerminalConfig>('create_terminal', {
         request: {
           label,
@@ -303,6 +313,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
           task: task ?? null,
           initial_prompt: options?.initialPrompt ?? null,
           fork: !!options?.fork,
+          insight_layer: insightLayer,
         },
       });
       // Parse model, effort, worktree from claude_args
@@ -530,6 +541,23 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
         // identity re-render and prior-state snapshots aren't corrupted.
         newTerminals.set(id, { ...instance, config: { ...instance.config, label } });
       }
+      return { terminals: newTerminals };
+    });
+  },
+
+  setInsightLayer: async (id, enabled) => {
+    try {
+      await invoke('set_terminal_insight_layer', { id, enabled });
+    } catch (err) {
+      toast.error('Could not change the insight layer', err instanceof Error ? err.message : String(err));
+      reportInvokeFailure('set_terminal_insight_layer', err);
+      return;
+    }
+    set((state) => {
+      const instance = state.terminals.get(id);
+      if (!instance) return {};
+      const newTerminals = new Map(state.terminals);
+      newTerminals.set(id, { ...instance, config: { ...instance.config, insight_layer: enabled } });
       return { terminals: newTerminals };
     });
   },

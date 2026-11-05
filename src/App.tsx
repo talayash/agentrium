@@ -961,6 +961,7 @@ function App() {
             config.agent,
             config.credential_bindings ?? [],
             target.task,
+            { insightLayer: config.insight_layer ?? false },
           );
           for (const key of layoutKeys[i]) keyToNewId[key] = newId;
         }

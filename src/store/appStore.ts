@@ -118,6 +118,10 @@ interface AppState {
   // Per-session budget ceiling in USD; 0 = no cap. Used by Task 11.
   sessionBudgetUsd: number;
   setCostTrackingEnabled: (v: boolean) => void;
+  // Whether new sessions start with the insight layer on. Restored sessions
+  // keep their own saved flag and ignore this.
+  insightLayerDefault: boolean;
+  setInsightLayerDefault: (v: boolean) => void;
   setSessionBudgetUsd: (v: number) => void;
   showGitPanel: boolean;
   showFileTree: boolean;
@@ -575,6 +579,7 @@ export interface SavedTerminalConfig {
   credential_bindings?: CredentialBinding[];
   /** Raw task JSON from the saved row; run through `normalizeTask`. */
   task?: unknown;
+  insight_layer?: boolean;
 }
 
 // Helper to determine optimal layout based on terminal count
@@ -639,6 +644,7 @@ export const useAppStore = create<AppState>()(
       learnLevel: 1,
       learnOpen: false,
       costTrackingEnabled: false,
+      insightLayerDefault: false,
       sessionBudgetUsd: 0,
       showGitPanel: true,
       showFileTree: true,
@@ -868,6 +874,7 @@ export const useAppStore = create<AppState>()(
       setErrorReportingEnabled: (enabled) => set({ errorReportingEnabled: enabled }),
       setLspEnabled: (v) => set({ lspEnabled: v }),
       setCostTrackingEnabled: (v) => set({ costTrackingEnabled: v }),
+      setInsightLayerDefault: (v) => set({ insightLayerDefault: v }),
       setSessionBudgetUsd: (v) => set({ sessionBudgetUsd: Math.max(0, v) }),
       setShowGitPanel: (enabled) => set({ showGitPanel: enabled }),
       setShowFileTree: (enabled) => set({ showFileTree: enabled }),
@@ -1449,6 +1456,7 @@ export const useAppStore = create<AppState>()(
         learnLevel: state.learnLevel,
         learnOpen: state.learnOpen,
         costTrackingEnabled: state.costTrackingEnabled,
+        insightLayerDefault: state.insightLayerDefault,
         sessionBudgetUsd: state.sessionBudgetUsd,
         showGitPanel: state.showGitPanel,
         showFileTree: state.showFileTree,

@@ -3,7 +3,7 @@ import { PageHeader, PageSection, SettingRow, Toggle, Segmented } from '../Setti
 import { registerSetting } from '../index';
 
 const cat = { group: 'terminal', page: 'behavior' } as const;
-['shell-override', 'copy-on-select', 'paste-shortcut', 'prompt-editor-shortcut', 'confirm-close-session'].forEach((id) =>
+['shell-override', 'copy-on-select', 'paste-shortcut', 'prompt-editor-shortcut', 'confirm-close-session', 'insight-layer-default'].forEach((id) =>
   registerSetting({ category: cat, id, label: id.replace(/-/g, ' '), keywords: ['terminal', 'shell', 'prompt', 'editor', id] })
 );
 
@@ -13,9 +13,10 @@ export default function TerminalBehaviorPage() {
   const terminalPasteShortcut = useAppStore((s) => s.terminalPasteShortcut);
   const promptEditorShortcutEnabled = useAppStore((s) => s.promptEditorShortcutEnabled);
   const confirmCloseSession = useAppStore((s) => s.confirmCloseSession);
+  const insightLayerDefault = useAppStore((s) => s.insightLayerDefault);
   const {
     setTerminalShellPathOverride, setTerminalCopyOnSelect, setTerminalPasteShortcut,
-    setPromptEditorShortcutEnabled, setConfirmCloseSession,
+    setPromptEditorShortcutEnabled, setConfirmCloseSession, setInsightLayerDefault,
   } = useAppStore.getState();
 
   return (
@@ -43,6 +44,12 @@ export default function TerminalBehaviorPage() {
           description="Ask before the close button, middle-click or Ctrl+W closes a session. Task sessions always open the finish dialog."
         >
           <Toggle value={confirmCloseSession} onChange={setConfirmCloseSession} />
+        </SettingRow>
+        <SettingRow
+          label="New sessions start with insight layer on"
+          description="Applies to sessions you start from now on. Restored sessions keep their own setting. Toggle one session with Ctrl+Shift+L."
+        >
+          <Toggle value={insightLayerDefault} onChange={setInsightLayerDefault} />
         </SettingRow>
       </PageSection>
 

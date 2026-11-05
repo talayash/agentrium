@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { RotateCw, Square, ClipboardCopy, Clock, FolderOpen, Check, ClipboardPaste, Pencil } from 'lucide-react';
+import { RotateCw, Square, ClipboardCopy, Clock, FolderOpen, Check, ClipboardPaste, Pencil, Layers } from 'lucide-react';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
 import { captureClaudeInput } from '../lib/terminalInput';
@@ -8,6 +8,7 @@ import { reportInvokeFailure } from '../lib/errorReporter';
 import { copyText, readClipboardText } from '../lib/clipboard';
 import { getAnyModelBadgeClasses, getModelBadgeLabel } from '../lib/agentModels';
 import { Tooltip } from './ui/Tooltip';
+import { toggleInsightLayer } from '../lib/insightToggle';
 
 interface TerminalStatusBarProps {
   terminalId: string;
@@ -98,6 +99,8 @@ export function TerminalStatusBar({ terminalId }: TerminalStatusBarProps) {
   }, [instance?.xterm]);
 
   if (!instance) return null;
+  const insightApplicable = !instance.isShellTerminal && !instance.scriptParentId;
+  const insightOn = !!instance.config.insight_layer;
 
   const { status, working_directory } = instance.config;
   const model = instance.model;
@@ -162,6 +165,23 @@ export function TerminalStatusBar({ terminalId }: TerminalStatusBarProps) {
             <Pencil size={14} strokeWidth={2.25} />
           </button>
         </Tooltip>
+
+        {insightApplicable && (
+          <Tooltip label="Insight layer" shortcut="Ctrl+Shift+L" side="top">
+            <button
+              aria-label="Insight layer"
+              aria-pressed={insightOn}
+              onClick={() => toggleInsightLayer(terminalId)}
+              className={`w-7 h-7 flex items-center justify-center rounded-md transition-colors ${
+                insightOn
+                  ? 'bg-accent-primary/15 text-accent-primary hover:bg-accent-primary/25'
+                  : 'hover:bg-fill-active text-text-tertiary hover:text-text-primary'
+              }`}
+            >
+              <Layers size={14} strokeWidth={2} />
+            </button>
+          </Tooltip>
+        )}
 
         <Tooltip label="Paste as file" shortcut="Ctrl+Shift+V" side="top">
           <button

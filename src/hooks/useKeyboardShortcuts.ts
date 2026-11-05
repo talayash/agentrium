@@ -8,6 +8,7 @@ import { reportInvokeFailure } from '../lib/errorReporter';
 import { readClipboardText } from '../lib/clipboard';
 import { cyclableTabIds, nextTabId } from '../lib/tabCycle';
 import { matchesKeyCode } from '../lib/keymap';
+import { toggleInsightLayer } from '../lib/insightToggle';
 import { closeWithConfirm } from '../lib/closeConfirm';
 
 /**
@@ -105,6 +106,14 @@ export function useKeyboardShortcuts() {
         const term = activeId ? terminalsRef.current.get(activeId)?.xterm : undefined;
         const seed = term ? captureClaudeInput(term) : '';
         useAppStore.getState().openPromptEditor(activeId, seed);
+      }
+
+      // Insight layer: Ctrl+Shift+L toggles it for the active agent session.
+      if (ctrl && shift && !e.altKey && matchesKeyCode(e, 'L')) {
+        e.preventDefault();
+        const activeId = activeIdRef.current;
+        if (activeId) toggleInsightLayer(activeId);
+        return;
       }
 
       // Paste as file: Ctrl+Shift+V

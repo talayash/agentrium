@@ -382,3 +382,53 @@ describe('setSessionId', () => {
     expect(useTerminalStore.getState().terminals).toBe(bound);
   });
 });
+
+describe('terminalStore - insight layer', () => {
+  beforeEach(async () => {
+    invokeMock.mockClear();
+    invokeMock.mockImplementation(async (cmd: string) =>
+      cmd === 'create_terminal' ? makeConfig('new1') : undefined,
+    );
+    const { useAppStore } = await import('./appStore');
+    useAppStore.setState({ insightLayerDefault: false });
+  });
+
+  function createPayload() {
+    const call = invokeMock.mock.calls.find((c) => c[0] === 'create_terminal');
+    return (call?.[1] as { request: Record<string, unknown> }).request;
+  }
+
+  it('createTerminal sends insight_layer from the global default', async () => {
+    const { useAppStore } = await import('./appStore');
+    useAppStore.setState({ insightLayerDefault: true });
+    await useTerminalStore.getState().createTerminal('t', 'C:/tmp', [], {});
+    expect(createPayload().insight_layer).toBe(true);
+  });
+
+  it('explicit insightLayer option wins over the default', async () => {
+    const { useAppStore } = await import('./appStore');
+    useAppStore.setState({ insightLayerDefault: true });
+    await useTerminalStore.getState().createTerminal(
+      't', 'C:/tmp', [], {}, undefined, undefined, undefined, undefined, undefined, undefined,
+      'claude', [], undefined, { insightLayer: false },
+    );
+    expect(createPayload().insight_layer).toBe(false);
+  });
+
+  it('setInsightLayer invokes the command and updates the config', async () => {
+    seed(['a']);
+    const before = useTerminalStore.getState().terminals;
+    await useTerminalStore.getState().setInsightLayer('a', true);
+    expect(invokeMock).toHaveBeenCalledWith('set_terminal_insight_layer', { id: 'a', enabled: true });
+    const after = useTerminalStore.getState().terminals;
+    expect(after).not.toBe(before);
+    expect(after.get('a')?.config.insight_layer).toBe(true);
+  });
+
+  it('setInsightLayer leaves state unchanged when the command fails', async () => {
+    seed(['a']);
+    invokeMock.mockRejectedValueOnce(new Error('boom'));
+    await useTerminalStore.getState().setInsightLayer('a', true);
+    expect(useTerminalStore.getState().terminals.get('a')?.config.insight_layer).toBeFalsy();
+  });
+});
