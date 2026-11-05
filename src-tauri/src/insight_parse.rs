@@ -281,8 +281,7 @@ pub fn parse_codex_line(line: &str) -> Vec<InsightRecord> {
                             .iter()
                             .filter_map(|i| i.get("text").and_then(Value::as_str))
                             .collect::<Vec<_>>()
-                            .join("
-"),
+                            .join("\n"),
                     ),
                     _ => String::new(),
                 };
@@ -325,6 +324,9 @@ mod tests {
 
     #[test]
     fn skips_unknown_and_wrapper_records() {
+        // Lines 0 and 2 must be valid JSON so the skip is not a parse failure.
+        assert!(is_json(FIXTURE, 0) && is_json(FIXTURE, 2));
+        assert!(!is_json(FIXTURE, 9));
         assert!(line(0).is_empty());
         assert!(line(2).is_empty());
         assert!(line(9).is_empty());
@@ -418,8 +420,13 @@ mod tests {
         parse_codex_line(CODEX_FIXTURE.lines().nth(i).unwrap())
     }
 
+    fn is_json(text: &str, i: usize) -> bool {
+        serde_json::from_str::<Value>(text.lines().nth(i).unwrap()).is_ok()
+    }
+
     #[test]
     fn codex_skips_meta_and_developer() {
+        assert!(is_json(CODEX_FIXTURE, 0) && is_json(CODEX_FIXTURE, 1));
         assert!(codex(0).is_empty());
         assert!(codex(1).is_empty());
     }
@@ -463,8 +470,7 @@ mod tests {
         assert!(matches!(
             &a[0],
             InsightRecord::ToolResult { tool_use_id, is_error: false, text, lines_added: None, lines_removed: None, .. }
-                if tool_use_id == "c1" && text == "file1
-file2"
+                if tool_use_id == "c1" && text == "file1\nfile2"
         ));
         let b = codex(6);
         assert_eq!(b.len(), 1);

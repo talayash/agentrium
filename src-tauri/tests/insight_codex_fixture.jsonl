@@ -1,4 +1,4 @@
-{"timestamp":"2026-11-05T11:00:00.000Z","type":"session_meta","payload":{"id":"abc","cwd":"C:\x"}}
+{"timestamp":"2026-11-05T11:00:00.000Z","type":"session_meta","payload":{"id":"abc","cwd":"C:\\x"}}
 {"timestamp":"2026-11-05T11:00:01.000Z","type":"response_item","payload":{"type":"message","role":"developer","content":[{"type":"input_text","text":"system rules"}]}}
 {"timestamp":"2026-11-05T11:00:02.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"add a browser"}]}}
 {"timestamp":"2026-11-05T11:00:03.000Z","type":"response_item","payload":{"type":"custom_tool_call","call_id":"c1","name":"exec","input":"const r = await tools.exec_command({cmd: \"ls\"})\nreturn r"}}
