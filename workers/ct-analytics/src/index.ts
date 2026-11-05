@@ -30,7 +30,7 @@ import { admitErrorReport, admitIngest, boundedJson, validDimensions, versionWit
  */
 
 import { constantTimeEqual, checkLoginAttempt, parseMatchBody, matchInstallations, listLiveInstallations, getSessionFloor, revokeAdminSessions } from './admin';
-import { parseResolveBody, isGroupResolved, isKnownBenignReport, errorsSince } from './errors';
+import { parseResolveBody, isGroupResolved, isKnownBenignReport, errorsSince, computeFingerprint } from './errors';
 import { handleInsights } from './insights-route';
 import { CORS_HEADERS, json, todayUTC } from './http';
 
@@ -309,6 +309,9 @@ async function handleErrorReport(request: Request, env: Env, ctx: ExecutionConte
 
   const payload = normalizeError(body, request);
   if (!payload) return json({ error: 'invalid_payload' }, 400);
+  // Never trust the client's fingerprint: derive it from the content we store,
+  // so a report cannot attach its own text to someone else's error group.
+  payload.fingerprint = await computeFingerprint(payload.source, payload.kind, payload.message, payload.stack);
 
   // Noise that old installed clients still emit; see isKnownBenignReport.
   if (isKnownBenignReport(payload)) {
@@ -589,7 +592,14 @@ async function handleErrorsSummary(url: URL, env: Env): Promise<Response> {
     env.DB.prepare(
       "SELECT e.fingerprint AS fingerprint, COUNT(*) AS occurrences, COUNT(DISTINCT e.installation_id) AS users, " +
         'MAX(e.ts) AS last_seen, MIN(e.ts) AS first_seen, ' +
-        'MAX(e.source) AS source, MAX(e.kind) AS kind, MAX(e.message) AS message, MAX(e.stack) AS stack, ' +
+        // source and kind are inputs to the fingerprint, so they are the same
+        // on every row of a group. message and stack are not: show the
+        // FIRST-SEEN report's text, never MAX(), which let any later report
+        // sorting last (e.g. "~...") replace what the admin reads (F5).
+        'MAX(e.source) AS source, MAX(e.kind) AS kind, ' +
+        '(SELECT x.message FROM errors x WHERE x.fingerprint = e.fingerprint ORDER BY x.ts, x.id LIMIT 1) AS message, ' +
+        '(SELECT x.stack FROM errors x WHERE x.fingerprint = e.fingerprint ORDER BY x.ts, x.id LIMIT 1) AS stack, ' +
+        'COUNT(DISTINCT e.message) AS message_variants, ' +
         'GROUP_CONCAT(DISTINCT e.app_version) AS versions, ' +
         // Functionally dependent on the GROUP BY key (error_state is keyed by
         // fingerprint), so MAX just satisfies the aggregate rule.
@@ -609,6 +619,7 @@ async function handleErrorsSummary(url: URL, env: Env): Promise<Response> {
         kind: string | null;
         message: string;
         stack: string | null;
+        message_variants: number;
         versions: string;
         resolved_at: string | null;
         resolved_version: string | null;

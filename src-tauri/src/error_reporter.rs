@@ -659,6 +659,17 @@ mod tests {
     }
 
     #[test]
+    fn fingerprint_matches_the_worker_recomputation() {
+        // The ct-analytics Worker recomputes the fingerprint from the report's
+        // content instead of trusting this value (workers/ct-analytics
+        // src/errors.ts computeFingerprint). The same vectors are pinned there;
+        // changing the algorithm here splits every error group in /admin.
+        assert_eq!(fingerprint(ErrorSource::RustPanic, Some("PtyOpenError"), "boom", Some("at foo\nat bar")), "c53aa05a925fab77");
+        assert_eq!(fingerprint(ErrorSource::Frontend, None, "  \n msg one \nmore", None), "d42993dce06341be");
+        assert_eq!(fingerprint(ErrorSource::RustCommand, Some("git_push"), "ignored", Some("\n  at commands.rs:10\nat main")), "a45cceedce40842f");
+    }
+
+    #[test]
     fn fingerprint_changes_with_source() {
         let a = fingerprint(ErrorSource::RustPanic, None, "boom", None);
         let b = fingerprint(ErrorSource::Frontend, None, "boom", None);

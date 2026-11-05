@@ -79,6 +79,31 @@ export function errorsSince(days: number, now: number = Date.now()): string {
   return new Date(now - days * 86_400_000).toISOString();
 }
 
+/** First non-empty line, the way Rust's `str::lines()` splits (on \n, dropping a trailing \r). */
+function firstNonEmptyLine(s: string | null | undefined): string | undefined {
+  if (!s) return undefined;
+  return s.split('\n').map((l) => (l.endsWith('\r') ? l.slice(0, -1) : l)).find((l) => l.trim() !== '');
+}
+
+/**
+ * Port of the desktop's `error_reporter::fingerprint`: SHA-256 over
+ * "source|kind|first non-empty line of the stack, else of the message"
+ * (trimmed), first 8 bytes as hex. /error_report stores this instead of the
+ * client-sent value, so a public report can only join the group its own
+ * content belongs to (F5, 2026-11-05 assessment). Vectors are pinned on both
+ * sides (error-groups.test.ts and fingerprint_matches_the_worker_recomputation).
+ */
+export async function computeFingerprint(
+  source: string,
+  kind: string | null | undefined,
+  message: string,
+  stack: string | null | undefined,
+): Promise<string> {
+  const first = (firstNonEmptyLine(stack) ?? firstNonEmptyLine(message) ?? '').trim();
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${source}|${kind ?? ''}|${first}`));
+  return [...new Uint8Array(digest).slice(0, 8)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 export interface ReportIdentity {
   source: string;
   kind: string | null;
