@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { RotateCw, Square, ClipboardCopy, Clock, FolderOpen, Check, ClipboardPaste, Pencil } from 'lucide-react';
+import { RotateCw, Square, ClipboardCopy, Clock, FolderOpen, Check, ClipboardPaste, Pencil, Eraser } from 'lucide-react';
+import { clearTerminalInput } from '../lib/promptSend';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
 import { captureClaudeInput } from '../lib/terminalInput';
@@ -160,6 +161,20 @@ export function TerminalStatusBar({ terminalId }: TerminalStatusBarProps) {
             className="w-7 h-7 flex items-center justify-center rounded-md bg-accent-primary/15 text-accent-primary hover:bg-accent-primary/25 transition-colors"
           >
             <Pencil size={14} strokeWidth={2.25} />
+          </button>
+        </Tooltip>
+
+        <Tooltip label="Clear prompt" side="top">
+          <button
+            onClick={() => {
+              clearTerminalInput(terminalId).catch((err) => {
+                toast.error('Clear failed', 'Could not clear the prompt.');
+                reportInvokeFailure('write_to_terminal', err);
+              });
+            }}
+            className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-fill-active text-text-tertiary hover:text-text-primary transition-colors"
+          >
+            <Eraser size={14} strokeWidth={2} />
           </button>
         </Tooltip>
 

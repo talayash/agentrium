@@ -13,12 +13,17 @@ import { toBracketedPaste } from './bracketedPaste';
  * line we failed to scrape) which would otherwise leave a remnant. Over-
  * counting is always harmless.
  */
-export async function writePromptToTerminal(terminalId: string, text: string, submit: boolean): Promise<void> {
+export async function clearTerminalInput(terminalId: string): Promise<void> {
   const { terminals, writeToTerminal } = useTerminalStore.getState();
   const xterm = terminals.get(terminalId)?.xterm;
   const current = xterm ? captureClaudeInput(xterm) : '';
   const clearCount = Math.max(1, current.split('\n').length) + 3;
   await writeToTerminal(terminalId, '\x15'.repeat(clearCount));
+}
+
+export async function writePromptToTerminal(terminalId: string, text: string, submit: boolean): Promise<void> {
+  const { writeToTerminal } = useTerminalStore.getState();
+  await clearTerminalInput(terminalId);
   await writeToTerminal(terminalId, toBracketedPaste(text));
   if (submit) {
     // The prompt is submitted and consumed, so drop the draft: the next
