@@ -77,10 +77,14 @@ pub fn validate_binary(binary: &str) -> Result<(), String> {
     if b.contains(BINARY_FORBIDDEN) {
         return Err(format!("Invalid character in command \"{}\"", b));
     }
-    // cmd.exe expands `%VAR%` (and `%VAR:~0,2%` substrings) after this check,
-    // so `%` could rebuild a UNC prefix the check below never saw.
-    if b.contains('%') {
-        return Err(format!("Invalid character in command \"{}\": %", b));
+    // Allowlist on top of BINARY_FORBIDDEN: cmd.exe expands `%VAR%` (and
+    // `%VAR:~0,2%` substrings, which can rebuild a UNC prefix) and splits the
+    // command name on `,` and `=` as well as whitespace, so a denylist keeps
+    // missing cases. Letters/digits of any script keep non-latin user folders
+    // working; a plain space is allowed only for local paths and is checked
+    // again at spawn (`check_spawnable_binary`) and refused on sync.
+    if let Some(bad) = b.chars().find(|c| !is_binary_char(*c)) {
+        return Err(format!("Invalid character in command \"{}\": {:?}", b, bad));
     }
     if is_remote_binary(b) {
         return Err(format!(
@@ -89,6 +93,12 @@ pub fn validate_binary(binary: &str) -> Result<(), String> {
         ));
     }
     Ok(())
+}
+
+/// Mirrors `BINARY_CHARS` in `agentrium-api/src/app/api/sync/push/route.ts`,
+/// plus a plain space for local paths such as `C:\Program Files\...`.
+fn is_binary_char(c: char) -> bool {
+    c.is_alphanumeric() || matches!(c, '.' | '_' | '-' | '\\' | '/' | ':' | '~' | ' ')
 }
 
 /// A synced row's binary runs on every device of the account, so it must not
@@ -425,6 +435,22 @@ mod tests {
         // `%LOGONSERVER:~0,2%` expands to `\\` inside cmd.exe, after this check.
         let err = validate_binary(r"%LOGONSERVER:~0,2%attacker.example\share\x.exe").unwrap_err();
         assert!(err.contains("%"), "{err}");
+    }
+
+    #[test]
+    fn rejects_cmd_separators_outside_the_allowlist() {
+        // cmd.exe splits the command name on `,` and `=` like on spaces:
+        // `cmd,/d,/c,echo,x` runs echo.
+        for b in ["cmd,/d,/c,echo,x", "cmd=/d=/c=echo=x", "agent\u{0B}x", "agent\u{A0}x", "@cmd", "a+b"] {
+            let err = validate_binary(b).expect_err(b);
+            assert!(err.contains("Invalid character in command"), "{b}: {err}");
+        }
+    }
+
+    #[test]
+    fn allowlist_keeps_unicode_user_folders() {
+        assert!(validate_binary(r"C:\Users\טל\AppData\Roaming\npm\opencode.cmd").is_ok());
+        assert!(validate_binary(r"C:\Program Files\Agent\agent.exe").is_ok());
     }
 
     #[test]
