@@ -29,6 +29,9 @@ export const WAITING_PATTERNS: RegExp[] = [
   /Would you like to run the following command\??/i,
   /Would you like to make the following edits\??/i,
   /Press enter to confirm or esc to cancel/i,
+  // Claude Code folder-trust prompt and its footer (seen in 2.1.318).
+  /Is this a project you created or one you trust\??/i,
+  /Enter to confirm\s*·\s*Esc to cancel/i,
 ];
 
 /**
@@ -82,4 +85,28 @@ export function classifySettled(lines: string[]): 'waiting' | 'idle' {
   if (hasOptionMenu(trimmed)) return 'waiting';
 
   return 'idle';
+}
+
+const SHELL_PROMPTS: RegExp[] = [
+  /^[A-Za-z]:\\[^>]*>\s*$/,
+  /^PS [A-Za-z]:\\[^>]*>\s*$/,
+  /^[^\s@]+@[^\s:]+:[^$#]*[$#]\s*$/,
+];
+
+/** True when the last non-empty line is a bare shell prompt (cmd, PowerShell
+ *  or POSIX), i.e. the agent has exited back to a shell. */
+export function isShellPrompt(lines: string[]): boolean {
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (lines[i].trim() === '') continue;
+    return SHELL_PROMPTS.some((re) => re.test(lines[i]));
+  }
+  return false;
+}
+
+/** Whether the hidden terminal needs the user: a blocking prompt, an option
+ *  menu, or a bare shell. Independent of the polled session state. */
+export function needsTerminal(lines: string[], questionPending: boolean): boolean {
+  if (questionPending) return false;
+  const joined = lines.map((l) => l.trim()).join('\n');
+  return hasOptionMenu(lines) || WAITING_PATTERNS.some((re) => re.test(joined)) || isShellPrompt(lines);
 }

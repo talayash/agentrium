@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { classifySettled, hasOptionMenu, hasReadyPrompt, hasTurnFinishedMarker } from './terminalState';
+import { classifySettled, hasOptionMenu, hasReadyPrompt, hasTurnFinishedMarker, isShellPrompt, needsTerminal } from './terminalState';
 import { ASK_USER_QUESTION_SCREEN } from './__fixtures__/askUserQuestionScreen';
 
 describe('completed turn signals', () => {
@@ -131,5 +131,28 @@ describe('Claude AskUserQuestion screen', () => {
   it('classifies the Claude AskUserQuestion screen as waiting', () => {
     expect(hasOptionMenu(ASK_USER_QUESTION_SCREEN)).toBe(true);
     expect(classifySettled(ASK_USER_QUESTION_SCREEN)).toBe('waiting');
+  });
+});
+
+const PERMISSION = [' Do you want to proceed?', ' ❯ 1. Yes', '   2. Yes, and don’t ask again for: node sizes.js', '   3. No', ' Esc to cancel · Tab to amend'];
+const TRUST = [' Quick safety check: Is this a project you created or one you trust? (Like your own code, a well-known open source project, or work', ' ❯ No, exit', '   Yes, I trust this folder', ' Enter to confirm · Esc to cancel'];
+
+describe('needsTerminal and isShellPrompt', () => {
+  it('needs the terminal for a permission prompt unless a question is pending', () => {
+    expect(needsTerminal(PERMISSION, false)).toBe(true);
+    expect(needsTerminal(PERMISSION, true)).toBe(false);
+  });
+  it('needs the terminal for the folder-trust prompt', () => {
+    expect(needsTerminal(TRUST, false)).toBe(true);
+    expect(classifySettled(TRUST)).toBe('waiting');
+  });
+  it('detects bare shell prompts', () => {
+    expect(isShellPrompt(['C:\\Users\\tal\\proj>'])).toBe(true);
+    expect(isShellPrompt(['PS C:\\x> '])).toBe(true);
+    expect(isShellPrompt(['tal@box:~/p$ '])).toBe(true);
+    expect(isShellPrompt(['out', 'tal@box:~/p$ ', '', ''])).toBe(true);
+    expect(isShellPrompt(['❯ '])).toBe(false);
+    expect(isShellPrompt(['> '])).toBe(false);
+    expect(isShellPrompt([])).toBe(false);
   });
 });
