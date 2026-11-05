@@ -42,6 +42,10 @@ pub struct TerminalConfig {
     /// set on the config returned by `create_terminal`; never restored.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prompt_delivery: Option<PromptDelivery>,
+    /// Whether the insight layer (transcript tailer UI) is on for this
+    /// terminal. `serde(default)` keeps rows from older builds deserializable.
+    #[serde(default)]
+    pub insight_layer: bool,
 }
 
 /// Result of delivering an initial prompt at spawn.
@@ -669,6 +673,7 @@ impl TerminalManager {
             credential_bindings,
             task: None,
             prompt_delivery,
+            insight_layer: false,
         };
 
         let mut reader = pty_pair.master.try_clone_reader()
@@ -843,6 +848,7 @@ impl TerminalManager {
             credential_bindings: Vec::new(),
             task: None,
             prompt_delivery: None,
+            insight_layer: false,
         };
 
         let mut reader = pty_pair.master.try_clone_reader()
@@ -967,6 +973,7 @@ impl TerminalManager {
             credential_bindings: Vec::new(),
             task: None,
             prompt_delivery: None,
+            insight_layer: false,
         };
 
         let mut reader = pty_pair.master.try_clone_reader()
@@ -1160,6 +1167,15 @@ impl TerminalManager {
         }
     }
 
+    pub fn set_insight_layer(&mut self, id: &str, enabled: bool) -> Result<(), String> {
+        if let Some(terminal) = self.terminals.get_mut(id) {
+            terminal.config.insight_layer = enabled;
+            Ok(())
+        } else {
+            Err(error_reporter::user_err("Terminal not found"))
+        }
+    }
+
     pub fn update_nickname(&mut self, id: &str, nickname: String) -> Result<(), String> {
         if let Some(terminal) = self.terminals.get_mut(id) {
             terminal.config.nickname = Some(nickname);
@@ -1346,6 +1362,7 @@ mod tests {
                     credential_bindings: Vec::new(),
                     task: None,
                     prompt_delivery: None,
+                    insight_layer: false,
                 },
                 pty_pair,
                 writer,
@@ -1696,6 +1713,13 @@ mod tests {
     }
 
     #[test]
+    fn insight_layer_defaults_false_for_old_rows() {
+        let json = r#"{"id":"t","label":"L","nickname":null,"profile_id":null,"working_directory":"w","claude_args":[],"env_vars":{},"created_at":"2026-01-01T00:00:00Z","status":"Running","color_tag":null}"#;
+        let cfg: TerminalConfig = serde_json::from_str(json).unwrap();
+        assert!(!cfg.insight_layer);
+    }
+
+    #[test]
     fn terminal_config_carries_bindings_but_serializes_no_secret_values() {
         let cfg = TerminalConfig {
             id: "t1".into(),
@@ -1716,6 +1740,7 @@ mod tests {
             }],
             task: None,
             prompt_delivery: None,
+            insight_layer: false,
         };
         let json = serde_json::to_string(&cfg).unwrap();
         assert!(json.contains("\"credential_bindings\""));

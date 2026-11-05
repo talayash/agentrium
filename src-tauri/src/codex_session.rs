@@ -73,7 +73,6 @@ fn walk_rollout_files(root: &Path) -> Vec<PathBuf> {
 }
 
 /// Rollout file whose `session_meta` id equals `session_id`, newest first.
-#[allow(dead_code)] // first caller arrives with the insight poller
 pub(crate) fn find_rollout_by_session_id(session_id: &str) -> Option<PathBuf> {
     let root = codex_sessions_root()?;
     let mut files: Vec<(PathBuf, std::time::SystemTime)> = walk_rollout_files(&root)

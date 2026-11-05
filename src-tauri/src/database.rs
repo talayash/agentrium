@@ -2243,6 +2243,7 @@ mod tests {
             credential_bindings: Vec::new(),
             task: None,
             prompt_delivery: None,
+            insight_layer: false,
         }
     }
 

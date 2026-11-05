@@ -1,8 +1,6 @@
 //! Parsers that turn agent transcript lines (Claude Code JSONL, Codex rollout
 //! JSONL) into a small `InsightRecord` enum. The wire format is mirrored by a
 //! TypeScript type, so variant and field names must stay snake_case.
-// Callers (tailer, panel commands) arrive in later tasks.
-#![allow(dead_code)]
 
 use serde::Serialize;
 use serde_json::Value;

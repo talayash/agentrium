@@ -424,6 +424,9 @@ pub struct CreateTerminalRequest {
     /// Branch `resume_session_id` into a new conversation (Claude/Codex).
     #[serde(default)]
     pub fork: bool,
+    /// Whether the insight layer is on for this terminal.
+    #[serde(default)]
+    pub insight_layer: bool,
 }
 
 /// Tell the frontend which conversation id the backend bound to a live
@@ -563,6 +566,7 @@ pub async fn create_terminal(
         };
 
         let task = request.task.clone();
+        let insight_layer = request.insight_layer;
         let mut config = {
             let mut terminals = state.terminals.lock().await;
             terminals.create_terminal(
@@ -584,6 +588,10 @@ pub async fn create_terminal(
                 fork,
             )?
         };
+        if insight_layer {
+            state.terminals.lock().await.set_insight_layer(&config.id, true)?;
+            config.insight_layer = true;
+        }
         if task.is_some() {
             state.terminals.lock().await.set_task(&config.id, task.clone());
             config.task = task;
@@ -851,6 +859,7 @@ pub async fn close_terminal(state: State<'_, AppState>, id: String) -> Result<()
     wrap_cmd("close_terminal", async move {
         let mut terminals = state.terminals.lock().await;
         terminals.close(&id)?;
+        crate::insight::stop(&id);
         // Drop accumulated telemetry so a reused id can't inherit stale totals.
         if let Ok(mut agg) = state.otel_agg.lock() {
             agg.forget(&id);
@@ -906,6 +915,54 @@ pub async fn update_terminal_nickname(
     wrap_cmd("update_terminal_nickname", async move {
         let mut terminals = state.terminals.lock().await;
         terminals.update_nickname(&id, nickname)
+    })
+    .await
+}
+
+#[command]
+pub async fn set_terminal_insight_layer(
+    state: State<'_, AppState>,
+    id: String,
+    enabled: bool,
+) -> Result<(), String> {
+    wrap_cmd("set_terminal_insight_layer", async move {
+        let mut terminals = state.terminals.lock().await;
+        terminals.set_insight_layer(&id, enabled)
+    })
+    .await
+}
+
+/// Start (or restart) the transcript tailer for a terminal. Agents without a
+/// tailable transcript get `supported: false` and nothing is started.
+#[command]
+pub async fn insight_start(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<crate::insight::InsightSupport, String> {
+    wrap_cmd("insight_start", async move {
+        let agent = {
+            let terminals = state.terminals.lock().await;
+            match terminals.terminals.get(&id) {
+                Some(t) => t.config.agent.clone(),
+                None => return Err(error_reporter::user_err("Terminal not found")),
+            }
+        };
+        crate::insight::stop(&id);
+        if !crate::session_provider::provider_for(&agent).supports_transcript() {
+            return Ok(crate::insight::InsightSupport { supported: false });
+        }
+        crate::insight::start(app, state.terminals.clone(), id);
+        Ok(crate::insight::InsightSupport { supported: true })
+    })
+    .await
+}
+
+#[command]
+pub async fn insight_stop(id: String) -> Result<(), String> {
+    wrap_cmd("insight_stop", async move {
+        crate::insight::stop(&id);
+        Ok(())
     })
     .await
 }

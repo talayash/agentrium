@@ -1,10 +1,17 @@
 //! Transcript tailing for the insight layer. `TailState` reads new complete
-//! lines from an agent's session JSONL by byte offset; Task 4 drives it from a
+//! lines from an agent's session JSONL by byte offset; `start` drives it from a
 //! per-terminal polling loop.
-#![allow(dead_code)] // callers land in the next task
 
+use crate::config::AgentKind;
+use crate::insight_parse::{parse_claude_line, parse_codex_line, InsightRecord};
+use crate::terminal::TerminalManager;
+use serde::Serialize;
+use std::collections::HashMap;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
+use tauri::{AppHandle, Emitter};
 
 /// On first attach to a large transcript, only the last this-many bytes are read.
 pub const INITIAL_TAIL_BYTES: u64 = 4 * 1024 * 1024;
@@ -79,6 +86,178 @@ impl TailState {
         self.carry = tail;
         Ok(TailPoll { lines, reset })
     }
+}
+
+/// Pure reset/continue decision for one tick. A new path (or a first attach)
+/// starts a fresh `TailState` and tells the UI to clear; the same path keeps
+/// its offset; an unresolved path drops the state.
+pub(crate) fn next_tail(
+    current: Option<TailState>,
+    resolved: Option<PathBuf>,
+) -> (Option<TailState>, bool) {
+    match (current, resolved) {
+        (_, None) => (None, false),
+        (Some(cur), Some(p)) if cur.path == p => (Some(cur), false),
+        (_, Some(p)) => (Some(TailState::new(p)), true),
+    }
+}
+
+type PathKey = (String, String, AgentKind);
+
+/// Caches the resolved transcript path per (session id, cwd, agent). Codex
+/// resolution walks every rollout file, so it must not run on every tick.
+#[derive(Default)]
+pub(crate) struct PathCache {
+    entry: Option<(PathKey, Option<PathBuf>)>,
+}
+
+impl PathCache {
+    pub(crate) fn resolve(
+        &mut self,
+        key: PathKey,
+        resolver: impl FnOnce() -> Option<PathBuf>,
+    ) -> Option<PathBuf> {
+        if let Some((k, Some(p))) = &self.entry {
+            if *k == key && p.exists() {
+                return Some(p.clone());
+            }
+        }
+        let resolved = resolver();
+        self.entry = Some((key, resolved.clone()));
+        resolved
+    }
+}
+
+#[derive(Serialize)]
+pub struct InsightSupport {
+    pub supported: bool,
+}
+
+#[derive(Serialize, Clone)]
+struct InsightBatch {
+    id: String,
+    records: Vec<InsightRecord>,
+    reset: bool,
+}
+
+const MAX_BATCH: usize = 500;
+const TICK: std::time::Duration = std::time::Duration::from_millis(500);
+
+fn tailers() -> &'static Mutex<HashMap<String, Arc<AtomicBool>>> {
+    static TAILERS: OnceLock<Mutex<HashMap<String, Arc<AtomicBool>>>> = OnceLock::new();
+    TAILERS.get_or_init(Default::default)
+}
+
+/// Stop the tailer for `id`, if any.
+pub fn stop(id: &str) {
+    if let Ok(mut map) = tailers().lock() {
+        if let Some(flag) = map.remove(id) {
+            flag.store(true, Ordering::SeqCst);
+        }
+    }
+}
+
+/// Start (or restart) the tailer for `id`. The caller has already checked
+/// that the agent supports transcripts.
+pub fn start(app: AppHandle, manager: Arc<tokio::sync::Mutex<TerminalManager>>, id: String) {
+    let flag = Arc::new(AtomicBool::new(false));
+    if let Ok(mut map) = tailers().lock() {
+        if let Some(old) = map.insert(id.clone(), flag.clone()) {
+            old.store(true, Ordering::SeqCst);
+        }
+    }
+    tokio::spawn(async move {
+        let mut tail: Option<TailState> = None;
+        let mut cache = PathCache::default();
+        let mut pending_reset = false;
+        let mut reported = false;
+        loop {
+            tokio::time::sleep(TICK).await;
+            if flag.load(Ordering::SeqCst) {
+                return;
+            }
+            // Read what we need under the lock, then release it before any IO.
+            let (agent, session_id, cwd) = {
+                let m = manager.lock().await;
+                let Some(t) = m.terminals.get(&id) else {
+                    // Terminal is gone: deregister only if we are still the current tailer.
+                    if let Ok(mut map) = tailers().lock() {
+                        if map.get(&id).is_some_and(|f| Arc::ptr_eq(f, &flag)) {
+                            map.remove(&id);
+                        }
+                    }
+                    return;
+                };
+                (
+                    t.config.agent.clone(),
+                    t.config.claude_session_id.clone(),
+                    t.config.working_directory.clone(),
+                )
+            };
+            let Some(session_id) = session_id else { continue };
+
+            let provider = crate::session_provider::provider_for(&agent);
+            if !provider.supports_transcript() {
+                continue;
+            }
+            let key = (session_id.clone(), cwd.clone(), agent.clone());
+            let resolved = {
+                let (r, c) = tokio::task::spawn_blocking(move || {
+                    let r = cache.resolve(key, || provider.transcript_path(&cwd, &session_id));
+                    (r, cache)
+                })
+                .await
+                .unwrap_or_else(|_| (None, PathCache::default()));
+                cache = c;
+                r
+            };
+            let (next, reset) = next_tail(tail.take(), resolved);
+            tail = next;
+            pending_reset |= reset;
+            let Some(mut state) = tail.take() else { continue };
+
+            let polled = tokio::task::spawn_blocking(move || {
+                let r = state.poll();
+                (state, r)
+            })
+            .await;
+            let Ok((state, result)) = polled else { continue };
+            tail = Some(state);
+            let poll = match result {
+                Ok(p) => p,
+                Err(e) => {
+                    if !reported {
+                        reported = true;
+                        crate::error_reporter::report_bg("insight_tail", format!("Failed to read transcript: {}", e));
+                    }
+                    continue;
+                }
+            };
+            let reset = pending_reset || poll.reset;
+            if poll.lines.is_empty() && !reset {
+                continue;
+            }
+            let parse: fn(&str) -> Vec<InsightRecord> = match agent {
+                AgentKind::Codex => parse_codex_line,
+                _ => parse_claude_line,
+            };
+            let records: Vec<InsightRecord> = poll.lines.iter().flat_map(|l| parse(l)).collect();
+            if flag.load(Ordering::SeqCst) {
+                return;
+            }
+            let mut chunks: Vec<Vec<InsightRecord>> = records.chunks(MAX_BATCH).map(|c| c.to_vec()).collect();
+            if chunks.is_empty() {
+                chunks.push(Vec::new());
+            }
+            for (i, records) in chunks.into_iter().enumerate() {
+                let batch = InsightBatch { id: id.clone(), records, reset: reset && i == 0 };
+                if let Err(e) = app.emit("insight-records", batch) {
+                    crate::error_reporter::report_bg("emit_insight_records", format!("Failed to emit insight-records: {}", e));
+                }
+            }
+            pending_reset = false;
+        }
+    });
 }
 
 #[cfg(test)]
@@ -169,5 +348,68 @@ mod tests {
         std::fs::write(&p, "a\r\n\r\nb\r\n").unwrap();
         let mut t = TailState::new(p);
         assert_eq!(lines(&t.poll().unwrap()), ["a", "b"]);
+    }
+
+    #[test]
+    fn tailer_resets_when_path_changes() {
+        let a = TailState::new(PathBuf::from("a.jsonl"));
+        let (st, reset) = next_tail(Some(a), Some(PathBuf::from("b.jsonl")));
+        assert_eq!(st.unwrap().path, PathBuf::from("b.jsonl"));
+        assert!(reset);
+    }
+
+    #[test]
+    fn tailer_keeps_state_for_same_path() {
+        let tmp = tempfile::tempdir().unwrap();
+        let p = tmp.path().join("t.jsonl");
+        std::fs::write(&p, "a
+b
+").unwrap();
+        let mut a = TailState::new(p.clone());
+        assert_eq!(a.poll().unwrap().lines.len(), 2);
+        let (st, reset) = next_tail(Some(a), Some(p));
+        assert!(!reset);
+        let mut st = st.unwrap();
+        assert!(st.poll().unwrap().lines.is_empty(), "offset must be kept");
+    }
+
+    #[test]
+    fn tailer_drops_state_when_path_unresolved() {
+        let a = TailState::new(PathBuf::from("a.jsonl"));
+        let (st, reset) = next_tail(Some(a), None);
+        assert!(st.is_none());
+        assert!(!reset);
+        let (st, reset) = next_tail(st, Some(PathBuf::from("b.jsonl")));
+        assert!(st.is_some());
+        assert!(reset);
+    }
+
+    #[test]
+    fn first_attach_reports_reset() {
+        let (st, reset) = next_tail(None, Some(PathBuf::from("b.jsonl")));
+        assert!(st.is_some());
+        assert!(reset);
+    }
+
+    #[test]
+    fn path_cache_reuses_until_key_changes_or_file_gone() {
+        let tmp = tempfile::tempdir().unwrap();
+        let p = tmp.path().join("t.jsonl");
+        std::fs::write(&p, "x
+").unwrap();
+        let mut cache = PathCache::default();
+        let mut calls = 0;
+        let key = ("s1".to_string(), "cwd".to_string(), crate::config::AgentKind::Claude);
+        for _ in 0..3 {
+            let got = cache.resolve(key.clone(), || { calls += 1; Some(p.clone()) });
+            assert_eq!(got, Some(p.clone()));
+        }
+        assert_eq!(calls, 1);
+        let key2 = ("s2".to_string(), "cwd".to_string(), crate::config::AgentKind::Claude);
+        cache.resolve(key2.clone(), || { calls += 1; Some(p.clone()) });
+        assert_eq!(calls, 2);
+        std::fs::remove_file(&p).unwrap();
+        cache.resolve(key2, || { calls += 1; None });
+        assert_eq!(calls, 3);
     }
 }
