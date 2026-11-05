@@ -119,9 +119,8 @@ interface AppState {
   // Per-session budget ceiling in USD; 0 = no cap. Used by Task 11.
   sessionBudgetUsd: number;
   setCostTrackingEnabled: (v: boolean) => void;
-  // Whether new sessions start with the insight layer on. Restored sessions
-  // keep their own saved flag and ignore this.
-  /** View mode new sessions start in. */
+  /** View mode new sessions start in. Restored sessions keep their own saved
+   *  mode and ignore this. */
   defaultViewMode: ViewMode;
   setDefaultViewMode: (m: ViewMode) => void;
   setSessionBudgetUsd: (v: number) => void;
