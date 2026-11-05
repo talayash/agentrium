@@ -8,8 +8,9 @@ import type { Terminal } from '@xterm/xterm';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
 import { getLastOutputAt, getLastSubmissionAt } from '../lib/terminalActivity';
-import { classifySettled, hasReadyPrompt, hasTurnFinishedMarker, type SessionState } from '../lib/terminalState';
+import { classifySettled, hasReadyPrompt, hasTurnFinishedMarker, needsTerminal, type SessionState } from '../lib/terminalState';
 import { isWithinDnd, playNotificationSound } from '../lib/notificationGate';
+import { effectiveViewMode } from '../lib/viewMode';
 import { useNotification } from './useNotification';
 import { useWindowFocused } from './useWindowFocused';
 import { useSessionAttentionStore } from '../store/sessionAttentionStore';
@@ -109,7 +110,11 @@ export function useSessionStateDetection(): void {
           && (submitted != null ? last > submitted : hasTurnFinishedMarker(lines));
         if (completed) completedRef.current.add(id);
 
-        if (state === 'waiting' || completedRef.current.has(id)) {
+        // Insight-only sessions hide the terminal, so a prompt there (even one the
+        // TUI keeps redrawing, which classifies as busy) must raise attention.
+        const needsUser = effectiveViewMode(inst) === 'insight' && needsTerminal(lines, false);
+
+        if (state === 'waiting' || needsUser || completedRef.current.has(id)) {
           const lookingAtIt = id === store.activeTerminalId && focusedRef.current;
           attention.request(id);
           if (lookingAtIt) attention.acknowledge(id);

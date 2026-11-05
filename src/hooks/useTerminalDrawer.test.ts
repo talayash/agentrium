@@ -1,7 +1,6 @@
 import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DRAWER_CLOSE_DELAY_MS, DRAWER_POLL_MS, useTerminalDrawer } from './useTerminalDrawer';
-import { useSessionAttentionStore } from '../store/sessionAttentionStore';
 
 const mocks = vi.hoisted(() => ({
   lines: [] as string[],
@@ -21,7 +20,6 @@ describe('useTerminalDrawer', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(10_000);
-    useSessionAttentionStore.setState({ pending: new Set(), acknowledged: new Set() });
     mocks.lines = CALM;
     mocks.active = 'other';
     mocks.states.clear();
@@ -78,31 +76,48 @@ describe('useTerminalDrawer', () => {
     expect(result.current.open).toBe(false);
   });
 
-  it('requests attention once per opening for a background terminal', () => {
+  it('closing an auto-opened drawer keeps it closed while the prompt stays', () => {
     const { result } = renderHook(() => useTerminalDrawer('t1', true, false));
     mocks.lines = PERMISSION;
     tick();
-    tick();
-    expect(useSessionAttentionStore.getState().pending.has('t1')).toBe(true);
-    const request = vi.spyOn(useSessionAttentionStore.getState(), 'request');
-    useSessionAttentionStore.setState({ pending: new Set(), acknowledged: new Set() });
-    tick();
-    expect(request).not.toHaveBeenCalled();
-    expect(useSessionAttentionStore.getState().pending.size).toBe(0);
-    mocks.lines = CALM;
-    tick(DRAWER_CLOSE_DELAY_MS + DRAWER_POLL_MS);
+    expect(result.current.open).toBe(true);
+    act(() => result.current.close());
+    tick(DRAWER_POLL_MS * 4);
     expect(result.current.open).toBe(false);
-    mocks.lines = PERMISSION;
-    tick();
-    expect(useSessionAttentionStore.getState().pending.has('t1')).toBe(true);
   });
 
-  it('does not request attention for the active terminal', () => {
-    mocks.active = 't1';
-    renderHook(() => useTerminalDrawer('t1', true, false));
+  it('a new prompt after the old one cleared opens it again', () => {
+    const { result } = renderHook(() => useTerminalDrawer('t1', true, false));
     mocks.lines = PERMISSION;
     tick();
-    expect(useSessionAttentionStore.getState().pending.size).toBe(0);
+    act(() => result.current.close());
+    mocks.lines = CALM;
+    tick();
+    mocks.lines = PERMISSION;
+    tick();
+    expect(result.current.open).toBe(true);
+  });
+
+  it('opens when the agent drops to a bare shell prompt', () => {
+    const { result } = renderHook(() => useTerminalDrawer('t1', true, false));
+    mocks.lines = ['bye', 'tal@box:~/p$ '];
+    tick();
+    expect(result.current.open).toBe(true);
+    expect(result.current.openedBy).toBe('auto');
+  });
+
+  it('stays closed while a question is pending and closes an auto drawer when one appears', () => {
+    const { result, rerender } = renderHook(({ q }) => useTerminalDrawer('t1', true, q), { initialProps: { q: true } });
+    mocks.lines = PERMISSION;
+    tick();
+    expect(result.current.open).toBe(false);
+    rerender({ q: false });
+    tick();
+    expect(result.current.open).toBe(true);
+    rerender({ q: true });
+    tick();
+    tick(DRAWER_CLOSE_DELAY_MS);
+    expect(result.current.open).toBe(false);
   });
 
   it('does nothing when disabled', () => {

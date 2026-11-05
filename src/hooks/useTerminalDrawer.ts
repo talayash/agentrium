@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTerminalStore } from '../store/terminalStore';
-import { useSessionAttentionStore } from '../store/sessionAttentionStore';
 import { needsTerminal } from '../lib/terminalState';
 import { readBufferTail } from './useSessionStateDetection';
 
@@ -12,7 +11,8 @@ export function useTerminalDrawer(terminalId: string, enabled: boolean, question
   const [open, setOpen] = useState(false);
   const [openedBy, setOpenedBy] = useState<'auto' | 'user' | null>(null);
   const openedByRef = useRef<'auto' | 'user' | null>(null);
-  const requestedRef = useRef(false);
+  const dismissedRef = useRef(false);
+  const lastNeedsRef = useRef(false);
   const calmSinceRef = useRef<number | null>(null);
   const pendingRef = useRef(questionPending);
   pendingRef.current = questionPending;
@@ -21,27 +21,30 @@ export function useTerminalDrawer(terminalId: string, enabled: boolean, question
     openedByRef.current = by;
     setOpen(by !== null);
     setOpenedBy(by);
-    if (by === null) { requestedRef.current = false; calmSinceRef.current = null; }
+    if (by === null) calmSinceRef.current = null;
   }, []);
 
   const openByUser = useCallback(() => set('user'), [set]);
-  const close = useCallback(() => set(null), [set]);
+  const close = useCallback(() => {
+    // Closing an auto drawer while the need persists must not re-open it on the next poll.
+    if (openedByRef.current === 'auto' && lastNeedsRef.current) dismissedRef.current = true;
+    set(null);
+  }, [set]);
 
   useEffect(() => {
     if (!enabled) return;
     const id = setInterval(() => {
-      const state = useTerminalStore.getState();
-      const xterm = state.terminals.get(terminalId)?.xterm;
+      const xterm = useTerminalStore.getState().terminals.get(terminalId)?.xterm;
       if (!xterm) return;
       const needs = needsTerminal(readBufferTail(xterm, TAIL_ROWS), pendingRef.current);
+      lastNeedsRef.current = needs;
       if (needs) {
         calmSinceRef.current = null;
-        if (openedByRef.current === null) set('auto');
-        if (openedByRef.current === 'auto' && !requestedRef.current) {
-          requestedRef.current = true;
-          if (state.activeTerminalId !== terminalId) useSessionAttentionStore.getState().request(terminalId);
-        }
-      } else if (openedByRef.current === 'auto') {
+        if (openedByRef.current === null && !dismissedRef.current) set('auto');
+        return;
+      }
+      dismissedRef.current = false;
+      if (openedByRef.current === 'auto') {
         const now = Date.now();
         if (calmSinceRef.current === null) calmSinceRef.current = now;
         else if (now - calmSinceRef.current >= DRAWER_CLOSE_DELAY_MS) set(null);
@@ -49,6 +52,8 @@ export function useTerminalDrawer(terminalId: string, enabled: boolean, question
     }, DRAWER_POLL_MS);
     return () => {
       clearInterval(id);
+      dismissedRef.current = false;
+      lastNeedsRef.current = false;
       set(null);
     };
   }, [enabled, terminalId, set]);
