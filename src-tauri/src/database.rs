@@ -963,7 +963,14 @@ impl Database {
             .optional()
             .map_err(|e| e.to_string())?;
         match row {
-            Some(json) => serde_json::from_str(&json).map(Some).map_err(|e| e.to_string()),
+            Some(json) => {
+                let mut configs: Vec<TerminalConfig> =
+                    serde_json::from_str(&json).map_err(|e| e.to_string())?;
+                for c in &mut configs {
+                    c.apply_legacy_view_mode();
+                }
+                Ok(Some(configs))
+            }
             None => Ok(None),
         }
     }
@@ -2243,8 +2250,24 @@ mod tests {
             credential_bindings: Vec::new(),
             task: None,
             prompt_delivery: None,
-            insight_layer: false,
+            view_mode: crate::terminal::ViewMode::Cli,
+            legacy_insight_layer: false,
         }
+    }
+
+    #[test]
+    fn view_mode_legacy_insight_layer_row_loads_as_mixed() {
+        let db = Database::new_in_memory().unwrap();
+        let mut v = serde_json::to_value(vec![make_terminal("a", 0)]).unwrap();
+        v[0]["insight_layer"] = serde_json::json!(true);
+        db.conn
+            .execute(
+                "INSERT INTO workspaces (name, terminals, created_at) VALUES (?1, ?2, ?3)",
+                params![Database::LAST_SESSION_KEY, v.to_string(), "2026-01-01T00:00:00Z"],
+            )
+            .unwrap();
+        let loaded = db.load_last_session().unwrap().unwrap();
+        assert_eq!(loaded[0].view_mode, crate::terminal::ViewMode::Mixed);
     }
 
     #[test]

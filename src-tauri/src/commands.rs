@@ -424,9 +424,9 @@ pub struct CreateTerminalRequest {
     /// Branch `resume_session_id` into a new conversation (Claude/Codex).
     #[serde(default)]
     pub fork: bool,
-    /// Whether the insight layer is on for this terminal.
+    /// Initial view mode for this terminal.
     #[serde(default)]
-    pub insight_layer: bool,
+    pub view_mode: crate::terminal::ViewMode,
 }
 
 /// Tell the frontend which conversation id the backend bound to a live
@@ -566,7 +566,7 @@ pub async fn create_terminal(
         };
 
         let task = request.task.clone();
-        let insight_layer = request.insight_layer;
+        let view_mode = request.view_mode;
         let mut config = {
             let mut terminals = state.terminals.lock().await;
             terminals.create_terminal(
@@ -591,9 +591,9 @@ pub async fn create_terminal(
                 (state.otel_port != 0).then_some(state.otel_port),
             )?
         };
-        if insight_layer {
-            state.terminals.lock().await.set_insight_layer(&config.id, true)?;
-            config.insight_layer = true;
+        if view_mode != crate::terminal::ViewMode::Cli {
+            state.terminals.lock().await.set_view_mode(&config.id, view_mode)?;
+            config.view_mode = view_mode;
         }
         if task.is_some() {
             state.terminals.lock().await.set_task(&config.id, task.clone());
@@ -926,14 +926,14 @@ pub async fn update_terminal_nickname(
 }
 
 #[command]
-pub async fn set_terminal_insight_layer(
+pub async fn set_terminal_view_mode(
     state: State<'_, AppState>,
     id: String,
-    enabled: bool,
+    mode: crate::terminal::ViewMode,
 ) -> Result<(), String> {
-    wrap_cmd("set_terminal_insight_layer", async move {
+    wrap_cmd("set_terminal_view_mode", async move {
         let mut terminals = state.terminals.lock().await;
-        terminals.set_insight_layer(&id, enabled)
+        terminals.set_view_mode(&id, mode)
     })
     .await
 }

@@ -42,10 +42,35 @@ pub struct TerminalConfig {
     /// set on the config returned by `create_terminal`; never restored.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prompt_delivery: Option<PromptDelivery>,
-    /// Whether the insight layer (transcript tailer UI) is on for this
-    /// terminal. `serde(default)` keeps rows from older builds deserializable.
+    /// How this terminal is shown: raw CLI, CLI plus insight panel, or the
+    /// insight view only. `serde(default)` keeps older rows deserializable.
     #[serde(default)]
-    pub insight_layer: bool,
+    pub view_mode: ViewMode,
+    /// Read-only legacy field from builds that had an insight on/off flag.
+    /// Never written back; `apply_legacy_view_mode` folds it into `view_mode`.
+    #[serde(default, rename = "insight_layer", skip_serializing)]
+    pub legacy_insight_layer: bool,
+}
+
+/// Per-session view mode.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum ViewMode {
+    #[default]
+    Cli,
+    Mixed,
+    Insight,
+}
+
+impl TerminalConfig {
+    /// Map the legacy `insight_layer: true` flag to `Mixed` (only when no
+    /// explicit mode was set), then clear the legacy flag.
+    pub fn apply_legacy_view_mode(&mut self) {
+        if self.legacy_insight_layer && self.view_mode == ViewMode::Cli {
+            self.view_mode = ViewMode::Mixed;
+        }
+        self.legacy_insight_layer = false;
+    }
 }
 
 /// Result of delivering an initial prompt at spawn.
@@ -721,7 +746,8 @@ impl TerminalManager {
             credential_bindings,
             task: None,
             prompt_delivery,
-            insight_layer: false,
+            view_mode: ViewMode::Cli,
+            legacy_insight_layer: false,
         };
 
         let mut reader = pty_pair.master.try_clone_reader()
@@ -899,7 +925,8 @@ impl TerminalManager {
             credential_bindings: Vec::new(),
             task: None,
             prompt_delivery: None,
-            insight_layer: false,
+            view_mode: ViewMode::Cli,
+            legacy_insight_layer: false,
         };
 
         let mut reader = pty_pair.master.try_clone_reader()
@@ -1024,7 +1051,8 @@ impl TerminalManager {
             credential_bindings: Vec::new(),
             task: None,
             prompt_delivery: None,
-            insight_layer: false,
+            view_mode: ViewMode::Cli,
+            legacy_insight_layer: false,
         };
 
         let mut reader = pty_pair.master.try_clone_reader()
@@ -1218,9 +1246,9 @@ impl TerminalManager {
         }
     }
 
-    pub fn set_insight_layer(&mut self, id: &str, enabled: bool) -> Result<(), String> {
+    pub fn set_view_mode(&mut self, id: &str, mode: ViewMode) -> Result<(), String> {
         if let Some(terminal) = self.terminals.get_mut(id) {
-            terminal.config.insight_layer = enabled;
+            terminal.config.view_mode = mode;
             Ok(())
         } else {
             Err(error_reporter::user_err("Terminal not found"))
@@ -1413,7 +1441,8 @@ mod tests {
                     credential_bindings: Vec::new(),
                     task: None,
                     prompt_delivery: None,
-                    insight_layer: false,
+                    view_mode: ViewMode::Cli,
+            legacy_insight_layer: false,
                 },
                 pty_pair,
                 writer,
@@ -1765,10 +1794,41 @@ mod tests {
     }
 
     #[test]
-    fn insight_layer_defaults_false_for_old_rows() {
+    fn view_mode_defaults_to_cli_for_old_rows() {
         let json = r#"{"id":"t","label":"L","nickname":null,"profile_id":null,"working_directory":"w","claude_args":[],"env_vars":{},"created_at":"2026-01-01T00:00:00Z","status":"Running","color_tag":null}"#;
         let cfg: TerminalConfig = serde_json::from_str(json).unwrap();
-        assert!(!cfg.insight_layer);
+        assert_eq!(cfg.view_mode, ViewMode::Cli);
+    }
+
+    fn row_with(extra: &str) -> TerminalConfig {
+        let json = format!(
+            r#"{{"id":"t","label":"L","nickname":null,"profile_id":null,"working_directory":"w","claude_args":[],"env_vars":{{}},"created_at":"2026-01-01T00:00:00Z","status":"Running","color_tag":null{extra}}}"#
+        );
+        serde_json::from_str(&json).unwrap()
+    }
+
+    #[test]
+    fn legacy_insight_layer_true_loads_as_mixed() {
+        let mut cfg = row_with(r#","insight_layer":true"#);
+        cfg.apply_legacy_view_mode();
+        assert_eq!(cfg.view_mode, ViewMode::Mixed);
+        assert!(!cfg.legacy_insight_layer);
+    }
+
+    #[test]
+    fn legacy_flag_never_overrides_explicit_mode() {
+        let mut cfg = row_with(r#","view_mode":"insight","insight_layer":true"#);
+        cfg.apply_legacy_view_mode();
+        assert_eq!(cfg.view_mode, ViewMode::Insight);
+    }
+
+    #[test]
+    fn view_mode_serializes_lowercase_without_legacy_field() {
+        let mut cfg = row_with(r#","insight_layer":true"#);
+        cfg.apply_legacy_view_mode();
+        let json = serde_json::to_string(&cfg).unwrap();
+        assert!(json.contains("\"view_mode\":\"mixed\""));
+        assert!(!json.contains("insight_layer"));
     }
 
     #[test]
@@ -1792,7 +1852,8 @@ mod tests {
             }],
             task: None,
             prompt_delivery: None,
-            insight_layer: false,
+            view_mode: ViewMode::Cli,
+            legacy_insight_layer: false,
         };
         let json = serde_json::to_string(&cfg).unwrap();
         assert!(json.contains("\"credential_bindings\""));

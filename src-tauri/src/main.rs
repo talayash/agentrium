@@ -215,7 +215,7 @@ fn main() {
             commands::get_cursor_position,
             commands::update_terminal_label,
             commands::update_terminal_nickname,
-            commands::set_terminal_insight_layer,
+            commands::set_terminal_view_mode,
             commands::insight_start,
             commands::insight_stop,
             commands::save_profile,
