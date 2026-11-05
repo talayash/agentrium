@@ -12,6 +12,7 @@ import { fuzzyMatch, frecencyScore } from '../lib/paletteMatching';
 import { PALETTE_SOURCES, type PaletteItem } from '../lib/paletteSources';
 import { HighlightedText } from './palette/HighlightedText';
 import { toBracketedPaste } from '../lib/bracketedPaste';
+import { insertIntoPromptBar } from '../lib/terminalFocus';
 import {
   Terminal,
   Layers,
@@ -263,7 +264,8 @@ export function CommandPalette() {
           category: 'Snippets',
           icon: Send,
           action: () => {
-            if (activeTerminalId) {
+            // Insight mode: the snippet goes into the prompt bar draft, not the hidden PTY.
+            if (activeTerminalId && !insertIntoPromptBar(activeTerminalId, snippet.content)) {
               writeToTerminal(activeTerminalId, toBracketedPaste(snippet.content)).catch((err) => {
                 toast.error('Insert failed', 'Could not send the snippet to the terminal.');
                 reportInvokeFailure('write_to_terminal', err);

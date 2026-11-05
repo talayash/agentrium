@@ -3,6 +3,7 @@ import { renderHook, cleanup } from '@testing-library/react';
 
 import { useKeyboardShortcuts } from './useKeyboardShortcuts';
 import { useTerminalStore, type TerminalConfig } from '../store/terminalStore';
+import { useAppStore } from '../store/appStore';
 
 const setViewMode = vi.fn(async () => undefined);
 
@@ -47,6 +48,13 @@ describe('Ctrl+Shift+L', () => {
     expect(setViewMode).toHaveBeenLastCalledWith('a', 'cli');
   });
 
+  it('cycle skips insight for codex', () => {
+    renderHook(() => useKeyboardShortcuts());
+    seed('codex', 'mixed');
+    press();
+    expect(setViewMode).toHaveBeenLastCalledWith('a', 'cli');
+  });
+
   it('does nothing for shell terminals', () => {
     renderHook(() => useKeyboardShortcuts());
     seed('claude', 'cli', { isShellTerminal: true });
@@ -61,5 +69,50 @@ describe('Ctrl+Shift+L', () => {
     press(true);
     press(true);
     expect(setViewMode).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('shortcuts from the Insight prompt bar', () => {
+  const focusBar = () => {
+    const bar = document.createElement('textarea');
+    bar.setAttribute('data-terminal-input', '');
+    document.body.appendChild(bar);
+    bar.focus();
+    return bar;
+  };
+
+  it('Ctrl+Shift+L fires while the bar has focus', () => {
+    renderHook(() => useKeyboardShortcuts());
+    seed('claude', 'insight');
+    const bar = focusBar();
+    press();
+    bar.remove();
+    expect(setViewMode).toHaveBeenLastCalledWith('a', 'cli');
+  });
+
+  it('Ctrl+P fires while the bar has focus', () => {
+    const toggleCommandPalette = vi.fn();
+    const prev = useAppStore.getState().toggleCommandPalette;
+    useAppStore.setState({ toggleCommandPalette });
+    renderHook(() => useKeyboardShortcuts());
+    const bar = focusBar();
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'p', code: 'KeyP', ctrlKey: true, bubbles: true, cancelable: true }));
+    bar.remove();
+    useAppStore.setState({ toggleCommandPalette: prev });
+    expect(toggleCommandPalette).toHaveBeenCalledTimes(1);
+  });
+
+  it('a plain text field still keeps Ctrl+P', () => {
+    const toggleCommandPalette = vi.fn();
+    const prev = useAppStore.getState().toggleCommandPalette;
+    useAppStore.setState({ toggleCommandPalette });
+    renderHook(() => useKeyboardShortcuts());
+    const input = document.createElement('textarea');
+    document.body.appendChild(input);
+    input.focus();
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'p', code: 'KeyP', ctrlKey: true, bubbles: true, cancelable: true }));
+    input.remove();
+    useAppStore.setState({ toggleCommandPalette: prev });
+    expect(toggleCommandPalette).not.toHaveBeenCalled();
   });
 });

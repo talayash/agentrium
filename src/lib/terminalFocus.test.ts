@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { focusTerminalInput, inputGoesToPromptBar, promptBarFor, registerPromptBar } from './terminalFocus';
+import { focusTerminalInput, inputGoesToPromptBar, insertIntoPromptBar, promptBarFor, registerPromptBar } from './terminalFocus';
 import { useInsightStore } from '../store/insightStore';
 import { useTerminalStore } from '../store/terminalStore';
 
@@ -72,5 +72,27 @@ describe('focusTerminalInput', () => {
     expect(promptBarFor(ID)).toBe(b);
     offB();
     expect(promptBarFor(ID)).toBeUndefined();
+  });
+});
+
+describe('insertIntoPromptBar', () => {
+  it('routes text into the bar draft in insight mode with the drawer closed', () => {
+    seed('insight');
+    const bar = { focus: vi.fn(), insertText: vi.fn() };
+    const off = registerPromptBar(ID, bar);
+    expect(insertIntoPromptBar(ID, 'snippet text')).toBe(true);
+    expect(bar.insertText).toHaveBeenCalledWith('snippet text');
+    off();
+  });
+
+  it('leaves cli, mixed and an open drawer to the PTY', () => {
+    const bar = { focus: vi.fn(), insertText: vi.fn() };
+    const off = registerPromptBar(ID, bar);
+    for (const [mode, open] of [['cli', false], ['mixed', false], ['insight', true]] as const) {
+      seed(mode, open);
+      expect(insertIntoPromptBar(ID, 'x')).toBe(false);
+    }
+    expect(bar.insertText).not.toHaveBeenCalled();
+    off();
   });
 });

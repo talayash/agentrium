@@ -21,8 +21,9 @@ function isFocusInNonTerminalEditable(): boolean {
   const el = document.activeElement;
   if (!el || el === document.body) return false;
   // xterm's hidden textarea always lives inside an .xterm container - let
-  // shortcuts through when the user is "in" a terminal.
-  if (el.closest('.xterm')) return false;
+  // shortcuts through when the user is "in" a terminal. The Insight-mode
+  // prompt bar is that session's terminal input, so it counts too.
+  if (el.closest('.xterm, [data-terminal-input]')) return false;
   const tag = el.tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA') return true;
   if ((el as HTMLElement).isContentEditable) return true;

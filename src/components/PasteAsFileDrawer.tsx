@@ -10,6 +10,7 @@ import { detectKindClient, kindToExt } from '../lib/pasteKind';
 import { toast } from '../store/toastStore';
 import { copyText } from '../lib/clipboard';
 import { drawerMotion } from '../lib/motionTokens';
+import { insertIntoPromptBar } from '../lib/terminalFocus';
 
 const EXTENSIONS: { value: string; label: string; lang: string }[] = [
   { value: 'json', label: '.json', lang: 'json' },
@@ -136,6 +137,11 @@ export function PasteAsFileDrawer() {
   const handleSend = async () => {
     const entry = await doWrite();
     if (!entry || !targetId) return;
+    // Insight mode: the prompt goes into the prompt bar draft, not the hidden PTY.
+    if (insertIntoPromptBar(targetId, renderPrompt(entry.relative_path))) {
+      closeDrawer();
+      return;
+    }
     try {
       await writeToTerminal(targetId, renderPrompt(entry.relative_path));
       toast.success('Sent to terminal', entry.relative_path);
@@ -158,6 +164,7 @@ export function PasteAsFileDrawer() {
 
   const handleResend = async (entry: PasteEntry) => {
     if (!targetId) return;
+    if (insertIntoPromptBar(targetId, renderPrompt(entry.relative_path))) return;
     try {
       await writeToTerminal(targetId, renderPrompt(entry.relative_path));
       toast.success('Sent to terminal', entry.relative_path);

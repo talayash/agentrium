@@ -41,3 +41,13 @@ export function focusTerminalInput(terminalId: string): void {
   }
   useTerminalStore.getState().terminals.get(terminalId)?.xterm?.focus();
 }
+
+/** Insight mode with the drawer closed: put `text` in the prompt bar draft
+ *  (where the user can see and edit it) instead of the hidden PTY. Returns
+ *  true when the text was routed to the bar, so the caller must not also
+ *  write it to the terminal. */
+export function insertIntoPromptBar(terminalId: string, text: string): boolean {
+  if (!inputGoesToPromptBar(terminalId)) return false;
+  bars.get(terminalId)?.insertText(text);
+  return true;
+}
