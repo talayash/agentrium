@@ -65,6 +65,26 @@ pub enum PromptDelivery {
 /// session-id detector must treat it as recent input (it only binds a session
 /// file when `last_input_at` is within its window). A staged prompt was not
 /// sent, so it does not count.
+/// Receiver port for the pending-question hook, or None when this spawn must
+/// not get `--settings`: only Claude terminals, only when the receiver is up,
+/// and never when the user passes their own `--settings` (a second flag would
+/// replace theirs).
+fn question_hook_port_for(
+    kind: &crate::config::AgentKind,
+    claude_args: &[String],
+    port: Option<u16>,
+) -> Option<u16> {
+    match port {
+        Some(p)
+            if *kind == crate::config::AgentKind::Claude
+                && !crate::question_hook::user_sets_settings(claude_args) =>
+        {
+            Some(p)
+        }
+        _ => None,
+    }
+}
+
 fn initial_input_at(delivery: &Option<PromptDelivery>) -> Option<std::time::Instant> {
     match delivery {
         Some(PromptDelivery::Argv) | Some(PromptDelivery::File { .. }) => Some(std::time::Instant::now()),
@@ -564,18 +584,12 @@ impl TerminalManager {
         // Skipped when the user passes their own `--settings`, which a second
         // flag would replace. The guard revokes the token and deletes the
         // file if this spawn fails before the terminal is registered.
-        let hook_guard = match question_hook_port {
-            Some(port)
-                if spec.kind == crate::config::AgentKind::Claude
-                    && !crate::question_hook::user_sets_settings(&claude_args) =>
-            {
-                crate::question_hook::prepare(&id, port).map(|(args, guard)| {
-                    spawn_args.extend(args);
-                    guard
-                })
-            }
-            _ => None,
-        };
+        let hook_guard = question_hook_port_for(&spec.kind, &claude_args, question_hook_port)
+            .and_then(|port| crate::question_hook::prepare(&id, port))
+            .map(|(args, guard)| {
+                spawn_args.extend(args);
+                guard
+            });
         // Appended after validation on purpose: the prompt is free text, and
         // `render_initial_prompt` only inlines it where it is passed through
         // byte for byte (single-quoted on Unix, cmd-safe on Windows).
@@ -2013,5 +2027,31 @@ mod tests {
         // Staged prompts are typed by the user later; no input yet.
         assert!(initial_input_at(&Some(PromptDelivery::Staged)).is_none());
         assert!(initial_input_at(&None).is_none());
+    }
+
+    #[test]
+    fn question_hook_only_for_claude_with_receiver_and_no_user_settings() {
+        use crate::config::AgentKind;
+        let none: Vec<String> = Vec::new();
+        assert_eq!(question_hook_port_for(&AgentKind::Claude, &none, Some(4100)), Some(4100));
+        // Receiver down: no hook.
+        assert_eq!(question_hook_port_for(&AgentKind::Claude, &none, None), None);
+        // Other agents never get Claude's --settings.
+        for kind in [
+            AgentKind::Codex,
+            AgentKind::Cursor,
+            AgentKind::Antigravity,
+            AgentKind::Custom("my-agent".into()),
+        ] {
+            assert_eq!(question_hook_port_for(&kind, &none, Some(4100)), None, "{kind:?}");
+        }
+        // The user's own --settings wins, in both flag forms.
+        let own = vec!["--settings".to_string(), "C:/mine.json".to_string()];
+        assert_eq!(question_hook_port_for(&AgentKind::Claude, &own, Some(4100)), None);
+        let own_eq = vec!["--settings=C:/mine.json".to_string()];
+        assert_eq!(question_hook_port_for(&AgentKind::Claude, &own_eq, Some(4100)), None);
+        // Unrelated args do not suppress it.
+        let other = vec!["--model".to_string(), "opus".to_string()];
+        assert_eq!(question_hook_port_for(&AgentKind::Claude, &other, Some(4100)), Some(4100));
     }
 }
