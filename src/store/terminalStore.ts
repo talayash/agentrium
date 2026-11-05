@@ -8,6 +8,7 @@ import type { CredentialBinding } from '../lib/credentials';
 import type { TaskInfo, TaskStatus } from '../lib/tasks';
 import { markTerminalActive, clearTerminalActivity, markTerminalSubmission } from '../lib/terminalActivity';
 import { useSessionAttentionStore } from './sessionAttentionStore';
+import { useInsightStore } from './insightStore';
 import { reportInvokeFailure } from '../lib/errorReporter';
 import { toast } from './toastStore';
 import { chunkUtf8Bytes } from '../lib/chunkUtf8';
@@ -446,6 +447,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
     // Drop any pre-attach buffered output - the terminal is gone, so replay
     // makes no sense and the entry would linger until process exit.
     pendingOutputBuffers.delete(id);
+    useInsightStore.getState().clear(id);
     if (childId) pendingOutputBuffers.delete(childId);
 
     set((state) => {
