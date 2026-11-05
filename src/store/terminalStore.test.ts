@@ -432,3 +432,52 @@ describe('terminalStore - insight layer', () => {
     expect(useTerminalStore.getState().terminals.get('a')?.config.insight_layer).toBeFalsy();
   });
 });
+
+describe('terminalStore - sendKeySequence', () => {
+  beforeEach(() => {
+    seed(['a']);
+    invokeMock.mockClear();
+  });
+
+  it('writes each key group in order with the gap between writes', async () => {
+    vi.useFakeTimers();
+    try {
+      const decode = (n: number) =>
+        new TextDecoder().decode(new Uint8Array((invokeMock.mock.calls[n]![1] as { data: number[] }).data));
+      const done = useTerminalStore.getState().sendKeySequence('a', ['1', 'hi', '\r'], 40);
+
+      await vi.advanceTimersByTimeAsync(0);
+      expect(invokeMock).toHaveBeenCalledTimes(1);
+      expect(decode(0)).toBe('1');
+
+      await vi.advanceTimersByTimeAsync(39);
+      expect(invokeMock).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(1);
+      expect(invokeMock).toHaveBeenCalledTimes(2);
+      expect(decode(1)).toBe('hi');
+
+      await vi.advanceTimersByTimeAsync(40);
+      await done;
+      expect(invokeMock).toHaveBeenCalledTimes(3);
+      expect(decode(2)).toBe('\r');
+      expect(invokeMock.mock.calls.every((c) => c[0] === 'write_to_terminal')).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('defaults to a 40 ms gap', async () => {
+    vi.useFakeTimers();
+    try {
+      const done = useTerminalStore.getState().sendKeySequence('a', ['1', '2']);
+      await vi.advanceTimersByTimeAsync(39);
+      expect(invokeMock).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1);
+      await done;
+      expect(invokeMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

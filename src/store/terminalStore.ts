@@ -236,6 +236,9 @@ interface TerminalState {
   updateNickname: (id: string, nickname: string) => Promise<void>;
   setInsightLayer: (id: string, enabled: boolean) => Promise<void>;
   writeToTerminal: (id: string, data: string) => Promise<void>;
+  // Writes each element as its own PTY write, awaiting each and pausing gapMs
+  // between them. Used only for AskUserQuestion answer keys (src/lib/questionKeys.ts).
+  sendKeySequence: (id: string, keys: string[], gapMs?: number) => Promise<void>;
   resizeTerminal: (id: string, cols: number, rows: number) => Promise<void>;
   setXterm: (id: string, xterm: Terminal | null) => void;
   stashTerminalBuffer: (id: string, data: string) => void;
@@ -587,6 +590,14 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
     }
     for (const chunk of chunkUtf8Bytes(bytes, TERMINAL_WRITE_CHUNK_BYTES)) {
       await invoke('write_to_terminal', { id, data: Array.from(chunk) });
+    }
+  },
+
+  sendKeySequence: async (id, keys, gapMs = 40) => {
+    const write = get().writeToTerminal;
+    for (let i = 0; i < keys.length; i++) {
+      if (i > 0) await new Promise<void>((resolve) => setTimeout(resolve, gapMs));
+      await write(id, keys[i]!);
     }
   },
 
