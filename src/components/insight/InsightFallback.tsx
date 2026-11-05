@@ -1,5 +1,5 @@
 import { useTerminalStore } from '../../store/terminalStore';
-import { readBufferTail } from '../../hooks/useSessionStateDetection';
+import { readBufferTail } from '../../lib/terminalScreen';
 import { hasOptionMenu } from '../../lib/terminalState';
 
 const TAIL_ROWS = 15;

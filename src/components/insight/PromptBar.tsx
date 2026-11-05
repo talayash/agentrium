@@ -15,15 +15,19 @@ interface Props {
   disabledReason: string | null;
   busy: boolean;
   onShowTerminal: () => void;
+  /** The hidden terminal needs the user: make the Terminal button prominent. */
+  terminalNeedsYou?: boolean;
 }
 
 /** Imperative handle so the insight-only view can move focus to the bar. */
 export interface PromptBarHandle {
   focus: () => void;
+  /** When the user last pressed a key in the bar (ms epoch, 0 = never). */
+  lastKeyAt: () => number;
 }
 
 export const PromptBar = forwardRef<PromptBarHandle, Props>(function PromptBar(
-  { terminalId, disabledReason, busy, onShowTerminal },
+  { terminalId, disabledReason, busy, onShowTerminal, terminalNeedsYou = false },
   handle,
 ) {
   const [text, setText] = useState('');
@@ -39,7 +43,8 @@ export const PromptBar = forwardRef<PromptBarHandle, Props>(function PromptBar(
       wantFocus.current = true;
     }
   };
-  useImperativeHandle(handle, () => ({ focus: focusBar }), []);
+  const lastKeyAtRef = useRef(0);
+  useImperativeHandle(handle, () => ({ focus: focusBar, lastKeyAt: () => lastKeyAtRef.current }), []);
   const sending = useRef(false);
   // null = not walking history; otherwise index into the history list.
   const histIdx = useRef<number | null>(null);
@@ -59,9 +64,10 @@ export const PromptBar = forwardRef<PromptBarHandle, Props>(function PromptBar(
     if (disabled || !wantFocus.current) return;
     wantFocus.current = false;
     // Only take focus back if nothing else claimed it meanwhile and this is
-    // still the active terminal.
+    // still the active terminal. Focus parked on the insight view while the
+    // bar was disabled counts as unclaimed.
     const active = document.activeElement;
-    const idle = !active || active === document.body;
+    const idle = !active || active === document.body || active.hasAttribute('data-focus-parking');
     if (idle && useTerminalStore.getState().activeTerminalId === terminalId) ref.current?.focus();
   }, [disabled, terminalId]);
 
@@ -122,8 +128,10 @@ export const PromptBar = forwardRef<PromptBarHandle, Props>(function PromptBar(
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    lastKeyAtRef.current = Date.now();
     if (e.key === 'Escape') {
-      if (busy) {
+      // Esc that cancels an IME composition must not interrupt the agent.
+      if (busy && !e.nativeEvent.isComposing) {
         e.stopPropagation();
         e.preventDefault();
         stop();
@@ -158,6 +166,7 @@ export const PromptBar = forwardRef<PromptBarHandle, Props>(function PromptBar(
           disabled={disabled}
           placeholder="Message the agent"
           aria-label="Message the agent"
+          data-terminal-input=""
           onChange={(e) => { setText(e.target.value); histIdx.current = null; }}
           onKeyDown={onKeyDown}
           className={`w-full resize-none rounded-md border border-seam bg-elevation-2 px-3 py-2 text-[13px] leading-5 text-text-primary placeholder:text-text-tertiary disabled:opacity-60 ${FOCUS_RING}`}
@@ -190,7 +199,12 @@ export const PromptBar = forwardRef<PromptBarHandle, Props>(function PromptBar(
         onClick={onShowTerminal}
         aria-label="Show terminal"
         title="Show terminal"
-        className={`flex h-9 items-center gap-1 rounded-md border border-seam px-2.5 text-[12px] text-text-secondary hover:bg-elevation-2 ${FOCUS_RING}`}
+        data-attention={terminalNeedsYou || undefined}
+        className={`flex h-9 items-center gap-1 rounded-md px-2.5 text-[12px] ${
+          terminalNeedsYou
+            ? 'bg-accent-primary text-white'
+            : 'border border-seam text-text-secondary hover:bg-elevation-2'
+        } ${FOCUS_RING}`}
       >
         <TerminalSquare size={12} aria-hidden /> Terminal
       </button>

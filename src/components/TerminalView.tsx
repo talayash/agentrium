@@ -262,6 +262,9 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
     const container = containerRef.current;
     const handleBlur = () => {
       requestAnimationFrame(() => {
+        // Insight mode with the drawer closed hides this PTY: never pull focus
+        // back into it, or keystrokes would reach the agent unseen.
+        if (inputGoesToPromptBar(terminalId)) return;
         const focused = document.activeElement;
         if (!focused || focused === document.body) {
           terminal.focus();

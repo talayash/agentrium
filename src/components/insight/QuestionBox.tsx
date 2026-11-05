@@ -3,7 +3,7 @@ import { Loader2 } from 'lucide-react';
 import { buildInsightModel, type AskQuestion, type PendingQuestion } from '../../lib/insightModel';
 import { buildAnswerKeys, type QuestionAnswer } from '../../lib/questionKeys';
 import { reportInvokeFailure } from '../../lib/errorReporter';
-import { readBufferTail } from '../../hooks/useSessionStateDetection';
+import { questionOnScreen } from '../../lib/terminalScreen';
 import { useInsightStore } from '../../store/insightStore';
 import { useTerminalStore } from '../../store/terminalStore';
 import { focusTerminalInput, inputGoesToPromptBar } from '../../lib/terminalFocus';
@@ -14,21 +14,6 @@ import { MiniMarkdown } from './MiniMarkdown';
 const FOCUS_RING =
   'focus:outline-none focus-visible:ring-[3px] focus-visible:ring-accent-primary/45';
 const RECOMMENDED = '(Recommended)';
-const SCREEN_TAIL_ROWS = 40;
-const MATCH_PREFIX = 40;
-
-const collapse = (t: string) => t.replace(/\s+/g, ' ').trim();
-
-/** True when the terminal's visible tail still shows the first question (or its header). */
-function questionOnScreen(terminalId: string, q: AskQuestion | undefined): boolean {
-  const xterm = useTerminalStore.getState().terminals.get(terminalId)?.xterm;
-  if (!xterm || !q) return false;
-  const screenText = collapse(readBufferTail(xterm, SCREEN_TAIL_ROWS).join(' '));
-  const needle = collapse(q.question).slice(0, MATCH_PREFIX);
-  const header = collapse(q.header);
-  return (needle !== '' && screenText.includes(needle)) || (header !== '' && screenText.includes(header));
-}
-
 interface Draft { selected: number[]; other: string }
 
 /** Chart data when every option description holds exactly one number with the same unit. */
@@ -56,13 +41,22 @@ function splitRecommended(label: string): { text: string; recommended: boolean }
 const hasPreview = (q: AskQuestion) => q.options.some((o) => o.preview !== undefined);
 const isAnswered = (d: Draft) => d.selected.length > 0 || d.other.trim() !== '';
 
-function QuestionBoxInner({ terminalId, pending }: { terminalId: string; pending: PendingQuestion }) {
+interface QuestionBoxProps {
+  terminalId: string;
+  pending: PendingQuestion;
+  /** Insight mode: the caller already checked the question is on screen, so
+   *  show it whatever the polled session state is. Otherwise (Mixed) the box
+   *  only shows while the session is waiting. */
+  shownOnScreen?: boolean;
+}
+
+function QuestionBoxInner({ terminalId, pending, shownOnScreen = false }: QuestionBoxProps) {
   const sessionState = useTerminalStore((s) => s.terminalStates.get(terminalId));
   const [drafts, setDrafts] = useState<Draft[]>(() => pending.questions.map(() => ({ selected: [], other: '' })));
   const [sent, setSent] = useState(false);
   const inFlight = useRef(false);
 
-  if (sessionState !== 'waiting') return null;
+  if (!shownOnScreen && sessionState !== 'waiting') return null;
 
   const update = (qi: number, fn: (d: Draft) => Draft) =>
     setDrafts((cur) => cur.map((d, i) => (i === qi ? fn(d) : d)));
@@ -75,11 +69,12 @@ function QuestionBoxInner({ terminalId, pending }: { terminalId: string; pending
     const records = useInsightStore.getState().byId.get(terminalId)?.records ?? [];
     const stillPending = buildInsightModel(records).pendingQuestion?.toolUseId === pending.toolUseId;
     const ts = useTerminalStore.getState();
-    if (!stillPending || ts.terminalStates.get(terminalId) !== 'waiting') return;
 
     // A dangling question from a killed session must never receive keystrokes
-    // meant for an unrelated prompt: confirm it is really on screen.
-    if (!questionOnScreen(terminalId, pending.questions[0])) {
+    // meant for an unrelated prompt: confirm it is really on screen. The polled
+    // session state is not consulted (a menu the TUI keeps redrawing can read
+    // as busy), and a refusal is always explained, never silent.
+    if (!stillPending || !questionOnScreen(terminalId, pending.questions[0])) {
       toast.info('The question is no longer on screen');
       return;
     }
@@ -121,8 +116,10 @@ function QuestionBoxInner({ terminalId, pending }: { terminalId: string; pending
     <div
       role="group"
       aria-label="Claude is asking a question"
+      tabIndex={-1}
+      data-question-box=""
       onKeyDown={onKeyDown}
-      className="rounded-lg border border-seam bg-elevation-1 p-3 space-y-4"
+      className="rounded-lg border border-seam bg-elevation-1 p-3 space-y-4 focus:outline-none"
     >
       {pending.questions.map((q, qi) => {
         const d = drafts[qi]!;
@@ -232,7 +229,7 @@ function QuestionBoxInner({ terminalId, pending }: { terminalId: string; pending
   );
 }
 
-export function QuestionBox({ terminalId, pending }: { terminalId: string; pending: PendingQuestion }) {
+export function QuestionBox(props: QuestionBoxProps) {
   // Keyed so a new question starts with a fresh draft and a fresh sent state.
-  return <QuestionBoxInner key={pending.toolUseId} terminalId={terminalId} pending={pending} />;
+  return <QuestionBoxInner key={props.pending.toolUseId} {...props} />;
 }

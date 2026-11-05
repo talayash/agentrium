@@ -40,7 +40,7 @@ describe('PromptBar', () => {
     setup();
     type('hello');
     await act(async () => { enter(); });
-    expect(sendKeySequence).toHaveBeenCalledWith(ID, ['hello', '\r']);
+    expect(sendKeySequence).toHaveBeenCalledWith(ID, ['\x15'.repeat(4), 'hello', '\r']);
     expect(box().value).toBe('');
   });
 
@@ -86,6 +86,26 @@ describe('PromptBar', () => {
     setup({ busy: true });
     fireEvent.click(screen.getByRole('button', { name: /^stop/i }));
     expect(sendKeySequence).toHaveBeenCalledWith(ID, ['\x1b']);
+  });
+
+  it('Esc that cancels an IME composition does not interrupt the agent', () => {
+    setup({ busy: true });
+    fireEvent.keyDown(box(), { key: 'Escape', isComposing: true });
+    expect(sendKeySequence).not.toHaveBeenCalled();
+  });
+
+  it('marks the textarea as terminal input so global shortcuts still fire', () => {
+    setup();
+    expect(box().hasAttribute('data-terminal-input')).toBe(true);
+  });
+
+  it('the Terminal button is prominent only while the terminal needs the user', () => {
+    const { rerender } = setup();
+    expect(screen.getByLabelText('Show terminal').dataset.attention).toBeUndefined();
+    rerender(<PromptBar terminalId={ID} disabledReason="The agent is waiting in the terminal" busy={false} onShowTerminal={onShowTerminal} terminalNeedsYou />);
+    const btn = screen.getByLabelText('Show terminal');
+    expect(btn.dataset.attention).toBe('true');
+    expect(btn.className).toContain('bg-accent-primary');
   });
 
   it('Esc in textarea interrupts only while busy', () => {

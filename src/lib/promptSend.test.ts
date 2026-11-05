@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
-import { PASTE_END, PASTE_START, buildPromptKeys } from './promptSend';
+import { describe, expect, it, vi } from 'vitest';
+import { PASTE_END, PASTE_START, buildPromptKeys, sendPrompt } from './promptSend';
+import { useTerminalStore } from '../store/terminalStore';
 
 describe('buildPromptKeys', () => {
   it('single line is text then Enter', () => {
@@ -32,5 +33,21 @@ describe('buildPromptKeys', () => {
     const [first] = buildPromptKeys('hi\x1b[Bthere');
     expect(first).not.toContain('\x1b');
     expect(first).toBe('hi[Bthere');
+  });
+});
+
+describe('sendPrompt', () => {
+  it('clears the agent input line before typing the prompt', async () => {
+    const sendKeySequence = vi.fn().mockResolvedValue(undefined);
+    useTerminalStore.setState({ terminals: new Map([['t1', { xterm: null } as never]]), sendKeySequence });
+    await sendPrompt('t1', 'hello');
+    expect(sendKeySequence).toHaveBeenCalledWith('t1', ['\x15'.repeat(4), 'hello', '\r']);
+  });
+
+  it('sends nothing for an empty prompt', async () => {
+    const sendKeySequence = vi.fn().mockResolvedValue(undefined);
+    useTerminalStore.setState({ sendKeySequence });
+    await sendPrompt('t1', '  ');
+    expect(sendKeySequence).not.toHaveBeenCalled();
   });
 });

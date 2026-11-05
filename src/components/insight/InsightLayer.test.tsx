@@ -34,7 +34,7 @@ const scrollToLine = vi.fn();
 const makeXterm = (lines: string[]) => ({
   focus,
   scrollToLine,
-  buffer: { active: { length: lines.length, getLine: (i: number) => ({ translateToString: () => lines[i] }) } },
+  rows: lines.length, buffer: { active: { baseY: 0, length: lines.length, getLine: (i: number) => ({ translateToString: () => lines[i] }) } },
 });
 
 let resizeCb: ((entries: { contentRect: { height: number } }[]) => void) | null = null;

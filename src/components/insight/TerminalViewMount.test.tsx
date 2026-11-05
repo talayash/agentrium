@@ -33,6 +33,7 @@ vi.mock('@xterm/xterm', () => ({
     textarea = document.createElement('textarea');
     write() {}
     focus() { xtermFocus(); }
+    blur() {}
     dispose() {}
     hasSelection() { return false; }
     getSelection() { return ''; }
@@ -173,9 +174,9 @@ describe('TerminalView insight mounting', () => {
     fit.mockReset();
     invoke.mockReset();
     await act(async () => { fireEvent.click(getByLabelText('Show terminal')); });
-    expect(queryByTestId('terminal-drawer-header')).not.toBeNull();
+    expect(queryByTestId('terminal-drawer-close')).not.toBeNull();
     await act(async () => { fireEvent.click(getByLabelText('Close terminal')); });
-    expect(queryByTestId('terminal-drawer-header')).toBeNull();
+    expect(queryByTestId('terminal-drawer-close')).toBeNull();
     // ResizeObserver is stubbed here, so this pins the structural guarantee:
     // the drawer never remounts or re-parents the xterm container (no refit).
     expect(getByTestId('xterm-container')).toBe(container);
@@ -261,5 +262,50 @@ describe('TerminalView insight mounting', () => {
     await drop(['C:\\a.txt']);
     expect(invoke).toHaveBeenCalledWith('write_to_terminal', expect.anything());
     expect(xtermFocus).toHaveBeenCalled();
+  });
+  const nextFrame = () => act(async () => { await new Promise((r) => requestAnimationFrame(() => r(undefined))); });
+  const xtermTextarea = () =>
+    (useTerminalStore.getState().terminals.get(ID)!.xterm as unknown as { textarea: HTMLTextAreaElement }).textarea;
+
+  it('a hidden insight-mode xterm never pulls focus back on blur', async () => {
+    mountWith({}, 'insight');
+    await act(async () => {});
+    xtermFocus.mockReset();
+    act(() => { (document.activeElement as HTMLElement | null)?.blur(); });
+    xtermTextarea().dispatchEvent(new Event('blur'));
+    await nextFrame();
+    expect(xtermFocus).not.toHaveBeenCalled();
+  });
+
+  it('a cli-mode xterm still re-focuses itself when focus drops to the body', async () => {
+    mountWith({}, false);
+    await act(async () => {});
+    xtermFocus.mockReset();
+    xtermTextarea().dispatchEvent(new Event('blur'));
+    await nextFrame();
+    expect(xtermFocus).toHaveBeenCalled();
+  });
+
+  const switchMode = (mode: 'cli' | 'mixed') => act(async () => {
+    const terminals = new Map(useTerminalStore.getState().terminals);
+    const inst = terminals.get(ID)!;
+    terminals.set(ID, { ...inst, config: { ...inst.config, view_mode: mode } });
+    useTerminalStore.setState({ terminals });
+  });
+
+  it('leaving insight mode focuses the xterm of the active session', async () => {
+    mountWith({}, 'insight');
+    await act(async () => {});
+    xtermFocus.mockReset();
+    await switchMode('mixed');
+    expect(xtermFocus).toHaveBeenCalled();
+  });
+
+  it('leaving insight mode does not focus the xterm of a background session', async () => {
+    mountWith({}, 'insight', 'other');
+    await act(async () => {});
+    xtermFocus.mockReset();
+    await switchMode('cli');
+    expect(xtermFocus).not.toHaveBeenCalled();
   });
 });

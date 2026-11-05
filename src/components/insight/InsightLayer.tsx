@@ -26,9 +26,12 @@ interface InsightLayerProps {
   variant?: 'panel' | 'fill';
   /** Esc inside a `fill` layer calls this instead of focusing the terminal. */
   onEscape?: () => void;
+  /** `fill` only: the pending question is on screen (from the drawer poll).
+   *  The question box then shows whatever the session state is. */
+  questionShown?: boolean;
 }
 
-export function InsightLayer({ terminalId, variant = 'panel', onEscape }: InsightLayerProps) {
+export function InsightLayer({ terminalId, variant = 'panel', onEscape, questionShown = false }: InsightLayerProps) {
   const fill = variant === 'fill';
   useInsightFeed(terminalId, true);
   const model = useInsightModel(terminalId);
@@ -160,7 +163,9 @@ export function InsightLayer({ terminalId, variant = 'panel', onEscape }: Insigh
     return (
       <div ref={rootRef} onKeyDown={onKeyDown} className="flex h-full min-h-0 flex-col bg-bg-primary">
         <div className="min-h-0 flex-1 overflow-y-auto" data-testid="insight-body">
-          {model.pendingQuestion && <QuestionBox terminalId={terminalId} pending={model.pendingQuestion} />}
+          {model.pendingQuestion && questionShown && (
+            <QuestionBox terminalId={terminalId} pending={model.pendingQuestion} shownOnScreen />
+          )}
           {body}
         </div>
       </div>

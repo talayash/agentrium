@@ -41,8 +41,14 @@ export const WAITING_PATTERNS: RegExp[] = [
  */
 const IDLE_MARKERS: RegExp[] = [
   /\?\s+for\s+shortcuts/i,
-  /^[│|]?\s*>\s*$/,
+  /^[│|]?\s*[>❯]\s*(?:[│|]\s*)?$/,
 ];
+
+/** True when Claude's plain input box (or its "? for shortcuts" footer) is on
+ *  screen, i.e. the agent is idle and ready for a new prompt. */
+function hasIdleMarker(trimmed: string[]): boolean {
+  return IDLE_MARKERS.some((re) => trimmed.some((l) => re.test(l)));
+}
 
 /** A selectable option line, e.g. "❯ 1. Yes" or "2. No". Codex draws its
  *  cursor as `›` instead of Claude's `❯`. */
@@ -77,7 +83,7 @@ export function classifySettled(lines: string[]): 'waiting' | 'idle' {
 
   // 2. If the plain input box is visible, Claude is idle regardless of any
   //    numbered list left over from its last response.
-  if (IDLE_MARKERS.some((re) => trimmed.some((l) => re.test(l)))) return 'idle';
+  if (hasIdleMarker(trimmed)) return 'idle';
 
   // 3. A selection menu: two or more option lines AND at least one carries the
   //    `❯` cursor. The cursor distinguishes an interactive picker from a plain
@@ -103,10 +109,19 @@ export function isShellPrompt(lines: string[]): boolean {
   return false;
 }
 
+/** How many of the newest non-blank lines WAITING_PATTERNS are matched against
+ *  in needsTerminal. A real prompt sits at the bottom of the screen; text
+ *  higher up is usually a reply quoting one of the phrases. */
+const NEEDS_TERMINAL_BOTTOM_LINES = 8;
+
 /** Whether the hidden terminal needs the user: a blocking prompt, an option
- *  menu, or a bare shell. Independent of the polled session state. */
+ *  menu, or a bare shell. Independent of the polled session state. Claude's
+ *  idle input box on screen wins (like classifySettled), so a reply that
+ *  quotes "Do you want to proceed?" or "(y/n)" never opens the drawer. */
 export function needsTerminal(lines: string[], questionPending: boolean): boolean {
   if (questionPending) return false;
-  const joined = lines.map((l) => l.trim()).join('\n');
-  return hasOptionMenu(lines) || WAITING_PATTERNS.some((re) => re.test(joined)) || isShellPrompt(lines);
+  const trimmed = lines.map((l) => l.trim()).filter((l) => l !== '');
+  if (hasIdleMarker(trimmed)) return false;
+  const bottom = trimmed.slice(-NEEDS_TERMINAL_BOTTOM_LINES).join('\n');
+  return hasOptionMenu(trimmed) || WAITING_PATTERNS.some((re) => re.test(bottom)) || isShellPrompt(trimmed);
 }

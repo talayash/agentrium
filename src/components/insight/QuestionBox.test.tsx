@@ -36,8 +36,10 @@ const focus = vi.fn();
 function fakeXterm(lines: string[]) {
   return {
     focus,
+    rows: lines.length,
     buffer: {
       active: {
+        baseY: 0,
         length: lines.length,
         getLine: (i: number) => ({ translateToString: () => lines[i] ?? '' }),
       },
@@ -202,6 +204,38 @@ describe('QuestionBox', () => {
     expect(sendKeySequence).not.toHaveBeenCalled();
     expect(toastInfo).toHaveBeenCalledWith('The question is no longer on screen');
     expect(reportInvokeFailure).not.toHaveBeenCalled();
+  });
+
+  it('refuses with a toast when the question was already answered elsewhere', () => {
+    setup(pending([q1]));
+    useInsightStore.setState({ byId: new Map([[ID, { records: [useRec(), resultRec()] } as never]]) });
+    fireEvent.click(screen.getAllByRole('radio')[0]!);
+    fireEvent.click(answerBtn());
+    expect(sendKeySequence).not.toHaveBeenCalled();
+    expect(toastInfo).toHaveBeenCalledWith('The question is no longer on screen');
+  });
+
+  it('shownOnScreen renders the box and sends the answer whatever the session state', async () => {
+    useTerminalStore.setState({
+      terminalStates: new Map([[ID, 'idle' as never]]),
+      sendKeySequence,
+      terminals: new Map([[ID, { xterm: fakeXterm(['Database', 'Which database?', '1. Postgres']) } as never]]),
+    });
+    useInsightStore.setState({ byId: new Map([[ID, { records: [useRec()] } as never]]) });
+    render(<QuestionBox terminalId={ID} pending={pending([q1])} shownOnScreen />);
+    fireEvent.click(screen.getAllByRole('radio')[0]!);
+    await act(async () => { fireEvent.click(answerBtn()); });
+    expect(sendKeySequence).toHaveBeenCalledWith(ID, buildAnswerKeys([q1], [{ selected: [0], other: null }]));
+    expect(toastInfo).not.toHaveBeenCalled();
+  });
+
+  it('a submit after the state left waiting still sends when the question is on screen', async () => {
+    setup(pending([q1]));
+    fireEvent.click(screen.getAllByRole('radio')[0]!);
+    // The poller may flip the state between render and click (a redraw reads as busy).
+    useTerminalStore.setState({ terminalStates: new Map([[ID, 'busy' as never]]) });
+    await act(async () => { fireEvent.click(answerBtn()); });
+    expect(sendKeySequence).toHaveBeenCalledTimes(1);
   });
 
   it('matches a wrapped question across lines', () => {

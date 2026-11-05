@@ -4,13 +4,13 @@
 // Mounted once (see App.tsx).
 
 import { useEffect, useRef } from 'react';
-import type { Terminal } from '@xterm/xterm';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
 import { getLastOutputAt, getLastSubmissionAt } from '../lib/terminalActivity';
 import { classifySettled, hasReadyPrompt, hasTurnFinishedMarker, needsTerminal, type SessionState } from '../lib/terminalState';
 import { isWithinDnd, playNotificationSound } from '../lib/notificationGate';
 import { effectiveViewMode } from '../lib/viewMode';
+import { readBufferTail } from '../lib/terminalScreen';
 import { useNotification } from './useNotification';
 import { useWindowFocused } from './useWindowFocused';
 import { useSessionAttentionStore } from '../store/sessionAttentionStore';
@@ -20,19 +20,6 @@ const BUSY_WINDOW_MS = 600;
 const BUFFER_TAIL_ROWS = 15;
 const SOUND_INTERVAL_MS = 4000;
 const COMPLETION_QUIET_MS = 1500;
-
-/** Read the bottom `rows` lines of xterm's already-parsed buffer as clean text. */
-export function readBufferTail(term: Terminal, rows: number): string[] {
-  const buf = term.buffer.active;
-  const end = buf.length;
-  const start = Math.max(0, end - rows);
-  const out: string[] = [];
-  for (let i = start; i < end; i++) {
-    const line = buf.getLine(i);
-    out.push(line ? line.translateToString(true) : '');
-  }
-  return out;
-}
 
 export function useSessionStateDetection(): void {
   const { notify } = useNotification();

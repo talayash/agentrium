@@ -14,11 +14,8 @@ import { toBracketedPaste, PASTE_START, PASTE_END } from './bracketedPaste';
  * counting is always harmless.
  */
 export async function writePromptToTerminal(terminalId: string, text: string, submit: boolean): Promise<void> {
-  const { terminals, writeToTerminal } = useTerminalStore.getState();
-  const xterm = terminals.get(terminalId)?.xterm;
-  const current = xterm ? captureClaudeInput(xterm) : '';
-  const clearCount = Math.max(1, current.split('\n').length) + 3;
-  await writeToTerminal(terminalId, '\x15'.repeat(clearCount));
+  const { writeToTerminal } = useTerminalStore.getState();
+  await writeToTerminal(terminalId, clearInputKeys(terminalId));
   await writeToTerminal(terminalId, toBracketedPaste(text));
   if (submit) {
     // The prompt is submitted and consumed, so drop the draft: the next
@@ -48,10 +45,21 @@ export function buildPromptKeys(text: string): string[] {
   return [clean, '\r'];
 }
 
+/** Ctrl+U keys that empty the agent's live input line: one per captured line
+ *  plus a few spare (Ctrl+U on an empty line no-ops, see writePromptToTerminal). */
+function clearInputKeys(terminalId: string): string {
+  const xterm = useTerminalStore.getState().terminals.get(terminalId)?.xterm;
+  const current = xterm ? captureClaudeInput(xterm) : '';
+  return '\x15'.repeat(Math.max(1, current.split('\n').length) + 3);
+}
+
+/** Submit a prompt bar message. The agent's input line is cleared first (as
+ *  writePromptToTerminal does), so text left in the hidden PTY input is never
+ *  merged into this prompt. */
 export function sendPrompt(terminalId: string, text: string): Promise<void> {
   const keys = buildPromptKeys(text);
   if (keys.length === 0) return Promise.resolve();
-  return useTerminalStore.getState().sendKeySequence(terminalId, keys);
+  return useTerminalStore.getState().sendKeySequence(terminalId, [clearInputKeys(terminalId), ...keys]);
 }
 
 export function interruptAgent(terminalId: string): Promise<void> {

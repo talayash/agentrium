@@ -22,7 +22,7 @@ vi.mock('./useWindowFocused', () => ({ useWindowFocused: () => mocks.focused }))
 function terminal(overrides = {}) {
   return {
     config: { status: 'Running', nickname: 'Review', label: 'One' },
-    xterm: { buffer: { active: { length: 1, getLine: () => ({ translateToString: () => 'Continue?' }) } } },
+    xterm: { rows: 1, buffer: { active: { baseY: 0, length: 1, getLine: () => ({ translateToString: () => 'Continue?' }) } } },
     ...overrides,
   };
 }
@@ -134,7 +134,7 @@ describe('session state polling and notifications', () => {
   });
 
   function readyTerminal(lines = ['Answer completed.', '❯ ']) {
-    return terminal({ xterm: { buffer: { active: { length: lines.length, getLine: (i: number) => ({ translateToString: () => lines[i] }) } } } });
+    return terminal({ xterm: { rows: lines.length, buffer: { active: { baseY: 0, length: lines.length, getLine: (i: number) => ({ translateToString: () => lines[i] }) } } } });
   }
 
   it('alerts on a finished turn, not just a blocking question, and latches until viewed', () => {
@@ -251,7 +251,7 @@ describe('session state polling and notifications', () => {
     function modeTerminal(view_mode: string) {
       return terminal({
         config: { status: 'Running', nickname: 'Review', label: 'One', agent: 'claude', view_mode },
-        xterm: { buffer: { active: { length: PERMISSION.length, getLine: (i: number) => ({ translateToString: () => PERMISSION[i] }) } } },
+        xterm: { rows: PERMISSION.length, buffer: { active: { baseY: 0, length: PERMISSION.length, getLine: (i: number) => ({ translateToString: () => PERMISSION[i] }) } } },
       });
     }
     beforeEach(() => { mocks.classify.mockReturnValue('busy'); });
