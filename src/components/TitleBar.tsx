@@ -9,6 +9,7 @@ import {
   Upload,
   PanelRight,
   Globe,
+  Grid3X3,
 } from 'lucide-react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { invoke } from '@tauri-apps/api/core';
@@ -50,6 +51,9 @@ export function TitleBar() {
   const learnEnabled = useAppStore((s) => s.learnEnabled);
   const toggleLearn = useAppStore((s) => s.toggleLearn);
   const inspectorOpen = changesOpen || workspacesOpen || hintsOpen || (learnOpen && learnEnabled);
+  const gridMode = useAppStore((s) => s.gridMode);
+  const gridCount = useAppStore((s) => s.gridTerminalIds.length);
+  const toggleGridMode = useAppStore((s) => s.toggleGridMode);
   const browserOpen = useBrowserStore((s) => s.open);
   const toggleBrowser = useBrowserStore((s) => s.toggleOpen);
   const toggleInspector = () => {
@@ -331,6 +335,21 @@ export function TitleBar() {
               className={toolBtn(browserOpen)}
             >
               <Globe size={15} strokeWidth={1.9} />
+            </button>
+          </Tooltip>
+          <Tooltip label={gridCount > 0 ? `Toggle Grid View (${gridCount} in grid)` : 'Toggle Grid View'} shortcut="Ctrl+G">
+            <button
+              onClick={toggleGridMode}
+              aria-label="Toggle Grid View"
+              aria-pressed={gridMode}
+              className={`relative ${toolBtn(gridMode || gridCount > 0)}`}
+            >
+              <Grid3X3 size={15} strokeWidth={1.9} />
+              {gridCount > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 min-w-[13px] h-[13px] px-[3px] rounded-full bg-accent-primary text-white text-[9px] font-semibold leading-[13px] text-center">
+                  {gridCount}
+                </span>
+              )}
             </button>
           </Tooltip>
           <Tooltip label={inspectorOpen ? 'Close Inspector' : 'Open Inspector'}>

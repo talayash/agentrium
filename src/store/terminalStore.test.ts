@@ -7,6 +7,12 @@ vi.mock('@tauri-apps/api/core', () => ({
   invoke: (cmd: string, args?: Record<string, unknown>) => invokeMock(cmd, args),
 }));
 
+const reportMock = vi.fn();
+vi.mock('../lib/errorReporter', async (orig) => ({
+  ...(await orig<Record<string, unknown>>()),
+  reportInvokeFailure: (...a: unknown[]) => reportMock(...a),
+}));
+
 import type { TerminalConfig } from './terminalStore';
 import { useTerminalStore, __resetPendingOutputBuffersForTest } from './terminalStore';
 
@@ -380,5 +386,107 @@ describe('setSessionId', () => {
     const bound = useTerminalStore.getState().terminals;
     useTerminalStore.getState().setSessionId('a', 'sess-1');
     expect(useTerminalStore.getState().terminals).toBe(bound);
+  });
+});
+
+describe('terminalStore - view mode', () => {
+  beforeEach(async () => {
+    invokeMock.mockClear();
+    invokeMock.mockImplementation(async (cmd: string) =>
+      cmd === 'create_terminal' ? makeConfig('new1') : undefined,
+    );
+    const { useAppStore } = await import('./appStore');
+    useAppStore.setState({ defaultViewMode: 'cli' });
+  });
+
+  function createPayload() {
+    const call = invokeMock.mock.calls.find((c) => c[0] === 'create_terminal');
+    return (call?.[1] as { request: Record<string, unknown> }).request;
+  }
+
+  it('createTerminal sends view_mode from the default', async () => {
+    const { useAppStore } = await import('./appStore');
+    useAppStore.setState({ defaultViewMode: 'mixed' });
+    await useTerminalStore.getState().createTerminal('t', 'C:/tmp', [], {});
+    expect(createPayload().view_mode).toBe('mixed');
+    expect(createPayload().insight_layer).toBeUndefined();
+  });
+
+  it('explicit viewMode option wins', async () => {
+    const { useAppStore } = await import('./appStore');
+    useAppStore.setState({ defaultViewMode: 'mixed' });
+    await useTerminalStore.getState().createTerminal(
+      't', 'C:/tmp', [], {}, undefined, undefined, undefined, undefined, undefined, undefined,
+      'claude', [], undefined, { viewMode: 'insight' },
+    );
+    expect(createPayload().view_mode).toBe('insight');
+  });
+
+  it('setViewMode invokes set_terminal_view_mode and updates the config', async () => {
+    seed(['a']);
+    const before = useTerminalStore.getState().terminals;
+    await useTerminalStore.getState().setViewMode('a', 'insight');
+    expect(invokeMock).toHaveBeenCalledWith('set_terminal_view_mode', { id: 'a', mode: 'insight' });
+    const after = useTerminalStore.getState().terminals;
+    expect(after).not.toBe(before);
+    expect(after.get('a')?.config.view_mode).toBe('insight');
+  });
+
+  it('setViewMode toasts and reports on failure, leaving state unchanged', async () => {
+    seed(['a']);
+    invokeMock.mockRejectedValueOnce(new Error('boom'));
+    await useTerminalStore.getState().setViewMode('a', 'mixed');
+    expect(useTerminalStore.getState().terminals.get('a')?.config.view_mode).toBeUndefined();
+    expect(reportMock).toHaveBeenCalledWith('set_terminal_view_mode', expect.anything());
+  });
+});
+
+
+describe('terminalStore - sendKeySequence', () => {
+  beforeEach(() => {
+    seed(['a']);
+    invokeMock.mockClear();
+  });
+
+  it('writes each key group in order with the gap between writes', async () => {
+    vi.useFakeTimers();
+    try {
+      const decode = (n: number) =>
+        new TextDecoder().decode(new Uint8Array((invokeMock.mock.calls[n]![1] as { data: number[] }).data));
+      const done = useTerminalStore.getState().sendKeySequence('a', ['1', 'hi', '\r'], 40);
+
+      await vi.advanceTimersByTimeAsync(0);
+      expect(invokeMock).toHaveBeenCalledTimes(1);
+      expect(decode(0)).toBe('1');
+
+      await vi.advanceTimersByTimeAsync(39);
+      expect(invokeMock).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(1);
+      expect(invokeMock).toHaveBeenCalledTimes(2);
+      expect(decode(1)).toBe('hi');
+
+      await vi.advanceTimersByTimeAsync(40);
+      await done;
+      expect(invokeMock).toHaveBeenCalledTimes(3);
+      expect(decode(2)).toBe('\r');
+      expect(invokeMock.mock.calls.every((c) => c[0] === 'write_to_terminal')).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('defaults to a 40 ms gap', async () => {
+    vi.useFakeTimers();
+    try {
+      const done = useTerminalStore.getState().sendKeySequence('a', ['1', '2']);
+      await vi.advanceTimersByTimeAsync(39);
+      expect(invokeMock).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1);
+      await done;
+      expect(invokeMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

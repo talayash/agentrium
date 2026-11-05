@@ -4,6 +4,7 @@ import { FolderOpen, Terminal, GitBranch, GitFork, Plus, Loader2, ChevronDown, P
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore, NEW_PROFILE_ID } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
+import { focusTerminalInput } from '../lib/terminalFocus';
 import { homeDir } from '@tauri-apps/api/path';
 import { open } from '@tauri-apps/plugin-dialog';
 import type { WorktreeInfo, WorktreeDetectResult } from '../types/git';
@@ -528,7 +529,7 @@ export function NewTerminalModal() {
       // rAFs to make it stick.
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          useTerminalStore.getState().terminals.get(newTerminalId)?.xterm?.focus();
+          focusTerminalInput(newTerminalId);
         });
       });
     } catch (err) {

@@ -6,6 +6,7 @@ import type { SavedTerminalConfig } from '../store/appStore';
 import { toast } from '../store/toastStore';
 import { reportInvokeFailure } from '../lib/errorReporter';
 import { Button } from './ui/Button';
+import { viewModeOf } from '../lib/viewMode';
 
 interface WorkspaceInfo {
   name: string;
@@ -74,6 +75,11 @@ export function WorkspacesPanel() {
           undefined,
           undefined,
           config.agent,
+          undefined,
+          undefined,
+          // Keep the saved view mode; without it every session would start
+          // in the global default.
+          { viewMode: viewModeOf(config) },
         );
       }
       toast.success('Workspace Loaded', `"${ws.name}" with ${configs.length} terminal${configs.length !== 1 ? 's' : ''}.`);

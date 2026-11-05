@@ -10,6 +10,7 @@ import { Button } from './ui/Button';
 import { ListRow } from './ui/ListRow';
 import { EmptyState } from './ui/EmptyState';
 import { toBracketedPaste } from '../lib/bracketedPaste';
+import { insertIntoPromptBar } from '../lib/terminalFocus';
 
 interface Snippet {
   id: string;
@@ -116,6 +117,11 @@ export function SnippetsModal() {
   const handleInsert = async () => {
     const content = editing ? editContent : selectedSnippet?.content;
     if (!content || !activeTerminalId) return;
+    // Insight mode: the snippet goes into the prompt bar draft, not the hidden PTY.
+    if (insertIntoPromptBar(activeTerminalId, content)) {
+      closeSnippetsModal();
+      return;
+    }
     try {
       await writeToTerminal(activeTerminalId, toBracketedPaste(content));
     } catch (err) {

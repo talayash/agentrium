@@ -5,14 +5,17 @@ import { useAppStore } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
 import { useLearnStore } from '../store/learnStore';
 import { toast } from '../store/toastStore';
+import { viewModePaletteEntries } from '../lib/viewMode';
 import { copyText } from '../lib/clipboard';
 import { reportInvokeFailure } from '../lib/errorReporter';
 import { fuzzyMatch, frecencyScore } from '../lib/paletteMatching';
 import { PALETTE_SOURCES, type PaletteItem } from '../lib/paletteSources';
 import { HighlightedText } from './palette/HighlightedText';
 import { toBracketedPaste } from '../lib/bracketedPaste';
+import { insertIntoPromptBar } from '../lib/terminalFocus';
 import {
   Terminal,
+  Layers,
   Settings,
   PanelLeft,
   LayoutGrid,
@@ -185,6 +188,20 @@ export function CommandPalette() {
             reportInvokeFailure('create_terminal', err);
           });
         } },
+        ...(() => {
+          const { activeTerminalId: id, terminals: all } = useTerminalStore.getState();
+          const inst = id ? all.get(id) : undefined;
+          if (!id || !inst) return [];
+          return viewModePaletteEntries(inst).map(({ mode, label }) => ({
+            label,
+            description: 'Set the view mode of the active session',
+            icon: Layers,
+            action: () => {
+              closeCommandPalette();
+              void useTerminalStore.getState().setViewMode(id, mode);
+            },
+          }));
+        })(),
         { label: 'Toggle Sidebar', description: 'Show or hide the sidebar', icon: PanelLeft, shortcut: 'Ctrl+B', action: () => { useAppStore.getState().toggleSidebar(); closeCommandPalette(); } },
         { label: 'Open Settings', description: 'Open application settings', icon: Settings, shortcut: 'Ctrl+,', action: () => { useAppStore.getState().openSettings(); closeCommandPalette(); } },
         { label: 'Toggle Grid View', description: 'Switch between tab and grid view', icon: LayoutGrid, shortcut: 'Ctrl+G', action: () => { useAppStore.getState().toggleGridMode(); closeCommandPalette(); } },
@@ -247,7 +264,8 @@ export function CommandPalette() {
           category: 'Snippets',
           icon: Send,
           action: () => {
-            if (activeTerminalId) {
+            // Insight mode: the snippet goes into the prompt bar draft, not the hidden PTY.
+            if (activeTerminalId && !insertIntoPromptBar(activeTerminalId, snippet.content)) {
               writeToTerminal(activeTerminalId, toBracketedPaste(snippet.content)).catch((err) => {
                 toast.error('Insert failed', 'Could not send the snippet to the terminal.');
                 reportInvokeFailure('write_to_terminal', err);

@@ -22,7 +22,7 @@ vi.mock('./useWindowFocused', () => ({ useWindowFocused: () => mocks.focused }))
 function terminal(overrides = {}) {
   return {
     config: { status: 'Running', nickname: 'Review', label: 'One' },
-    xterm: { buffer: { active: { length: 1, getLine: () => ({ translateToString: () => 'Continue?' }) } } },
+    xterm: { rows: 1, buffer: { active: { baseY: 0, length: 1, getLine: () => ({ translateToString: () => 'Continue?' }) } } },
     ...overrides,
   };
 }
@@ -134,7 +134,7 @@ describe('session state polling and notifications', () => {
   });
 
   function readyTerminal(lines = ['Answer completed.', '❯ ']) {
-    return terminal({ xterm: { buffer: { active: { length: lines.length, getLine: (i: number) => ({ translateToString: () => lines[i] }) } } } });
+    return terminal({ xterm: { rows: lines.length, buffer: { active: { baseY: 0, length: lines.length, getLine: (i: number) => ({ translateToString: () => lines[i] }) } } } });
   }
 
   it('alerts on a finished turn, not just a blocking question, and latches until viewed', () => {
@@ -244,5 +244,37 @@ describe('session state polling and notifications', () => {
     mocks.terminals.clear();
     tick();
     expect(useSessionAttentionStore.getState().pending.size).toBe(0);
+  });
+
+  describe('insight-only terminals needing the user', () => {
+    const PERMISSION = [' Do you want to proceed?', ' ❯ 1. Yes', '   2. No', ' Esc to cancel'];
+    function modeTerminal(view_mode: string) {
+      return terminal({
+        config: { status: 'Running', nickname: 'Review', label: 'One', agent: 'claude', view_mode },
+        xterm: { rows: PERMISSION.length, buffer: { active: { baseY: 0, length: PERMISSION.length, getLine: (i: number) => ({ translateToString: () => PERMISSION[i] }) } } },
+      });
+    }
+    beforeEach(() => { mocks.classify.mockReturnValue('busy'); });
+
+    it('raises attention, notifies and sounds for a busy-classified prompt, and does not clear it', () => {
+      mocks.terminals.set('one', modeTerminal('insight'));
+      renderHook(useSessionStateDetection);
+      tick();
+      expect(useSessionAttentionStore.getState().pending.has('one')).toBe(true);
+      expect(mocks.notify).toHaveBeenCalledExactlyOnceWith('Session needs your input', 'Review is waiting for your response.');
+      expect(mocks.sound).toHaveBeenCalledOnce();
+      tick();
+      tick();
+      expect(useSessionAttentionStore.getState().pending.has('one')).toBe(true);
+      expect(mocks.notify).toHaveBeenCalledOnce();
+    });
+
+    it.each(['mixed', 'cli'])('does nothing extra for a %s session', (mode) => {
+      mocks.terminals.set('one', modeTerminal(mode));
+      renderHook(useSessionStateDetection);
+      tick();
+      expect(useSessionAttentionStore.getState().pending.size).toBe(0);
+      expect(mocks.notify).not.toHaveBeenCalled();
+    });
   });
 });

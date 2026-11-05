@@ -424,6 +424,9 @@ pub struct CreateTerminalRequest {
     /// Branch `resume_session_id` into a new conversation (Claude/Codex).
     #[serde(default)]
     pub fork: bool,
+    /// Initial view mode for this terminal.
+    #[serde(default)]
+    pub view_mode: crate::terminal::ViewMode,
 }
 
 /// Tell the frontend which conversation id the backend bound to a live
@@ -564,6 +567,7 @@ pub async fn create_terminal(
         };
 
         let task = request.task.clone();
+        let view_mode = request.view_mode;
         let mut config = {
             let mut terminals = state.terminals.lock().await;
             terminals.create_terminal(
@@ -583,8 +587,15 @@ pub async fn create_terminal(
                 otel_endpoint,
                 request.initial_prompt,
                 fork,
+                // The hook route lives on the same receiver, independent of
+                // the cost-tracking toggle.
+                (state.otel_port != 0).then_some(state.otel_port),
             )?
         };
+        if view_mode != crate::terminal::ViewMode::Cli {
+            state.terminals.lock().await.set_view_mode(&config.id, view_mode)?;
+            config.view_mode = view_mode;
+        }
         if task.is_some() {
             state.terminals.lock().await.set_task(&config.id, task.clone());
             config.task = task;
@@ -777,6 +788,8 @@ pub async fn create_terminal(
             if let Ok(mut agg) = otel_agg.lock() {
                 agg.forget(&terminal_id);
             }
+            // The Claude process is gone: its hook token and settings file too.
+            crate::question_hook::revoke(&terminal_id);
             {
                 let tid_c = terminal_id.clone();
                 let now = chrono::Utc::now().to_rfc3339();
@@ -852,6 +865,8 @@ pub async fn close_terminal(state: State<'_, AppState>, id: String) -> Result<()
     wrap_cmd("close_terminal", async move {
         let mut terminals = state.terminals.lock().await;
         terminals.close(&id)?;
+        crate::insight::stop(&id);
+        crate::question_hook::revoke(&id);
         // Drop accumulated telemetry so a reused id can't inherit stale totals.
         if let Ok(mut agg) = state.otel_agg.lock() {
             agg.forget(&id);
@@ -907,6 +922,54 @@ pub async fn update_terminal_nickname(
     wrap_cmd("update_terminal_nickname", async move {
         let mut terminals = state.terminals.lock().await;
         terminals.update_nickname(&id, nickname)
+    })
+    .await
+}
+
+#[command]
+pub async fn set_terminal_view_mode(
+    state: State<'_, AppState>,
+    id: String,
+    mode: crate::terminal::ViewMode,
+) -> Result<(), String> {
+    wrap_cmd("set_terminal_view_mode", async move {
+        let mut terminals = state.terminals.lock().await;
+        terminals.set_view_mode(&id, mode)
+    })
+    .await
+}
+
+/// Start (or restart) the transcript tailer for a terminal. Agents without a
+/// tailable transcript get `supported: false` and nothing is started.
+#[command]
+pub async fn insight_start(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<crate::insight::InsightSupport, String> {
+    wrap_cmd("insight_start", async move {
+        let agent = {
+            let terminals = state.terminals.lock().await;
+            match terminals.terminals.get(&id) {
+                Some(t) => t.config.agent.clone(),
+                None => return Err(error_reporter::user_err("Terminal not found")),
+            }
+        };
+        crate::insight::stop(&id);
+        if !crate::session_provider::provider_for(&agent).supports_transcript() {
+            return Ok(crate::insight::InsightSupport { supported: false });
+        }
+        crate::insight::start(app, state.terminals.clone(), id);
+        Ok(crate::insight::InsightSupport { supported: true })
+    })
+    .await
+}
+
+#[command]
+pub async fn insight_stop(id: String) -> Result<(), String> {
+    wrap_cmd("insight_stop", async move {
+        crate::insight::stop(&id);
+        Ok(())
     })
     .await
 }

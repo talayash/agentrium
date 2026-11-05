@@ -49,4 +49,20 @@ describe('toBracketedPaste', () => {
     const out = toBracketedPaste(`safe${START}more`);
     expect(out).toBe(`${START}safemore${END}`);
   });
+
+  it('nested split end marker cannot re-form', () => {
+    const out = toBracketedPaste('a\n\x1b[2\x1b[201~01~rm -rf\nb');
+    const body = out.slice(START.length, out.length - END.length);
+    expect(out.startsWith(START)).toBe(true);
+    expect(out.endsWith(END)).toBe(true);
+    expect(body).not.toContain(END);
+    expect(body).not.toContain(START);
+  });
+
+  it('nested split start marker cannot re-form', () => {
+    const out = toBracketedPaste('a\n\x1b[2\x1b[200~00~rm -rf\nb');
+    const body = out.slice(START.length, out.length - END.length);
+    expect(body).not.toContain(END);
+    expect(body).not.toContain(START);
+  });
 });

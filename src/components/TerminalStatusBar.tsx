@@ -8,6 +8,7 @@ import { toast } from '../store/toastStore';
 import { reportInvokeFailure } from '../lib/errorReporter';
 import { copyText, readClipboardText } from '../lib/clipboard';
 import { getAnyModelBadgeClasses, getModelBadgeLabel } from '../lib/agentModels';
+import { restartTerminal } from '../lib/restartTerminal';
 import { Tooltip } from './ui/Tooltip';
 
 interface TerminalStatusBarProps {
@@ -31,7 +32,7 @@ function truncatePath(path: string, maxSegments = 3): string {
 }
 
 export function TerminalStatusBar({ terminalId }: TerminalStatusBarProps) {
-  const { terminals, writeToTerminal, closeTerminal, createTerminal } = useTerminalStore();
+  const { terminals, writeToTerminal } = useTerminalStore();
   const instance = terminals.get(terminalId);
   const [elapsed, setElapsed] = useState('0:00');
   const [copied, setCopied] = useState(false);
@@ -56,18 +57,7 @@ export function TerminalStatusBar({ terminalId }: TerminalStatusBarProps) {
     });
   }, [terminalId, writeToTerminal]);
 
-  const handleRestart = useCallback(async () => {
-    if (!instance) return;
-    const { label, working_directory, claude_args, env_vars, color_tag, nickname, agent } = instance.config;
-    try {
-      await closeTerminal(terminalId);
-      await createTerminal(label, working_directory, claude_args, env_vars, color_tag || undefined, nickname || undefined, undefined, undefined, undefined, undefined, agent);
-    } catch (err) {
-      // A failure here can leave the user with no terminal at all - never silent.
-      toast.error('Restart failed', 'Could not restart the terminal.');
-      reportInvokeFailure('restart_terminal', err);
-    }
-  }, [instance, terminalId, closeTerminal, createTerminal]);
+  const handleRestart = useCallback(() => restartTerminal(terminalId), [terminalId]);
 
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => {

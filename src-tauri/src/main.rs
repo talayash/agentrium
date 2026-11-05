@@ -30,6 +30,9 @@ mod tasks;
 mod races;
 mod pull_requests;
 mod browser;
+mod insight_parse;
+mod insight;
+mod question_hook;
 
 use tauri::Manager;
 use std::sync::Arc;
@@ -212,6 +215,9 @@ fn main() {
             commands::get_cursor_position,
             commands::update_terminal_label,
             commands::update_terminal_nickname,
+            commands::set_terminal_view_mode,
+            commands::insight_start,
+            commands::insight_stop,
             commands::save_profile,
             commands::get_profiles,
             commands::delete_profile,
@@ -454,6 +460,8 @@ fn main() {
                         let mut manager = terminals.lock().await;
                         manager.close_all();
                     }
+                    // Delete every terminal's hook settings file.
+                    crate::question_hook::revoke_all();
                 });
                 // The main window is the app. Closing it quits everything
                 // (including any torn-off windows) - matching the original

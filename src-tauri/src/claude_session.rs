@@ -326,6 +326,10 @@ mod tests {
 pub struct ClaudeSessionProvider;
 
 impl crate::session_provider::SessionProvider for ClaudeSessionProvider {
+    fn supports_transcript(&self) -> bool { true }
+    fn transcript_path(&self, cwd: &str, session_id: &str) -> Option<std::path::PathBuf> {
+        session_file_path(cwd, session_id)
+    }
     fn snapshot(&self) -> std::collections::HashSet<std::path::PathBuf> {
         snapshot_session_files()
     }

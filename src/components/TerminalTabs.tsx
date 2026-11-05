@@ -1,6 +1,7 @@
 import { useMemo, useCallback, useEffect } from 'react';
-import { X, XCircle, Grid3X3, SplitSquareHorizontal, RotateCw, GitBranch, File as FileIcon, Flag } from 'lucide-react';
+import { X, XCircle, SplitSquareHorizontal, RotateCw, GitBranch, File as FileIcon, Flag } from 'lucide-react';
 import { useTerminalStore } from '../store/terminalStore';
+import { focusTerminalInput } from '../lib/terminalFocus';
 import { useAppStore } from '../store/appStore';
 import { toast } from '../store/toastStore';
 import { reportInvokeFailure } from '../lib/errorReporter';
@@ -22,6 +23,7 @@ import { BrandIcon } from './BrandIcon';
 import { specFor } from '../lib/agents';
 import { getAnyModelBadgeClasses, getModelBadgeLabel } from '../lib/agentModels';
 import { Tooltip } from './ui/Tooltip';
+import { ViewModeSwitch } from './insight/ViewModeSwitch';
 import { TaskBadge } from './TaskBadge';
 import { CiRepairBadge } from './CiRepairBadge';
 import { PrChip } from './PrChip';
@@ -52,7 +54,7 @@ function formatCost(usd: number): string {
  */
 export function TerminalTabs() {
   const { terminals, activeTerminalId, scriptChildren, closeScript } = useTerminalStore();
-  const { gridMode, toggleGridMode, gridTerminalIds, splitMode, splitTerminalIds, splitOrientation, splitRatio, setSplitOrientation, setSplitRatio, clearSplit, openFiles, activeFilePath, setActiveFilePath, closeFileTab, showFileTree, showTabActivity } = useAppStore();
+  const { gridMode, splitMode, splitTerminalIds, splitOrientation, splitRatio, setSplitOrientation, setSplitRatio, clearSplit, openFiles, activeFilePath, setActiveFilePath, closeFileTab, showFileTree, showTabActivity } = useAppStore();
   const now = useNowTick();
   const terminalStates = useTerminalStore((s) => s.terminalStates);
   const terminalMetrics = useTerminalStore((s) => s.terminalMetrics);
@@ -105,7 +107,8 @@ export function TerminalTabs() {
     if (!activeTerminalId || activeFilePath) return;
     const id = activeTerminalId;
     const raf = requestAnimationFrame(() => {
-      useTerminalStore.getState().terminals.get(id)?.xterm?.focus();
+      // Insight mode routes to the prompt bar, never the hidden PTY.
+      focusTerminalInput(id);
     });
     return () => cancelAnimationFrame(raf);
   }, [activeTerminalId, activeFilePath]);
@@ -318,31 +321,17 @@ export function TerminalTabs() {
             </>
           )}
 
-          {/* Right cluster: project scripts + grid toggle + close active */}
+          {/* Right cluster: project scripts + insight toggle + close active.
+              The grid toggle lives in the titlebar tools capsule. */}
           <div className="ml-auto flex items-center gap-1 flex-shrink-0">
             {showFileTree && activeTerminalId && !activeFilePath && (() => {
               const inst = terminals.get(activeTerminalId);
               if (!inst || inst.scriptParentId) return null;
               return <ScriptsMenu terminalId={activeTerminalId} cwd={inst.config.working_directory} />;
             })()}
-            {gridTerminalIds.length > 0 && (
-              <span className="text-[10.5px] text-text-tertiary mr-1 uppercase tracking-wide">
-                {gridTerminalIds.length} in grid
-              </span>
+            {activeTerminalId && activeConfig && !activeFilePath && (
+              <ViewModeSwitch terminalId={activeTerminalId} />
             )}
-            <Tooltip label="Toggle Grid View">
-              <button
-                onClick={toggleGridMode}
-                className={`flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11.5px] font-medium transition-colors ${
-                  gridTerminalIds.length > 0
-                    ? 'bg-accent-primary/18 text-accent-primary ring-1 ring-inset ring-accent-primary/30 hover:bg-accent-primary/25'
-                    : 'hover:bg-fill-hover text-text-secondary hover:text-text-primary'
-                }`}
-              >
-                <Grid3X3 size={13} strokeWidth={1.75} />
-                <span className="hidden sm:inline">Grid</span>
-              </button>
-            </Tooltip>
             {/* Close active session (#59). Only visible while a real terminal
                 is focused - hidden while browsing a file, and hidden entirely
                 when there is no active session. Like the sidebar card X it

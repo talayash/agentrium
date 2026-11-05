@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, memo, useCallback, useMemo, forwardRef } f
 import { AnimatePresence } from 'framer-motion';
 import { X, Maximize2, Minimize2, Plus, Grid3X3, Layers, Pin } from 'lucide-react';
 import { useTerminalStore } from '../store/terminalStore';
+import { focusTerminalInput } from '../lib/terminalFocus';
 import { useAppStore, GridLayout } from '../store/appStore';
 import { TerminalView } from './TerminalView';
 import { setDragData, getDragData, isTerminalDrag } from '../utils/dragDrop';
@@ -381,7 +382,7 @@ export function TerminalGrid() {
   const focusPaneTerminal = useCallback((id: string | undefined) => {
     if (!id) return;
     requestAnimationFrame(() => {
-      useTerminalStore.getState().terminals.get(id)?.xterm?.focus();
+      focusTerminalInput(id);
     });
   }, []);
 

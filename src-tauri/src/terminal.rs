@@ -42,6 +42,35 @@ pub struct TerminalConfig {
     /// set on the config returned by `create_terminal`; never restored.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prompt_delivery: Option<PromptDelivery>,
+    /// How this terminal is shown: raw CLI, CLI plus insight panel, or the
+    /// insight view only. `serde(default)` keeps older rows deserializable.
+    #[serde(default)]
+    pub view_mode: ViewMode,
+    /// Read-only legacy field from builds that had an insight on/off flag.
+    /// Never written back; `apply_legacy_view_mode` folds it into `view_mode`.
+    #[serde(default, rename = "insight_layer", skip_serializing)]
+    pub legacy_insight_layer: bool,
+}
+
+/// Per-session view mode.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum ViewMode {
+    #[default]
+    Cli,
+    Mixed,
+    Insight,
+}
+
+impl TerminalConfig {
+    /// Map the legacy `insight_layer: true` flag to `Mixed` (only when no
+    /// explicit mode was set), then clear the legacy flag.
+    pub fn apply_legacy_view_mode(&mut self) {
+        if self.legacy_insight_layer && self.view_mode == ViewMode::Cli {
+            self.view_mode = ViewMode::Mixed;
+        }
+        self.legacy_insight_layer = false;
+    }
 }
 
 /// Result of delivering an initial prompt at spawn.
@@ -55,6 +84,37 @@ pub enum PromptDelivery {
     File { path: String },
     /// Not delivered: the frontend stages it in the prompt editor instead.
     Staged,
+}
+
+/// A prompt delivered at spawn is the first input the session sees, so the
+/// session-id detector must treat it as recent input (it only binds a session
+/// file when `last_input_at` is within its window). A staged prompt was not
+/// sent, so it does not count.
+/// Receiver port for the pending-question hook, or None when this spawn must
+/// not get `--settings`: only Claude terminals, only when the receiver is up,
+/// and never when the user passes their own `--settings` (a second flag would
+/// replace theirs).
+fn question_hook_port_for(
+    kind: &crate::config::AgentKind,
+    claude_args: &[String],
+    port: Option<u16>,
+) -> Option<u16> {
+    match port {
+        Some(p)
+            if *kind == crate::config::AgentKind::Claude
+                && !crate::question_hook::user_sets_settings(claude_args) =>
+        {
+            Some(p)
+        }
+        _ => None,
+    }
+}
+
+fn initial_input_at(delivery: &Option<PromptDelivery>) -> Option<std::time::Instant> {
+    match delivery {
+        Some(PromptDelivery::Argv) | Some(PromptDelivery::File { .. }) => Some(std::time::Instant::now()),
+        _ => None,
+    }
 }
 
 /// Longest prompt passed inline. `cmd /C` command lines cap at 8191 chars
@@ -453,6 +513,10 @@ impl TerminalManager {
         // continuing it. The fork's own id is captured later, so the
         // source id is not persisted on the new config.
         fork: bool,
+        // Port of the embedded receiver that answers the Claude Code
+        // PreToolUse hook (pending AskUserQuestion), or None when it failed
+        // to start. Claude terminals only.
+        question_hook_port: Option<u16>,
     ) -> Result<TerminalConfig, String> {
         // Validate claude_args: reject any argument containing shell
         // metacharacters. Narrow exception: bracketed known-model aliases
@@ -539,6 +603,18 @@ impl TerminalManager {
         // the binary name and echoes the args back so we can hand them to
         // CommandBuilder platform-appropriately.
         let (agent_binary, mut spawn_args) = build_agent_command(&spec, &claude_args);
+        // Pending-question hook: `--settings <private file>` for every Claude
+        // terminal (new, resume, fork, continue), appended after validation
+        // like the prompt (the path is checked by `question_hook::prepare`).
+        // Skipped when the user passes their own `--settings`, which a second
+        // flag would replace. The guard revokes the token and deletes the
+        // file if this spawn fails before the terminal is registered.
+        let hook_guard = question_hook_port_for(&spec.kind, &claude_args, question_hook_port)
+            .and_then(|port| crate::question_hook::prepare(&id, port))
+            .map(|(args, guard)| {
+                spawn_args.extend(args);
+                guard
+            });
         // Appended after validation on purpose: the prompt is free text, and
         // `render_initial_prompt` only inlines it where it is passed through
         // byte for byte (single-quoted on Unix, cmd-safe on Windows).
@@ -647,6 +723,7 @@ impl TerminalManager {
         let child = pty_pair.slave.spawn_command(cmd)
             .map_err(|e| format!("Failed to spawn command: {}", e))?;
 
+        let initial_input = initial_input_at(&prompt_delivery);
         let config = TerminalConfig {
             id: id.clone(),
             label,
@@ -669,6 +746,8 @@ impl TerminalManager {
             credential_bindings,
             task: None,
             prompt_delivery,
+            view_mode: ViewMode::Cli,
+            legacy_insight_layer: false,
         };
 
         let mut reader = pty_pair.master.try_clone_reader()
@@ -748,9 +827,12 @@ impl TerminalManager {
                 writer,
                 child,
                 reader_handle: Some(reader_handle),
-                last_input_at: None,
+                last_input_at: initial_input,
             },
         );
+        if let Some(guard) = hook_guard {
+            guard.disarm(); // registered: close / exit revokes from here on
+        }
 
         Ok(config)
     }
@@ -843,6 +925,8 @@ impl TerminalManager {
             credential_bindings: Vec::new(),
             task: None,
             prompt_delivery: None,
+            view_mode: ViewMode::Cli,
+            legacy_insight_layer: false,
         };
 
         let mut reader = pty_pair.master.try_clone_reader()
@@ -967,6 +1051,8 @@ impl TerminalManager {
             credential_bindings: Vec::new(),
             task: None,
             prompt_delivery: None,
+            view_mode: ViewMode::Cli,
+            legacy_insight_layer: false,
         };
 
         let mut reader = pty_pair.master.try_clone_reader()
@@ -1160,6 +1246,15 @@ impl TerminalManager {
         }
     }
 
+    pub fn set_view_mode(&mut self, id: &str, mode: ViewMode) -> Result<(), String> {
+        if let Some(terminal) = self.terminals.get_mut(id) {
+            terminal.config.view_mode = mode;
+            Ok(())
+        } else {
+            Err(error_reporter::user_err("Terminal not found"))
+        }
+    }
+
     pub fn update_nickname(&mut self, id: &str, nickname: String) -> Result<(), String> {
         if let Some(terminal) = self.terminals.get_mut(id) {
             terminal.config.nickname = Some(nickname);
@@ -1346,6 +1441,8 @@ mod tests {
                     credential_bindings: Vec::new(),
                     task: None,
                     prompt_delivery: None,
+                    view_mode: ViewMode::Cli,
+                    legacy_insight_layer: false,
                 },
                 pty_pair,
                 writer,
@@ -1464,6 +1561,7 @@ mod tests {
                 None,
                 None,
                 false,
+                None,
             )
             .unwrap_err();
         assert!(crate::error_reporter::is_user_error(&err));
@@ -1696,6 +1794,44 @@ mod tests {
     }
 
     #[test]
+    fn view_mode_defaults_to_cli_for_old_rows() {
+        let json = r#"{"id":"t","label":"L","nickname":null,"profile_id":null,"working_directory":"w","claude_args":[],"env_vars":{},"created_at":"2026-01-01T00:00:00Z","status":"Running","color_tag":null}"#;
+        let cfg: TerminalConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(cfg.view_mode, ViewMode::Cli);
+    }
+
+    fn row_with(extra: &str) -> TerminalConfig {
+        let json = format!(
+            r#"{{"id":"t","label":"L","nickname":null,"profile_id":null,"working_directory":"w","claude_args":[],"env_vars":{{}},"created_at":"2026-01-01T00:00:00Z","status":"Running","color_tag":null{extra}}}"#
+        );
+        serde_json::from_str(&json).unwrap()
+    }
+
+    #[test]
+    fn legacy_insight_layer_true_loads_as_mixed() {
+        let mut cfg = row_with(r#","insight_layer":true"#);
+        cfg.apply_legacy_view_mode();
+        assert_eq!(cfg.view_mode, ViewMode::Mixed);
+        assert!(!cfg.legacy_insight_layer);
+    }
+
+    #[test]
+    fn legacy_flag_never_overrides_explicit_mode() {
+        let mut cfg = row_with(r#","view_mode":"insight","insight_layer":true"#);
+        cfg.apply_legacy_view_mode();
+        assert_eq!(cfg.view_mode, ViewMode::Insight);
+    }
+
+    #[test]
+    fn view_mode_serializes_lowercase_without_legacy_field() {
+        let mut cfg = row_with(r#","insight_layer":true"#);
+        cfg.apply_legacy_view_mode();
+        let json = serde_json::to_string(&cfg).unwrap();
+        assert!(json.contains("\"view_mode\":\"mixed\""));
+        assert!(!json.contains("insight_layer"));
+    }
+
+    #[test]
     fn terminal_config_carries_bindings_but_serializes_no_secret_values() {
         let cfg = TerminalConfig {
             id: "t1".into(),
@@ -1716,6 +1852,8 @@ mod tests {
             }],
             task: None,
             prompt_delivery: None,
+            view_mode: ViewMode::Cli,
+            legacy_insight_layer: false,
         };
         let json = serde_json::to_string(&cfg).unwrap();
         assert!(json.contains("\"credential_bindings\""));
@@ -1941,5 +2079,40 @@ mod tests {
             serde_json::to_value(PromptDelivery::File { path: "p".into() }).unwrap(),
             serde_json::json!({ "mode": "file", "path": "p" })
         );
+    }
+
+    #[test]
+    fn initial_prompt_counts_as_input_for_session_binding() {
+        assert!(initial_input_at(&Some(PromptDelivery::Argv)).is_some());
+        assert!(initial_input_at(&Some(PromptDelivery::File { path: "p".into() })).is_some());
+        // Staged prompts are typed by the user later; no input yet.
+        assert!(initial_input_at(&Some(PromptDelivery::Staged)).is_none());
+        assert!(initial_input_at(&None).is_none());
+    }
+
+    #[test]
+    fn question_hook_only_for_claude_with_receiver_and_no_user_settings() {
+        use crate::config::AgentKind;
+        let none: Vec<String> = Vec::new();
+        assert_eq!(question_hook_port_for(&AgentKind::Claude, &none, Some(4100)), Some(4100));
+        // Receiver down: no hook.
+        assert_eq!(question_hook_port_for(&AgentKind::Claude, &none, None), None);
+        // Other agents never get Claude's --settings.
+        for kind in [
+            AgentKind::Codex,
+            AgentKind::Cursor,
+            AgentKind::Antigravity,
+            AgentKind::Custom("my-agent".into()),
+        ] {
+            assert_eq!(question_hook_port_for(&kind, &none, Some(4100)), None, "{kind:?}");
+        }
+        // The user's own --settings wins, in both flag forms.
+        let own = vec!["--settings".to_string(), "C:/mine.json".to_string()];
+        assert_eq!(question_hook_port_for(&AgentKind::Claude, &own, Some(4100)), None);
+        let own_eq = vec!["--settings=C:/mine.json".to_string()];
+        assert_eq!(question_hook_port_for(&AgentKind::Claude, &own_eq, Some(4100)), None);
+        // Unrelated args do not suppress it.
+        let other = vec!["--model".to_string(), "opus".to_string()];
+        assert_eq!(question_hook_port_for(&AgentKind::Claude, &other, Some(4100)), Some(4100));
     }
 }

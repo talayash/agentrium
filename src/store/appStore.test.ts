@@ -387,6 +387,7 @@ describe('appStore - persist partialize', () => {
     'telemetryEnabled',
     'errorReportingEnabled',
     'costTrackingEnabled',
+    'defaultViewMode',
     'sessionBudgetUsd',
     'showGitPanel',
     'showFileTree',
@@ -782,5 +783,21 @@ describe('appStore - Learn', () => {
     useAppStore.getState().setLearnEnabled(false);
     expect(useAppStore.getState()).toMatchObject({ learnEnabled: false, learnOpen: false });
     useAppStore.getState().setLearnEnabled(true);
+  });
+});
+
+describe('appStore - persist migration v9 -> v10 (view modes)', () => {
+  it('migrates insightLayerDefault true to defaultViewMode mixed', async () => {
+    localStorage.setItem(PERSIST_KEY, JSON.stringify({ version: 9, state: { insightLayerDefault: true } }));
+    await useAppStore.persist.rehydrate();
+    const st = useAppStore.getState() as unknown as Record<string, unknown>;
+    expect(st.defaultViewMode).toBe('mixed');
+    expect(st.insightLayerDefault).toBeUndefined();
+  });
+
+  it('migrates insightLayerDefault false to defaultViewMode cli', async () => {
+    localStorage.setItem(PERSIST_KEY, JSON.stringify({ version: 9, state: { insightLayerDefault: false } }));
+    await useAppStore.persist.rehydrate();
+    expect(useAppStore.getState().defaultViewMode).toBe('cli');
   });
 });

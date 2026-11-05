@@ -14,6 +14,7 @@ import { detectKindClient, kindToExt } from '../lib/pasteKind';
 import { toast } from '../store/toastStore';
 import { drawerMotion } from '../lib/motionTokens';
 import { writePromptToTerminal } from '../lib/promptSend';
+import { insertIntoPromptBar } from '../lib/terminalFocus';
 
 // Mirrors the backend Snippet shape (see SnippetsModal.tsx / commands.rs).
 interface Snippet {
@@ -224,6 +225,12 @@ export function PromptEditorDrawer() {
       return;
     }
     if (!content.trim()) return;
+    // Insight mode: Insert (no Enter) goes into the prompt bar draft, not the
+    // hidden PTY. Send still submits straight to the agent.
+    if (!withEnter && insertIntoPromptBar(targetId, content)) {
+      closeEditor();
+      return;
+    }
     setBusy(true);
     try {
       // Injecting must make the terminal hold *exactly* the editor content (see

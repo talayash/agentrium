@@ -1,0 +1,9 @@
+{"timestamp":"2026-11-05T11:00:00.000Z","type":"session_meta","payload":{"id":"abc","cwd":"C:\\x"}}
+{"timestamp":"2026-11-05T11:00:01.000Z","type":"response_item","payload":{"type":"message","role":"developer","content":[{"type":"input_text","text":"system rules"}]}}
+{"timestamp":"2026-11-05T11:00:02.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"add a browser"}]}}
+{"timestamp":"2026-11-05T11:00:03.000Z","type":"response_item","payload":{"type":"custom_tool_call","call_id":"c1","name":"exec","input":"const r = await tools.exec_command({cmd: \"ls\"})\nreturn r"}}
+{"timestamp":"2026-11-05T11:00:04.000Z","type":"response_item","payload":{"type":"custom_tool_call_output","call_id":"c1","output":[{"type":"input_text","text":"file1"},{"type":"input_text","text":"file2"}]}}
+{"timestamp":"2026-11-05T11:00:05.000Z","type":"response_item","payload":{"type":"function_call","call_id":"c2","name":"shell","arguments":"{\"cmd\":\"cargo test\"}"}}
+{"timestamp":"2026-11-05T11:00:06.000Z","type":"response_item","payload":{"type":"function_call_output","call_id":"c2","output":"ok. 5 passed"}}
+{"timestamp":"2026-11-05T11:00:07.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":100,"output_tokens":20},"total_token_usage":{"input_tokens":500,"output_tokens":90}}}}
+{"timestamp":"2026-11-05T11:00:08.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Done."}]}}

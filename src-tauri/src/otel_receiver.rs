@@ -225,7 +225,8 @@ impl MetricsAggregator {
 
 /// Start an OTLP/HTTP-JSON metrics receiver on an ephemeral localhost port.
 /// Returns the bound port. Spawns one accept thread; each POST /v1/metrics is
-/// parsed, merged, and emitted to the frontend as `terminal-metrics`.
+/// parsed, merged, and emitted to the frontend as `terminal-metrics`. The same
+/// server answers the Claude Code PreToolUse hook (`question_hook::ROUTE`).
 /// The returned `Arc<Mutex<MetricsAggregator>>` lets close_terminal forget state.
 pub fn start(app: tauri::AppHandle) -> std::io::Result<(u16, Arc<Mutex<MetricsAggregator>>)> {
     let server = tiny_http::Server::http("127.0.0.1:0")
@@ -262,6 +263,19 @@ pub fn start(app: tauri::AppHandle) -> std::io::Result<(u16, Arc<Mutex<MetricsAg
             }
             if body.len() > MAX_OTLP_BODY_BYTES {
                 let _ = request.respond(tiny_http::Response::empty(413));
+                continue;
+            }
+
+            // Claude Code PreToolUse hook (pending AskUserQuestion). Answered
+            // right away with an empty body, which Claude reads as "no
+            // decision"; every other path keeps the metrics handling below.
+            if crate::question_hook::is_hook_route(request.url()) {
+                let status = if *request.method() == tiny_http::Method::Post {
+                    crate::question_hook::serve(&app, request.url(), &body)
+                } else {
+                    405
+                };
+                let _ = request.respond(tiny_http::Response::empty(status));
                 continue;
             }
 

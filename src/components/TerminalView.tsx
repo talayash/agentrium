@@ -11,6 +11,8 @@ import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
 import { toast } from '../store/toastStore';
+import { effectiveViewMode } from '../lib/viewMode';
+import { focusTerminalInput, inputGoesToPromptBar, promptBarFor } from '../lib/terminalFocus';
 import { resolveTerminalTheme } from '../lib/terminalThemes';
 import { copyText, readClipboardText } from '../lib/clipboard';
 import { reportInvokeFailure } from '../lib/errorReporter';
@@ -23,6 +25,8 @@ import { resolveAppTheme, prefersLightScheme } from '../lib/appTheme';
 import { isVisibilityHidden } from '../utils/dragDrop';
 import { TerminalSearch } from './TerminalSearch';
 import { TerminalStatusBar } from './TerminalStatusBar';
+import { InsightLayer } from './insight/InsightLayer';
+import { InsightOnlyView } from './insight/InsightOnlyView';
 import { attachTerminalScrollbar } from './terminalScrollbar';
 import '@xterm/xterm/css/xterm.css';
 
@@ -243,8 +247,11 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
       );
     }
 
-    // Auto-focus so keyboard input works immediately without requiring a click
-    terminal.focus();
+    // Auto-focus so keyboard input works immediately without requiring a click.
+    // Insight mode routes to the prompt bar instead (the store xterm is not set
+    // yet here, so only the non-insight path focuses this terminal directly).
+    if (inputGoesToPromptBar(terminalId)) focusTerminalInput(terminalId);
+    else terminal.focus();
 
     // Re-focus xterm if its textarea loses focus to nothing (body) or to its
     // OWN canvas - that combo happens in WebView2 after PTY output triggers
@@ -255,6 +262,9 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
     const container = containerRef.current;
     const handleBlur = () => {
       requestAnimationFrame(() => {
+        // Insight mode with the drawer closed hides this PTY: never pull focus
+        // back into it, or keystrokes would reach the agent unseen.
+        if (inputGoesToPromptBar(terminalId)) return;
         const focused = document.activeElement;
         if (!focused || focused === document.body) {
           terminal.focus();
@@ -316,6 +326,12 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
     // reason: `e.code` is case-invariant.
     terminal.attachCustomKeyEventHandler((e: KeyboardEvent) => {
       const isCtrl = e.ctrlKey || e.metaKey;
+
+      // Ctrl+Shift+L is the global insight layer toggle: keep xterm from also
+      // sending a form feed to the PTY. The window listener still handles it.
+      if (isCtrl && e.shiftKey && !e.altKey && matchesKeyCode(e, 'L')) {
+        return false;
+      }
 
       // Ctrl+F: Toggle in-terminal search (Ctrl+Shift+F is reserved for the
       // global file/content search - see useKeyboardShortcuts).
@@ -606,6 +622,12 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
           if (!inside) return;
           const paths = payload.paths ?? [];
           if (paths.length === 0) return;
+          // Insight mode with the drawer closed: the PTY is hidden, so the
+          // path goes into the prompt bar draft instead.
+          if (inputGoesToPromptBar(terminalId)) {
+            promptBarFor(terminalId)?.insertText(paths.map(formatDroppedPath).join(' '));
+            return;
+          }
           const text = paths.map(formatDroppedPath).join(' ') + ' ';
           useTerminalStore.getState().writeToTerminal(terminalId, text).catch((err) => {
             console.error(`Failed to write dropped paths to terminal ${terminalId}:`, err); reportInvokeFailure('write_to_terminal', err);
@@ -627,6 +649,10 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
     };
   }, [terminalId]);
 
+  // Render by the effective mode (shells and script children are always CLI,
+  // agents without Insight support fall back to Mixed).
+  const viewMode = instance ? effectiveViewMode(instance) : 'cli';
+
   return (
     <div className="h-full w-full bg-bg-primary relative flex flex-col">
       <TerminalSearch
@@ -634,20 +660,29 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
         visible={searchVisible}
         onClose={() => setSearchVisible(false)}
       />
-      <div
-        ref={containerRef}
-        className="flex-1 min-h-0 w-full relative"
-        onMouseDownCapture={captureSelectionForMenu}
-        onMouseDown={(e) => { if (e.button !== 2) terminalRef.current?.focus(); }}
-        onContextMenu={openContextMenu}
-      >
-        {isDragOver && (
-          <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-accent-primary/10 ring-2 ring-accent-primary/60 ring-inset">
-            <div className="bg-bg-primary/90 text-text-primary text-[13px] px-3 py-1.5 rounded-md ring-1 ring-accent-primary/40">
-              Drop file to paste path
+      {viewMode === 'mixed' && <InsightLayer terminalId={terminalId} />}
+      {/* The pane owns the size; the xterm container fills it absolutely in
+          every mode, so Insight mode and its drawer (an opaque sibling layered
+          on top) never change the xterm box and never resize the PTY.
+          `isolate` keeps xterm's internal z-indexes below that view. */}
+      <div className="flex-1 min-h-0 w-full relative">
+        <div
+          ref={containerRef}
+          data-testid="xterm-container"
+          className="absolute inset-0 isolate"
+          onMouseDownCapture={captureSelectionForMenu}
+          onMouseDown={(e) => { if (e.button !== 2) terminalRef.current?.focus(); }}
+          onContextMenu={openContextMenu}
+        >
+          {isDragOver && (
+            <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-accent-primary/10 ring-2 ring-accent-primary/60 ring-inset">
+              <div className="bg-bg-primary/90 text-text-primary text-[13px] px-3 py-1.5 rounded-md ring-1 ring-accent-primary/40">
+                Drop file to paste path
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
+        {viewMode === 'insight' && <InsightOnlyView terminalId={terminalId} />}
       </div>
       {contextMenu && (
         <div

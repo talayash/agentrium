@@ -8,6 +8,7 @@ import { reportInvokeFailure } from '../lib/errorReporter';
 import { readClipboardText } from '../lib/clipboard';
 import { cyclableTabIds, nextTabId } from '../lib/tabCycle';
 import { matchesKeyCode } from '../lib/keymap';
+import { availableViewModes, effectiveViewMode, nextViewMode } from '../lib/viewMode';
 import { closeWithConfirm } from '../lib/closeConfirm';
 
 /**
@@ -20,8 +21,9 @@ function isFocusInNonTerminalEditable(): boolean {
   const el = document.activeElement;
   if (!el || el === document.body) return false;
   // xterm's hidden textarea always lives inside an .xterm container - let
-  // shortcuts through when the user is "in" a terminal.
-  if (el.closest('.xterm')) return false;
+  // shortcuts through when the user is "in" a terminal. The Insight-mode
+  // prompt bar is that session's terminal input, so it counts too.
+  if (el.closest('.xterm, [data-terminal-input]')) return false;
   const tag = el.tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA') return true;
   if ((el as HTMLElement).isContentEditable) return true;
@@ -105,6 +107,21 @@ export function useKeyboardShortcuts() {
         const term = activeId ? terminalsRef.current.get(activeId)?.xterm : undefined;
         const seed = term ? captureClaudeInput(term) : '';
         useAppStore.getState().openPromptEditor(activeId, seed);
+      }
+
+      // View mode: Ctrl+Shift+L cycles CLI -> Mixed -> Insight for the active session.
+      if (ctrl && shift && !e.altKey && matchesKeyCode(e, 'L')) {
+        e.preventDefault();
+        const activeId = activeIdRef.current;
+        // Holding the chord auto-repeats keydown: cycle once per press.
+        const instance = activeId ? terminalsRef.current.get(activeId) : undefined;
+        if (activeId && instance && !e.repeat) {
+          const available = availableViewModes(instance);
+          if (available.length > 1) {
+            void useTerminalStore.getState().setViewMode(activeId, nextViewMode(effectiveViewMode(instance), available));
+          }
+        }
+        return;
       }
 
       // Paste as file: Ctrl+Shift+V

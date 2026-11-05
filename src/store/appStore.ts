@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { invoke } from '@tauri-apps/api/core';
 import type { TerminalThemeName } from '../lib/terminalThemes';
+import type { ViewMode } from '../lib/viewMode';
 import { MAX_GRID_TERMINALS } from '../lib/gridEmptyCells';
 import { addPin, removePin, togglePin } from '../lib/pinnedTabs';
 import type { AgentKind, BuiltinAgentKind } from '../lib/agents';
@@ -118,6 +119,10 @@ interface AppState {
   // Per-session budget ceiling in USD; 0 = no cap. Used by Task 11.
   sessionBudgetUsd: number;
   setCostTrackingEnabled: (v: boolean) => void;
+  /** View mode new sessions start in. Restored sessions keep their own saved
+   *  mode and ignore this. */
+  defaultViewMode: ViewMode;
+  setDefaultViewMode: (m: ViewMode) => void;
   setSessionBudgetUsd: (v: number) => void;
   showGitPanel: boolean;
   showFileTree: boolean;
@@ -575,6 +580,9 @@ export interface SavedTerminalConfig {
   credential_bindings?: CredentialBinding[];
   /** Raw task JSON from the saved row; run through `normalizeTask`. */
   task?: unknown;
+  /** Legacy pre-view-mode boolean; read only through `viewModeOf`. */
+  insight_layer?: boolean;
+  view_mode?: ViewMode;
 }
 
 // Helper to determine optimal layout based on terminal count
@@ -639,6 +647,7 @@ export const useAppStore = create<AppState>()(
       learnLevel: 1,
       learnOpen: false,
       costTrackingEnabled: false,
+      defaultViewMode: 'cli',
       sessionBudgetUsd: 0,
       showGitPanel: true,
       showFileTree: true,
@@ -868,6 +877,7 @@ export const useAppStore = create<AppState>()(
       setErrorReportingEnabled: (enabled) => set({ errorReportingEnabled: enabled }),
       setLspEnabled: (v) => set({ lspEnabled: v }),
       setCostTrackingEnabled: (v) => set({ costTrackingEnabled: v }),
+      setDefaultViewMode: (m) => set({ defaultViewMode: m }),
       setSessionBudgetUsd: (v) => set({ sessionBudgetUsd: Math.max(0, v) }),
       setShowGitPanel: (enabled) => set({ showGitPanel: enabled }),
       setShowFileTree: (enabled) => set({ showFileTree: enabled }),
@@ -1354,7 +1364,7 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: 'claude-terminal-app',
-      version: 9,
+      version: 10,
       migrate: (persistedState, version) => {
         const s = (persistedState as Partial<AppState>) ?? {};
         if (version < 1) {
@@ -1430,6 +1440,14 @@ export const useAppStore = create<AppState>()(
             s.sidebarNav = 'sessions';
           }
         }
+        if (version < 10) {
+          // The insight layer boolean became a three-way view mode. A user
+          // who started sessions with the layer on gets Mixed (the same
+          // layout); everyone else gets CLI.
+          const legacy = s as Record<string, unknown>;
+          s.defaultViewMode = legacy.insightLayerDefault === true ? 'mixed' : 'cli';
+          delete legacy.insightLayerDefault;
+        }
         return s as AppState;
       },
       partialize: (state) => ({
@@ -1449,6 +1467,7 @@ export const useAppStore = create<AppState>()(
         learnLevel: state.learnLevel,
         learnOpen: state.learnOpen,
         costTrackingEnabled: state.costTrackingEnabled,
+        defaultViewMode: state.defaultViewMode,
         sessionBudgetUsd: state.sessionBudgetUsd,
         showGitPanel: state.showGitPanel,
         showFileTree: state.showFileTree,
