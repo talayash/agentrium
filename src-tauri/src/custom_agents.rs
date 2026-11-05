@@ -77,7 +77,36 @@ pub fn validate_binary(binary: &str) -> Result<(), String> {
     if b.contains(BINARY_FORBIDDEN) {
         return Err(format!("Invalid character in command \"{}\"", b));
     }
+    if is_remote_binary(b) {
+        return Err(format!(
+            "Network paths and URLs are not allowed as a command: \"{}\"",
+            b
+        ));
+    }
     Ok(())
+}
+
+/// A synced row's binary runs on every device of the account, so it must not
+/// reach a remote file: two leading separators in any mix (`\\host`, `//host`,
+/// `\/host`, `\\?\UNC\...`, all UNC to Windows) or a URL scheme (`file:`,
+/// `https:`). A single drive letter (`C:\`) is a local path. Mirrors the
+/// broker's `agentBinary` check in `agentrium-api/src/app/api/sync/push/route.ts`.
+fn is_remote_binary(b: &str) -> bool {
+    let mut chars = b.chars();
+    let sep = |c: Option<char>| matches!(c, Some('\\') | Some('/'));
+    if sep(chars.next()) && sep(chars.next()) {
+        return true;
+    }
+    match b.split_once(':') {
+        Some((scheme, _)) => {
+            scheme.len() >= 2
+                && scheme.starts_with(|c: char| c.is_ascii_alphabetic())
+                && scheme
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '.' | '-'))
+        }
+        None => false,
+    }
 }
 
 fn validate_arg(arg: &str) -> Result<(), String> {
@@ -339,6 +368,32 @@ mod tests {
         assert!(validate_pulled_row(&row).is_ok());
         let minimal = serde_json::json!({ "binary": "opencode", "resumeFlag": null, "requiredEnv": null });
         assert!(validate_pulled_row(&minimal).is_ok());
+    }
+
+    #[test]
+    fn rejects_network_path_or_url_binary() {
+        // A synced row runs on every device through `cmd.exe /C`, so a stolen
+        // token must not be able to point it at a file on a remote share.
+        for b in [
+            r"\\attacker.example\share\payload.exe",
+            "//attacker.example/share/payload.exe",
+            r"\/attacker.example\share\payload.exe",
+            r"  \\.\UNC\attacker.example\share\x.exe",
+            "file://attacker.example/share/payload.exe",
+            "https://attacker.example/payload.exe",
+        ] {
+            let err = validate_binary(b).expect_err(b);
+            assert!(err.contains("Network paths"), "{b}: {err}");
+            let row = serde_json::json!({ "binary": b, "requiredEnv": [] });
+            assert!(validate_pulled_row(&row).is_err(), "pulled row {b}");
+        }
+    }
+
+    #[test]
+    fn local_paths_and_names_are_still_allowed() {
+        for b in ["opencode", r"C:\Users\me\bin\agent.cmd", "C:/tools/agent.exe", "/usr/local/bin/agent", "~/bin/agent"] {
+            assert!(validate_binary(b).is_ok(), "{b}");
+        }
     }
 
     #[test]
