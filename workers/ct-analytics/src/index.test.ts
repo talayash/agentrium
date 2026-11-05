@@ -92,3 +92,30 @@ describe('bounded bodies on token-gated routes', () => {
     }
   });
 });
+
+describe('admin session revocation routes', () => {
+  const env = (kv = fakeKv()) => ({ KV_BINDING: kv, DB: {} as D1Database, STATS_TOKEN: TOKEN }) as any;
+  const get = (path: string, headers: Record<string, string> = { 'x-ct-token': TOKEN }) =>
+    new Request(`https://local${path}`, { headers });
+
+  it('require the stats token', async () => {
+    expect((await worker.fetch(get('/admin/session_floor', {}), env(), {} as any)).status).toBe(401);
+    expect((await worker.fetch(post('/admin/session_revoke', '{}', { 'x-ct-token': 'wrong' }), env(), {} as any)).status).toBe(401);
+  });
+
+  it('revoke then read back the same floor', async () => {
+    const kv = fakeKv();
+    const before = Date.now();
+    const revoked = await worker.fetch(post('/admin/session_revoke', '{}'), env(kv), {} as any);
+    expect(revoked.status).toBe(200);
+    const { floor } = (await revoked.json()) as { floor: number };
+    expect(floor).toBeGreaterThanOrEqual(before);
+    const read = await worker.fetch(get('/admin/session_floor'), env(kv), {} as any);
+    expect(await read.json()).toEqual({ floor });
+  });
+
+  it('reports floor 0 when nothing was revoked', async () => {
+    const read = await worker.fetch(get('/admin/session_floor'), env(), {} as any);
+    expect(await read.json()).toEqual({ floor: 0 });
+  });
+});

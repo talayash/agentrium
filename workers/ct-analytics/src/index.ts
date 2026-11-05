@@ -23,11 +23,13 @@ import { admitErrorReport, admitIngest, boundedJson, validDimensions, versionWit
  *   POST /errors/resolve         mark fingerprints resolved / un-resolved (token)
  *   POST /feedback/delete        soft-delete / restore inbox messages (token)
  *   POST /admin/login_attempt    admin-dashboard login rate limit (token)
+ *   GET  /admin/session_floor    admin sessions issued at or before this epoch ms are revoked (token)
+ *   POST /admin/session_revoke   admin logout: raise the floor to now (token)
  *   POST /stats/match            count given installation ids active today / now (token)
  *   GET  /stats/live/ids         every live installation id with its metadata, for /admin online users (token)
  */
 
-import { constantTimeEqual, checkLoginAttempt, parseMatchBody, matchInstallations, listLiveInstallations } from './admin';
+import { constantTimeEqual, checkLoginAttempt, parseMatchBody, matchInstallations, listLiveInstallations, getSessionFloor, revokeAdminSessions } from './admin';
 import { parseResolveBody, isGroupResolved, isKnownBenignReport, errorsSince } from './errors';
 import { handleInsights } from './insights-route';
 import { CORS_HEADERS, json, todayUTC } from './http';
@@ -865,6 +867,16 @@ export default {
         const denied = requireToken(request, env.STATS_TOKEN);
         if (denied) return denied;
         return await handleAdminLoginAttempt(request, env);
+      }
+      if (request.method === 'GET' && url.pathname === '/admin/session_floor') {
+        const denied = requireToken(request, env.STATS_TOKEN);
+        if (denied) return denied;
+        return json({ floor: await getSessionFloor(env.KV_BINDING) });
+      }
+      if (request.method === 'POST' && url.pathname === '/admin/session_revoke') {
+        const denied = requireToken(request, env.STATS_TOKEN);
+        if (denied) return denied;
+        return json({ floor: await revokeAdminSessions(env.KV_BINDING) });
       }
       if (request.method === 'POST' && url.pathname === '/stats/match') {
         const denied = requireToken(request, env.STATS_TOKEN);

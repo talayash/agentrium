@@ -9,6 +9,9 @@ import {
   LOGIN_WINDOW_SECONDS,
   MATCH_MAX_IDS,
   MATCH_ID_MAX_LEN,
+  getSessionFloor,
+  revokeAdminSessions,
+  SESSION_FLOOR_KEY,
 } from './admin';
 
 function fakeKv(initial: Record<string, string> = {}) {
@@ -172,5 +175,24 @@ describe('listLiveInstallations', () => {
   it('caps the result at MATCH_MAX_IDS', async () => {
     const keys = Array.from({ length: MATCH_MAX_IDS + 5 }, (_, n) => ({ name: `live:i${n}` }));
     expect(await listLiveInstallations(listKv([keys]), 900)).toHaveLength(MATCH_MAX_IDS);
+  });
+});
+
+describe('admin session revocation', () => {
+  it('has no floor until a logout revokes sessions', async () => {
+    expect(await getSessionFloor(fakeKv())).toBe(0);
+  });
+
+  it('revokeAdminSessions stores now as the floor, with a TTL longer than any admin session', async () => {
+    const kv = fakeKv();
+    expect(await revokeAdminSessions(kv, 1_700_000_000_000)).toBe(1_700_000_000_000);
+    expect(kv.store.get(SESSION_FLOOR_KEY)).toBe('1700000000000');
+    expect(await getSessionFloor(kv)).toBe(1_700_000_000_000);
+    // The website's admin session lasts 12 h; the floor must outlive it.
+    expect(kv.ttls[0]).toBeGreaterThanOrEqual(12 * 3600);
+  });
+
+  it('treats a corrupt floor as "revoke everything" rather than "revoke nothing"', async () => {
+    expect(await getSessionFloor(fakeKv({ [SESSION_FLOOR_KEY]: 'garbage' }))).toBe(Number.MAX_SAFE_INTEGER);
   });
 });

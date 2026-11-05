@@ -131,3 +131,29 @@ export async function listLiveInstallations(kv: KVNamespace, ttlSeconds: number)
   } while (cursor);
   return out;
 }
+
+/**
+ * Admin session revocation for the website's /admin cookie (F3, 2026-11-05).
+ * The cookie is stateless (HMAC over issued/expires), so logout stores a
+ * "floor": every session issued at or before it is refused. One key, because
+ * there is one admin password; logout means "log out everywhere".
+ *   GET  /admin/session_floor   -> { floor }
+ *   POST /admin/session_revoke  -> { floor }
+ */
+export const SESSION_FLOOR_KEY = 'admin:session_floor';
+// Must outlive the longest admin session (12 h on the website) so a revoked
+// cookie can never outlive its floor.
+export const SESSION_FLOOR_TTL_SECONDS = 2 * 24 * 60 * 60;
+
+export async function getSessionFloor(kv: KVNamespace): Promise<number> {
+  const raw = await kv.get(SESSION_FLOOR_KEY);
+  if (raw === null) return 0;
+  const n = Number(raw);
+  // A corrupt value fails closed: revoke everything rather than nothing.
+  return Number.isSafeInteger(n) && n >= 0 ? n : Number.MAX_SAFE_INTEGER;
+}
+
+export async function revokeAdminSessions(kv: KVNamespace, now = Date.now()): Promise<number> {
+  await kv.put(SESSION_FLOOR_KEY, String(now), { expirationTtl: SESSION_FLOOR_TTL_SECONDS });
+  return now;
+}
