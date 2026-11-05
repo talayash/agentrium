@@ -1,5 +1,28 @@
 [
   {
+    "version": "1.42.1",
+    "date": "2026-11-05",
+    "features": [
+      { "title": "Fix bugs & performance" },
+      {
+        "title": "Insight layer",
+        "description": "A per-turn digest above the terminal shows what the agent did: stats, files touched, errors, and tables or charts from its reply."
+      },
+      {
+        "title": "Clickable question box",
+        "description": "When the agent asks a multiple choice question, answer it with a click instead of reading the terminal menu."
+      },
+      {
+        "title": "View modes per session",
+        "description": "Switch each session between CLI, Mixed and Insight only. Insight only adds a prompt bar, and the terminal slides in when the agent needs you."
+      },
+      {
+        "title": "Fewer false alerts",
+        "description": "A finished reply that quotes a prompt like (y/n) no longer marks the session as needing your input."
+      }
+    ]
+  },
+  {
     "version": "1.42.0",
     "date": "2026-11-05",
     "features": [
