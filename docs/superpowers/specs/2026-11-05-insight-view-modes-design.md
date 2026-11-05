@@ -44,7 +44,7 @@ Some users want to drive an agent session without reading the raw terminal at al
   - **Show terminal** button opens the drawer by hand.
   - Sending is allowed while the agent is busy (Claude queues it), same as typing in the terminal.
   - The bar is disabled, keeping its text, while a question box is pending (hint: "Answer the question above") or while the drawer is open (hint: "The terminal is open"). A send there would land inside a TUI menu and could pick an option. (Planner's call.)
-  - When the session has ended (terminal status Stopped or Error), the bar is disabled and the status line reads "Session ended" with a **Restart** button that uses the existing restart path (which keeps the session's view mode). (Planner's call.)
+  - When the session has ended (terminal status Stopped or Error, or the state detector reports the process stopped), the bar is disabled and the status line reads "Session ended" with a **Restart** button that uses the existing restart path (which keeps the session's view mode). (Planner's call.)
   - Focus: switching a session to Insight mode, or selecting an Insight-mode session, focuses the prompt bar. Esc inside the layer returns focus to the bar instead of the terminal.
 - **Live progress**: a thin status line above the bar shows the session state (Working... with a spinner while busy, Waiting for you, Idle) using the existing session state detection.
 
@@ -62,7 +62,7 @@ Some users want to drive an agent session without reading the raw terminal at al
 ### Which sessions get which modes
 - Shell terminals and script children: no switch, always CLI.
 - Claude: all three modes, must fully work (verified in live QA: send, multiline send, slash command, Stop, drawer for a permission prompt and the trust prompt).
-- Codex: all three modes on a best-effort basis. QA checks send, multiline send and Stop against the live Codex TUI; if any of them misbehaves, Insight is disabled for Codex (shown like agents without a transcript) rather than shipped half-working. Drawer auto-open for Codex relies on the same screen patterns and may need a Codex pattern added if QA shows a miss. (Planner's call.)
+- Codex: CLI and Mixed only, until a Codex-specific send path exists. Live QA showed that a multiline prompt sent through bracketed paste reaches Codex with the newline lost and the trailing Enter does not submit (Codex's paste-burst handling), so the best-effort rule applied and Insight is disabled for Codex rather than shipped half-working. The disabled Insight segment's tooltip reads "Insight view is not available for Codex yet". A stored Insight mode on a Codex session shows as Mixed.
 - Agents without a transcript (Cursor, Antigravity, custom): CLI and Mixed only. Insight is shown disabled with the tooltip "No structured data for this agent", since the layer could only show the fallback.
 
 ### Works everywhere

@@ -5,9 +5,13 @@ import {
   VIEW_MODE_LABELS,
   availableViewModes,
   effectiveViewMode,
+  insightUnavailableReason,
   type ViewMode,
 } from '../../lib/viewMode';
+import { KEYMAP } from '../../lib/keymap';
 import { Tooltip } from '../ui/Tooltip';
+
+const CYCLE_SHORTCUT = KEYMAP.find((k) => k.id === 'cycle-view-mode')?.shortcut;
 
 const ICONS: Record<ViewMode, LucideIcon> = {
   cli: TerminalSquare,
@@ -26,7 +30,7 @@ export function ViewModeSwitch({ terminalId }: { terminalId: string }) {
   if (available.length < 2) return null;
   const current = effectiveViewMode(instance);
   return (
-    <Tooltip label="View mode (Ctrl+Shift+L)">
+    <Tooltip label="View mode" shortcut={CYCLE_SHORTCUT}>
       <div
         role="radiogroup"
         aria-label="View mode"
@@ -41,6 +45,7 @@ export function ViewModeSwitch({ terminalId }: { terminalId: string }) {
             <button
               key={mode}
               role="radio"
+              aria-label={VIEW_MODE_LABELS[mode]}
               aria-checked={checked}
               aria-disabled={!enabled}
               onClick={() => {
@@ -61,7 +66,7 @@ export function ViewModeSwitch({ terminalId }: { terminalId: string }) {
           return enabled ? (
             button
           ) : (
-            <Tooltip key={mode} label="No structured data for this agent">
+            <Tooltip key={mode} label={insightUnavailableReason(instance.config.agent)}>
               {button}
             </Tooltip>
           );

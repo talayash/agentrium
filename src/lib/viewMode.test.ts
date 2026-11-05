@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { availableViewModes, effectiveViewMode, nextViewMode, viewModeOf, viewModePaletteEntries } from './viewMode';
+import { availableViewModes, effectiveViewMode, insightUnavailableReason, nextViewMode, viewModeOf, viewModePaletteEntries } from './viewMode';
 
 describe('availableViewModes', () => {
   it('shell terminals are cli only', () => {
@@ -8,9 +8,14 @@ describe('availableViewModes', () => {
   it('script children are cli only', () => {
     expect(availableViewModes({ scriptParentId: 'p', config: { agent: 'claude' } })).toEqual(['cli']);
   });
-  it('claude and codex get all three', () => {
+  it('claude gets all three', () => {
     expect(availableViewModes({ config: { agent: 'claude' } })).toEqual(['cli', 'mixed', 'insight']);
-    expect(availableViewModes({ config: { agent: 'codex' } })).toEqual(['cli', 'mixed', 'insight']);
+  });
+  it('codex gets cli and mixed until it has its own send path', () => {
+    expect(availableViewModes({ config: { agent: 'codex' } })).toEqual(['cli', 'mixed']);
+  });
+  it('a stored insight mode on codex clamps to mixed', () => {
+    expect(effectiveViewMode({ config: { agent: 'codex', view_mode: 'insight' } })).toBe('mixed');
   });
   it('cursor and custom agents get cli and mixed', () => {
     expect(availableViewModes({ config: { agent: 'cursor' } })).toEqual(['cli', 'mixed']);
@@ -64,5 +69,13 @@ describe('viewModePaletteEntries', () => {
   });
   it('is empty for shells', () => {
     expect(viewModePaletteEntries({ isShellTerminal: true, config: { agent: 'claude' } })).toEqual([]);
+  });
+});
+
+describe('insightUnavailableReason', () => {
+  it('names Codex, and keeps the generic reason for agents without transcripts', () => {
+    expect(insightUnavailableReason('codex')).toBe('Insight view is not available for Codex yet');
+    expect(insightUnavailableReason('cursor')).toBe('No structured data for this agent');
+    expect(insightUnavailableReason('custom:x')).toBe('No structured data for this agent');
   });
 });

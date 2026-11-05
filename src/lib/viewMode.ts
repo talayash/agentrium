@@ -4,7 +4,9 @@ export type ViewMode = 'cli' | 'mixed' | 'insight';
 export const VIEW_MODES: ViewMode[] = ['cli', 'mixed', 'insight'];
 
 /** Modes a session can use: shells and script children are CLI only, Claude
- *  and Codex support all three, every other agent supports CLI and Mixed. */
+ *  supports all three, every other agent (Codex included) supports CLI and
+ *  Mixed. Codex stays out of Insight until it has its own send path: the
+ *  prompt bar and question box drive Claude's TUI. */
 export function availableViewModes(t: {
   isShellTerminal?: boolean;
   scriptParentId?: string | null;
@@ -12,7 +14,7 @@ export function availableViewModes(t: {
 }): ViewMode[] {
   if (t.isShellTerminal || t.scriptParentId) return ['cli'];
   const agent = t.config.agent;
-  if (agent === 'claude' || agent === 'codex') return [...VIEW_MODES];
+  if (agent === 'claude') return [...VIEW_MODES];
   return ['cli', 'mixed'];
 }
 
@@ -30,6 +32,12 @@ export function nextViewMode(current: ViewMode, available: ViewMode[]): ViewMode
  *  before view modes; it maps to Mixed. */
 export function viewModeOf(config: { view_mode?: ViewMode; insight_layer?: boolean }): ViewMode {
   return config.view_mode ?? (config.insight_layer ? 'mixed' : 'cli');
+}
+
+/** Tooltip for a disabled Insight segment, per agent. */
+export function insightUnavailableReason(agent: AgentKind | undefined): string {
+  if (agent === 'codex') return 'Insight view is not available for Codex yet';
+  return 'No structured data for this agent';
 }
 
 export const VIEW_MODE_LABELS: Record<ViewMode, string> = { cli: 'CLI', mixed: 'Mixed', insight: 'Insight' };

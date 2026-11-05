@@ -63,6 +63,41 @@ describe('ViewModeSwitch', () => {
     expect(invokeMock).not.toHaveBeenCalled();
   });
 
+  it('every segment has an accessible name even when its text is hidden', () => {
+    seed(makeConfig('a', { view_mode: 'cli' }));
+    render(<ViewModeSwitch terminalId="a" />);
+    expect(screen.getAllByRole('radio').map((r) => r.getAttribute('aria-label'))).toEqual(['CLI', 'Mixed', 'Insight']);
+  });
+
+  it('the group tooltip has no hard-coded shortcut text', async () => {
+    vi.useFakeTimers();
+    try {
+      seed(makeConfig('a', { view_mode: 'cli' }));
+      render(<ViewModeSwitch terminalId="a" />);
+      fireEvent.mouseEnter(screen.getByRole('radiogroup'));
+      await act(async () => { vi.advanceTimersByTime(500); });
+      expect(screen.getByRole('tooltip').textContent).toBe('View mode');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it.each([
+    ['codex', 'Insight view is not available for Codex yet'],
+    ['cursor', 'No structured data for this agent'],
+  ] as const)('disabled Insight segment tooltip for %s', async (agent, text) => {
+    vi.useFakeTimers();
+    try {
+      seed(makeConfig('a', { agent, view_mode: 'mixed' }));
+      render(<ViewModeSwitch terminalId="a" />);
+      fireEvent.mouseEnter(screen.getByRole('radio', { name: 'Insight' }));
+      await act(async () => { vi.advanceTimersByTime(500); });
+      expect(screen.getAllByRole('tooltip').map((t) => t.textContent)).toContain(text);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('shows the effective mode when the stored one is unavailable', () => {
     seed(makeConfig('a', { agent: 'cursor', view_mode: 'insight' }));
     render(<ViewModeSwitch terminalId="a" />);
