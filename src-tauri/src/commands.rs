@@ -479,6 +479,7 @@ async fn resolve_agent_spec(
         // any other path into SQLite) must never reach `cmd.exe /C`.
         Some(a) => {
             crate::custom_agents::validate_launch_fields(&a.binary, a.resume_flag.as_deref(), &a.required_env)
+                .and_then(|()| crate::custom_agents::check_spawnable_binary(&a.binary))
                 .map_err(|e| error_reporter::user_err(format!(
                     "{e}. Fix this agent in Settings > Agents & Keys before starting it."
                 )))?;

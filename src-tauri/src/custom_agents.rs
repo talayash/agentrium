@@ -77,7 +77,51 @@ pub fn validate_binary(binary: &str) -> Result<(), String> {
     if b.contains(BINARY_FORBIDDEN) {
         return Err(format!("Invalid character in command \"{}\"", b));
     }
+    // Allowlist on top of BINARY_FORBIDDEN: cmd.exe expands `%VAR%` (and
+    // `%VAR:~0,2%` substrings, which can rebuild a UNC prefix) and splits the
+    // command name on `,` and `=` as well as whitespace, so a denylist keeps
+    // missing cases. Letters/digits of any script keep non-latin user folders
+    // working; a plain space is allowed only for local paths and is checked
+    // again at spawn (`check_spawnable_binary`) and refused on sync.
+    if let Some(bad) = b.chars().find(|c| !is_binary_char(*c)) {
+        return Err(format!("Invalid character in command \"{}\": {:?}", b, bad));
+    }
+    if is_remote_binary(b) {
+        return Err(format!(
+            "Network paths and URLs are not allowed as a command: \"{}\"",
+            b
+        ));
+    }
     Ok(())
+}
+
+/// Mirrors `BINARY_CHARS` in `agentrium-api/src/app/api/sync/push/route.ts`,
+/// plus a plain space for local paths such as `C:\Program Files\...`.
+fn is_binary_char(c: char) -> bool {
+    c.is_alphanumeric() || matches!(c, '.' | '_' | '-' | '\\' | '/' | ':' | '~' | ' ')
+}
+
+/// A synced row's binary runs on every device of the account, so it must not
+/// reach a remote file: two leading separators in any mix (`\\host`, `//host`,
+/// `\/host`, `\\?\UNC\...`, all UNC to Windows) or a URL scheme (`file:`,
+/// `https:`). A single drive letter (`C:\`) is a local path. Mirrors the
+/// broker's `agentBinary` check in `agentrium-api/src/app/api/sync/push/route.ts`.
+fn is_remote_binary(b: &str) -> bool {
+    let mut chars = b.chars();
+    let sep = |c: Option<char>| matches!(c, Some('\\') | Some('/'));
+    if sep(chars.next()) && sep(chars.next()) {
+        return true;
+    }
+    match b.split_once(':') {
+        Some((scheme, _)) => {
+            scheme.len() >= 2
+                && scheme.starts_with(|c: char| c.is_ascii_alphabetic())
+                && scheme
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '.' | '-'))
+        }
+        None => false,
+    }
 }
 
 fn validate_arg(arg: &str) -> Result<(), String> {
@@ -125,6 +169,22 @@ pub fn validate_launch_fields(
     Ok(())
 }
 
+/// Spawn-time check on top of `validate_binary`. Windows runs the binary as
+/// `cmd.exe /C "<binary>"`; cmd keeps those quotes only when the quoted text
+/// names an existing file, otherwise it strips them and parses the rest as a
+/// command line (`powershell -enc ...`). So a binary with whitespace may only
+/// run when it is exactly one existing file on this device.
+pub fn check_spawnable_binary(binary: &str) -> Result<(), String> {
+    let b = binary.trim();
+    if b.contains(char::is_whitespace) && !std::path::Path::new(b).is_file() {
+        return Err(format!(
+            "Command \"{}\" contains spaces but is not an existing file",
+            b
+        ));
+    }
+    Ok(())
+}
+
 /// Launch-field check for a custom agent row pulled from `/api/sync/pull`
 /// (camelCase wire shape). `defaultArgs` and `bindings` are device-local and
 /// never synced, so they are not part of the row.
@@ -136,7 +196,17 @@ pub fn validate_pulled_row(row: &serde_json::Value) -> Result<(), String> {
         Some(v) => serde_json::from_value(v.clone())
             .map_err(|_| "requiredEnv is not a list of names".to_string())?,
     };
-    validate_launch_fields(binary, resume_flag, &required_env)
+    validate_launch_fields(binary, resume_flag, &required_env)?;
+    // A synced binary must be one token: whether a path with spaces is safe
+    // depends on this device's filesystem (see `check_spawnable_binary`), and
+    // the broker rejects whitespace on push for the same reason.
+    if binary.trim().contains(char::is_whitespace) {
+        return Err(format!(
+            "A synced command cannot contain spaces: \"{}\"",
+            binary.trim()
+        ));
+    }
+    Ok(())
 }
 
 /// Every rule from spec section 5.2. Returns the first violation as a plain
@@ -339,6 +409,80 @@ mod tests {
         assert!(validate_pulled_row(&row).is_ok());
         let minimal = serde_json::json!({ "binary": "opencode", "resumeFlag": null, "requiredEnv": null });
         assert!(validate_pulled_row(&minimal).is_ok());
+    }
+
+    #[test]
+    fn rejects_network_path_or_url_binary() {
+        // A synced row runs on every device through `cmd.exe /C`, so a stolen
+        // token must not be able to point it at a file on a remote share.
+        for b in [
+            r"\\attacker.example\share\payload.exe",
+            "//attacker.example/share/payload.exe",
+            r"\/attacker.example\share\payload.exe",
+            r"  \\.\UNC\attacker.example\share\x.exe",
+            "file://attacker.example/share/payload.exe",
+            "https://attacker.example/payload.exe",
+        ] {
+            let err = validate_binary(b).expect_err(b);
+            assert!(err.contains("Network paths"), "{b}: {err}");
+            let row = serde_json::json!({ "binary": b, "requiredEnv": [] });
+            assert!(validate_pulled_row(&row).is_err(), "pulled row {b}");
+        }
+    }
+
+    #[test]
+    fn rejects_percent_in_binary() {
+        // `%LOGONSERVER:~0,2%` expands to `\\` inside cmd.exe, after this check.
+        let err = validate_binary(r"%LOGONSERVER:~0,2%attacker.example\share\x.exe").unwrap_err();
+        assert!(err.contains("%"), "{err}");
+    }
+
+    #[test]
+    fn rejects_cmd_separators_outside_the_allowlist() {
+        // cmd.exe splits the command name on `,` and `=` like on spaces:
+        // `cmd,/d,/c,echo,x` runs echo.
+        for b in ["cmd,/d,/c,echo,x", "cmd=/d=/c=echo=x", "agent\u{0B}x", "agent\u{A0}x", "@cmd", "a+b"] {
+            let err = validate_binary(b).expect_err(b);
+            assert!(err.contains("Invalid character in command"), "{b}: {err}");
+        }
+    }
+
+    #[test]
+    fn allowlist_keeps_unicode_user_folders() {
+        assert!(validate_binary(r"C:\Users\טל\AppData\Roaming\npm\opencode.cmd").is_ok());
+        assert!(validate_binary(r"C:\Program Files\Agent\agent.exe").is_ok());
+    }
+
+    #[test]
+    fn pulled_row_binary_must_be_one_token() {
+        // cmd.exe /C strips the quotes portable-pty adds around an argument
+        // with spaces unless it names an existing file, so these would run as
+        // a command line on Windows.
+        for b in ["powershell -enc AAAA", r"C:\Program Files\x\agent.exe", "claude\tx"] {
+            let row = serde_json::json!({ "binary": b, "requiredEnv": [] });
+            assert!(validate_pulled_row(&row).is_err(), "{b}");
+        }
+    }
+
+    #[test]
+    fn spawn_allows_spaces_only_for_an_existing_file() {
+        assert!(check_spawnable_binary("opencode").is_ok());
+        assert!(check_spawnable_binary("powershell -enc AAAA").is_err());
+        let dir = std::env::temp_dir().join(format!("agentrium test {}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let exe = dir.join("agent.cmd");
+        std::fs::write(&exe, "@echo off\n").unwrap();
+        let exe = exe.to_string_lossy().into_owned();
+        assert!(check_spawnable_binary(&exe).is_ok(), "{exe}");
+        assert!(check_spawnable_binary(&format!("{exe} --x")).is_err());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn local_paths_and_names_are_still_allowed() {
+        for b in ["opencode", r"C:\Users\me\bin\agent.cmd", "C:/tools/agent.exe", "/usr/local/bin/agent", "~/bin/agent"] {
+            assert!(validate_binary(b).is_ok(), "{b}");
+        }
     }
 
     #[test]
