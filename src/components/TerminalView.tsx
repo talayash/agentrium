@@ -23,6 +23,7 @@ import { resolveAppTheme, prefersLightScheme } from '../lib/appTheme';
 import { isVisibilityHidden } from '../utils/dragDrop';
 import { TerminalSearch } from './TerminalSearch';
 import { TerminalStatusBar } from './TerminalStatusBar';
+import { InsightLayer } from './insight/InsightLayer';
 import { attachTerminalScrollbar } from './terminalScrollbar';
 import '@xterm/xterm/css/xterm.css';
 
@@ -640,6 +641,9 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
         visible={searchVisible}
         onClose={() => setSearchVisible(false)}
       />
+      {instance?.config.insight_layer && !instance.isShellTerminal && !instance.scriptParentId && (
+        <InsightLayer terminalId={terminalId} />
+      )}
       <div
         ref={containerRef}
         className="flex-1 min-h-0 w-full relative"
