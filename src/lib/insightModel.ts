@@ -126,10 +126,14 @@ function emptyActivity(): Record<ToolCategory, number> {
   return { read: 0, edit: 0, bash: 0, search: 0, web: 0, agent: 0, other: 0 };
 }
 
-function buildTurn(prompt: string, records: InsightRecord[], headline: HeadlineProvider): InsightTurn {
-  const results = new Map<string, Extract<InsightRecord, { kind: "tool_result" }>>();
-  for (const r of records) if (r.kind === "tool_result") results.set(r.tool_use_id, r);
+type ToolResultRecord = Extract<InsightRecord, { kind: "tool_result" }>;
 
+function buildTurn(
+  prompt: string,
+  records: InsightRecord[],
+  headline: HeadlineProvider,
+  results: Map<string, ToolResultRecord>,
+): InsightTurn {
   const tools: ToolCall[] = [];
   const activity = emptyActivity();
   const fileMap = new Map<string, FileTouch>();
@@ -242,6 +246,7 @@ function findPendingQuestion(records: InsightRecord[]): PendingQuestion | null {
   const answered = new Set<string>();
   for (let i = records.length - 1; i >= 0; i--) {
     const r = records[i];
+    if (r.kind === "user_prompt") return null; // a later prompt means the question is stale
     if (r.kind === "tool_result") answered.add(r.tool_use_id);
     else if (r.kind === "tool_use" && r.name === "AskUserQuestion" && !answered.has(r.id)) {
       const questions = parseQuestions(r.input);
@@ -266,9 +271,13 @@ export function buildInsightModel(records: InsightRecord[], headline: HeadlinePr
       current.records.push(r);
     }
   }
+  // One map over ALL records: a result may land after a later user_prompt
+  // (queued message, interrupt) and must still resolve the earlier turn's tool.
+  const results = new Map<string, ToolResultRecord>();
+  for (const r of records) if (r.kind === "tool_result") results.set(r.tool_use_id, r);
   const kept = groups.slice(-MAX_TURNS);
   const turns = kept.map((g, i) => {
-    const t = buildTurn(g.prompt, g.records, headline);
+    const t = buildTurn(g.prompt, g.records, headline, results);
     t.index = i + 1;
     return t;
   });

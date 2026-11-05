@@ -189,4 +189,19 @@ describe("headlineFrom", () => {
     expect(h).toBe("a".repeat(100) + "...");
     expect(headlineFrom("")).toBe("");
   });
+  it("a question followed by a later user_prompt is stale", () => {
+    const input = { questions: [{ question: "Which?", header: "Pick", multiSelect: false, options: [{ label: "A", description: "a" }] }] };
+    const recs = [prompt("x"), use("q1", "AskUserQuestion", null, input), prompt("after resume")];
+    expect(buildInsightModel(recs).pendingQuestion).toBeNull();
+  });
+
+  it("a result landing after a later user_prompt still resolves the earlier turn's tool", () => {
+    const recs = [prompt("one"), use("t1", "Bash", "ls"), prompt("two"), result("t1", "done")];
+    const m = buildInsightModel(recs);
+    const turn1 = m.turns.find((t) => t.prompt === "one")!;
+    expect(turn1.tools[0].status).toBe("ok");
+    expect(turn1.headline).not.toBe("Working...");
+    const errRecs = [prompt("one"), use("t1", "Bash", "ls"), prompt("two"), result("t1", "bad", { is_error: true })];
+    expect(buildInsightModel(errRecs).turns.find((t) => t.prompt === "one")!.tools[0].status).toBe("error");
+  });
 });
