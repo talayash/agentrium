@@ -6,7 +6,8 @@ const reportInvokeFailure = vi.fn();
 vi.mock('../../store/toastStore', () => ({ toast: { error: (...a: unknown[]) => toastError(...a), info: vi.fn() } }));
 vi.mock('../../lib/errorReporter', () => ({ reportInvokeFailure: (...a: unknown[]) => reportInvokeFailure(...a) }));
 
-import { PromptBar } from './PromptBar';
+import { createRef } from 'react';
+import { PromptBar, type PromptBarHandle } from './PromptBar';
 import { useTerminalStore } from '../../store/terminalStore';
 import { useInsightStore } from '../../store/insightStore';
 
@@ -108,5 +109,13 @@ describe('PromptBar', () => {
     expect(toastError).toHaveBeenCalled();
     expect(reportInvokeFailure).toHaveBeenCalledWith('write_to_terminal', expect.any(Error));
     expect(box().value).toBe('hello');
+  });
+
+  it('exposes focus() through its ref', () => {
+    const ref = createRef<PromptBarHandle>();
+    render(<PromptBar ref={ref} terminalId={ID} disabledReason={null} busy={false} onShowTerminal={onShowTerminal} />);
+    expect(document.activeElement).not.toBe(box());
+    act(() => { ref.current?.focus(); });
+    expect(document.activeElement).toBe(box());
   });
 });

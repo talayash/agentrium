@@ -285,3 +285,19 @@ describe('findLineInBuffer', () => {
     expect(screen.getByText('An option menu is open in the terminal')).toBeTruthy();
   });
 });
+
+describe('InsightLayer fill variant', () => {
+  it('fill variant has no drag handle or collapse and ignores a stored collapse', async () => {
+    seed([prompt('p'), reply('Fill body.')], { ui: { collapsed: true } });
+    const onEscape = vi.fn();
+    await act(async () => { render(<InsightLayer terminalId={ID} variant="fill" onEscape={onEscape} />); });
+    expect(screen.getAllByText('Fill body.')[0]!).toBeTruthy();
+    expect(screen.queryByRole('separator')).toBeNull();
+    expect(screen.queryByLabelText('Collapse insight layer')).toBeNull();
+    expect(screen.queryByLabelText('Expand insight layer')).toBeNull();
+    focus.mockClear();
+    fireEvent.keyDown(screen.getAllByText('Fill body.')[0]!, { key: 'Escape' });
+    expect(onEscape).toHaveBeenCalledTimes(1);
+    expect(focus).not.toHaveBeenCalled();
+  });
+});

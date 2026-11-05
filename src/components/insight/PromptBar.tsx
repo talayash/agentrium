@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { forwardRef, useImperativeHandle, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Send, Square, TerminalSquare } from 'lucide-react';
 import { interruptAgent, sendPrompt } from '../../lib/promptSend';
 import { reportInvokeFailure } from '../../lib/errorReporter';
@@ -15,9 +15,18 @@ interface Props {
   onShowTerminal: () => void;
 }
 
-export function PromptBar({ terminalId, disabledReason, busy, onShowTerminal }: Props) {
+/** Imperative handle so the insight-only view can move focus to the bar. */
+export interface PromptBarHandle {
+  focus: () => void;
+}
+
+export const PromptBar = forwardRef<PromptBarHandle, Props>(function PromptBar(
+  { terminalId, disabledReason, busy, onShowTerminal },
+  handle,
+) {
   const [text, setText] = useState('');
   const ref = useRef<HTMLTextAreaElement>(null);
+  useImperativeHandle(handle, () => ({ focus: () => ref.current?.focus() }), []);
   const sending = useRef(false);
   // null = not walking history; otherwise index into the history list.
   const histIdx = useRef<number | null>(null);
@@ -155,4 +164,4 @@ export function PromptBar({ terminalId, disabledReason, busy, onShowTerminal }: 
       </button>
     </div>
   );
-}
+});

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, render } from '@testing-library/react';
+import { act, cleanup, fireEvent, render } from '@testing-library/react';
 
 const invoke = vi.fn();
 vi.mock('@tauri-apps/api/core', () => ({ invoke: (...a: unknown[]) => invoke(...a) }));
@@ -34,7 +34,8 @@ vi.mock('@xterm/xterm', () => ({
     clear() {}
   },
 }));
-vi.mock('@xterm/addon-fit', () => ({ FitAddon: class { fit() {} } }));
+const fit = vi.fn();
+vi.mock('@xterm/addon-fit', () => ({ FitAddon: class { fit() { fit(); } } }));
 vi.mock('@xterm/addon-web-links', () => ({ WebLinksAddon: class {} }));
 vi.mock('@xterm/addon-search', () => ({ SearchAddon: class {} }));
 vi.mock('@xterm/addon-webgl', () => ({
@@ -45,24 +46,37 @@ vi.mock('@xterm/addon-serialize', () => ({ SerializeAddon: class {} }));
 vi.mock('../terminalScrollbar', () => ({ attachTerminalScrollbar: () => () => {} }));
 vi.mock('../TerminalSearch', () => ({ TerminalSearch: () => null }));
 vi.mock('../TerminalStatusBar', () => ({ TerminalStatusBar: () => null }));
-vi.mock('./InsightLayer', () => ({ InsightLayer: () => <div data-testid="insight-layer" /> }));
+vi.mock('./InsightLayer', () => ({
+  InsightLayer: (p: { variant?: string }) => <div data-testid="insight-layer" data-variant={p.variant ?? 'panel'} />,
+}));
+const useInsightFeed = vi.fn();
+vi.mock('../../hooks/useInsightFeed', () => ({
+  useInsightFeed: (...a: unknown[]) => useInsightFeed(...a),
+  useInsightModel: () => ({ turns: [], pendingQuestion: null }),
+}));
 
 import { TerminalView } from '../TerminalView';
 import { useTerminalStore } from '../../store/terminalStore';
 
 const ID = 't1';
 
-function mountWith(extra: Record<string, unknown>, insight: boolean) {
+function mountWith(extra: Record<string, unknown>, insight: boolean | 'insight') {
+  const mode = insight === 'insight' ? 'insight' : insight ? 'mixed' : 'cli';
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
   vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }));
   useTerminalStore.setState({
-    terminals: new Map([[ID, { config: { working_directory: 'C:\\p', view_mode: insight ? 'mixed' : 'cli' }, ...extra } as never]]),
+    activeTerminalId: ID,
+    terminalStates: new Map([[ID, 'idle' as never]]),
+    terminals: new Map([[ID, { config: { working_directory: 'C:\\p', view_mode: mode, agent: 'claude', status: 'Running' }, ...extra } as never]]),
   });
   return render(<TerminalView terminalId={ID} />);
 }
 
 afterEach(() => {
   cleanup();
+  invoke.mockReset();
+  fit.mockReset();
+  useInsightFeed.mockReset();
   vi.unstubAllGlobals();
 });
 
@@ -88,5 +102,71 @@ describe('TerminalView insight mounting', () => {
     const script = mountWith({ scriptParentId: 'p' }, true);
     await act(async () => {});
     expect(script.queryByTestId('insight-layer')).toBeNull();
+  });
+
+  it('cli mode mounts no layer and starts no tailer', async () => {
+    const { queryByTestId, queryByPlaceholderText } = mountWith({}, false);
+    await act(async () => {});
+    expect(queryByTestId('insight-layer')).toBeNull();
+    expect(queryByTestId('insight-only-view')).toBeNull();
+    expect(queryByPlaceholderText('Message the agent')).toBeNull();
+    expect(useInsightFeed).not.toHaveBeenCalled();
+    expect(invoke).not.toHaveBeenCalledWith('insight_start', expect.anything());
+  });
+
+  it('mixed mode renders the panel variant unchanged', async () => {
+    const { getAllByTestId, queryByTestId, queryByPlaceholderText } = mountWith({}, true);
+    await act(async () => {});
+    const layers = getAllByTestId('insight-layer');
+    expect(layers).toHaveLength(1);
+    expect(layers[0]!.dataset.variant).toBe('panel');
+    expect(queryByTestId('insight-only-view')).toBeNull();
+    expect(queryByPlaceholderText('Message the agent')).toBeNull();
+  });
+
+  it('insight mode keeps the terminal mounted at full size behind the layer', async () => {
+    const { getByTestId, getAllByTestId } = mountWith({}, 'insight');
+    await act(async () => {});
+    const container = getByTestId('xterm-container');
+    expect(container.className).toContain('absolute');
+    expect(container.className).toContain('inset-0');
+    expect(container.style.display).not.toBe('none');
+    expect(container.className).not.toContain('hidden');
+    const view = getByTestId('insight-only-view');
+    expect(view.className).toContain('absolute');
+    expect(view.className).toContain('inset-0');
+    expect(view.parentElement).toBe(container.parentElement);
+    // Exactly one layer, so exactly one tailer for this terminal.
+    const layers = getAllByTestId('insight-layer');
+    expect(layers).toHaveLength(1);
+    expect(layers[0]!.dataset.variant).toBe('fill');
+    expect(useInsightFeed).not.toHaveBeenCalled();
+  });
+
+  it('cli and insight give the xterm container the same box', async () => {
+    const cli = mountWith({}, false);
+    await act(async () => {});
+    const cliClass = cli.getByTestId('xterm-container').className;
+    const cliPane = cli.getByTestId('xterm-container').parentElement!.className;
+    cleanup();
+    const ins = mountWith({}, 'insight');
+    await act(async () => {});
+    expect(ins.getByTestId('xterm-container').className).toBe(cliClass);
+    expect(ins.getByTestId('xterm-container').parentElement!.className).toBe(cliPane);
+  });
+
+  it('drawer open and close never call fit or resize', async () => {
+    const { getByTestId, getByLabelText, queryByTestId } = mountWith({}, 'insight');
+    await act(async () => {});
+    const container = getByTestId('xterm-container');
+    fit.mockReset();
+    invoke.mockReset();
+    await act(async () => { fireEvent.click(getByLabelText('Show terminal')); });
+    expect(queryByTestId('terminal-drawer-header')).not.toBeNull();
+    await act(async () => { fireEvent.click(getByLabelText('Close terminal')); });
+    expect(queryByTestId('terminal-drawer-header')).toBeNull();
+    expect(getByTestId('xterm-container')).toBe(container);
+    expect(fit).not.toHaveBeenCalled();
+    expect(invoke).not.toHaveBeenCalledWith('resize_terminal', expect.anything());
   });
 });

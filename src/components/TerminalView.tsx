@@ -11,7 +11,7 @@ import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
 import { toast } from '../store/toastStore';
-import { viewModeOf } from '../lib/viewMode';
+import { effectiveViewMode } from '../lib/viewMode';
 import { resolveTerminalTheme } from '../lib/terminalThemes';
 import { copyText, readClipboardText } from '../lib/clipboard';
 import { reportInvokeFailure } from '../lib/errorReporter';
@@ -25,6 +25,7 @@ import { isVisibilityHidden } from '../utils/dragDrop';
 import { TerminalSearch } from './TerminalSearch';
 import { TerminalStatusBar } from './TerminalStatusBar';
 import { InsightLayer } from './insight/InsightLayer';
+import { InsightOnlyView } from './insight/InsightOnlyView';
 import { attachTerminalScrollbar } from './terminalScrollbar';
 import '@xterm/xterm/css/xterm.css';
 
@@ -635,6 +636,10 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
     };
   }, [terminalId]);
 
+  // Render by the effective mode (shells and script children are always CLI,
+  // agents without Insight support fall back to Mixed).
+  const viewMode = instance ? effectiveViewMode(instance) : 'cli';
+
   return (
     <div className="h-full w-full bg-bg-primary relative flex flex-col">
       <TerminalSearch
@@ -642,23 +647,29 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
         visible={searchVisible}
         onClose={() => setSearchVisible(false)}
       />
-      {instance && viewModeOf(instance.config) !== 'cli' && !instance.isShellTerminal && !instance.scriptParentId && (
-        <InsightLayer terminalId={terminalId} />
-      )}
-      <div
-        ref={containerRef}
-        className="flex-1 min-h-0 w-full relative"
-        onMouseDownCapture={captureSelectionForMenu}
-        onMouseDown={(e) => { if (e.button !== 2) terminalRef.current?.focus(); }}
-        onContextMenu={openContextMenu}
-      >
-        {isDragOver && (
-          <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-accent-primary/10 ring-2 ring-accent-primary/60 ring-inset">
-            <div className="bg-bg-primary/90 text-text-primary text-[13px] px-3 py-1.5 rounded-md ring-1 ring-accent-primary/40">
-              Drop file to paste path
+      {viewMode === 'mixed' && <InsightLayer terminalId={terminalId} />}
+      {/* The pane owns the size; the xterm container fills it absolutely in
+          every mode, so Insight mode and its drawer (an opaque sibling layered
+          on top) never change the xterm box and never resize the PTY.
+          `isolate` keeps xterm's internal z-indexes below that view. */}
+      <div className="flex-1 min-h-0 w-full relative">
+        <div
+          ref={containerRef}
+          data-testid="xterm-container"
+          className="absolute inset-0 isolate"
+          onMouseDownCapture={captureSelectionForMenu}
+          onMouseDown={(e) => { if (e.button !== 2) terminalRef.current?.focus(); }}
+          onContextMenu={openContextMenu}
+        >
+          {isDragOver && (
+            <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-accent-primary/10 ring-2 ring-accent-primary/60 ring-inset">
+              <div className="bg-bg-primary/90 text-text-primary text-[13px] px-3 py-1.5 rounded-md ring-1 ring-accent-primary/40">
+                Drop file to paste path
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
+        {viewMode === 'insight' && <InsightOnlyView terminalId={terminalId} />}
       </div>
       {contextMenu && (
         <div

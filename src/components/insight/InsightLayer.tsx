@@ -18,7 +18,18 @@ const FALLBACK_PANE_PX = 600;
 const clamp = (px: number, pane: number) =>
   Math.round(Math.min(Math.max(px, MIN_PX), Math.max(MIN_PX, pane * MAX_FRACTION)));
 
-export function InsightLayer({ terminalId }: { terminalId: string }) {
+interface InsightLayerProps {
+  terminalId: string;
+  /** `panel` (default): resizable, collapsible panel above the terminal (Mixed).
+   *  `fill`: fills its container with its own scroll, no drag handle and no
+   *  collapse (Insight mode, where nothing sits under it). */
+  variant?: 'panel' | 'fill';
+  /** Esc inside a `fill` layer calls this instead of focusing the terminal. */
+  onEscape?: () => void;
+}
+
+export function InsightLayer({ terminalId, variant = 'panel', onEscape }: InsightLayerProps) {
+  const fill = variant === 'fill';
   useInsightFeed(terminalId, true);
   const model = useInsightModel(terminalId);
   const state = useInsightStore((s) => s.byId.get(terminalId));
@@ -51,7 +62,7 @@ export function InsightLayer({ terminalId }: { terminalId: string }) {
   }, []);
 
   const pane = paneHeight ?? FALLBACK_PANE_PX;
-  const collapsed = state?.collapsed ?? (paneHeight !== null && paneHeight < SHORT_PANE_PX);
+  const collapsed = !fill && (state?.collapsed ?? (paneHeight !== null && paneHeight < SHORT_PANE_PX));
   const panelPx = clamp(state?.heightPx ?? pane * DEFAULT_FRACTION, pane);
   const newest = model.turns[0];
   const older = model.turns.slice(1);
@@ -90,7 +101,9 @@ export function InsightLayer({ terminalId }: { terminalId: string }) {
   };
 
   const onKeyDown = (e: KeyboardEvent) => {
-    if (e.key === 'Escape') useTerminalStore.getState().terminals.get(terminalId)?.xterm?.focus();
+    if (e.key !== 'Escape') return;
+    if (fill) onEscape?.();
+    else useTerminalStore.getState().terminals.get(terminalId)?.xterm?.focus();
   };
 
   if (collapsed) {
@@ -140,6 +153,17 @@ export function InsightLayer({ terminalId }: { terminalId: string }) {
           ),
         )}
       </>
+    );
+  }
+
+  if (fill) {
+    return (
+      <div ref={rootRef} onKeyDown={onKeyDown} className="flex h-full min-h-0 flex-col bg-bg-primary">
+        <div className="min-h-0 flex-1 overflow-y-auto" data-testid="insight-body">
+          {model.pendingQuestion && <QuestionBox terminalId={terminalId} pending={model.pendingQuestion} />}
+          {body}
+        </div>
+      </div>
     );
   }
 
