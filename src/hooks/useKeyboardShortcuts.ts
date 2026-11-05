@@ -8,7 +8,7 @@ import { reportInvokeFailure } from '../lib/errorReporter';
 import { readClipboardText } from '../lib/clipboard';
 import { cyclableTabIds, nextTabId } from '../lib/tabCycle';
 import { matchesKeyCode } from '../lib/keymap';
-import { toggleInsightLayer } from '../lib/insightToggle';
+import { availableViewModes, effectiveViewMode, nextViewMode } from '../lib/viewMode';
 import { closeWithConfirm } from '../lib/closeConfirm';
 
 /**
@@ -108,12 +108,18 @@ export function useKeyboardShortcuts() {
         useAppStore.getState().openPromptEditor(activeId, seed);
       }
 
-      // Insight layer: Ctrl+Shift+L toggles it for the active agent session.
+      // View mode: Ctrl+Shift+L cycles CLI -> Mixed -> Insight for the active session.
       if (ctrl && shift && !e.altKey && matchesKeyCode(e, 'L')) {
         e.preventDefault();
         const activeId = activeIdRef.current;
-        // Holding the chord auto-repeats keydown: toggle once per press.
-        if (activeId && !e.repeat) toggleInsightLayer(activeId);
+        // Holding the chord auto-repeats keydown: cycle once per press.
+        const instance = activeId ? terminalsRef.current.get(activeId) : undefined;
+        if (activeId && instance && !e.repeat) {
+          const available = availableViewModes(instance);
+          if (available.length > 1) {
+            void useTerminalStore.getState().setViewMode(activeId, nextViewMode(effectiveViewMode(instance), available));
+          }
+        }
         return;
       }
 

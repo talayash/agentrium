@@ -22,7 +22,7 @@ import { BrandIcon } from './BrandIcon';
 import { specFor } from '../lib/agents';
 import { getAnyModelBadgeClasses, getModelBadgeLabel } from '../lib/agentModels';
 import { Tooltip } from './ui/Tooltip';
-import { InsightToggleButton } from './insight/InsightToggleButton';
+import { ViewModeSwitch } from './insight/ViewModeSwitch';
 import { TaskBadge } from './TaskBadge';
 import { CiRepairBadge } from './CiRepairBadge';
 import { PrChip } from './PrChip';
@@ -328,7 +328,7 @@ export function TerminalTabs() {
               return <ScriptsMenu terminalId={activeTerminalId} cwd={inst.config.working_directory} />;
             })()}
             {activeTerminalId && activeConfig && !activeFilePath && (
-              <InsightToggleButton terminalId={activeTerminalId} />
+              <ViewModeSwitch terminalId={activeTerminalId} />
             )}
             {/* Close active session (#59). Only visible while a real terminal
                 is focused - hidden while browsing a file, and hidden entirely

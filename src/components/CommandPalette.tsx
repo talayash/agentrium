@@ -5,7 +5,7 @@ import { useAppStore } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
 import { useLearnStore } from '../store/learnStore';
 import { toast } from '../store/toastStore';
-import { toggleInsightLayer, insightToggleApplies } from '../lib/insightToggle';
+import { viewModePaletteEntries } from '../lib/viewMode';
 import { copyText } from '../lib/clipboard';
 import { reportInvokeFailure } from '../lib/errorReporter';
 import { fuzzyMatch, frecencyScore } from '../lib/paletteMatching';
@@ -187,13 +187,20 @@ export function CommandPalette() {
             reportInvokeFailure('create_terminal', err);
           });
         } },
-        ...(insightToggleApplies(useTerminalStore.getState().activeTerminalId)
-          ? [{ label: 'Toggle insight layer', description: 'Turn the insight layer on or off for the active session', icon: Layers, shortcut: 'Ctrl+Shift+L', action: () => {
+        ...(() => {
+          const { activeTerminalId: id, terminals: all } = useTerminalStore.getState();
+          const inst = id ? all.get(id) : undefined;
+          if (!id || !inst) return [];
+          return viewModePaletteEntries(inst).map(({ mode, label }) => ({
+            label,
+            description: 'Set the view mode of the active session',
+            icon: Layers,
+            action: () => {
               closeCommandPalette();
-              const id = useTerminalStore.getState().activeTerminalId;
-              if (id) toggleInsightLayer(id);
-            } }]
-          : []),
+              void useTerminalStore.getState().setViewMode(id, mode);
+            },
+          }));
+        })(),
         { label: 'Toggle Sidebar', description: 'Show or hide the sidebar', icon: PanelLeft, shortcut: 'Ctrl+B', action: () => { useAppStore.getState().toggleSidebar(); closeCommandPalette(); } },
         { label: 'Open Settings', description: 'Open application settings', icon: Settings, shortcut: 'Ctrl+,', action: () => { useAppStore.getState().openSettings(); closeCommandPalette(); } },
         { label: 'Toggle Grid View', description: 'Switch between tab and grid view', icon: LayoutGrid, shortcut: 'Ctrl+G', action: () => { useAppStore.getState().toggleGridMode(); closeCommandPalette(); } },

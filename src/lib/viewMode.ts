@@ -31,3 +31,26 @@ export function nextViewMode(current: ViewMode, available: ViewMode[]): ViewMode
 export function viewModeOf(config: { view_mode?: ViewMode; insight_layer?: boolean }): ViewMode {
   return config.view_mode ?? (config.insight_layer ? 'mixed' : 'cli');
 }
+
+export const VIEW_MODE_LABELS: Record<ViewMode, string> = { cli: 'CLI', mixed: 'Mixed', insight: 'Insight' };
+
+type ViewModeTerminal = Parameters<typeof availableViewModes>[0] & {
+  config: { view_mode?: ViewMode; insight_layer?: boolean };
+};
+
+/** The mode a session is really in: the configured mode when this agent
+ *  supports it, otherwise Mixed (or CLI when Mixed is unavailable too). */
+export function effectiveViewMode(t: ViewModeTerminal): ViewMode {
+  const available = availableViewModes(t);
+  const wanted = viewModeOf(t.config);
+  if (available.includes(wanted)) return wanted;
+  return available.includes('mixed') ? 'mixed' : 'cli';
+}
+
+/** Command Palette entries for a session: one per available mode, or none
+ *  when only CLI is available (nothing to switch). */
+export function viewModePaletteEntries(t: ViewModeTerminal): { mode: ViewMode; label: string }[] {
+  const available = availableViewModes(t);
+  if (available.length < 2) return [];
+  return available.map((mode) => ({ mode, label: `View: ${VIEW_MODE_LABELS[mode]}` }));
+}

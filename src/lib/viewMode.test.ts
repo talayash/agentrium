@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { availableViewModes, nextViewMode, viewModeOf } from './viewMode';
+import { availableViewModes, effectiveViewMode, nextViewMode, viewModeOf, viewModePaletteEntries } from './viewMode';
 
 describe('availableViewModes', () => {
   it('shell terminals are cli only', () => {
@@ -40,5 +40,29 @@ describe('viewModeOf', () => {
   });
   it('empty maps to cli', () => {
     expect(viewModeOf({})).toBe('cli');
+  });
+});
+
+describe('effectiveViewMode', () => {
+  it('insight on cursor falls back to mixed', () => {
+    expect(effectiveViewMode({ config: { agent: 'cursor', view_mode: 'insight' } })).toBe('mixed');
+  });
+  it('insight on a shell falls back to cli', () => {
+    expect(effectiveViewMode({ isShellTerminal: true, config: { agent: 'claude', view_mode: 'insight' } })).toBe('cli');
+  });
+  it('mixed on claude stays mixed', () => {
+    expect(effectiveViewMode({ config: { agent: 'claude', view_mode: 'mixed' } })).toBe('mixed');
+  });
+});
+
+describe('viewModePaletteEntries', () => {
+  it('lists all three for claude', () => {
+    expect(viewModePaletteEntries({ config: { agent: 'claude' } }).map((e) => e.label)).toEqual(['View: CLI', 'View: Mixed', 'View: Insight']);
+  });
+  it('omits insight for cursor', () => {
+    expect(viewModePaletteEntries({ config: { agent: 'cursor' } }).map((e) => e.label)).toEqual(['View: CLI', 'View: Mixed']);
+  });
+  it('is empty for shells', () => {
+    expect(viewModePaletteEntries({ isShellTerminal: true, config: { agent: 'claude' } })).toEqual([]);
   });
 });
