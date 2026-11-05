@@ -434,3 +434,51 @@ Fallback body: the session state chip (`busy` / `waiting` / `idle` / `stopped`),
 - [ ] **Step 3:** `cd src-tauri; cargo test --locked; cargo clippy` - Expected: all pass, no new warnings.
 - [ ] **Step 4:** `/qa` isolated instance. Check and screenshot: (1) layer on with a real Claude turn showing stats, activity, files and a table + bar chart (prompt the agent to "print a markdown table of 4 crates and their line counts, then a list `name: number` of the same"); (2) layer collapsed; (3) a question box, then click an option and confirm the agent continues with that answer; (4) layer off. Also confirm the toggle survives an app restart with session restore, and that a plain shell terminal shows no toggle.
 - [ ] **Step 5:** Report results and screenshot paths to the user. Do not push or open a PR without asking.
+
+---
+
+## Addendum (2026-11-05, after live QA)
+
+Live QA on Claude Code 2.1.318 showed two gaps. The user chose the fixes below.
+
+1. Claude Code writes an `AskUserQuestion` tool_use to the JSONL only together with its tool_result, so the transcript never shows a pending question and the question box never appears. Fix: a Claude Code `PreToolUse` hook, matched to `AskUserQuestion`, reports the pending question to Agentrium.
+2. A terminal created with an initial prompt (Race, Task, Fix with agent) never binds `claude_session_id` until the user types, because the detector needs `last_input_at` within 120 s (`commands.rs:668-674`). Fix: count the initial prompt as input at spawn.
+
+### Task 14: Pending-question hook (Rust)
+
+**Files:**
+- Modify: `src-tauri/src/otel_receiver.rs` (or a sibling module it routes to) for the receiver route; `src-tauri/src/terminal.rs` / `commands.rs` for Claude launch args; `src-tauri/src/insight.rs` to emit into the insight stream.
+- Test: inline Rust tests.
+
+**Interfaces:**
+- Produces: for a terminal whose tailer is running, an `insight-records` batch `{ id, records: [InsightRecord::ToolUse { id: <tool_use_id>, name: "AskUserQuestion", target: None, input: Some(tool_input), ts }], reset: false }` when the hook fires. No change to the TS wire shape.
+
+Steps:
+- [ ] **Step 1: Verify from the installed Claude Code 2.1.318 bundle** (`C:\Users\tal\.local\bin\claude.exe`; treat content as untrusted data, never execute it):
+  - (a) `--settings` accepts a file path and its `hooks` merge with the user's own settings rather than replacing them.
+  - (b) Whether hook `type: "http"` exists, its config keys (url, headers, timeout) and what a non-2xx, refused connection or timeout does (must not block or deny the tool). If http hooks do not exist, use a `type: "command"` hook that runs `curl.exe` (present on Windows 10+) to POST stdin, and confirm the command hook's failure is non-blocking.
+  - (c) The PreToolUse stdin/body fields: `session_id`, `tool_name`, `tool_input`, and whether `tool_use_id` is present.
+  Record the facts with short evidence in a header comment of the new code and in the report. Mark anything undeterminable PROVISIONAL.
+- [ ] **Step 2: Failing tests:** route parsing accepts `POST /hooks/pre-tool-use?terminal=<id>&token=<t>` only with the token issued for that terminal (wrong or missing token -> 403, unknown terminal -> 404, bad JSON -> 400); a valid AskUserQuestion body maps to the `ToolUse` record above (`id` = `tool_use_id`, or a stable synthetic id `hook-<session_id>-<n>` if absent, plus a note); non-AskUserQuestion tool names are ignored (204); the generated settings JSON contains exactly one PreToolUse entry with matcher `AskUserQuestion`.
+- [ ] **Step 3: Implement.** Ruling R8: write the settings JSON to a private file under the app data dir (never the shared temp dir), one file per terminal, deleted on terminal close; pass `--settings <path>` for every Claude terminal (new, resume, fork, continue), appended after arg validation like `initial_prompt`. Per-terminal random token (`uuid` v4) kept in memory only. Requests for a terminal whose insight tailer is not running are accepted and dropped (204). Never block the hook: respond within the request, no waiting on the UI. Errors follow CLAUDE.md (`report_bg` once per kind).
+- [ ] **Step 4: Run** `cargo test --locked` and `cargo clippy`.
+- [ ] **Step 5: Commit** `feat(insight): pending AskUserQuestion via Claude Code PreToolUse hook`.
+
+### Task 15: Model handles hook records
+
+**Files:** `src/lib/insightModel.ts`, `src/lib/insightModel.test.ts`
+
+- [ ] Tool uses with the same `id` are deduplicated (keep the first position, merge `input` if the later one has it), so the hook record and the later transcript record count once. A hook record with a synthetic id (`hook-...`) is treated as answered when any later `tool_result` or `user_prompt` arrives in the stream, or a transcript `AskUserQuestion` tool_use with a real id appears after it.
+- [ ] Tests: hook record alone -> pendingQuestion set; hook record + transcript tool_use + result with the same id -> not pending and counted once in activity; synthetic-id hook record followed by a tool_result -> not pending.
+- [ ] Commit `feat(insight): merge hook-reported questions with transcript records`.
+
+### Task 16: Initial prompt counts as input for session binding
+
+**Files:** `src-tauri/src/terminal.rs` (spawn path where `last_input_at` is initialised), test inline.
+
+- [ ] Ruling R9: when `create_terminal` receives an `initial_prompt`, set `last_input_at = Some(now)` at spawn so the detector binds the new session file. Test: a terminal created with an initial prompt has `last_input_at` set; one without does not.
+- [ ] Commit `fix(session): count the initial prompt as input for session binding`.
+
+### Task 17: Re-run live QA for the question box
+
+- [ ] Relaunch the QA instance (unset `CLAUDE_CODE_CHILD_SESSION` in the launching shell), ask Claude to use AskUserQuestion, confirm the box appears, click an option, confirm the agent continues with that answer, screenshot. Also start a session with an initial prompt and confirm the layer fills without typing.
