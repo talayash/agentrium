@@ -31,6 +31,7 @@ mod races;
 mod pull_requests;
 mod browser;
 mod insight_parse;
+mod insight;
 
 use tauri::Manager;
 use std::sync::Arc;

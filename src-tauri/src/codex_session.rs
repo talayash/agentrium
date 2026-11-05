@@ -72,6 +72,24 @@ fn walk_rollout_files(root: &Path) -> Vec<PathBuf> {
     out
 }
 
+/// Rollout file whose `session_meta` id equals `session_id`, newest first.
+#[allow(dead_code)] // first caller arrives with the insight poller
+pub(crate) fn find_rollout_by_session_id(session_id: &str) -> Option<PathBuf> {
+    let root = codex_sessions_root()?;
+    let mut files: Vec<(PathBuf, std::time::SystemTime)> = walk_rollout_files(&root)
+        .into_iter()
+        .map(|p| {
+            let m = p.metadata().and_then(|m| m.modified()).unwrap_or(std::time::UNIX_EPOCH);
+            (p, m)
+        })
+        .collect();
+    files.sort_by_key(|(_, m)| std::cmp::Reverse(*m));
+    files
+        .into_iter()
+        .find(|(p, _)| read_session_meta(p).map(|(sid, _)| sid == session_id).unwrap_or(false))
+        .map(|(p, _)| p)
+}
+
 fn read_first_user_preview(path: &Path, max_lines: usize, max_chars: usize) -> Option<String> {
     let f = std::fs::File::open(path).ok()?;
     for line in BufReader::new(f).lines().take(max_lines).flatten() {
@@ -103,6 +121,10 @@ fn read_first_user_preview(path: &Path, max_lines: usize, max_chars: usize) -> O
 pub struct CodexSessionProvider;
 
 impl SessionProvider for CodexSessionProvider {
+    fn supports_transcript(&self) -> bool { true }
+    fn transcript_path(&self, _cwd: &str, session_id: &str) -> Option<PathBuf> {
+        find_rollout_by_session_id(session_id)
+    }
     fn snapshot(&self) -> HashSet<PathBuf> {
         let Some(root) = codex_sessions_root() else { return HashSet::new() };
         walk_rollout_files(&root).into_iter().collect()
@@ -275,4 +297,16 @@ mod tests {
         clear_root();
     }
 
+    #[test]
+    fn find_rollout_by_session_id_matches_meta() {
+        let _g = ENV_LOCK.lock().unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        set_root(&tmp);
+        let day = tmp.path().join("2026").join("08").join("28");
+        write_rollout(&day, "rollout-a.jsonl", "sid-a", r"C:\p", &[]);
+        let b = write_rollout(&day, "rollout-b.jsonl", "sid-b", r"C:\p", &[]);
+        assert_eq!(find_rollout_by_session_id("sid-b"), Some(b));
+        assert_eq!(find_rollout_by_session_id("missing"), None);
+        clear_root();
+    }
 }

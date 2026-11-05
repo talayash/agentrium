@@ -23,6 +23,12 @@ pub trait SessionProvider: Send + Sync {
     fn find_new_for_cwd(&self, snapshot: &HashSet<PathBuf>, cwd: &str, exclude: &HashSet<String>) -> Option<String>;
     /// Every session for `cwd`, newest first, for the picker UI.
     fn list_for_cwd(&self, cwd: &str) -> Vec<AgentSessionInfo>;
+    #[allow(dead_code)] // callers land with the insight poller
+    /// Whether this agent writes a tailable JSONL transcript for the insight layer.
+    fn supports_transcript(&self) -> bool { false }
+    #[allow(dead_code)]
+    /// Path of the transcript file for `session_id`, if the agent has one.
+    fn transcript_path(&self, _cwd: &str, _session_id: &str) -> Option<PathBuf> { None }
 }
 
 pub fn provider_for(agent: &AgentKind) -> Box<dyn SessionProvider> {
