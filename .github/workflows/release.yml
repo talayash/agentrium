@@ -21,12 +21,22 @@ jobs:
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          # Nothing here pushes with git; do not leave the token in .git/config.
+          persist-credentials: false
 
       - name: Get version
         id: get-version
+        # The dispatch input reaches the script only as an environment variable.
+        # Expanding ${{ ... }} inside `run:` pastes it into the script source,
+        # so a crafted "version" ran as shell code before the format check
+        # below (F8, 2026-11-05 assessment).
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_VERSION: ${{ github.event.inputs.version }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            VERSION="${{ github.event.inputs.version }}"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            VERSION="$INPUT_VERSION"
           else
             VERSION="${GITHUB_REF#refs/tags/v}"
           fi
@@ -34,7 +44,7 @@ jobs:
             echo "::error::Invalid version format '$VERSION'. Must be X.Y.Z (e.g., 1.9.0)"
             exit 1
           fi
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Create Release
         id: create-release
@@ -85,12 +95,19 @@ jobs:
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          # Nothing here pushes with git; do not leave the token in .git/config.
+          persist-credentials: false
 
+      # No dependency or build caches in the release workflow: a cache written
+      # by any other branch's run could be restored into the job that signs
+      # and publishes installers (F9, 2026-11-05 assessment). Release builds
+      # take longer; CI keeps its caches.
       - name: Setup Node
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: 22
-          cache: 'npm'
+          package-manager-cache: false
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9 # master
@@ -98,13 +115,11 @@ jobs:
           toolchain: stable
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
-      - name: Rust cache
-        uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
-        with:
-          workspaces: './src-tauri -> target'
-
+      # No package in the lockfile has an install script; refusing them keeps
+      # any future compromised dependency from running in the job that later
+      # receives the signing secrets.
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Configure macOS signing and notarization
         if: runner.os == 'macOS'
@@ -122,18 +137,31 @@ jobs:
       - name: Install Azure Trusted Signing client (Windows)
         if: matrix.platform == 'windows-latest' && env.AZURE_TENANT_ID != ''
         shell: pwsh
+        env:
+          # Pinned and hash-checked: this DLL signs the Windows installers, so
+          # "whatever NuGet serves today" must not reach the signing step (F9).
+          # 1.0.95 is what the unpinned URL resolved to on 2026-11-05; SHA-512
+          # matched NuGet's catalog entry. To upgrade, bump both values.
+          TSC_VERSION: '1.0.95'
+          TSC_SHA256: '3bfcf1e0a3cb42af1692f0a8ed45c15de070c2de86f28a59b2795d904d8a920f'
+          TS_ENDPOINT: ${{ vars.TRUSTED_SIGNING_ENDPOINT }}
+          TS_ACCOUNT: ${{ vars.TRUSTED_SIGNING_ACCOUNT }}
+          TS_PROFILE: ${{ vars.TRUSTED_SIGNING_PROFILE }}
         run: |
           $dlibDir = Join-Path $env:RUNNER_TEMP 'TrustedSigningClient'
           New-Item -ItemType Directory -Force -Path $dlibDir | Out-Null
-          Invoke-WebRequest -Uri 'https://www.nuget.org/api/v2/package/Microsoft.Trusted.Signing.Client' -OutFile (Join-Path $dlibDir 'tsc.zip')
-          Expand-Archive -Path (Join-Path $dlibDir 'tsc.zip') -DestinationPath $dlibDir -Force
+          $zip = Join-Path $dlibDir 'tsc.zip'
+          Invoke-WebRequest -Uri "https://www.nuget.org/api/v2/package/Microsoft.Trusted.Signing.Client/$env:TSC_VERSION" -OutFile $zip
+          $actual = (Get-FileHash -Algorithm SHA256 -Path $zip).Hash.ToLowerInvariant()
+          if ($actual -ne $env:TSC_SHA256) { throw "Trusted Signing client hash mismatch: got $actual, expected $env:TSC_SHA256" }
+          Expand-Archive -Path $zip -DestinationPath $dlibDir -Force
           $dlib = Get-ChildItem -Path $dlibDir -Recurse -Filter 'Azure.CodeSigning.Dlib.dll' | Where-Object { $_.FullName -like '*x64*' } | Select-Object -First 1
           if (-not $dlib) { throw 'Azure.CodeSigning.Dlib.dll (x64) not found' }
           $metadata = Join-Path $env:RUNNER_TEMP 'metadata.json'
           @{
-            Endpoint              = '${{ vars.TRUSTED_SIGNING_ENDPOINT }}'
-            CodeSigningAccountName = '${{ vars.TRUSTED_SIGNING_ACCOUNT }}'
-            CertificateProfileName = '${{ vars.TRUSTED_SIGNING_PROFILE }}'
+            Endpoint              = $env:TS_ENDPOINT
+            CodeSigningAccountName = $env:TS_ACCOUNT
+            CertificateProfileName = $env:TS_PROFILE
           } | ConvertTo-Json | Set-Content -Path $metadata -Encoding UTF8
           "TRUSTED_SIGNING_DLIB=$($dlib.FullName)"     | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding UTF8
           "TRUSTED_SIGNING_METADATA=$metadata"         | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding UTF8
@@ -171,20 +199,27 @@ jobs:
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          # Nothing here pushes with git; do not leave the token in .git/config.
+          persist-credentials: false
 
       - name: Setup Node
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: 22
+          package-manager-cache: false
 
       # Fails, leaving the release a draft, unless every platform's artifact
       # and .sig are on the release.
       - name: Build latest.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RELEASE_ID: ${{ needs.create-release.outputs.release_id }}
+          VERSION: ${{ needs.create-release.outputs.version }}
         run: |
           node --test scripts/build-updater-json.test.mjs
-          node scripts/build-updater-json.mjs "${{ github.repository }}" "${{ needs.create-release.outputs.release_id }}" "${{ needs.create-release.outputs.version }}"
+          node scripts/build-updater-json.mjs "$REPO" "$RELEASE_ID" "$VERSION"
 
   publish-release:
     needs: [create-release, build-tauri, updater-json]
