@@ -61,6 +61,17 @@ pub enum PromptDelivery {
     Staged,
 }
 
+/// A prompt delivered at spawn is the first input the session sees, so the
+/// session-id detector must treat it as recent input (it only binds a session
+/// file when `last_input_at` is within its window). A staged prompt was not
+/// sent, so it does not count.
+fn initial_input_at(delivery: &Option<PromptDelivery>) -> Option<std::time::Instant> {
+    match delivery {
+        Some(PromptDelivery::Argv) | Some(PromptDelivery::File { .. }) => Some(std::time::Instant::now()),
+        _ => None,
+    }
+}
+
 /// Longest prompt passed inline. `cmd /C` command lines cap at 8191 chars
 /// in total, so Windows leaves generous room for the binary and other args.
 const MAX_INLINE_PROMPT_WINDOWS: usize = 2_000;
@@ -673,6 +684,7 @@ impl TerminalManager {
         let child = pty_pair.slave.spawn_command(cmd)
             .map_err(|e| format!("Failed to spawn command: {}", e))?;
 
+        let initial_input = initial_input_at(&prompt_delivery);
         let config = TerminalConfig {
             id: id.clone(),
             label,
@@ -775,7 +787,7 @@ impl TerminalManager {
                 writer,
                 child,
                 reader_handle: Some(reader_handle),
-                last_input_at: None,
+                last_input_at: initial_input,
             },
         );
         if let Some(guard) = hook_guard {
@@ -1992,5 +2004,14 @@ mod tests {
             serde_json::to_value(PromptDelivery::File { path: "p".into() }).unwrap(),
             serde_json::json!({ "mode": "file", "path": "p" })
         );
+    }
+
+    #[test]
+    fn initial_prompt_counts_as_input_for_session_binding() {
+        assert!(initial_input_at(&Some(PromptDelivery::Argv)).is_some());
+        assert!(initial_input_at(&Some(PromptDelivery::File { path: "p".into() })).is_some());
+        // Staged prompts are typed by the user later; no input yet.
+        assert!(initial_input_at(&Some(PromptDelivery::Staged)).is_none());
+        assert!(initial_input_at(&None).is_none());
     }
 }
