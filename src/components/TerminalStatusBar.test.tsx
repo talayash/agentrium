@@ -37,25 +37,9 @@ beforeEach(() => invokeMock.mockClear());
 afterEach(cleanup);
 
 describe('TerminalStatusBar insight toggle', () => {
-  it('insight toggle reflects and flips the flag', async () => {
+  it('no longer shows the insight toggle (it lives in the session header)', () => {
     seed(makeConfig('a', { insight_layer: false }));
     render(<TerminalStatusBar terminalId="a" />);
-    const btn = screen.getByRole('button', { name: 'Insight layer' });
-    expect(btn.getAttribute('aria-pressed')).toBe('false');
-    await act(async () => { fireEvent.click(btn); });
-    expect(invokeMock).toHaveBeenCalledWith('set_terminal_insight_layer', { id: 'a', enabled: true });
-    expect(screen.getByRole('button', { name: 'Insight layer' }).getAttribute('aria-pressed')).toBe('true');
-  });
-
-  it('insight toggle is hidden for shell terminals', () => {
-    seed(makeConfig('s', { agent: 'claude' }), { isShellTerminal: true });
-    render(<TerminalStatusBar terminalId="s" />);
-    expect(screen.queryByRole('button', { name: 'Insight layer' })).toBeNull();
-  });
-
-  it('insight toggle is hidden for script children', () => {
-    seed(makeConfig('c'), { scriptParentId: 'p' });
-    render(<TerminalStatusBar terminalId="c" />);
     expect(screen.queryByRole('button', { name: 'Insight layer' })).toBeNull();
   });
 });
