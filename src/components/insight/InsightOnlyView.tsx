@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
 import { useInsightModel } from '../../hooks/useInsightFeed';
 import { useTerminalDrawer } from '../../hooks/useTerminalDrawer';
+import { useInsightStore } from '../../store/insightStore';
 import { useTerminalStore } from '../../store/terminalStore';
 import { InsightLayer } from './InsightLayer';
 import { InsightStatusLine, useSessionEnded } from './InsightStatusLine';
@@ -34,6 +35,13 @@ export function InsightOnlyView({ terminalId }: { terminalId: string }) {
     if (useTerminalStore.getState().activeTerminalId !== terminalId) return;
     barRef.current?.focus();
   }, [terminalId]);
+
+  // Publish the drawer state so focusTerminalInput and the file drop can route
+  // input outside this tree. Cleared on unmount (leaving Insight mode).
+  useEffect(() => {
+    useInsightStore.getState().setDrawerOpen(terminalId, drawer.open);
+  }, [terminalId, drawer.open]);
+  useEffect(() => () => useInsightStore.getState().setDrawerOpen(terminalId, false), [terminalId]);
 
   // Entering Insight mode, selecting this session, and opening or closing the
   // drawer move focus, but only while this is the active terminal so another

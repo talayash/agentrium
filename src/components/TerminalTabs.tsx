@@ -1,6 +1,7 @@
 import { useMemo, useCallback, useEffect } from 'react';
 import { X, XCircle, SplitSquareHorizontal, RotateCw, GitBranch, File as FileIcon, Flag } from 'lucide-react';
 import { useTerminalStore } from '../store/terminalStore';
+import { focusTerminalInput } from '../lib/terminalFocus';
 import { useAppStore } from '../store/appStore';
 import { toast } from '../store/toastStore';
 import { reportInvokeFailure } from '../lib/errorReporter';
@@ -106,7 +107,8 @@ export function TerminalTabs() {
     if (!activeTerminalId || activeFilePath) return;
     const id = activeTerminalId;
     const raf = requestAnimationFrame(() => {
-      useTerminalStore.getState().terminals.get(id)?.xterm?.focus();
+      // Insight mode routes to the prompt bar, never the hidden PTY.
+      focusTerminalInput(id);
     });
     return () => cancelAnimationFrame(raf);
   }, [activeTerminalId, activeFilePath]);

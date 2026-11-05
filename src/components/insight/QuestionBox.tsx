@@ -6,6 +6,7 @@ import { reportInvokeFailure } from '../../lib/errorReporter';
 import { readBufferTail } from '../../hooks/useSessionStateDetection';
 import { useInsightStore } from '../../store/insightStore';
 import { useTerminalStore } from '../../store/terminalStore';
+import { focusTerminalInput, inputGoesToPromptBar } from '../../lib/terminalFocus';
 import { toast } from '../../store/toastStore';
 import { BarChart } from './charts';
 import { MiniMarkdown } from './MiniMarkdown';
@@ -92,7 +93,9 @@ function QuestionBoxInner({ terminalId, pending }: { terminalId: string; pending
         return { selected: d.selected, other };
       });
       await ts.sendKeySequence(terminalId, buildAnswerKeys(pending.questions, answers));
-      useTerminalStore.getState().terminals.get(terminalId)?.xterm?.focus();
+      // Insight mode: the bar is disabled until the question clears, so the
+      // request is deferred by the bar itself. Other modes: the xterm.
+      focusTerminalInput(terminalId);
     } catch (err) {
       toast.error('Could not send your answer', String(err));
       reportInvokeFailure('write_to_terminal', err);
@@ -104,7 +107,10 @@ function QuestionBoxInner({ terminalId, pending }: { terminalId: string; pending
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key === 'Escape') {
       e.preventDefault();
-      useTerminalStore.getState().terminals.get(terminalId)?.xterm?.focus();
+      // Insight mode: the terminal is hidden and the bar is disabled while the
+      // question is pending, so keep focus in the box.
+      if (inputGoesToPromptBar(terminalId)) e.stopPropagation();
+      else useTerminalStore.getState().terminals.get(terminalId)?.xterm?.focus();
     } else if (e.key === 'Enter' && !(e.target instanceof HTMLButtonElement)) {
       e.preventDefault();
       void submit();

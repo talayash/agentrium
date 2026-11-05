@@ -1,6 +1,8 @@
-import { forwardRef, useImperativeHandle, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Send, Square, TerminalSquare } from 'lucide-react';
 import { interruptAgent, sendPrompt } from '../../lib/promptSend';
+import { registerPromptBar } from '../../lib/terminalFocus';
+import { useTerminalStore } from '../../store/terminalStore';
 import { reportInvokeFailure } from '../../lib/errorReporter';
 import { useInsightStore } from '../../store/insightStore';
 import { toast } from '../../store/toastStore';
@@ -26,12 +28,42 @@ export const PromptBar = forwardRef<PromptBarHandle, Props>(function PromptBar(
 ) {
   const [text, setText] = useState('');
   const ref = useRef<HTMLTextAreaElement>(null);
-  useImperativeHandle(handle, () => ({ focus: () => ref.current?.focus() }), []);
+  // A focus request while disabled (e.g. right after answering a question,
+  // before the question clears) is honoured once the bar is enabled again.
+  const wantFocus = useRef(false);
+  const focusBar = () => {
+    if (ref.current && !ref.current.disabled) {
+      wantFocus.current = false;
+      ref.current.focus();
+    } else {
+      wantFocus.current = true;
+    }
+  };
+  useImperativeHandle(handle, () => ({ focus: focusBar }), []);
   const sending = useRef(false);
   // null = not walking history; otherwise index into the history list.
   const histIdx = useRef<number | null>(null);
   const draft = useRef('');
   const disabled = disabledReason !== null;
+
+  useEffect(() => registerPromptBar(terminalId, {
+    focus: focusBar,
+    insertText: (insert) => {
+      setText((cur) => (cur === '' || /\s$/.test(cur) ? cur + insert : `${cur} ${insert}`));
+      histIdx.current = null;
+      focusBar();
+    },
+  }), [terminalId]);
+
+  useEffect(() => {
+    if (disabled || !wantFocus.current) return;
+    wantFocus.current = false;
+    // Only take focus back if nothing else claimed it meanwhile and this is
+    // still the active terminal.
+    const active = document.activeElement;
+    const idle = !active || active === document.body;
+    if (idle && useTerminalStore.getState().activeTerminalId === terminalId) ref.current?.focus();
+  }, [disabled, terminalId]);
 
   useLayoutEffect(() => {
     const el = ref.current;

@@ -4,9 +4,14 @@ import { act, cleanup, fireEvent, render } from '@testing-library/react';
 const invoke = vi.fn();
 vi.mock('@tauri-apps/api/core', () => ({ invoke: (...a: unknown[]) => invoke(...a) }));
 vi.mock('@tauri-apps/api/event', () => ({ listen: () => Promise.resolve(() => {}) }));
+type DropHandler = (e: { payload: { type: string; position: { x: number; y: number }; paths?: string[] } }) => void;
+let dropHandler: DropHandler | null = null;
 vi.mock('@tauri-apps/api/webview', () => ({
-  getCurrentWebview: () => ({ onDragDropEvent: () => Promise.resolve(() => {}) }),
+  getCurrentWebview: () => ({
+    onDragDropEvent: (h: DropHandler) => { dropHandler = h; return Promise.resolve(() => {}); },
+  }),
 }));
+const xtermFocus = vi.fn();
 vi.mock('@xterm/xterm/css/xterm.css', () => ({}));
 vi.mock('@xterm/xterm', () => ({
   Terminal: class {
@@ -27,7 +32,7 @@ vi.mock('@xterm/xterm', () => ({
     element = document.createElement('div');
     textarea = document.createElement('textarea');
     write() {}
-    focus() {}
+    focus() { xtermFocus(); }
     dispose() {}
     hasSelection() { return false; }
     getSelection() { return ''; }
@@ -57,15 +62,18 @@ vi.mock('../../hooks/useInsightFeed', () => ({
 
 import { TerminalView } from '../TerminalView';
 import { useTerminalStore } from '../../store/terminalStore';
+import { useInsightStore } from '../../store/insightStore';
+import { focusTerminalInput } from '../../lib/terminalFocus';
 
 const ID = 't1';
 
-function mountWith(extra: Record<string, unknown>, insight: boolean | 'insight') {
+function mountWith(extra: Record<string, unknown>, insight: boolean | 'insight', active: string = ID) {
   const mode = insight === 'insight' ? 'insight' : insight ? 'mixed' : 'cli';
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
   vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }));
   useTerminalStore.setState({
-    activeTerminalId: ID,
+    activeTerminalId: active,
+    sendKeySequence: vi.fn().mockResolvedValue(undefined),
     terminalStates: new Map([[ID, 'idle' as never]]),
     terminals: new Map([[ID, { config: { working_directory: 'C:\\p', view_mode: mode, agent: 'claude', status: 'Running' }, ...extra } as never]]),
   });
@@ -76,7 +84,10 @@ afterEach(() => {
   cleanup();
   invoke.mockReset();
   fit.mockReset();
+  xtermFocus.mockReset();
+  dropHandler = null;
   useInsightFeed.mockReset();
+  useInsightStore.setState({ byId: new Map() });
   vi.unstubAllGlobals();
 });
 
@@ -155,7 +166,7 @@ describe('TerminalView insight mounting', () => {
     expect(ins.getByTestId('xterm-container').parentElement!.className).toBe(cliPane);
   });
 
-  it('drawer open and close never call fit or resize', async () => {
+  it('drawer open and close keep the same xterm container node', async () => {
     const { getByTestId, getByLabelText, queryByTestId } = mountWith({}, 'insight');
     await act(async () => {});
     const container = getByTestId('xterm-container');
@@ -165,8 +176,90 @@ describe('TerminalView insight mounting', () => {
     expect(queryByTestId('terminal-drawer-header')).not.toBeNull();
     await act(async () => { fireEvent.click(getByLabelText('Close terminal')); });
     expect(queryByTestId('terminal-drawer-header')).toBeNull();
+    // ResizeObserver is stubbed here, so this pins the structural guarantee:
+    // the drawer never remounts or re-parents the xterm container (no refit).
     expect(getByTestId('xterm-container')).toBe(container);
     expect(fit).not.toHaveBeenCalled();
     expect(invoke).not.toHaveBeenCalledWith('resize_terminal', expect.anything());
+  });
+
+  it('insight mode mount focuses the prompt bar, never the hidden xterm', async () => {
+    const { getByPlaceholderText } = mountWith({}, 'insight');
+    await act(async () => {});
+    expect(document.activeElement).toBe(getByPlaceholderText('Message the agent'));
+    expect(xtermFocus).not.toHaveBeenCalled();
+  });
+
+  it('selecting an Insight-mode session ends with focus in the prompt bar, not xterm', async () => {
+    const { getByPlaceholderText } = mountWith({}, 'insight', 'other');
+    await act(async () => {});
+    expect(xtermFocus).not.toHaveBeenCalled();
+    // What TerminalTabs / TerminalGrid / NewTerminalModal / CloseSessionConfirm do on select.
+    await act(async () => {
+      useTerminalStore.setState({ activeTerminalId: ID });
+      focusTerminalInput(ID);
+    });
+    expect(document.activeElement).toBe(getByPlaceholderText('Message the agent'));
+    expect(xtermFocus).not.toHaveBeenCalled();
+  });
+
+  it('selecting a CLI session focuses xterm', async () => {
+    mountWith({}, false, 'other');
+    await act(async () => {});
+    xtermFocus.mockReset();
+    await act(async () => {
+      useTerminalStore.setState({ activeTerminalId: ID });
+      focusTerminalInput(ID);
+    });
+    expect(xtermFocus).toHaveBeenCalledTimes(1);
+  });
+
+  it('with the drawer open, selecting focuses xterm', async () => {
+    const { getByLabelText } = mountWith({}, 'insight');
+    await act(async () => {});
+    await act(async () => { fireEvent.click(getByLabelText('Show terminal')); });
+    xtermFocus.mockReset();
+    focusTerminalInput(ID);
+    expect(xtermFocus).toHaveBeenCalledTimes(1);
+  });
+
+  const drop = async (paths: string[]) => {
+    await act(async () => {});
+    expect(dropHandler).not.toBeNull();
+    await act(async () => { dropHandler!({ payload: { type: 'drop', position: { x: 0, y: 0 }, paths } }); });
+  };
+
+  it('file drop in insight mode goes into the prompt bar draft, not the PTY', async () => {
+    const { getByPlaceholderText } = mountWith({}, 'insight');
+    const bar = getByPlaceholderText('Message the agent') as HTMLTextAreaElement;
+    fireEvent.change(bar, { target: { value: 'look at' } });
+    xtermFocus.mockReset();
+    invoke.mockReset();
+    act(() => { bar.blur(); });
+    await drop(['C:\\my dir\\a.txt']);
+    expect(bar.value).toBe('look at "C:\\my dir\\a.txt"');
+    expect(document.activeElement).toBe(bar);
+    expect(invoke).not.toHaveBeenCalledWith('write_to_terminal', expect.anything());
+    expect(xtermFocus).not.toHaveBeenCalled();
+  });
+
+  it('file drop with the drawer open still writes to the PTY', async () => {
+    const { getByLabelText, getByPlaceholderText } = mountWith({}, 'insight');
+    await act(async () => {});
+    await act(async () => { fireEvent.click(getByLabelText('Show terminal')); });
+    invoke.mockReset();
+    await drop(['C:\\a.txt']);
+    expect(invoke).toHaveBeenCalledWith('write_to_terminal', expect.anything());
+    expect((getByPlaceholderText('Message the agent') as HTMLTextAreaElement).value).toBe('');
+  });
+
+  it('file drop in cli mode writes to the PTY and focuses xterm', async () => {
+    mountWith({}, false);
+    await act(async () => {});
+    invoke.mockReset();
+    xtermFocus.mockReset();
+    await drop(['C:\\a.txt']);
+    expect(invoke).toHaveBeenCalledWith('write_to_terminal', expect.anything());
+    expect(xtermFocus).toHaveBeenCalled();
   });
 });

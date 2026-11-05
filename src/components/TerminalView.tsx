@@ -12,6 +12,7 @@ import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
 import { toast } from '../store/toastStore';
 import { effectiveViewMode } from '../lib/viewMode';
+import { focusTerminalInput, inputGoesToPromptBar, promptBarFor } from '../lib/terminalFocus';
 import { resolveTerminalTheme } from '../lib/terminalThemes';
 import { copyText, readClipboardText } from '../lib/clipboard';
 import { reportInvokeFailure } from '../lib/errorReporter';
@@ -246,8 +247,11 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
       );
     }
 
-    // Auto-focus so keyboard input works immediately without requiring a click
-    terminal.focus();
+    // Auto-focus so keyboard input works immediately without requiring a click.
+    // Insight mode routes to the prompt bar instead (the store xterm is not set
+    // yet here, so only the non-insight path focuses this terminal directly).
+    if (inputGoesToPromptBar(terminalId)) focusTerminalInput(terminalId);
+    else terminal.focus();
 
     // Re-focus xterm if its textarea loses focus to nothing (body) or to its
     // OWN canvas - that combo happens in WebView2 after PTY output triggers
@@ -615,6 +619,12 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
           if (!inside) return;
           const paths = payload.paths ?? [];
           if (paths.length === 0) return;
+          // Insight mode with the drawer closed: the PTY is hidden, so the
+          // path goes into the prompt bar draft instead.
+          if (inputGoesToPromptBar(terminalId)) {
+            promptBarFor(terminalId)?.insertText(paths.map(formatDroppedPath).join(' '));
+            return;
+          }
           const text = paths.map(formatDroppedPath).join(' ') + ' ';
           useTerminalStore.getState().writeToTerminal(terminalId, text).catch((err) => {
             console.error(`Failed to write dropped paths to terminal ${terminalId}:`, err); reportInvokeFailure('write_to_terminal', err);

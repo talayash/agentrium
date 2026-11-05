@@ -11,6 +11,8 @@ export interface InsightTerminalState {
   collapsed: boolean | null;
   expandedTurn: number | null;
   prompts?: string[];
+  /** Insight mode: the terminal drawer is open (input goes to the PTY). */
+  drawerOpen?: boolean;
 }
 
 const empty = (): InsightTerminalState =>
@@ -25,6 +27,7 @@ interface InsightStore {
   setExpandedTurn: (id: string, idx: number | null) => void;
   pushPromptHistory: (id: string, text: string) => void;
   promptHistory: (id: string) => string[];
+  setDrawerOpen: (id: string, open: boolean) => void;
   clear: (id: string) => void;
 }
 
@@ -52,6 +55,11 @@ export const useInsightStore = create<InsightStore>((set, get) => {
       return { prompts: [...(cur.prompts ?? []), text].slice(-MAX_PROMPT_HISTORY) };
     }),
     promptHistory: (id) => get().byId.get(id)?.prompts ?? [],
+    setDrawerOpen: (id, open) => {
+      // Closing never creates an entry, so it cannot resurrect a cleared terminal.
+      if ((get().byId.get(id)?.drawerOpen ?? false) === open) return;
+      patch(id, () => ({ drawerOpen: open }));
+    },
     clear: (id) => set(s => {
       if (!s.byId.has(id)) return {};
       const byId = new Map(s.byId);

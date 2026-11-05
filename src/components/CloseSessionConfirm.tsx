@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { AlertTriangle } from 'lucide-react';
 import { useAppStore } from '../store/appStore';
 import { useTerminalStore } from '../store/terminalStore';
+import { focusTerminalInput } from '../lib/terminalFocus';
 import { toast } from '../store/toastStore';
 import { reportInvokeFailure } from '../lib/errorReporter';
 import { requestCloseTerminal } from '../lib/tasks';
@@ -68,7 +69,7 @@ function ConfirmPopover({ terminalId, anchor }: { terminalId: string; anchor: Cl
   const cancel = () => {
     dismiss();
     const activeId = useTerminalStore.getState().activeTerminalId;
-    if (activeId) useTerminalStore.getState().terminals.get(activeId)?.xterm?.focus();
+    if (activeId) focusTerminalInput(activeId);
   };
 
   const confirm = () => {

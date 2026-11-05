@@ -8,6 +8,7 @@ vi.mock('../../lib/errorReporter', () => ({ reportInvokeFailure: (...a: unknown[
 
 import { createRef } from 'react';
 import { PromptBar, type PromptBarHandle } from './PromptBar';
+import { promptBarFor } from '../../lib/terminalFocus';
 import { useTerminalStore } from '../../store/terminalStore';
 import { useInsightStore } from '../../store/insightStore';
 
@@ -117,5 +118,25 @@ describe('PromptBar', () => {
     expect(document.activeElement).not.toBe(box());
     act(() => { ref.current?.focus(); });
     expect(document.activeElement).toBe(box());
+  });
+
+  it('a focus request while disabled is honoured once the bar is enabled', () => {
+    useTerminalStore.setState({ activeTerminalId: ID });
+    const ref = createRef<PromptBarHandle>();
+    const { rerender } = render(<PromptBar ref={ref} terminalId={ID} disabledReason="Answer the question above" busy={false} onShowTerminal={onShowTerminal} />);
+    act(() => { ref.current?.focus(); });
+    expect(document.activeElement).not.toBe(box());
+    rerender(<PromptBar ref={ref} terminalId={ID} disabledReason={null} busy={false} onShowTerminal={onShowTerminal} />);
+    expect(document.activeElement).toBe(box());
+  });
+
+  it('registers itself so a dropped path is appended to the draft', () => {
+    setup();
+    type('see');
+    act(() => { promptBarFor(ID)?.insertText('"C:/a b.txt"'); });
+    expect(box().value).toBe('see "C:/a b.txt"');
+    expect(document.activeElement).toBe(box());
+    cleanup();
+    expect(promptBarFor(ID)).toBeUndefined();
   });
 });

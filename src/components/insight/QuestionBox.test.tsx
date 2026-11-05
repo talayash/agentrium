@@ -11,6 +11,7 @@ import { QuestionBox } from './QuestionBox';
 import { useTerminalStore } from '../../store/terminalStore';
 import { useInsightStore } from '../../store/insightStore';
 import { buildAnswerKeys } from '../../lib/questionKeys';
+import { registerPromptBar } from '../../lib/terminalFocus';
 import type { AskQuestion, InsightRecord, PendingQuestion } from '../../lib/insightModel';
 
 const ID = 't1';
@@ -216,5 +217,42 @@ describe('QuestionBox', () => {
     fireEvent.click(screen.getAllByRole('radio')[0]!);
     await act(async () => { fireEvent.click(answerBtn()); });
     expect(focus).toHaveBeenCalled();
+  });
+
+  describe('in Insight mode', () => {
+    const insightTerminal = () => {
+      useTerminalStore.setState({
+        terminals: new Map([[ID, {
+          xterm: fakeXterm(['Database', 'Which database?', '1. Postgres']),
+          config: { view_mode: 'insight', agent: 'claude' },
+        } as never]]),
+      });
+    };
+
+    it('Esc keeps focus in the box and does not reach the layer', () => {
+      const outer = vi.fn();
+      useTerminalStore.setState({ terminalStates: new Map([[ID, 'waiting' as never]]), sendKeySequence });
+      insightTerminal();
+      useInsightStore.setState({ byId: new Map([[ID, { records: [useRec()] } as never]]) });
+      render(<div onKeyDown={outer}><QuestionBox terminalId={ID} pending={pending([q1])} /></div>);
+      const radio = screen.getAllByRole('radio')[0]!;
+      radio.focus();
+      fireEvent.keyDown(radio, { key: 'Escape' });
+      expect(focus).not.toHaveBeenCalled();
+      expect(outer).not.toHaveBeenCalled();
+      expect(document.activeElement).toBe(radio);
+    });
+
+    it('a successful answer focuses the prompt bar, not the terminal', async () => {
+      setup(pending([q1]));
+      insightTerminal();
+      const barFocus = vi.fn();
+      const unregister = registerPromptBar(ID, { focus: barFocus, insertText: vi.fn() });
+      fireEvent.click(screen.getAllByRole('radio')[0]!);
+      await act(async () => { fireEvent.click(answerBtn()); });
+      unregister();
+      expect(barFocus).toHaveBeenCalled();
+      expect(focus).not.toHaveBeenCalled();
+    });
   });
 });
