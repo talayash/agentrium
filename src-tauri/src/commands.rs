@@ -6451,9 +6451,15 @@ mod git_hardening_tests {
 
     #[test]
     fn hardening_flags_go_where_git_accepts_them() {
-        let args: Vec<String> = git_command(&["show", "HEAD:a.txt"]).get_args().map(|a| a.to_string_lossy().into_owned()).collect();
-        let joined = args.join(" ");
-        assert!(joined.contains("-c core.fsmonitor=false"), "{joined}");
-        assert!(joined.contains("show --no-ext-diff --no-textconv HEAD:a.txt"), "{joined}");
+        // Asserted on the argv before platform wrapping: on Unix git_command
+        // shell-quotes every arg inside `$SHELL -lic`, on Windows it does not.
+        assert_eq!(
+            super::hardened_git_args(&["show", "HEAD:a.txt"]),
+            ["-c", "core.fsmonitor=false", "show", "--no-ext-diff", "--no-textconv", "HEAD:a.txt"],
+        );
+        assert_eq!(
+            super::hardened_git_args(&["status", "--porcelain"]),
+            ["-c", "core.fsmonitor=false", "status", "--porcelain"],
+        );
     }
 }
