@@ -16,8 +16,8 @@
 // multi-line payload. Single control bytes (\x03, \x16, \x1f) must NOT go
 // through here; they are keypresses, not pastes.
 
-const PASTE_START = '\x1b[200~';
-const PASTE_END = '\x1b[201~';
+export const PASTE_START = '\x1b[200~';
+export const PASTE_END = '\x1b[201~';
 
 /**
  * Normalize line endings to LF, neutralize any embedded paste markers, and wrap
