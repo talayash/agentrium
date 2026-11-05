@@ -104,11 +104,17 @@ pub(crate) fn next_tail(
 
 type PathKey = (String, String, AgentKind);
 
+/// How long an unresolved (None) lookup is trusted before re-resolving for the
+/// same key. Codex resolution walks every rollout file.
+const NONE_BACKOFF: std::time::Duration = std::time::Duration::from_secs(10);
+
 /// Caches the resolved transcript path per (session id, cwd, agent). Codex
-/// resolution walks every rollout file, so it must not run on every tick.
+/// resolution walks every rollout file, so it must not run on every tick: a
+/// found path is reused while it exists, an unresolved result is reused for
+/// `NONE_BACKOFF`, and a key change always re-resolves immediately.
 #[derive(Default)]
 pub(crate) struct PathCache {
-    entry: Option<(PathKey, Option<PathBuf>)>,
+    entry: Option<(PathKey, Option<PathBuf>, std::time::Instant)>,
 }
 
 impl PathCache {
@@ -117,13 +123,27 @@ impl PathCache {
         key: PathKey,
         resolver: impl FnOnce() -> Option<PathBuf>,
     ) -> Option<PathBuf> {
-        if let Some((k, Some(p))) = &self.entry {
-            if *k == key && p.exists() {
-                return Some(p.clone());
+        self.resolve_at(key, std::time::Instant::now(), resolver)
+    }
+
+    /// Same as `resolve` with an injectable clock, for tests.
+    pub(crate) fn resolve_at(
+        &mut self,
+        key: PathKey,
+        now: std::time::Instant,
+        resolver: impl FnOnce() -> Option<PathBuf>,
+    ) -> Option<PathBuf> {
+        if let Some((k, cached, at)) = &self.entry {
+            if *k == key {
+                match cached {
+                    Some(p) if p.exists() => return Some(p.clone()),
+                    None if now.saturating_duration_since(*at) < NONE_BACKOFF => return None,
+                    _ => {}
+                }
             }
         }
         let resolved = resolver();
-        self.entry = Some((key, resolved.clone()));
+        self.entry = Some((key, resolved.clone(), now));
         resolved
     }
 }
@@ -245,9 +265,13 @@ pub fn start(app: AppHandle, manager: Arc<tokio::sync::Mutex<TerminalManager>>, 
             if flag.load(Ordering::SeqCst) {
                 return;
             }
+            if records.is_empty() && !reset {
+                // Lines that parsed to nothing: no point waking the UI.
+                continue;
+            }
             let mut chunks: Vec<Vec<InsightRecord>> = records.chunks(MAX_BATCH).map(|c| c.to_vec()).collect();
             if chunks.is_empty() {
-                chunks.push(Vec::new());
+                chunks.push(Vec::new()); // a reset with no records still clears the UI
             }
             for (i, records) in chunks.into_iter().enumerate() {
                 let batch = InsightBatch { id: id.clone(), records, reset: reset && i == 0 };
@@ -410,6 +434,24 @@ b
         assert_eq!(calls, 2);
         std::fs::remove_file(&p).unwrap();
         cache.resolve(key2, || { calls += 1; None });
+        assert_eq!(calls, 3);
+    }
+    #[test]
+    fn path_cache_backs_off_on_none() {
+        use std::time::{Duration, Instant};
+        let mut cache = PathCache::default();
+        let key = ("s1".to_string(), "cwd".to_string(), crate::config::AgentKind::Claude);
+        let t0 = Instant::now();
+        let mut calls = 0;
+        assert_eq!(cache.resolve_at(key.clone(), t0, || { calls += 1; None }), None);
+        assert_eq!(cache.resolve_at(key.clone(), t0 + Duration::from_secs(5), || { calls += 1; None }), None);
+        assert_eq!(calls, 1, "None must not be re-resolved within the backoff");
+        // A different key re-resolves immediately.
+        let key2 = ("s2".to_string(), "cwd".to_string(), crate::config::AgentKind::Claude);
+        cache.resolve_at(key2.clone(), t0 + Duration::from_secs(6), || { calls += 1; None });
+        assert_eq!(calls, 2);
+        // After the backoff the same key re-resolves.
+        cache.resolve_at(key2, t0 + Duration::from_secs(6) + NONE_BACKOFF, || { calls += 1; None });
         assert_eq!(calls, 3);
     }
 }
