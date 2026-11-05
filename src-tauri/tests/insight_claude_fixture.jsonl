@@ -1,0 +1,10 @@
+{"type":"mode","mode":"normal"}
+{"type":"user","timestamp":"2026-11-05T10:00:00Z","message":{"role":"user","content":"fix the sync test"}}
+{"type":"user","timestamp":"2026-11-05T10:00:01Z","message":{"role":"user","content":"<command-name>/clear</command-name>"}}
+{"type":"assistant","timestamp":"2026-11-05T10:00:02Z","message":{"id":"msg_1","role":"assistant","content":[{"type":"thinking","thinking":"hmm"},{"type":"text","text":"Looking at it."}],"usage":{"input_tokens":10,"cache_creation_input_tokens":5,"cache_read_input_tokens":100,"output_tokens":7}}}
+{"type":"assistant","timestamp":"2026-11-05T10:00:03Z","message":{"id":"msg_2","role":"assistant","content":[{"type":"tool_use","id":"toolu_e","name":"Edit","input":{"file_path":"src/a.rs","old_string":"old","new_string":"new"}}]}}
+{"type":"user","timestamp":"2026-11-05T10:00:04Z","toolUseResult":{"structuredPatch":[{"lines":[" x","-old","+new","+new2"]}]},"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_e","content":"File edited"}]}}
+{"type":"assistant","timestamp":"2026-11-05T10:00:05Z","message":{"id":"msg_3","role":"assistant","content":[{"type":"tool_use","id":"toolu_b","name":"Bash","input":{"command":"cargo test"}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_b","is_error":true,"content":"test result: FAILED. 38 passed; 2 failed"}]}}
+{"type":"assistant","timestamp":"2026-11-05T10:00:06Z","message":{"id":"msg_4","role":"assistant","content":[{"type":"tool_use","id":"toolu_q","name":"AskUserQuestion","input":{"questions":[{"question":"Which sync strategy?","header":"Sync strategy","multiSelect":false,"options":[{"label":"Push","description":"push only"},{"label":"Pull","description":"pull only"},{"label":"Both","description":"two way"}]}]}}]}}
+{"type":"assistant",
