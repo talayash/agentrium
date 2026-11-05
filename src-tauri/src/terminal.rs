@@ -457,6 +457,10 @@ impl TerminalManager {
         // continuing it. The fork's own id is captured later, so the
         // source id is not persisted on the new config.
         fork: bool,
+        // Port of the embedded receiver that answers the Claude Code
+        // PreToolUse hook (pending AskUserQuestion), or None when it failed
+        // to start. Claude terminals only.
+        question_hook_port: Option<u16>,
     ) -> Result<TerminalConfig, String> {
         // Validate claude_args: reject any argument containing shell
         // metacharacters. Narrow exception: bracketed known-model aliases
@@ -543,6 +547,24 @@ impl TerminalManager {
         // the binary name and echoes the args back so we can hand them to
         // CommandBuilder platform-appropriately.
         let (agent_binary, mut spawn_args) = build_agent_command(&spec, &claude_args);
+        // Pending-question hook: `--settings <private file>` for every Claude
+        // terminal (new, resume, fork, continue), appended after validation
+        // like the prompt (the path is checked by `question_hook::prepare`).
+        // Skipped when the user passes their own `--settings`, which a second
+        // flag would replace. The guard revokes the token and deletes the
+        // file if this spawn fails before the terminal is registered.
+        let hook_guard = match question_hook_port {
+            Some(port)
+                if spec.kind == crate::config::AgentKind::Claude
+                    && !crate::question_hook::user_sets_settings(&claude_args) =>
+            {
+                crate::question_hook::prepare(&id, port).map(|(args, guard)| {
+                    spawn_args.extend(args);
+                    guard
+                })
+            }
+            _ => None,
+        };
         // Appended after validation on purpose: the prompt is free text, and
         // `render_initial_prompt` only inlines it where it is passed through
         // byte for byte (single-quoted on Unix, cmd-safe on Windows).
@@ -756,6 +778,9 @@ impl TerminalManager {
                 last_input_at: None,
             },
         );
+        if let Some(guard) = hook_guard {
+            guard.disarm(); // registered: close / exit revokes from here on
+        }
 
         Ok(config)
     }
@@ -1481,6 +1506,7 @@ mod tests {
                 None,
                 None,
                 false,
+                None,
             )
             .unwrap_err();
         assert!(crate::error_reporter::is_user_error(&err));

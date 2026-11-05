@@ -586,6 +586,9 @@ pub async fn create_terminal(
                 otel_endpoint,
                 request.initial_prompt,
                 fork,
+                // The hook route lives on the same receiver, independent of
+                // the cost-tracking toggle.
+                (state.otel_port != 0).then_some(state.otel_port),
             )?
         };
         if insight_layer {
@@ -784,6 +787,8 @@ pub async fn create_terminal(
             if let Ok(mut agg) = otel_agg.lock() {
                 agg.forget(&terminal_id);
             }
+            // The Claude process is gone: its hook token and settings file too.
+            crate::question_hook::revoke(&terminal_id);
             {
                 let tid_c = terminal_id.clone();
                 let now = chrono::Utc::now().to_rfc3339();
@@ -860,6 +865,7 @@ pub async fn close_terminal(state: State<'_, AppState>, id: String) -> Result<()
         let mut terminals = state.terminals.lock().await;
         terminals.close(&id)?;
         crate::insight::stop(&id);
+        crate::question_hook::revoke(&id);
         // Drop accumulated telemetry so a reused id can't inherit stale totals.
         if let Ok(mut agg) = state.otel_agg.lock() {
             agg.forget(&id);

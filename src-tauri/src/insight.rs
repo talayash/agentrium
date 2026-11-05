@@ -177,6 +177,20 @@ pub fn stop(id: &str) {
     }
 }
 
+/// True while a tailer is registered for `id` (the insight layer is on).
+pub fn is_running(id: &str) -> bool {
+    tailers().lock().map(|map| map.contains_key(id)).unwrap_or(false)
+}
+
+/// Emit records for `id` from outside the tailer (the PreToolUse hook), in
+/// the same `insight-records` shape, never as a reset.
+pub fn emit_records(app: &AppHandle, id: &str, records: Vec<InsightRecord>) {
+    let batch = InsightBatch { id: id.to_string(), records, reset: false };
+    if let Err(e) = app.emit("insight-records", batch) {
+        crate::error_reporter::report_bg("emit_insight_records", format!("Failed to emit insight-records: {}", e));
+    }
+}
+
 /// Start (or restart) the tailer for `id`. The caller has already checked
 /// that the agent supports transcripts.
 pub fn start(app: AppHandle, manager: Arc<tokio::sync::Mutex<TerminalManager>>, id: String) {
@@ -290,6 +304,16 @@ mod tests {
     use std::io::Write;
 
     fn lines(p: &TailPoll) -> Vec<&str> { p.lines.iter().map(|s| s.as_str()).collect() }
+
+    #[test]
+    fn is_running_follows_the_tailer_registry() {
+        let id = "is-running-test";
+        assert!(!is_running(id));
+        tailers().lock().unwrap().insert(id.to_string(), Arc::new(AtomicBool::new(false)));
+        assert!(is_running(id));
+        stop(id);
+        assert!(!is_running(id));
+    }
 
     #[test]
     fn reads_complete_lines_and_advances() {
