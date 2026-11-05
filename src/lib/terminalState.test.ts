@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { classifySettled, hasReadyPrompt, hasTurnFinishedMarker } from './terminalState';
+import { classifySettled, hasOptionMenu, hasReadyPrompt, hasTurnFinishedMarker } from './terminalState';
+import { ASK_USER_QUESTION_SCREEN } from './__fixtures__/askUserQuestionScreen';
 
 describe('completed turn signals', () => {
   it('recognizes Claude and Codex input prompts but rejects running output', () => {
@@ -110,5 +111,25 @@ describe('classifySettled', () => {
     expect(classifySettled(['Trust this folder?', '› 1. Trust and continue', '  2. Quit'])).toBe('waiting');
     // A finished Codex answer with a numbered list and the idle input box.
     expect(classifySettled(['1. Fixed slug.js', '2. Ran npm test', '› Ask Codex to do anything', '? for shortcuts'])).toBe('idle');
+  });
+});
+
+describe('hasOptionMenu', () => {
+  it('hasOptionMenu detects a numbered menu with a cursor', () => {
+    expect(hasOptionMenu(['Pick one', '❯ 1. Yes', '  2. No'])).toBe(true);
+    expect(hasOptionMenu(['Pick one', '› 1. Yes', '  2. No'])).toBe(true);
+  });
+
+  it('rejects a plain numbered list and a lone option', () => {
+    expect(hasOptionMenu(['1. one', '2. two'])).toBe(false);
+    expect(hasOptionMenu(['❯ 1. only'])).toBe(false);
+    expect(hasOptionMenu([])).toBe(false);
+  });
+});
+
+describe('Claude AskUserQuestion screen', () => {
+  it('classifies the Claude AskUserQuestion screen as waiting', () => {
+    expect(hasOptionMenu(ASK_USER_QUESTION_SCREEN)).toBe(true);
+    expect(classifySettled(ASK_USER_QUESTION_SCREEN)).toBe('waiting');
   });
 });

@@ -4,6 +4,7 @@ import { useInsightFeed, useInsightModel } from '../../hooks/useInsightFeed';
 import { useInsightStore } from '../../store/insightStore';
 import { useTerminalStore } from '../../store/terminalStore';
 import { InsightCollapsedBar } from './InsightCollapsedBar';
+import { InsightFallback } from './InsightFallback';
 import { QuestionBox } from './QuestionBox';
 import { TurnDigest } from './TurnDigest';
 
@@ -106,8 +107,7 @@ export function InsightLayer({ terminalId }: { terminalId: string }) {
 
   let body;
   if (state?.supported === false) {
-    // Task 12 replaces this with the full fallback body.
-    body = <div className="px-2 py-2 text-[11px] text-text-tertiary">Insight is not available for this session.</div>;
+    body = <InsightFallback terminalId={terminalId} />;
   } else if (!newest) {
     body = <div className="px-2 py-2 text-[11px] text-text-tertiary">Waiting for the session transcript...</div>;
   } else {

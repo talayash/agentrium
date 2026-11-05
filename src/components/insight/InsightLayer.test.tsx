@@ -266,4 +266,22 @@ describe('findLineInBuffer', () => {
     expect(findLineInBuffer(x, 'err x')).toBe(2);
     expect(findLineInBuffer(x, 'nope')).toBeNull();
   });
+
+  it('shows the no-structured-data fallback when unsupported', async () => {
+    invoke.mockResolvedValue({ supported: false });
+    seed([], { ui: { supported: false } });
+    useTerminalStore.setState({ terminalStates: new Map([[ID, 'busy' as never]]) });
+    await act(async () => { render(<InsightLayer terminalId={ID} />); });
+    expect(screen.getByText('No structured data for this agent')).toBeTruthy();
+    expect(screen.getByText('busy')).toBeTruthy();
+    expect(screen.queryByText('An option menu is open in the terminal')).toBeNull();
+  });
+
+  it('fallback shows the menu hint only when waiting with an option menu', async () => {
+    invoke.mockResolvedValue({ supported: false });
+    seed([], { ui: { supported: false }, xterm: makeXterm(['Pick', '❯ 1. Yes', '  2. No']) });
+    useTerminalStore.setState({ terminalStates: new Map([[ID, 'waiting' as never]]) });
+    await act(async () => { render(<InsightLayer terminalId={ID} />); });
+    expect(screen.getByText('An option menu is open in the terminal')).toBeTruthy();
+  });
 });

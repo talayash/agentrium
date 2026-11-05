@@ -21,7 +21,7 @@ const SOUND_INTERVAL_MS = 4000;
 const COMPLETION_QUIET_MS = 1500;
 
 /** Read the bottom `rows` lines of xterm's already-parsed buffer as clean text. */
-function readBufferTail(term: Terminal, rows: number): string[] {
+export function readBufferTail(term: Terminal, rows: number): string[] {
   const buf = term.buffer.active;
   const end = buf.length;
   const start = Math.max(0, end - rows);

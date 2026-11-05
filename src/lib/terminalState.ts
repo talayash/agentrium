@@ -45,6 +45,16 @@ const IDLE_MARKERS: RegExp[] = [
  *  cursor as `›` instead of Claude's `❯`. */
 const OPTION_LINE = /^(?:[❯›]\s*)?\d+\.\s+\S/;
 
+/** A selection menu: two or more option lines AND at least one carries the
+ *  `❯`/`›` cursor. The cursor distinguishes an interactive picker from a plain
+ *  numbered list left in a finished response. */
+export function hasOptionMenu(lines: string[]): boolean {
+  const trimmed = lines.map((l) => l.trim());
+  const optionLines = trimmed.filter((l) => OPTION_LINE.test(l));
+  const hasCursor = trimmed.some((l) => /^[❯›]\s*\d+\.\s+\S/.test(l));
+  return optionLines.length >= 2 && hasCursor;
+}
+
 /**
  * Decide whether settled terminal output represents a blocking prompt
  * (`waiting`) or a ready input box (`idle`). Only called once output has gone
@@ -69,9 +79,7 @@ export function classifySettled(lines: string[]): 'waiting' | 'idle' {
   // 3. A selection menu: two or more option lines AND at least one carries the
   //    `❯` cursor. The cursor distinguishes an interactive picker from a plain
   //    numbered list left in a finished response.
-  const optionLines = trimmed.filter((l) => OPTION_LINE.test(l));
-  const hasCursor = trimmed.some((l) => /^[❯›]\s*\d+\.\s+\S/.test(l));
-  if (optionLines.length >= 2 && hasCursor) return 'waiting';
+  if (hasOptionMenu(trimmed)) return 'waiting';
 
   return 'idle';
 }
