@@ -4,6 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { Terminal } from '@xterm/xterm';
 import type { WorktreeDetectResult } from '../types/git';
 import type { AgentKind } from '../lib/agents';
+import type { ViewMode } from '../lib/viewMode';
 import type { CredentialBinding } from '../lib/credentials';
 import type { TaskInfo, TaskStatus } from '../lib/tasks';
 import { markTerminalActive, clearTerminalActivity, markTerminalSubmission } from '../lib/terminalActivity';
@@ -128,9 +129,9 @@ export interface TerminalConfig {
   /** How a spawn-time initial prompt reached the agent (Race mode). Only on
    *  the config `create_terminal` returns; never restored. */
   prompt_delivery?: PromptDelivery | null;
-  /** Per-session insight layer flag (Rust `#[serde(default)]`). Persisted with
-   *  session restore; never part of any sync payload. */
-  insight_layer?: boolean;
+  /** Per-session view mode (Rust `#[serde(default)]`, default `cli`). Persisted
+   *  with session restore; never part of any sync payload. */
+  view_mode?: ViewMode;
 }
 
 /** Mirrors Rust `terminal::PromptDelivery`. */
@@ -145,10 +146,10 @@ export interface CreateTerminalOptions {
   initialPrompt?: string;
   /** Branch `resumeSessionId` into a new conversation (Claude and Codex). */
   fork?: boolean;
-  /** Insight layer for this session. Falls back to the global default
-   *  (`insightLayerDefault`) when omitted; session restore always passes the
+  /** View mode for this session. Falls back to the global default
+   *  (`defaultViewMode`) when omitted; session restore always passes the
    *  saved value so the default is ignored. */
-  insightLayer?: boolean;
+  viewMode?: ViewMode;
 }
 
 export interface LoopInfo {
@@ -235,7 +236,7 @@ interface TerminalState {
   // Backend bound (or rotated) the agent conversation id for a live terminal.
   setSessionId: (id: string, sessionId: string) => void;
   updateNickname: (id: string, nickname: string) => Promise<void>;
-  setInsightLayer: (id: string, enabled: boolean) => Promise<void>;
+  setViewMode: (id: string, mode: ViewMode) => Promise<void>;
   writeToTerminal: (id: string, data: string) => Promise<void>;
   // Writes each element as its own PTY write, awaiting each and pausing gapMs
   // between them. Used only for AskUserQuestion answer keys (src/lib/questionKeys.ts).
@@ -300,7 +301,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
     try {
       const { useAppStore } = await import('./appStore');
       const costTracking = useAppStore.getState().costTrackingEnabled;
-      const insightLayer = options?.insightLayer ?? useAppStore.getState().insightLayerDefault;
+      const viewMode = options?.viewMode ?? useAppStore.getState().defaultViewMode;
       const config = await invoke<TerminalConfig>('create_terminal', {
         request: {
           label,
@@ -317,7 +318,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
           task: task ?? null,
           initial_prompt: options?.initialPrompt ?? null,
           fork: !!options?.fork,
-          insight_layer: insightLayer,
+          view_mode: viewMode,
         },
       });
       // Parse model, effort, worktree from claude_args
@@ -550,19 +551,19 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
     });
   },
 
-  setInsightLayer: async (id, enabled) => {
+  setViewMode: async (id, mode) => {
     try {
-      await invoke('set_terminal_insight_layer', { id, enabled });
+      await invoke('set_terminal_view_mode', { id, mode });
     } catch (err) {
-      toast.error('Could not change the insight layer', err instanceof Error ? err.message : String(err));
-      reportInvokeFailure('set_terminal_insight_layer', err);
+      toast.error('Could not change the view mode', err instanceof Error ? err.message : String(err));
+      reportInvokeFailure('set_terminal_view_mode', err);
       return;
     }
     set((state) => {
       const instance = state.terminals.get(id);
       if (!instance) return {};
       const newTerminals = new Map(state.terminals);
-      newTerminals.set(id, { ...instance, config: { ...instance.config, insight_layer: enabled } });
+      newTerminals.set(id, { ...instance, config: { ...instance.config, view_mode: mode } });
       return { terminals: newTerminals };
     });
   },

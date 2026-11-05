@@ -54,6 +54,7 @@ import { installTransferReceiver, requestTransfer, restoreDetachedWindow } from 
 import { filterLivePins } from './lib/pinnedTabs';
 import { keyOf, restoreLayoutKeys, upsertEntry, removeEntry, getDetachedEntries, currentGeometry } from './lib/windowLayout';
 import { planRestoreModes } from './lib/restorePlan';
+import { viewModeOf } from './lib/viewMode';
 import { restoreTargetFor } from './lib/tasks';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import type { TerminalConfig } from './store/terminalStore';
@@ -961,7 +962,7 @@ function App() {
             config.agent,
             config.credential_bindings ?? [],
             target.task,
-            { insightLayer: config.insight_layer ?? false },
+            { viewMode: viewModeOf(config) },
           );
           for (const key of layoutKeys[i]) keyToNewId[key] = newId;
         }

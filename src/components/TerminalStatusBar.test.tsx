@@ -38,17 +38,17 @@ afterEach(cleanup);
 
 describe('TerminalStatusBar insight toggle', () => {
   it('no longer shows the insight toggle (it lives in the session header)', () => {
-    seed(makeConfig('a', { insight_layer: false }));
+    seed(makeConfig('a', { view_mode: 'cli' }));
     render(<TerminalStatusBar terminalId="a" />);
     expect(screen.queryByRole('button', { name: 'Insight layer' })).toBeNull();
   });
 });
 
 describe('TerminalStatusBar restart', () => {
-  it('keeps the insight layer flag when restarting', async () => {
+  it('keeps the view mode when restarting', async () => {
     const closeTerminal = vi.fn(async () => undefined);
     const createTerminal = vi.fn(async () => 'new');
-    seed(makeConfig('r', { insight_layer: true }));
+    seed(makeConfig('r', { view_mode: 'mixed' }));
     useTerminalStore.setState({ closeTerminal, createTerminal } as never);
     const { container } = render(<TerminalStatusBar terminalId="r" />);
     const btn = container.querySelector('svg.lucide-rotate-cw')!.closest('button')!;
@@ -57,6 +57,6 @@ describe('TerminalStatusBar restart', () => {
     expect(createTerminal).toHaveBeenCalledTimes(1);
     const args = createTerminal.mock.calls[0] as unknown[];
     expect(args[10]).toBe('claude');
-    expect(args[13]).toEqual({ insightLayer: true });
+    expect(args[13]).toEqual({ viewMode: 'mixed' });
   });
 });

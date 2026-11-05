@@ -387,7 +387,7 @@ describe('appStore - persist partialize', () => {
     'telemetryEnabled',
     'errorReportingEnabled',
     'costTrackingEnabled',
-    'insightLayerDefault',
+    'defaultViewMode',
     'sessionBudgetUsd',
     'showGitPanel',
     'showFileTree',

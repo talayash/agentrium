@@ -7,6 +7,12 @@ vi.mock('@tauri-apps/api/core', () => ({
   invoke: (cmd: string, args?: Record<string, unknown>) => invokeMock(cmd, args),
 }));
 
+const reportMock = vi.fn();
+vi.mock('../lib/errorReporter', async (orig) => ({
+  ...(await orig<Record<string, unknown>>()),
+  reportInvokeFailure: (...a: unknown[]) => reportMock(...a),
+}));
+
 import type { TerminalConfig } from './terminalStore';
 import { useTerminalStore, __resetPendingOutputBuffersForTest } from './terminalStore';
 
@@ -383,14 +389,14 @@ describe('setSessionId', () => {
   });
 });
 
-describe('terminalStore - insight layer', () => {
+describe('terminalStore - view mode', () => {
   beforeEach(async () => {
     invokeMock.mockClear();
     invokeMock.mockImplementation(async (cmd: string) =>
       cmd === 'create_terminal' ? makeConfig('new1') : undefined,
     );
     const { useAppStore } = await import('./appStore');
-    useAppStore.setState({ insightLayerDefault: false });
+    useAppStore.setState({ defaultViewMode: 'cli' });
   });
 
   function createPayload() {
@@ -398,40 +404,43 @@ describe('terminalStore - insight layer', () => {
     return (call?.[1] as { request: Record<string, unknown> }).request;
   }
 
-  it('createTerminal sends insight_layer from the global default', async () => {
+  it('createTerminal sends view_mode from the default', async () => {
     const { useAppStore } = await import('./appStore');
-    useAppStore.setState({ insightLayerDefault: true });
+    useAppStore.setState({ defaultViewMode: 'mixed' });
     await useTerminalStore.getState().createTerminal('t', 'C:/tmp', [], {});
-    expect(createPayload().insight_layer).toBe(true);
+    expect(createPayload().view_mode).toBe('mixed');
+    expect(createPayload().insight_layer).toBeUndefined();
   });
 
-  it('explicit insightLayer option wins over the default', async () => {
+  it('explicit viewMode option wins', async () => {
     const { useAppStore } = await import('./appStore');
-    useAppStore.setState({ insightLayerDefault: true });
+    useAppStore.setState({ defaultViewMode: 'mixed' });
     await useTerminalStore.getState().createTerminal(
       't', 'C:/tmp', [], {}, undefined, undefined, undefined, undefined, undefined, undefined,
-      'claude', [], undefined, { insightLayer: false },
+      'claude', [], undefined, { viewMode: 'insight' },
     );
-    expect(createPayload().insight_layer).toBe(false);
+    expect(createPayload().view_mode).toBe('insight');
   });
 
-  it('setInsightLayer invokes the command and updates the config', async () => {
+  it('setViewMode invokes set_terminal_view_mode and updates the config', async () => {
     seed(['a']);
     const before = useTerminalStore.getState().terminals;
-    await useTerminalStore.getState().setInsightLayer('a', true);
-    expect(invokeMock).toHaveBeenCalledWith('set_terminal_insight_layer', { id: 'a', enabled: true });
+    await useTerminalStore.getState().setViewMode('a', 'insight');
+    expect(invokeMock).toHaveBeenCalledWith('set_terminal_view_mode', { id: 'a', mode: 'insight' });
     const after = useTerminalStore.getState().terminals;
     expect(after).not.toBe(before);
-    expect(after.get('a')?.config.insight_layer).toBe(true);
+    expect(after.get('a')?.config.view_mode).toBe('insight');
   });
 
-  it('setInsightLayer leaves state unchanged when the command fails', async () => {
+  it('setViewMode toasts and reports on failure, leaving state unchanged', async () => {
     seed(['a']);
     invokeMock.mockRejectedValueOnce(new Error('boom'));
-    await useTerminalStore.getState().setInsightLayer('a', true);
-    expect(useTerminalStore.getState().terminals.get('a')?.config.insight_layer).toBeFalsy();
+    await useTerminalStore.getState().setViewMode('a', 'mixed');
+    expect(useTerminalStore.getState().terminals.get('a')?.config.view_mode).toBeUndefined();
+    expect(reportMock).toHaveBeenCalledWith('set_terminal_view_mode', expect.anything());
   });
 });
+
 
 describe('terminalStore - sendKeySequence', () => {
   beforeEach(() => {

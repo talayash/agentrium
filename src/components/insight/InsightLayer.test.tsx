@@ -44,7 +44,7 @@ function seed(records: InsightRecord[], opts: { xterm?: unknown; git?: unknown; 
     byId: new Map([[ID, { records, supported: true, heightPx: null, collapsed: null, expandedTurn: null, ...opts.ui }]]),
   });
   useTerminalStore.setState({
-    terminals: new Map([[ID, { xterm: opts.xterm ?? makeXterm([]), config: { working_directory: 'C:\\proj', insight_layer: true } } as never]]),
+    terminals: new Map([[ID, { xterm: opts.xterm ?? makeXterm([]), config: { working_directory: 'C:\\proj', view_mode: 'mixed' } } as never]]),
     terminalMetrics: new Map(),
     terminalStates: new Map([[ID, 'idle' as never]]),
     gitInfoCache: new Map(opts.git ? [[ID, opts.git as never]] : []),

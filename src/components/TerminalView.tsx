@@ -11,6 +11,7 @@ import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAppStore } from '../store/appStore';
 import { toast } from '../store/toastStore';
+import { viewModeOf } from '../lib/viewMode';
 import { resolveTerminalTheme } from '../lib/terminalThemes';
 import { copyText, readClipboardText } from '../lib/clipboard';
 import { reportInvokeFailure } from '../lib/errorReporter';
@@ -641,7 +642,7 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
         visible={searchVisible}
         onClose={() => setSearchVisible(false)}
       />
-      {instance?.config.insight_layer && !instance.isShellTerminal && !instance.scriptParentId && (
+      {instance && viewModeOf(instance.config) !== 'cli' && !instance.isShellTerminal && !instance.scriptParentId && (
         <InsightLayer terminalId={terminalId} />
       )}
       <div

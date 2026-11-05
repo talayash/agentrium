@@ -38,12 +38,12 @@ afterEach(cleanup);
 
 describe('InsightToggleButton', () => {
   it('reflects and flips the flag', async () => {
-    seed(makeConfig('a', { insight_layer: false }));
+    seed(makeConfig('a', { view_mode: 'cli' }));
     render(<InsightToggleButton terminalId="a" />);
     const btn = screen.getByRole('button', { name: 'Insight layer' });
     expect(btn.getAttribute('aria-pressed')).toBe('false');
     await act(async () => { fireEvent.click(btn); });
-    expect(invokeMock).toHaveBeenCalledWith('set_terminal_insight_layer', { id: 'a', enabled: true });
+    expect(invokeMock).toHaveBeenCalledWith('set_terminal_view_mode', { id: 'a', mode: 'mixed' });
     expect(screen.getByRole('button', { name: 'Insight layer' }).getAttribute('aria-pressed')).toBe('true');
   });
 

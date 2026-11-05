@@ -1,5 +1,6 @@
 import { Layers } from 'lucide-react';
 import { useTerminalStore } from '../../store/terminalStore';
+import { viewModeOf } from '../../lib/viewMode';
 import { toggleInsightLayer } from '../../lib/insightToggle';
 import { Tooltip } from '../ui/Tooltip';
 
@@ -8,7 +9,7 @@ import { Tooltip } from '../ui/Tooltip';
 export function InsightToggleButton({ terminalId }: { terminalId: string }) {
   const instance = useTerminalStore((s) => s.terminals.get(terminalId));
   if (!instance || instance.isShellTerminal || instance.scriptParentId) return null;
-  const on = !!instance.config.insight_layer;
+  const on = viewModeOf(instance.config) !== 'cli';
   return (
     <Tooltip label="Toggle insight layer" shortcut="Ctrl+Shift+L">
       <button

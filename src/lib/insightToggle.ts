@@ -1,19 +1,21 @@
 import { useTerminalStore } from '../store/terminalStore';
+import { viewModeOf } from './viewMode';
 
-/** True when the insight layer toggle applies to this terminal: plain agent
- *  sessions only, never shell terminals or script children. */
+/** True when the insight toggle applies to this terminal: plain agent
+ *  sessions only, never shell terminals or script children. Interim shim,
+ *  replaced by the view mode switcher. */
 export function insightToggleApplies(id: string | null | undefined): boolean {
   if (!id) return false;
   const instance = useTerminalStore.getState().terminals.get(id);
   return !!instance && !instance.isShellTerminal && !instance.scriptParentId;
 }
 
-/** Flip the insight layer for one terminal. Shared by the status bar button,
- *  the Command Palette entry and the Ctrl+Shift+L shortcut. Failures are
- *  toasted and reported by `setInsightLayer`. */
+/** Flip one terminal between CLI and Mixed. Shared by the header button, the
+ *  Command Palette entry and the Ctrl+Shift+L shortcut. Failures are toasted
+ *  and reported by `setViewMode`. */
 export function toggleInsightLayer(id: string): void {
   if (!insightToggleApplies(id)) return;
-  const { terminals, setInsightLayer } = useTerminalStore.getState();
-  const current = !!terminals.get(id)?.config.insight_layer;
-  void setInsightLayer(id, !current);
+  const { terminals, setViewMode } = useTerminalStore.getState();
+  const current = viewModeOf(terminals.get(id)!.config);
+  void setViewMode(id, current === 'cli' ? 'mixed' : 'cli');
 }

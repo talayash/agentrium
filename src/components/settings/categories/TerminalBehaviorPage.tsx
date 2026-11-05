@@ -1,9 +1,10 @@
 import { useAppStore } from '../../../store/appStore';
 import { PageHeader, PageSection, SettingRow, Toggle, Segmented } from '../SettingRow';
+import type { ViewMode } from '../../../lib/viewMode';
 import { registerSetting } from '../index';
 
 const cat = { group: 'terminal', page: 'behavior' } as const;
-['shell-override', 'copy-on-select', 'paste-shortcut', 'prompt-editor-shortcut', 'confirm-close-session', 'insight-layer-default'].forEach((id) =>
+['shell-override', 'copy-on-select', 'paste-shortcut', 'prompt-editor-shortcut', 'confirm-close-session', 'default-view-mode'].forEach((id) =>
   registerSetting({ category: cat, id, label: id.replace(/-/g, ' '), keywords: ['terminal', 'shell', 'prompt', 'editor', id] })
 );
 
@@ -13,10 +14,10 @@ export default function TerminalBehaviorPage() {
   const terminalPasteShortcut = useAppStore((s) => s.terminalPasteShortcut);
   const promptEditorShortcutEnabled = useAppStore((s) => s.promptEditorShortcutEnabled);
   const confirmCloseSession = useAppStore((s) => s.confirmCloseSession);
-  const insightLayerDefault = useAppStore((s) => s.insightLayerDefault);
+  const defaultViewMode = useAppStore((s) => s.defaultViewMode);
   const {
     setTerminalShellPathOverride, setTerminalCopyOnSelect, setTerminalPasteShortcut,
-    setPromptEditorShortcutEnabled, setConfirmCloseSession, setInsightLayerDefault,
+    setPromptEditorShortcutEnabled, setConfirmCloseSession, setDefaultViewMode,
   } = useAppStore.getState();
 
   return (
@@ -46,10 +47,19 @@ export default function TerminalBehaviorPage() {
           <Toggle value={confirmCloseSession} onChange={setConfirmCloseSession} />
         </SettingRow>
         <SettingRow
-          label="New sessions start with insight layer on"
-          description="Applies to sessions you start from now on. Restored sessions keep their own setting. Toggle one session with Ctrl+Shift+L."
+          label="Default view for new sessions"
+          description="Applies to sessions you start from now on. Restored sessions keep their own view. CLI is the plain terminal, Mixed adds the insight panel, Insight shows the panel alone."
         >
-          <Toggle value={insightLayerDefault} onChange={setInsightLayerDefault} />
+          <select
+            value={defaultViewMode}
+            onChange={(e) => setDefaultViewMode(e.target.value as ViewMode)}
+            aria-label="Default view for new sessions"
+            className="bg-elevation-0 text-text-primary text-[12px] px-2 py-1 rounded ring-1 ring-border-light"
+          >
+            <option value="cli">CLI</option>
+            <option value="mixed">Mixed</option>
+            <option value="insight">Insight</option>
+          </select>
         </SettingRow>
       </PageSection>
 

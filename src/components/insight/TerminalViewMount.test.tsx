@@ -56,7 +56,7 @@ function mountWith(extra: Record<string, unknown>, insight: boolean) {
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
   vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }));
   useTerminalStore.setState({
-    terminals: new Map([[ID, { config: { working_directory: 'C:\\p', insight_layer: insight }, ...extra } as never]]),
+    terminals: new Map([[ID, { config: { working_directory: 'C:\\p', view_mode: insight ? 'mixed' : 'cli' }, ...extra } as never]]),
   });
   return render(<TerminalView terminalId={ID} />);
 }
@@ -67,7 +67,7 @@ afterEach(() => {
 });
 
 describe('TerminalView insight mounting', () => {
-  it('TerminalView does not mount the layer when insight_layer is false', async () => {
+  it('TerminalView does not mount the layer in cli mode', async () => {
     const { queryByTestId } = mountWith({}, false);
     await act(async () => {});
     expect(queryByTestId('insight-layer')).toBeNull();
