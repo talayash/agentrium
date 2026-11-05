@@ -79,7 +79,7 @@ export function TurnDigest({ terminalId, turn }: { terminalId: string; turn: Ins
     <div className="space-y-2 px-2 py-2" data-testid="turn-digest">
       <div className="flex items-baseline gap-2">
         <span className="min-w-0 flex-1 text-[12px] font-medium text-text-primary">{turn.headline}</span>
-        {turn.durationMs !== null && (
+        {turn.durationMs !== null && Number.isFinite(turn.durationMs) && turn.durationMs >= 0 && (
           <span className="shrink-0 text-[11px] text-text-tertiary">{formatElapsed(turn.durationMs)}</span>
         )}
       </div>

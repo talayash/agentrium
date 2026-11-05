@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent as ReactMouseEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent as ReactMouseEvent } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useInsightFeed, useInsightModel } from '../../hooks/useInsightFeed';
 import { useInsightStore } from '../../store/insightStore';
@@ -24,15 +24,26 @@ export function InsightLayer({ terminalId }: { terminalId: string }) {
   const { setHeight, setCollapsed, setExpandedTurn } = useInsightStore.getState();
 
   const rootRef = useRef<HTMLDivElement>(null);
+  const dragCleanupRef = useRef<(() => void) | null>(null);
   const [paneHeight, setPaneHeight] = useState<number | null>(null);
+  // Drag preview only (a guide line); the real height is committed once on mouseup.
+  const [dragPx, setDragPx] = useState<number | null>(null);
 
-  // Track the pane (the parent grid cell) so a short cell starts collapsed.
+  // Measure the pane (the parent grid cell) before first paint so a short cell
+  // is collapsed from the start (no expanded flash, no extra PTY resize).
+  // A zero height means "not laid out", treated as unknown.
+  useLayoutEffect(() => {
+    const h = rootRef.current?.parentElement?.getBoundingClientRect().height ?? 0;
+    if (h > 0) setPaneHeight(h);
+  }, []);
+
+  // Keep tracking the pane so later resizes still apply while the user has not chosen.
   useEffect(() => {
     const pane = rootRef.current?.parentElement;
     if (!pane || typeof ResizeObserver === 'undefined') return;
     const ro = new ResizeObserver((entries) => {
       const entry = entries[entries.length - 1];
-      if (entry) setPaneHeight(entry.contentRect.height);
+      if (entry && entry.contentRect.height > 0) setPaneHeight(entry.contentRect.height);
     });
     ro.observe(pane);
     return () => ro.disconnect();
@@ -45,17 +56,29 @@ export function InsightLayer({ terminalId }: { terminalId: string }) {
   const older = model.turns.slice(1);
   const expandedTurn = state?.expandedTurn ?? null;
 
+  // Window listeners must not outlive the layer if it unmounts mid-drag.
+  useEffect(() => () => dragCleanupRef.current?.(), []);
+
   const startDrag = (e: ReactMouseEvent) => {
     e.preventDefault();
+    dragCleanupRef.current?.();
     const startY = e.clientY;
     const startPx = panelPx;
-    const move = (ev: MouseEvent) => setHeight(terminalId, clamp(startPx + ev.clientY - startY, pane));
-    const up = () => {
+    const target = (ev: MouseEvent) => clamp(startPx + ev.clientY - startY, pane);
+    const move = (ev: MouseEvent) => setDragPx(target(ev));
+    const stop = () => {
       window.removeEventListener('mousemove', move);
       window.removeEventListener('mouseup', up);
+      dragCleanupRef.current = null;
+    };
+    const up = (ev: MouseEvent) => {
+      stop();
+      setDragPx(null);
+      setHeight(terminalId, target(ev));
     };
     window.addEventListener('mousemove', move);
     window.addEventListener('mouseup', up);
+    dragCleanupRef.current = stop;
   };
 
   const onSeparatorKey = (e: KeyboardEvent) => {
@@ -121,8 +144,8 @@ export function InsightLayer({ terminalId }: { terminalId: string }) {
   }
 
   return (
-    <div ref={rootRef} onKeyDown={onKeyDown} className="flex shrink-0 flex-col border-b border-seam bg-bg-primary">
-      <div style={{ maxHeight: panelPx }} className="overflow-y-auto" data-testid="insight-body">
+    <div ref={rootRef} onKeyDown={onKeyDown} className="relative flex shrink-0 flex-col border-b border-seam bg-bg-primary">
+      <div style={{ height: panelPx }} className="overflow-y-auto" data-testid="insight-body">
         <div className="flex items-center border-b border-seam">
           <button
             type="button"
@@ -137,6 +160,14 @@ export function InsightLayer({ terminalId }: { terminalId: string }) {
         {model.pendingQuestion && <QuestionBox terminalId={terminalId} pending={model.pendingQuestion} />}
         {body}
       </div>
+      {dragPx !== null && (
+        <div
+          aria-hidden="true"
+          data-testid="insight-drag-guide"
+          style={{ top: dragPx }}
+          className="pointer-events-none absolute left-0 right-0 z-10 h-0.5 bg-accent-primary/60"
+        />
+      )}
       <div
         role="separator"
         aria-orientation="horizontal"

@@ -180,6 +180,86 @@ describe('InsightLayer', () => {
   });
 });
 
+describe('InsightLayer sizing (R5)', () => {
+  const bodyEl = () => screen.getByTestId('insight-body') as HTMLElement;
+
+  it('content growth does not change the panel height', async () => {
+    seed([prompt('p'), reply('One.')]);
+    await act(async () => { render(<InsightLayer terminalId={ID} />); });
+    const before = bodyEl().style.height;
+    expect(before).toMatch(/px$/);
+    await act(async () => {
+      useInsightStore.getState().append(ID, [prompt('q'), edit('a', 'x.ts'), editOk('a'), reply('Two.')], false);
+    });
+    expect(screen.getAllByText('Two.').length).toBeGreaterThan(0);
+    expect(bodyEl().style.height).toBe(before);
+    expect(bodyEl().style.maxHeight).toBe('');
+  });
+
+  it('drag does not commit until mouseup, then commits once clamped', async () => {
+    seed([prompt('p'), reply('One.')]);
+    const setHeight = vi.fn();
+    useInsightStore.setState({ setHeight } as never);
+    await act(async () => { render(<InsightLayer terminalId={ID} />); });
+    await act(async () => { resizeCb?.([{ contentRect: { height: 1000 } }]); });
+    fireEvent.mouseDown(screen.getByRole('separator'), { clientY: 100 });
+    fireEvent.mouseMove(window, { clientY: 150 });
+    fireEvent.mouseMove(window, { clientY: 200 });
+    expect(setHeight).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('insight-drag-guide')).not.toBeNull();
+    fireEvent.mouseUp(window, { clientY: 5000 });
+    expect(setHeight).toHaveBeenCalledTimes(1);
+    expect(setHeight).toHaveBeenCalledWith(ID, 700);
+    expect(screen.queryByTestId('insight-drag-guide')).toBeNull();
+  });
+
+  it('drag clamps to the 120 px minimum', async () => {
+    seed([prompt('p'), reply('One.')]);
+    const setHeight = vi.fn();
+    useInsightStore.setState({ setHeight } as never);
+    await act(async () => { render(<InsightLayer terminalId={ID} />); });
+    fireEvent.mouseDown(screen.getByRole('separator'), { clientY: 500 });
+    fireEvent.mouseUp(window, { clientY: 0 });
+    expect(setHeight).toHaveBeenCalledWith(ID, 120);
+  });
+
+  it('unmount mid-drag removes the window listeners', async () => {
+    seed([prompt('p'), reply('One.')]);
+    const removeSpy = vi.spyOn(window, 'removeEventListener');
+    const { unmount } = render(<InsightLayer terminalId={ID} />);
+    await act(async () => {});
+    fireEvent.mouseDown(screen.getByRole('separator'), { clientY: 100 });
+    unmount();
+    const types = removeSpy.mock.calls.map((c) => c[0]);
+    expect(types).toContain('mousemove');
+    expect(types).toContain('mouseup');
+  });
+
+  it('a small pane renders collapsed on the first render with no expanded flash', () => {
+    seed([prompt('p'), reply('Tiny.')]);
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ height: 250 } as DOMRect);
+    const seen: boolean[] = [];
+    const obs = new MutationObserver(() => seen.push(!!document.querySelector('[data-testid="insight-body"]')));
+    obs.observe(document.body, { childList: true, subtree: true });
+    render(<InsightLayer terminalId={ID} />);
+    obs.disconnect();
+    expect(screen.queryByTestId('insight-body')).toBeNull();
+    expect(screen.getByLabelText('Expand insight layer')).toBeTruthy();
+    expect(seen.every((v) => !v)).toBe(true);
+  });
+
+  it('negative duration renders no duration text', async () => {
+    const early: InsightRecord = { kind: 'user_prompt', ts: '2026-01-01T00:00:10Z', text: 'p' };
+    const late: InsightRecord = { kind: 'assistant_text', ts: '2026-01-01T00:00:00Z', text: 'Backwards.' };
+    seed([early, late]);
+    await act(async () => { render(<InsightLayer terminalId={ID} />); });
+    const text = screen.getByTestId('turn-digest').textContent ?? '';
+    expect(text).toContain('Backwards.');
+    expect(text).not.toMatch(/[\u2013\u2014]/);
+    expect(text).toBe('Backwards.Backwards.');
+  });
+});
+
 describe('findLineInBuffer', () => {
   it('scans bottom-up and returns null when absent', () => {
     const x = makeXterm(['err x', 'mid', 'err x']) as never;
