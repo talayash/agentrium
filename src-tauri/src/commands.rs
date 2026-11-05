@@ -1656,10 +1656,12 @@ pub(crate) fn shell_command(program: &str, args: &[&str]) -> std::process::Comma
 /// resolution can depend on the interactive shell environment there, and the
 /// single-quote escaping in `shell_command` already makes injection impossible.
 pub(crate) fn git_command(args: &[&str]) -> std::process::Command {
+    let args = hardened_git_args(args);
+    let args: Vec<&str> = args.iter().map(String::as_str).collect();
     #[cfg(target_os = "windows")]
     {
         let mut cmd = std::process::Command::new("git");
-        for arg in args {
+        for arg in &args {
             cmd.arg(arg);
         }
         use std::os::windows::process::CommandExt;
@@ -1668,8 +1670,28 @@ pub(crate) fn git_command(args: &[&str]) -> std::process::Command {
     }
     #[cfg(not(target_os = "windows"))]
     {
-        shell_command("git", args)
+        shell_command("git", &args)
     }
+}
+
+/// The app runs `git status` / `git diff` in the background on whatever folder
+/// is open, so a repo that ships its own `.git/config` (a zip, a copied folder)
+/// must not get code execution from that alone (F6, 2026-11-05 assessment):
+/// - `core.fsmonitor` names a command git runs on every status;
+/// - `diff.external` and `diff.<driver>.textconv` run commands on diff/show/log.
+///
+/// Hooks are left alone: they run on commit/push the user starts, exactly as
+/// they would from a terminal, and projects rely on them.
+fn hardened_git_args(args: &[&str]) -> Vec<String> {
+    let mut out = vec!["-c".to_string(), "core.fsmonitor=false".to_string()];
+    for (i, a) in args.iter().enumerate() {
+        out.push((*a).to_string());
+        if i == 0 && matches!(*a, "diff" | "show" | "log") {
+            out.push("--no-ext-diff".to_string());
+            out.push("--no-textconv".to_string());
+        }
+    }
+    out
 }
 
 /// Pick a sensible "version" string from a command's stdout.
@@ -6374,5 +6396,64 @@ mod latest_typer_tests {
         assert!(same_working_dir("C:\\p\\repo\\", "C:\\p\\repo"));
         assert!(same_working_dir("/p/repo/", "/p/repo"));
         assert!(!same_working_dir("/p/repo", "/p/other"));
+    }
+}
+
+#[cfg(test)]
+mod git_hardening_tests {
+    //! F6 (2026-11-05 assessment): the app runs `git status` / `git diff` in
+    //! the background on any folder the user opens. A repo shipped with its own
+    //! `.git/config` (e.g. a zip) must not get code execution from that alone.
+    use super::git_command;
+    use std::path::Path;
+
+    fn raw_git(dir: &Path, args: &[&str]) {
+        let out = std::process::Command::new("git").args(args).current_dir(dir).output().unwrap();
+        assert!(out.status.success(), "git {:?}: {}", args, String::from_utf8_lossy(&out.stderr));
+    }
+
+    /// A repo with one committed file, plus a shell command that writes `marker`.
+    fn hostile_repo() -> (tempfile::TempDir, std::path::PathBuf, String) {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().to_path_buf();
+        raw_git(&p, &["init", "-q"]);
+        raw_git(&p, &["config", "user.email", "t@t"]);
+        raw_git(&p, &["config", "user.name", "t"]);
+        std::fs::write(p.join("a.txt"), "one\n").unwrap();
+        raw_git(&p, &["add", "a.txt"]);
+        raw_git(&p, &["commit", "-qm", "init"]);
+        std::fs::write(p.join("a.txt"), "two\n").unwrap();
+        let marker = p.join("marker");
+        let cmd = format!("echo RAN > '{}'", marker.to_string_lossy().replace('\\', "/"));
+        (dir, marker, cmd)
+    }
+
+    #[test]
+    fn status_does_not_run_the_repos_fsmonitor() {
+        let (dir, marker, cmd) = hostile_repo();
+        raw_git(dir.path(), &["config", "core.fsmonitor", &format!("{cmd}; false")]);
+        let out = git_command(&["status", "--porcelain"]).current_dir(dir.path()).output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        assert!(!marker.exists(), "core.fsmonitor from the repo's config ran");
+    }
+
+    #[test]
+    fn diff_does_not_run_the_repos_external_diff_or_textconv() {
+        let (dir, marker, cmd) = hostile_repo();
+        raw_git(dir.path(), &["config", "diff.external", &cmd]);
+        raw_git(dir.path(), &["config", "diff.evil.textconv", &format!("{cmd}; cat")]);
+        std::fs::write(dir.path().join(".gitattributes"), "*.txt diff=evil\n").unwrap();
+        let out = git_command(&["diff", "--", "a.txt"]).current_dir(dir.path()).output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        assert!(String::from_utf8_lossy(&out.stdout).contains("+two"), "diff output still produced");
+        assert!(!marker.exists(), "diff.external or a textconv driver from the repo ran");
+    }
+
+    #[test]
+    fn hardening_flags_go_where_git_accepts_them() {
+        let args: Vec<String> = git_command(&["show", "HEAD:a.txt"]).get_args().map(|a| a.to_string_lossy().into_owned()).collect();
+        let joined = args.join(" ");
+        assert!(joined.contains("-c core.fsmonitor=false"), "{joined}");
+        assert!(joined.contains("show --no-ext-diff --no-textconv HEAD:a.txt"), "{joined}");
     }
 }
