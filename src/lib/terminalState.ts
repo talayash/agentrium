@@ -44,6 +44,11 @@ const IDLE_MARKERS: RegExp[] = [
   /^[│|]?\s*[>❯]\s*(?:[│|]\s*)?$/,
 ];
 
+/** How many of the newest non-blank lines WAITING_PATTERNS are matched against
+ *  (classifySettled and needsTerminal). A real prompt sits at the bottom of the
+ *  screen; text higher up is usually a reply quoting one of the phrases. */
+const WAITING_BOTTOM_LINES = 8;
+
 /** True when Claude's plain input box (or its "? for shortcuts" footer) is on
  *  screen, i.e. the agent is idle and ready for a new prompt. */
 function hasIdleMarker(trimmed: string[]): boolean {
@@ -73,17 +78,22 @@ export function hasOptionMenu(lines: string[]): boolean {
  * a false "needs attention" alarm erodes trust in the whole feature.
  */
 export function classifySettled(lines: string[]): 'waiting' | 'idle' {
-  const trimmed = lines.map((l) => l.trim());
-  const joined = trimmed.join('\n');
+  const trimmed = lines.map((l) => l.trim()).filter((l) => l !== '');
 
-  // 1. Explicit blocking phrases win immediately.
-  for (const re of WAITING_PATTERNS) {
-    if (re.test(joined)) return 'waiting';
-  }
+  // 1. Explicit blocking phrases win, but only where a live prompt can be:
+  //    below Claude's idle input box (anything above it is reply history) and
+  //    within the bottom few lines. Otherwise a finished reply that quotes
+  //    "Do you want to proceed?" or "(y/n)" raises a false "needs input" alert.
+  let lastIdle = -1;
+  trimmed.forEach((l, i) => {
+    if (IDLE_MARKERS.some((re) => re.test(l))) lastIdle = i;
+  });
+  const live = trimmed.slice(lastIdle + 1).slice(-WAITING_BOTTOM_LINES).join('\n');
+  if (WAITING_PATTERNS.some((re) => re.test(live))) return 'waiting';
 
   // 2. If the plain input box is visible, Claude is idle regardless of any
   //    numbered list left over from its last response.
-  if (hasIdleMarker(trimmed)) return 'idle';
+  if (lastIdle >= 0) return 'idle';
 
   // 3. A selection menu: two or more option lines AND at least one carries the
   //    `❯` cursor. The cursor distinguishes an interactive picker from a plain
@@ -109,10 +119,6 @@ export function isShellPrompt(lines: string[]): boolean {
   return false;
 }
 
-/** How many of the newest non-blank lines WAITING_PATTERNS are matched against
- *  in needsTerminal. A real prompt sits at the bottom of the screen; text
- *  higher up is usually a reply quoting one of the phrases. */
-const NEEDS_TERMINAL_BOTTOM_LINES = 8;
 
 /** Whether the hidden terminal needs the user: a blocking prompt, an option
  *  menu, or a bare shell. Independent of the polled session state. Claude's
@@ -122,6 +128,6 @@ export function needsTerminal(lines: string[], questionPending: boolean): boolea
   if (questionPending) return false;
   const trimmed = lines.map((l) => l.trim()).filter((l) => l !== '');
   if (hasIdleMarker(trimmed)) return false;
-  const bottom = trimmed.slice(-NEEDS_TERMINAL_BOTTOM_LINES).join('\n');
+  const bottom = trimmed.slice(-WAITING_BOTTOM_LINES).join('\n');
   return hasOptionMenu(trimmed) || WAITING_PATTERNS.some((re) => re.test(bottom)) || isShellPrompt(trimmed);
 }

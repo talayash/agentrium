@@ -58,6 +58,43 @@ describe('classifySettled', () => {
     expect(classifySettled(lines)).toBe('idle');
   });
 
+  it('does not raise waiting when a finished reply quotes a prompt phrase above the idle box', () => {
+    const lines = [
+      '● To confirm, the script asks "Do you want to proceed?" and accepts (y/n).',
+      '',
+      '  Answer y to continue.',
+      '✻ Baked for 4s · done 9:16 AM',
+      '────────────────────────────────────────',
+      '❯ ',
+      '────────────────────────────────────────',
+      '  ⏸ manual mode on · ? for shortcuts',
+    ];
+    expect(classifySettled(lines)).toBe('idle');
+  });
+
+  it('still flags a real permission prompt drawn below old reply text', () => {
+    const lines = [
+      '● The installer asks (y/n) before it continues.',
+      '',
+      ' PowerShell command',
+      ' node sizes.js',
+      ' This command requires approval',
+      ' Do you want to proceed?',
+      ' ❯ 1. Yes',
+      '   2. No',
+      ' Esc to cancel · Tab to amend',
+    ];
+    expect(classifySettled(lines)).toBe('waiting');
+  });
+
+  it('ignores a prompt phrase that is far above the bottom of the screen', () => {
+    const lines = [
+      'Do you want to proceed? was the old question',
+      ...Array.from({ length: 10 }, (_, i) => `  reply line ${i + 1}`),
+    ];
+    expect(classifySettled(lines)).toBe('idle');
+  });
+
   it('does not raise waiting on a finished response that contains a numbered list', () => {
     const lines = [
       'Here are the steps I took:',
