@@ -120,6 +120,7 @@ pub fn scrub(input: &str) -> String {
     static BEARER: OnceLock<regex::Regex> = OnceLock::new();
     static NPM_AUTHTOKEN: OnceLock<regex::Regex> = OnceLock::new();
     static EMAIL: OnceLock<regex::Regex> = OnceLock::new();
+    static URL_USERINFO: OnceLock<regex::Regex> = OnceLock::new();
     // Match `<drive>:\Users\<username>` on any drive letter, either case, where
     // the username portion ends at the next path separator, whitespace, or
     // shell metacharacter. The terminator is NOT consumed, so a trailing
@@ -153,7 +154,14 @@ pub fn scrub(input: &str) -> String {
         regex::Regex::new(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}").unwrap()
     });
 
-    let s = win.replace_all(input, r"${1}:\Users\<user>");
+    // `scheme://user:pass@` or `scheme://token@`: git and npm stderr echo
+    // remote URLs as configured, credentials included. Runs first so the
+    // e-mail rule below cannot half-match `pass@host.tld` and leave `user:`.
+    let url_userinfo = URL_USERINFO.get_or_init(|| {
+        regex::Regex::new(r"(?i)\b([a-z][a-z0-9+.-]*://)[^/\s@'<>]+@").unwrap()
+    });
+    let s = url_userinfo.replace_all(input, "${1}<credentials>@");
+    let s = win.replace_all(&s, r"${1}:\Users\<user>");
     let s = unix_users.replace_all(&s, "/Users/<user>");
     let s = unix_home.replace_all(&s, "/home/<user>");
     let s = gh_prefixed.replace_all(&s, "<github_token>");
@@ -213,6 +221,22 @@ const WORKER_URL: &str = "https://ct-analytics.claude-terminal.workers.dev";
 const SEND_TIMEOUT: Duration = Duration::from_secs(5);
 const MESSAGE_MAX: usize = 2048;
 const STACK_MAX: usize = 8192;
+const KIND_MAX: usize = 64; // the Worker clamps `kind` to 64 too (normalizeError)
+
+/// Scrub and clamp every free-text field that leaves the machine.
+fn sanitize_report_fields(
+    kind: Option<String>,
+    message: String,
+    stack: Option<String>,
+) -> (Option<String>, String, Option<String>) {
+    (
+        // `kind` is free text too (the frontend's report_error passes any
+        // string), so it gets the same scrub, capped like the server's column.
+        kind.map(|k| clamp(scrub(&k), KIND_MAX)),
+        clamp(scrub(&message), MESSAGE_MAX),
+        stack.map(|s| clamp(scrub(&s), STACK_MAX)),
+    )
+}
 
 #[derive(Serialize)]
 struct ErrorReportPayload<'a> {
@@ -371,8 +395,7 @@ pub async fn report(
         }
     };
 
-    let scrubbed_message = clamp(scrub(&message), MESSAGE_MAX);
-    let scrubbed_stack = stack.map(|s| clamp(scrub(&s), STACK_MAX));
+    let (kind, scrubbed_message, scrubbed_stack) = sanitize_report_fields(kind, message, stack);
     let fp = fingerprint(source, kind.as_deref(), &scrubbed_message, scrubbed_stack.as_deref());
 
     if !state.dedup.should_send(&fp, Instant::now()) {
@@ -539,6 +562,37 @@ mod tests {
         note_user_error_at("echo_test_expiry", t0);
         let later = t0 + USER_ERROR_ECHO_WINDOW + std::time::Duration::from_secs(1);
         assert!(!is_user_error_echo_at(Some("echo_test_expiry"), later));
+    }
+
+    #[test]
+    fn scrub_removes_credentials_embedded_in_urls() {
+        // git and npm stderr echo remote URLs as configured, credentials included.
+        let out = scrub("fatal: unable to access 'https://bob:s3cr3t-deploy-key@gitlab.example.com/acme/app.git/': 403");
+        assert!(!out.contains("s3cr3t-deploy-key"), "{out}");
+        assert!(!out.contains("bob:"), "{out}");
+        assert!(out.contains("https://<credentials>@gitlab.example.com/acme/app.git/"), "{out}");
+        // Token-only userinfo, other schemes, several in one line.
+        let out = scrub("remote: https://deploytoken0123456789@github.com/x and ssh://git:pw@host:22/y");
+        assert!(!out.contains("deploytoken0123456789") && !out.contains("git:pw"), "{out}");
+        // A plain URL and an e-mail stay as they were handled before.
+        assert_eq!(scrub("see https://github.com/acme/app"), "see https://github.com/acme/app");
+        assert_eq!(scrub("contact bob@example.com"), "contact <email>");
+    }
+
+    #[test]
+    fn report_fields_scrub_the_kind_too() {
+        // `kind` comes from the frontend's report_error and was sent as-is.
+        let (kind, message, stack) = sanitize_report_fields(
+            Some(r"push_failed C:\Users\bob\repo token=https://bob:pw123456@host/x".to_string()),
+            r"at C:\Users\bob\x".to_string(),
+            Some("https://u:p@h/".to_string()),
+        );
+        let kind = kind.unwrap();
+        assert!(!kind.contains("bob") && !kind.contains("pw123456"), "{kind}");
+        assert!(!message.contains("bob"), "{message}");
+        assert!(!stack.unwrap().contains("u:p@"));
+        let (long_kind, _, _) = sanitize_report_fields(Some("k".repeat(500)), String::new(), None);
+        assert_eq!(long_kind.unwrap().len(), 64);
     }
 
     #[test]
