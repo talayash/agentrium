@@ -7,6 +7,9 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
+    // cargo rewrites src-tauri/target/*.exe during `tauri dev`; on Windows a
+    // watched, locked exe makes Vite crash with EBUSY. Rust is not Vite's job.
+    watch: { ignored: ['**/src-tauri/**'] },
   },
   envPrefix: ['VITE_', 'TAURI_'],
   build: {
