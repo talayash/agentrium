@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { Miniflare } from 'miniflare';
-import { admitErrorReport, admitIngest, boundedJson, compareVersions, ERROR_REPORT_DAILY_LIMIT, errorDayWindow, MAX_APP_VERSION, validDimensions, versionWithinCeiling } from './ingest';
+import { admitErrorReport, admitIngest, GLOBAL_INGEST_SOFT_LIMIT, LIGHT_IP_PER_MINUTE, boundedJson, compareVersions, ERROR_REPORT_DAILY_LIMIT, errorDayWindow, MAX_APP_VERSION, validDimensions, versionWithinCeiling } from './ingest';
 import worker from './index';
 
 const mf = new Miniflare({ modules: true, script: 'export default { fetch() { return new Response("ok") } }', d1Databases: ['DB'] });
@@ -17,10 +17,37 @@ it('atomically limits concurrent requests from one IP regardless of installation
   expect(results.filter(Boolean)).toHaveLength(120);
   expect(await admitIngest(db, 'test-ip', 120000)).toBe(true);
 }, 20_000);
-it('global budget prevents rotating IPs from admitting more ingestion', async () => {
-  await db.prepare("UPDATE ingest_limits SET count = 10000, window = 3 WHERE key = 'global'").run();
-  expect(await admitIngest(db, 'fresh-ip', 180000)).toBe(false);
+// F10 (2026-11-05 assessment): the global budget used to be a hard cap, so
+// ~84 IPs at the per-IP limit filled it and every real client got 429. Under
+// global overload only heavy IPs are refused now; light ones still get in.
+it('under global overload, heavy IPs are refused but a light (real) client still gets in', async () => {
+  const w = 3; // minute window 3 -> now = 180000
+  await db.prepare("INSERT OR REPLACE INTO ingest_limits (key, window, count) VALUES ('global', ?, ?)").bind(w, GLOBAL_INGEST_SOFT_LIMIT).run();
+  // An attacker IP already past the light allowance in this window...
+  await db.prepare('INSERT OR REPLACE INTO ingest_limits (key, window, count) VALUES (?, ?, ?)').bind('ip:flood-ip', w, LIGHT_IP_PER_MINUTE).run();
+  expect(await admitIngest(db, 'flood-ip', 180000)).toBe(false);
+  // ...while a real client's heartbeat from its own IP is admitted.
+  expect(await admitIngest(db, 'real-client-ip', 180000)).toBe(true);
 });
+
+it('a flood from many IPs at the per-IP cap cannot lock real clients out', async () => {
+  const now = 240000; // window 4
+  // 90 attacker IPs at the 120/min per-IP cap: 10,800 requests, past the global budget.
+  for (let i = 0; i < 90; i++) {
+    await db.prepare('INSERT OR REPLACE INTO ingest_limits (key, window, count) VALUES (?, 4, 120)').bind(`ip:bot-${i}`).run();
+  }
+  await db.prepare("INSERT OR REPLACE INTO ingest_limits (key, window, count) VALUES ('global', 4, 10800)").run();
+  const real = await Promise.all(Array.from({ length: 20 }, (_, i) => admitIngest(db, `user-${i}`, now)));
+  expect(real.every(Boolean)).toBe(true);
+  expect(await admitIngest(db, 'bot-0', now)).toBe(false);
+});
+
+it('without overload the per-IP limit alone applies, as before', async () => {
+  const now = 300000; // window 5, global empty
+  const results: boolean[] = [];
+  for (let i = 0; i < 121; i++) results.push(await admitIngest(db, 'busy-but-legit-ip', now));
+  expect(results.filter(Boolean)).toHaveLength(120);
+}, 20_000);
 it('actual Worker denies a fresh installation ID once its IP budget is exhausted', async () => {
   const window = Math.floor(Date.now() / 60000);
   await db.prepare('INSERT OR REPLACE INTO ingest_limits (key, window, count) VALUES (?, ?, ?)').bind('ip:shared-ip', window, 120).run();

@@ -1,6 +1,10 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
 import { Miniflare } from 'miniflare';
+// Vite `?raw` imports (typed in sql-raw.d.ts): no node:fs, so the worker's
+// tsconfig (workers-types only, no @types/node) type-checks this file.
+import errorsTable from '../migrations/0003_errors_table.sql?raw';
+import errorState from '../migrations/0005_error_state.sql?raw';
+import ingestLimits from '../migrations/0007_ingest_limits.sql?raw';
 import worker from './index';
 import { computeFingerprint } from './errors';
 
@@ -12,13 +16,12 @@ import { computeFingerprint } from './errors';
 const TOKEN = 'stats-token';
 const mf = new Miniflare({ modules: true, script: 'export default { fetch() { return new Response("ok") } }', d1Databases: ['DB'] });
 let db: D1Database;
-const migration = (f: string) => readFileSync(new URL(`../migrations/${f}`, import.meta.url), 'utf8');
 
 beforeAll(async () => {
   db = (await mf.getD1Database('DB')) as unknown as D1Database;
-  for (const f of ['0003_errors_table.sql', '0005_error_state.sql', '0007_ingest_limits.sql']) {
+  for (const sql of [errorsTable, errorState, ingestLimits]) {
     // Strip comments before splitting: a comment may itself contain ';'.
-    for (const stmt of migration(f).replace(/--.*$/gm, '').split(';').map((s) => s.trim()).filter(Boolean)) {
+    for (const stmt of sql.replace(/--.*$/gm, '').split(';').map((s: string) => s.trim()).filter(Boolean)) {
       await db.prepare(stmt).run();
     }
   }

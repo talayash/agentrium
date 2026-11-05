@@ -12,13 +12,41 @@ async function bumpCounter(db: D1Database, key: string, window: number, limit: n
   return row !== null;
 }
 
-/** Atomic D1 admission counters; installation IDs cannot reset these budgets. */
+/** Atomic increment with no cap; returns the count after this request. */
+async function countRequest(db: D1Database, key: string, window: number): Promise<number> {
+  const row = await db.prepare(`INSERT INTO ingest_limits (key, window, count) VALUES (?, ?, 1)
+    ON CONFLICT(key) DO UPDATE SET
+      window = excluded.window,
+      count = CASE WHEN ingest_limits.window != excluded.window THEN 1 ELSE ingest_limits.count + 1 END
+    RETURNING count`).bind(key, window).first<{ count: number }>();
+  return row?.count ?? Number.MAX_SAFE_INTEGER;
+}
+
+export const IP_INGEST_PER_MINUTE = 120;
+/** Total ingest per minute above which the Worker counts as overloaded. */
+export const GLOBAL_INGEST_SOFT_LIMIT = 10000;
+/** Requests per minute an IP may still send while the Worker is overloaded. */
+export const LIGHT_IP_PER_MINUTE = 5;
+
+/**
+ * Atomic D1 admission counters; installation IDs cannot reset these budgets.
+ *
+ * Per IP: at most IP_INGEST_PER_MINUTE. Globally: past GLOBAL_INGEST_SOFT_LIMIT
+ * only IPs above LIGHT_IP_PER_MINUTE are refused. The global budget used to be
+ * a hard cap, so ~84 addresses at the per-IP limit filled it and every real
+ * client (a heartbeat every few minutes) got 429 (F10, 2026-11-05 assessment).
+ * Now a flood only throttles the heavy senders that cause it. Volumetric
+ * floods from very many light IPs belong in a Cloudflare WAF rate-limit rule.
+ */
 export async function admitIngest(db: D1Database, ip: string, now = Date.now()): Promise<boolean> {
   const window = Math.floor(now / 60000);
-  for (const [key, limit] of [['global', 10000], [`ip:${ip}`, 120]] as const) {
-    if (!await bumpCounter(db, key, window, limit)) return false;
-  }
-  return true;
+  const ipKey = `ip:${ip}`;
+  if (!await bumpCounter(db, ipKey, window, IP_INGEST_PER_MINUTE)) return false;
+  const total = await countRequest(db, 'global', window);
+  if (total <= GLOBAL_INGEST_SOFT_LIMIT) return true;
+  const row = await db.prepare('SELECT count FROM ingest_limits WHERE key = ? AND window = ?')
+    .bind(ipKey, window).first<{ count: number }>();
+  return (row?.count ?? 0) <= LIGHT_IP_PER_MINUTE;
 }
 
 /** Error reports one IP may insert per UTC day, on top of the per-minute caps. */
