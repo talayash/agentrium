@@ -49,6 +49,9 @@ pub fn restore_local_terminals(remote: &Value, local: &Value) -> Value {
                 "claude_args",
                 "credential_bindings",
                 "claude_session_id",
+                // The view mode is local only (never synced), so it comes back
+                // from the local row like the other device-local fields.
+                "view_mode",
             ] {
                 if let Some(v) = old.get(key) {
                     terminal[key] = v.clone();
@@ -73,5 +76,21 @@ mod tests {
         let restored = restore_local_terminals(&remote, &local);
         assert_eq!(restored[0]["env_vars"], local[0]["env_vars"]);
         assert_eq!(restored[0]["claude_args"], local[0]["claude_args"]);
+    }
+
+    #[test]
+    fn view_mode_is_never_synced_and_restores_from_the_local_row() {
+        let local = json!([{"id":"one", "label":"claude", "view_mode":"insight"}]);
+        let remote = workspace_terminals(&local);
+        assert!(remote[0].get("view_mode").is_none());
+        let restored = restore_local_terminals(&remote, &local);
+        assert_eq!(restored[0]["view_mode"], "insight");
+    }
+
+    #[test]
+    fn restore_without_a_local_row_has_no_view_mode() {
+        let remote = workspace_terminals(&json!([{"id":"two", "label":"claude"}]));
+        let restored = restore_local_terminals(&remote, &json!([]));
+        assert!(restored[0].get("view_mode").is_none());
     }
 }
