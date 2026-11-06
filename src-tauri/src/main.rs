@@ -32,6 +32,7 @@ mod pull_requests;
 mod browser;
 mod insight_parse;
 mod insight;
+mod context_usage;
 mod question_hook;
 
 use tauri::Manager;
@@ -218,6 +219,7 @@ fn main() {
             commands::set_terminal_view_mode,
             commands::insight_start,
             commands::insight_stop,
+            commands::get_context_usage,
             commands::save_profile,
             commands::get_profiles,
             commands::delete_profile,

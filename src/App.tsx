@@ -72,6 +72,7 @@ import { applyRehydrateOutcome } from './lib/rehydrate';
 import { getSyncEnabled, subscribeToSyncEvents } from './lib/sync';
 import { useSyncStore } from './store/syncStore';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { useContextUsagePoller } from './hooks/useContextUsagePoller';
 import { usePreventWebviewReload } from './hooks/usePreventWebviewReload';
 import { InputContextMenu } from './components/InputContextMenu';
 import { useNotification } from './hooks/useNotification';
@@ -199,6 +200,7 @@ function App() {
   const hasAdoptedRef = useRef(false);
 
   useKeyboardShortcuts();
+  useContextUsagePoller();
   usePreventWebviewReload();
   useSessionStateDetection();
   useAttentionInbox();

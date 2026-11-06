@@ -523,6 +523,17 @@ button.bg-accent-primary.text-white:disabled { box-shadow: var(--btn-edges); }
   background: var(--elevation-1);
   box-shadow: inset 0 -1px 0 var(--seam-strong);
 }
+/* Context meter: two soft pulses when a session crosses into the red zone
+   (the class is added at that moment). The global reduce-motion rule and
+   the OS setting both stop it. */
+@keyframes context-meter-pulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--error) 55%, transparent); }
+  100% { box-shadow: 0 0 0 6px transparent; }
+}
+.context-meter-crit { animation: context-meter-pulse 1.2s ease-out 2; }
+@media (prefers-reduced-motion: reduce) {
+  .context-meter-crit { animation: none; }
+}
 /* Flat control group inside the band (no glass, no rim). */
 .toolbar-group {
   display: inline-flex;

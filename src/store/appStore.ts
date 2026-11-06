@@ -157,6 +157,8 @@ interface AppState {
   // Minimal-UI / chrome toggles (P1-3) - let users strip non-essential chrome.
   showStatusBar: boolean;
   showTabActivity: boolean;
+  /** Feature flag: context window meter in the session strip and sidebar cards. Default on. */
+  contextMeterEnabled: boolean;
   compactTitleBar: boolean;
   notificationSoundEnabled: boolean;
   /** Repeat the attention sound every few seconds until the session is viewed. Off = one sound per alert. */
@@ -412,6 +414,7 @@ interface AppState {
   recordPaletteUse: (key: string) => void;
   setShowStatusBar: (v: boolean) => void;
   setShowTabActivity: (v: boolean) => void;
+  setContextMeterEnabled: (v: boolean) => void;
   setCompactTitleBar: (v: boolean) => void;
   setNotificationSoundEnabled: (enabled: boolean) => void;
   setNotificationSoundRepeat: (enabled: boolean) => void;
@@ -675,6 +678,7 @@ export const useAppStore = create<AppState>()(
       uiReduceMotionUserSet: false,
       showStatusBar: true,
       showTabActivity: true,
+      contextMeterEnabled: true,
       compactTitleBar: false,
       notificationSoundEnabled: false,
       notificationSoundRepeat: false,
@@ -910,6 +914,7 @@ export const useAppStore = create<AppState>()(
       setUiReduceMotion: (enabled) => set({ uiReduceMotion: enabled, uiReduceMotionUserSet: true }),
       setShowStatusBar: (v) => set({ showStatusBar: v }),
       setShowTabActivity: (v) => set({ showTabActivity: v }),
+      setContextMeterEnabled: (v) => set({ contextMeterEnabled: v }),
       setCompactTitleBar: (v) => set({ compactTitleBar: v }),
       setNotificationSoundEnabled: (enabled) => set({ notificationSoundEnabled: enabled }),
       setNotificationSoundRepeat: (enabled) => set({ notificationSoundRepeat: enabled }),
@@ -1509,6 +1514,7 @@ export const useAppStore = create<AppState>()(
         paletteUsage: state.paletteUsage,
         showStatusBar: state.showStatusBar,
         showTabActivity: state.showTabActivity,
+        contextMeterEnabled: state.contextMeterEnabled,
         compactTitleBar: state.compactTitleBar,
         notificationSoundEnabled: state.notificationSoundEnabled,
         notificationSoundRepeat: state.notificationSoundRepeat,

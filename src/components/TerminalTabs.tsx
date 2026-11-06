@@ -24,6 +24,7 @@ import { specFor } from '../lib/agents';
 import { getAnyModelBadgeClasses, getModelBadgeLabel } from '../lib/agentModels';
 import { Tooltip } from './ui/Tooltip';
 import { ViewModeSwitch } from './insight/ViewModeSwitch';
+import { ContextMeter } from './ContextMeter';
 import { TaskBadge } from './TaskBadge';
 import { CiRepairBadge } from './CiRepairBadge';
 import { PrChip } from './PrChip';
@@ -252,6 +253,7 @@ export function TerminalTabs() {
                   </span>
                 </Tooltip>
               )}
+              <ContextMeter terminalId={activeConfig.id} />
               {activeInst?.loopInfo && (
                 <Tooltip label={`Loop: ${activeInst.loopInfo.interval}`}>
                   <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse flex-shrink-0" />

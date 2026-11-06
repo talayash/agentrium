@@ -433,6 +433,7 @@ describe('appStore - persist partialize', () => {
     'paletteUsage',
     'showStatusBar',
     'showTabActivity',
+    'contextMeterEnabled',
     'compactTitleBar',
     'confirmCloseSession',
     'notificationSoundEnabled',

@@ -974,6 +974,43 @@ pub async fn insight_stop(id: String) -> Result<(), String> {
     .await
 }
 
+/// Context-window fill for each requested terminal, for the context meter.
+/// Terminals without a bound session or a tailable transcript are omitted.
+/// Cached per terminal: a transcript is re-read only after it grows.
+#[command]
+pub async fn get_context_usage(
+    state: State<'_, AppState>,
+    ids: Vec<String>,
+) -> Result<HashMap<String, crate::context_usage::ContextUsage>, String> {
+    wrap_cmd("get_context_usage", async move {
+        let (targets, live): (Vec<_>, Vec<String>) = {
+            let terminals = state.terminals.lock().await;
+            let targets = ids
+                .iter()
+                .filter_map(|id| {
+                    let t = terminals.terminals.get(id)?;
+                    let sid = t.config.claude_session_id.clone()?;
+                    Some((id.clone(), t.config.agent.clone(), sid, t.config.working_directory.clone()))
+                })
+                .collect();
+            (targets, terminals.terminals.keys().cloned().collect())
+        };
+        tokio::task::spawn_blocking(move || {
+            crate::context_usage::retain(&live);
+            targets
+                .into_iter()
+                .filter_map(|(id, agent, sid, cwd)| {
+                    let usage = crate::context_usage::usage_for_terminal(&id, &agent, &sid, &cwd)?;
+                    Some((id, usage))
+                })
+                .collect()
+        })
+        .await
+        .map_err(|e| format!("Context usage task failed: {}", e))
+    })
+    .await
+}
+
 #[command]
 pub async fn save_profile(
     state: State<'_, AppState>,

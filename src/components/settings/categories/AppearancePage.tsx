@@ -25,6 +25,8 @@ export default function AppearancePage() {
   const uiReduceMotion = useAppStore((s) => s.uiReduceMotion);
   const showStatusBar = useAppStore((s) => s.showStatusBar);
   const showTabActivity = useAppStore((s) => s.showTabActivity);
+  const contextMeterEnabled = useAppStore((s) => s.contextMeterEnabled);
+  const setContextMeterEnabled = useAppStore((s) => s.setContextMeterEnabled);
   const compactTitleBar = useAppStore((s) => s.compactTitleBar);
   const {
     setThemeMode, setUiDensity, setColorfulFolderIcons, setAccentColorHex, setUiFontScale, setUiReduceMotion,
@@ -119,6 +121,9 @@ export default function AppearancePage() {
         </SettingRow>
         <SettingRow label="Tab activity indicators" description="Show the busy dot and working shimmer on tabs.">
           <Toggle value={showTabActivity} onChange={setShowTabActivity} label="Tab activity indicators" />
+        </SettingRow>
+        <SettingRow label="Context window meter" description="Show how full each session's context window is, in the session strip and on sidebar cards.">
+          <Toggle value={contextMeterEnabled} onChange={setContextMeterEnabled} label="Context window meter" />
         </SettingRow>
         <SettingRow label="Compact title bar" description="Hide the centered product name to free up the drag area.">
           <Toggle value={compactTitleBar} onChange={setCompactTitleBar} label="Compact title bar" />

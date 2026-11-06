@@ -22,6 +22,7 @@ import { closeWithConfirm } from '../lib/closeConfirm';
 import { usePrStore } from '../store/prStore';
 import { openCreatePrForTerminal, openPullRequestUrl, sendFailingChecksToAgent, terminalPrTarget } from '../lib/pullRequestActions';
 import { PrChip } from './PrChip';
+import { ContextBar } from './ContextMeter';
 import { cleanUpPrSessions, cleanupToastMessage } from '../lib/prCleanup';
 import { useSessionAttentionStore } from '../store/sessionAttentionStore';
 
@@ -409,6 +410,7 @@ export function SessionCards() {
               <PrChip terminalId={id} compact />
               {cost && <span className="ml-auto text-emerald-500 font-medium tabular-nums">{cost}</span>}
             </div>
+            <ContextBar terminalId={id} />
           </Reorder.Item>
         );
       })}
