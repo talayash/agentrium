@@ -26,6 +26,7 @@ import { Tooltip } from './ui/Tooltip';
 import { ThemeToggle } from './ui/ThemeToggle';
 import { ListRow } from './ui/ListRow';
 import { pickBreadcrumb } from '../lib/breadcrumb';
+import { SessionIdentity, SessionActions, useSessionHeaderVisible } from './titlebar/SessionHeader';
 
 
 /**
@@ -71,6 +72,8 @@ export function TitleBar() {
   const [checkoutTarget, setCheckoutTarget] = useState<string | null>(null);
   const [branchFilter, setBranchFilter] = useState('');
   const branchMenuRef = useRef<HTMLDivElement>(null);
+  // Session identity + actions live in this row (no second header strip).
+  const showSession = useSessionHeaderVisible();
 
   const active = activeTerminalId ? terminals.get(activeTerminalId) : null;
   const gitInfo = activeTerminalId ? gitInfoCache.get(activeTerminalId) : null;
@@ -194,9 +197,11 @@ export function TitleBar() {
         {/* Project breadcrumb - static status display, not a control (user
             decision: no click target, no chevron). */}
         <Tooltip label={active?.config.working_directory || 'No active session'}>
-        <div className="flex items-center gap-1.5 h-7 pl-2.5 pr-2 max-w-[360px] min-w-0 cursor-default select-none">
+        <div className="flex items-center gap-1.5 h-7 pl-2.5 pr-2 max-w-[360px] min-w-0 flex-shrink cursor-default select-none">
           <span className={`w-1.5 h-1.5 rounded-full ${statusDot} flex-shrink-0`} />
-          {breadcrumb.sub && (
+          {/* The parent segment is dropped while the session identity follows
+              (full path stays in the tooltip) to keep the merged row short. */}
+          {breadcrumb.sub && !showSession && (
             <>
               <span className="text-text-tertiary text-[12px] truncate max-w-[100px]">
                 {breadcrumb.sub}
@@ -209,6 +214,8 @@ export function TitleBar() {
           </span>
         </div>
         </Tooltip>
+
+        {showSession && <SessionIdentity />}
 
         {/* Branch switcher */}
         {gitInfo?.is_git_repo && gitInfo.current_branch && (
@@ -323,6 +330,7 @@ export function TitleBar() {
 
       {/* Trailing: tools capsule, caption buttons. */}
       <div className="flex items-center gap-1.5 no-drag flex-shrink-0">
+        {showSession && <SessionActions />}
         <UpdatePill />
 
         <div className="toolbar-group h-8 px-0.5">
@@ -333,7 +341,8 @@ export function TitleBar() {
               onClick={toggleBrowser}
               aria-label={browserOpen ? 'Close browser' : 'Open browser'}
               aria-pressed={browserOpen}
-              className={toolBtn(browserOpen)}
+              data-tone="web"
+              className={`tone-btn ${toolBtn(browserOpen)}`}
             >
               <Globe size={15} strokeWidth={1.9} />
             </button>
@@ -343,7 +352,8 @@ export function TitleBar() {
               onClick={toggleGridMode}
               aria-label="Toggle Grid View"
               aria-pressed={gridMode}
-              className={`relative ${toolBtn(gridMode || gridCount > 0)}`}
+              data-tone="view"
+              className={`tone-btn relative ${toolBtn(gridMode || gridCount > 0)}`}
             >
               <Grid3X3 size={15} strokeWidth={1.9} />
               {gridCount > 0 && (
@@ -354,7 +364,13 @@ export function TitleBar() {
             </button>
           </Tooltip>
           <Tooltip label={inspectorOpen ? 'Close Inspector' : 'Open Inspector'}>
-            <button onClick={toggleInspector} className={toolBtn(inspectorOpen)}>
+            <button
+              onClick={toggleInspector}
+              aria-label={inspectorOpen ? 'Close Inspector' : 'Open Inspector'}
+              aria-pressed={inspectorOpen}
+              data-tone="view"
+              className={`tone-btn ${toolBtn(inspectorOpen)}`}
+            >
               <PanelRight size={15} strokeWidth={1.9} />
             </button>
           </Tooltip>

@@ -429,16 +429,19 @@ export function SessionCards() {
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
           <CardMenuItem
+            tone="file"
             icon={<Pencil size={13} strokeWidth={1.75} />}
             label="Rename..."
             onClick={() => { setContextMenu(null); setRenamingId(ctxId); }}
           />
           <CardMenuItem
+            tone="run"
             icon={<Copy size={13} strokeWidth={1.75} />}
             label="Continue with another agent..."
             onClick={() => { setContextMenu(null); setHandoffId(ctxId); }}
           />
           <CardMenuItem
+            tone="git"
             icon={<GitBranch size={13} strokeWidth={1.75} />}
             label="Fork conversation"
             title="Only Claude Code and Codex sessions with a saved conversation can fork"
@@ -453,6 +456,7 @@ export function SessionCards() {
           />
           {byId.get(ctxId)?.config.task && (
             <CardMenuItem
+              tone="git"
               icon={<GitMerge size={13} strokeWidth={1.75} />}
               label="Finish task..."
               onClick={() => { setContextMenu(null); openFinishTask(ctxId, false); }}
@@ -469,12 +473,14 @@ export function SessionCards() {
               <>
                 {ref ? (
                   <CardMenuItem
+                    tone="web"
                     icon={<ExternalLink size={13} strokeWidth={1.75} />}
                     label={`Open pull request #${ref.number}`}
                     onClick={() => { setContextMenu(null); openPullRequestUrl(prStatuses[target.key]?.url ?? ref.url); }}
                   />
                 ) : (
                   <CardMenuItem
+                    tone="git"
                     icon={<GitPullRequestCreate size={13} strokeWidth={1.75} />}
                     label="Create pull request..."
                     onClick={() => { setContextMenu(null); openCreatePrForTerminal(ctxId); }}
@@ -482,6 +488,7 @@ export function SessionCards() {
                 )}
                 {failing && (
                   <CardMenuItem
+                    tone="idea"
                     icon={<Wrench size={13} strokeWidth={1.75} />}
                     label="Send failing checks to agent"
                     onClick={() => { setContextMenu(null); void sendFailingChecksToAgent(ctxId); }}
@@ -489,6 +496,7 @@ export function SessionCards() {
                 )}
                 {finished && (
                   <CardMenuItem
+                    tone="danger"
                     icon={<Trash2 size={13} strokeWidth={1.75} />}
                     label="Clean up sessions..."
                     onClick={() => {
@@ -505,6 +513,7 @@ export function SessionCards() {
             );
           })()}
           <CardMenuItem
+            tone="run"
             icon={<Pencil size={13} strokeWidth={1.75} />}
             label={refreshingId === ctxId ? 'Updating context...' : 'Refresh context'}
             disabled={refreshingId !== null}
@@ -520,23 +529,27 @@ export function SessionCards() {
           />
           <div className="my-1 border-t border-seam" />
           <CardMenuItem
+            tone="user"
             icon={ctxPinned ? <PinOff size={13} strokeWidth={1.75} /> : <Pin size={13} strokeWidth={1.75} />}
             label={ctxPinned ? 'Unpin' : 'Pin'}
             onClick={() => { setContextMenu(null); toggleTabPin(ctxId); }}
           />
           <CardMenuItem
+            tone="view"
             icon={<SplitSquareHorizontal size={13} strokeWidth={1.75} />}
             label="Split with active session"
             disabled={!canSplit}
             onClick={() => { setContextMenu(null); splitWithActive(ctxId); }}
           />
           <CardMenuItem
+            tone="view"
             icon={<AppWindow size={13} strokeWidth={1.75} />}
             label="Open in New Window"
             onClick={() => { setContextMenu(null); openInNewWindow(ctxId); }}
           />
           <div className="my-1 border-t border-seam" />
           <CardMenuItem
+            tone="danger"
             icon={<X size={13} strokeWidth={1.75} />}
             label="Close"
             onClick={() => {
@@ -545,6 +558,7 @@ export function SessionCards() {
             }}
           />
           <CardMenuItem
+            tone="danger"
             icon={<X size={13} strokeWidth={1.75} />}
             label="Close Others"
             disabled={allIds.length <= 1}
@@ -554,6 +568,7 @@ export function SessionCards() {
             }}
           />
           <CardMenuItem
+            tone="danger"
             icon={<X size={13} strokeWidth={1.75} />}
             label="Close All But Pinned"
             disabled={idsToCloseForAllButPinned(allIds, pinnedTabIds).length === 0}
@@ -571,13 +586,15 @@ export function SessionCards() {
 
 interface CardMenuItemProps {
   icon: React.ReactNode;
+  /** Icon hue family (icon tone block in index.css); danger stays grey until hover. */
+  tone: 'view' | 'git' | 'file' | 'run' | 'idea' | 'web' | 'user' | 'danger';
   label: string;
   onClick: () => void;
   disabled?: boolean;
   title?: string;
 }
 
-function CardMenuItem({ icon, label, onClick, disabled, title }: CardMenuItemProps) {
+function CardMenuItem({ icon, tone, label, onClick, disabled, title }: CardMenuItemProps) {
   return (
     <button
       type="button"
@@ -585,13 +602,13 @@ function CardMenuItem({ icon, label, onClick, disabled, title }: CardMenuItemPro
       title={title}
       disabled={disabled}
       onClick={onClick}
-      className={`w-full flex items-center gap-2.5 px-3 py-1.5 text-left text-[12px] transition-colors ${
+      className={`w-full flex items-center gap-2.5 px-2.5 py-1 text-left text-[12px] transition-colors ${
         disabled
           ? 'text-text-tertiary/50 cursor-not-allowed'
           : 'text-text-primary hover:bg-fill-hover'
       }`}
     >
-      <span className={disabled ? 'opacity-50' : 'text-text-tertiary'}>{icon}</span>
+      <span className="tone-chip" data-tone={tone}>{icon}</span>
       <span className="flex-1">{label}</span>
     </button>
   );

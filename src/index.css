@@ -1058,3 +1058,93 @@ h2, h3 { letter-spacing: var(--track-title); line-height: 1.3; }
 @media (prefers-reduced-motion: reduce) {
   .session-busy-dot { animation: none; outline: 2px solid currentColor; outline-offset: 2px; }
 }
+
+/* Icon tones: one hue per KIND of action (never a status - success/warning/
+   error keep their own tokens, and --accent-warm stays ambient-only, which is
+   why hints use yellow, not orange). A control opts in with a tone class plus
+   data-tone="view|git|file|run|idea|web|user|danger":
+     .tone-btn  - icon-only button: coloured glyph on a soft tile of its hue
+     .tone-tab  - labelled tab/segment: coloured glyph, tile on hover/active
+     .tone-chip - small tile wrapping a menu-row icon
+     .tone-danger - grey at rest, red on hover (destructive actions)
+   Tiles use color-mix, never Tailwind /opacity classes (those compile to
+   nothing on var() colours here). Unlayered, so these beat same-specificity
+   utilities such as hover:bg-fill-hover. */
+:root {
+  --icon-view: var(--accent-primary); /* follows the user accent */
+  --icon-git: #b48cff;
+  --icon-file: #2dd4bf;
+  --icon-run: #4ade80;
+  --icon-idea: #facc15;
+  --icon-web: #38bdf8;
+  --icon-user: #94a3b8;
+  --icon-danger: #f87171;
+  --icon-tile: 16%;
+  --icon-tile-hover: 26%;
+  --icon-tile-base: transparent;
+}
+:root[data-theme="light"] {
+  --icon-git: #7c4ddb;
+  --icon-file: #0f9488;
+  --icon-run: #16a34a;
+  --icon-idea: #a37800;
+  --icon-web: #0284c7;
+  --icon-user: #5b6577;
+  --icon-danger: #dc2626;
+  --icon-tile: 13%;
+  --icon-tile-hover: 22%;
+}
+@media (prefers-reduced-transparency: reduce) {
+  :root { --icon-tile-base: var(--elevation-1); }
+}
+[data-tone="view"] { --tone: var(--icon-view); }
+[data-tone="git"] { --tone: var(--icon-git); }
+[data-tone="file"] { --tone: var(--icon-file); }
+[data-tone="run"] { --tone: var(--icon-run); }
+[data-tone="idea"] { --tone: var(--icon-idea); }
+[data-tone="web"] { --tone: var(--icon-web); }
+[data-tone="user"] { --tone: var(--icon-user); }
+[data-tone="danger"] { --tone: var(--icon-danger); }
+
+.tone-btn[data-tone] {
+  color: var(--tone);
+  background-color: color-mix(in srgb, var(--tone) var(--icon-tile), var(--icon-tile-base));
+}
+.tone-btn[data-tone]:hover {
+  color: var(--tone);
+  background-color: color-mix(in srgb, var(--tone) var(--icon-tile-hover), var(--icon-tile-base));
+}
+.tone-tab[data-tone] > svg { color: var(--tone); }
+.tone-tab[data-tone]:hover {
+  background-color: color-mix(in srgb, var(--tone) var(--icon-tile), var(--icon-tile-base));
+}
+.tone-btn[data-tone][aria-pressed="true"],
+.tone-tab[data-tone][aria-pressed="true"],
+.tone-tab[data-tone][aria-checked="true"] {
+  background-color: color-mix(in srgb, var(--tone) var(--icon-tile-hover), var(--icon-tile-base));
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--tone) 55%, transparent);
+}
+.tone-chip[data-tone] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  flex-shrink: 0;
+  color: var(--tone);
+  background-color: color-mix(in srgb, var(--tone) var(--icon-tile), var(--icon-tile-base));
+}
+.tone-chip[data-tone="danger"] {
+  color: rgb(var(--text-tertiary));
+  background-color: transparent;
+}
+:hover > .tone-chip[data-tone="danger"] {
+  color: var(--icon-danger);
+  background-color: color-mix(in srgb, var(--icon-danger) var(--icon-tile), var(--icon-tile-base));
+}
+:disabled > .tone-chip[data-tone] { filter: grayscale(1); opacity: 0.5; }
+.tone-danger:hover {
+  color: var(--icon-danger);
+  background-color: color-mix(in srgb, var(--icon-danger) var(--icon-tile), var(--icon-tile-base));
+}

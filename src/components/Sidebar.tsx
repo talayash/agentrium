@@ -15,12 +15,14 @@ interface NavItem {
   id: SidebarNav;
   label: string;
   Icon: LucideIcon;
+  /** Icon hue family (see the icon tone block in index.css). */
+  tone: 'run' | 'file';
 }
 
 const NAV: NavItem[] = [
-  { id: 'sessions', label: 'Sessions', Icon: Terminal },
-  { id: 'files', label: 'Files', Icon: FolderTree },
-  { id: 'history', label: 'History', Icon: History },
+  { id: 'sessions', label: 'Sessions', Icon: Terminal, tone: 'run' },
+  { id: 'files', label: 'Files', Icon: FolderTree, tone: 'file' },
+  { id: 'history', label: 'History', Icon: History, tone: 'run' },
 ];
 
 /**
@@ -52,12 +54,13 @@ export function Sidebar() {
   if (sidebarCollapsed) {
     return (
       <div className="h-full flex flex-col items-center py-2 gap-1" style={{ width: 'var(--w-rail)' }}>
-        {NAV.map(({ id, label, Icon }) => (
+        {NAV.map(({ id, label, Icon, tone }) => (
           <Tooltip key={id} label={label} side="right">
             <button
               onClick={() => { setNav(id); toggleSidebarCollapse(); }}
               aria-label={label}
-              className="w-8 h-8 flex items-center justify-center rounded-lg text-text-tertiary hover:text-text-primary hover:bg-fill-hover transition-colors"
+              data-tone={tone}
+              className="tone-btn w-8 h-8 flex items-center justify-center rounded-lg transition-colors"
             >
               <Icon size={16} strokeWidth={1.75} />
             </button>
@@ -68,7 +71,8 @@ export function Sidebar() {
             <button
               onClick={() => openProfileModal()}
               aria-label="Profiles"
-              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-fill-hover text-text-tertiary hover:text-text-secondary transition-colors"
+              data-tone="user"
+              className="tone-btn w-8 h-8 flex items-center justify-center rounded-lg transition-colors"
             >
               <UserCog size={15} strokeWidth={1.75} />
             </button>
@@ -77,7 +81,8 @@ export function Sidebar() {
             <button
               onClick={openSettings}
               aria-label="Settings"
-              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-fill-hover text-text-tertiary hover:text-text-secondary transition-colors"
+              data-tone="user"
+              className="tone-btn w-8 h-8 flex items-center justify-center rounded-lg transition-colors"
             >
               <Settings size={15} strokeWidth={1.75} />
             </button>
@@ -100,7 +105,7 @@ export function Sidebar() {
       {/* Navigator switcher + collapse control (the collapse affordance lives
           IN the sidebar - the titlebar logo is a brand mark, not a toggle). */}
       <div className="flex gap-1 p-2 items-center">
-        {NAV.map(({ id, label, Icon }) => {
+        {NAV.map(({ id, label, Icon, tone }) => {
           const on = nav === id;
           return (
             <Tooltip key={id} label={label}>
@@ -108,11 +113,9 @@ export function Sidebar() {
                 onClick={() => setNav(id)}
                 aria-pressed={on}
                 aria-label={label}
-                className={`flex-1 h-9 rounded-lg flex items-center justify-center transition-[background-color,color,transform] duration-100 active:scale-[0.96] ${
-                  on
-                    ? 'bg-accent-primary text-white shadow-[0_3px_8px_var(--accent-glow-md)]'
-                    : 'text-text-tertiary hover:text-text-primary hover:bg-fill-hover'
-                }`}
+                data-tone={tone}
+                // Duotone: the hue tile + rim marks the active navigator.
+                className="tone-tab flex-1 h-9 rounded-lg flex items-center justify-center transition-[background-color,box-shadow,transform] duration-100 active:scale-[0.96]"
               >
                 <Icon size={16} strokeWidth={on ? 2 : 1.75} />
               </button>

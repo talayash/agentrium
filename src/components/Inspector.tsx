@@ -10,11 +10,11 @@ import { LearnPanel } from './learn/LearnPanel';
 
 type InspectorTab = 'changes' | 'workspaces' | 'commands' | 'learn';
 
-const TABS: { id: InspectorTab; label: string; Icon: LucideIcon }[] = [
-  { id: 'changes', label: 'Changes', Icon: FileDiff },
-  { id: 'workspaces', label: 'Workspaces', Icon: FolderOpen },
-  { id: 'commands', label: 'Commands', Icon: Lightbulb },
-  { id: 'learn', label: 'Learn', Icon: GraduationCap },
+const TABS: { id: InspectorTab; label: string; Icon: LucideIcon; tone: 'file' | 'idea' }[] = [
+  { id: 'changes', label: 'Changes', Icon: FileDiff, tone: 'file' },
+  { id: 'workspaces', label: 'Workspaces', Icon: FolderOpen, tone: 'file' },
+  { id: 'commands', label: 'Commands', Icon: Lightbulb, tone: 'idea' },
+  { id: 'learn', label: 'Learn', Icon: GraduationCap, tone: 'idea' },
 ];
 
 /**
@@ -57,16 +57,17 @@ export function Inspector() {
   return (
     <div className="h-full flex flex-col">
       <div className="flex items-center gap-1 p-2 border-b border-[var(--seam)]">
-        {TABS.filter((t) => t.id !== 'learn' || learnEnabled).map(({ id, label, Icon }) => {
+        {TABS.filter((t) => t.id !== 'learn' || learnEnabled).map(({ id, label, Icon, tone }) => {
           const on = active === id;
           return (
             <button
               key={id}
               onClick={() => openTab(id)}
               aria-pressed={on}
-              className={`flex-1 h-8 rounded-lg flex items-center justify-center gap-1.5 text-[12px] font-medium transition-[background-color,color] duration-100 ${
+              data-tone={tone}
+              className={`tone-tab flex-1 h-8 rounded-lg flex items-center justify-center gap-1.5 text-[12px] font-medium transition-[background-color,color,box-shadow] duration-100 ${
                 on
-                  ? 'bg-fill-active text-text-primary'
+                  ? 'text-text-primary'
                   : 'text-text-tertiary hover:text-text-primary hover:bg-fill-hover'
               }`}
             >

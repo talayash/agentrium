@@ -1,10 +1,8 @@
 import { useMemo, useCallback, useEffect } from 'react';
-import { X, XCircle, SplitSquareHorizontal, RotateCw, GitBranch, File as FileIcon, Flag } from 'lucide-react';
+import { X, SplitSquareHorizontal, RotateCw, File as FileIcon, Flag } from 'lucide-react';
 import { useTerminalStore } from '../store/terminalStore';
 import { focusTerminalInput } from '../lib/terminalFocus';
 import { useAppStore } from '../store/appStore';
-import { toast } from '../store/toastStore';
-import { reportInvokeFailure } from '../lib/errorReporter';
 import { confirmAction } from '../lib/confirmDialog';
 import { TerminalView } from './TerminalView';
 import { TerminalGrid } from './TerminalGrid';
@@ -13,25 +11,11 @@ import { SessionInsights } from './SessionInsights';
 import { SessionMetricsPanel } from './SessionMetricsPanel';
 import { FileEditorView } from './FileEditorView';
 import { WelcomeScreen } from './WelcomeScreen';
-import { ScriptsMenu } from './ScriptsMenu';
 import { ScriptChildPane } from './ScriptChildPane';
 import { BottomTerminalPane } from './BottomTerminalPane';
-import { useNowTick } from '../hooks/useNowTick';
-import { getLastOutputAt } from '../lib/terminalActivity';
-import { StateDot } from './StateDot';
-import { BrandIcon } from './BrandIcon';
-import { specFor } from '../lib/agents';
-import { getAnyModelBadgeClasses, getModelBadgeLabel } from '../lib/agentModels';
 import { Tooltip } from './ui/Tooltip';
-import { ViewModeSwitch } from './insight/ViewModeSwitch';
-import { ContextMeter } from './ContextMeter';
-import { TaskBadge } from './TaskBadge';
-import { CiRepairBadge } from './CiRepairBadge';
-import { PrChip } from './PrChip';
 import { RaceGridHeader } from './RaceHeader';
 import { RaceCompareView } from './RaceCompareView';
-import { closeWithConfirm } from '../lib/closeConfirm';
-import type { SessionState } from '../lib/terminalState';
 
 function fileBasename(p: string): string {
   const trimmed = p.replace(/[\\/]+$/, '');
@@ -39,27 +23,18 @@ function fileBasename(p: string): string {
   return idx === -1 ? trimmed : trimmed.slice(idx + 1);
 }
 
-function formatCost(usd: number): string {
-  if (usd <= 0) return '';
-  if (usd < 0.01) return '<$0.01';
-  return `$${usd.toFixed(2)}`;
-}
-
 /**
  * The session-first main area. Session switching lives in the sidebar's
  * SessionCards (the old horizontal tab strip is gone - one switcher, not
- * two); this component renders a clean session HEADER for the active
- * session (agent · name · folder · branch · status · cost), the open-file
- * pills, and the terminal content underneath. Grid and split modes replace
+ * two); the active session's identity and actions live in the TitleBar
+ * row (titlebar/SessionHeader.tsx). This component renders the open-file
+ * pills and the terminal content underneath. Grid and split modes replace
  * the whole area when active.
  */
 export function TerminalTabs() {
   const { terminals, activeTerminalId, scriptChildren, closeScript } = useTerminalStore();
-  const { gridMode, splitMode, splitTerminalIds, splitOrientation, splitRatio, setSplitOrientation, setSplitRatio, clearSplit, openFiles, activeFilePath, setActiveFilePath, closeFileTab, showFileTree, showTabActivity } = useAppStore();
-  const now = useNowTick();
-  const terminalStates = useTerminalStore((s) => s.terminalStates);
+  const { gridMode, splitMode, splitTerminalIds, splitOrientation, splitRatio, setSplitOrientation, setSplitRatio, clearSplit, openFiles, activeFilePath, setActiveFilePath, closeFileTab } = useAppStore();
   const terminalMetrics = useTerminalStore((s) => s.terminalMetrics);
-  const gitInfoCache = useTerminalStore((s) => s.gitInfoCache);
 
   const focusFile = useCallback((path: string) => {
     setActiveFilePath(path);
@@ -73,19 +48,6 @@ export function TerminalTabs() {
     }
     closeFileTab(path);
   };
-
-  // Close the active session from the header (#59). Mirrors the sidebar
-  // SessionCards' `closeWithReport` so error handling + telemetry stay
-  // consistent with the existing close paths (per CLAUDE.md's frontend
-  // error-handling rules).
-  const closeActiveSession = useCallback((e: React.MouseEvent<HTMLElement>) => {
-    const id = activeTerminalId;
-    if (!id) return;
-    closeWithConfirm(id, e.currentTarget).catch((err) => {
-      toast.error('Close failed', 'Could not close the session.');
-      reportInvokeFailure('close_terminal', err);
-    });
-  }, [activeTerminalId]);
 
   // Script-child terminals are rendered below their parent and bottom-pane
   // shells are rendered in BottomTerminalPane - neither belongs in the main
@@ -172,191 +134,65 @@ export function TerminalTabs() {
     );
   }
 
-  const activeInst = activeTerminalId ? terminals.get(activeTerminalId) : null;
-  const activeConfig = activeInst?.config;
-  const showHeader = Boolean(activeConfig) || openFiles.length > 0;
-
-  // Live session state for the header dot: prefer the poller's classified
-  // state; fall back to the live activity timer so the dot lights up
-  // instantly on first output before the first poll tick lands.
-  let headerState: SessionState = 'idle';
-  if (activeConfig) {
-    const lastOutputAt = getLastOutputAt(activeConfig.id);
-    const liveBusy = lastOutputAt != null && now - lastOutputAt < 2000;
-    headerState = terminalStates.get(activeConfig.id) ?? (liveBusy ? 'busy' : 'idle');
-  }
-  const headerCost = activeConfig ? formatCost(terminalMetrics.get(activeConfig.id)?.costUsd ?? 0) : '';
-  const headerGit = activeConfig ? gitInfoCache.get(activeConfig.id) : undefined;
 
   return (
     <div className="h-full flex flex-col">
-      {/* Clean session header - identity of the ACTIVE session only. Switching
-          sessions happens in the sidebar's SessionCards; open files render as
-          pills after the divider. */}
-      {showHeader && (
-        <div className="py-1.5 px-2.5 bg-elevation-1 border-b border-seam-strong flex items-center gap-2 min-w-0">
-          {activeConfig && (
-            <div
-              className={`flex items-center gap-2 min-w-0 ${activeFilePath ? 'opacity-60' : ''}`}
-              data-session-header
-            >
-              {headerState !== 'idle' && showTabActivity && <StateDot state={headerState} />}
-              <Tooltip label={`Agent: ${specFor(activeConfig.agent).displayName}`}>
-                <span className="flex-shrink-0 flex items-center">
-                  <BrandIcon kind={activeConfig.agent} size={15} />
-                </span>
-              </Tooltip>
-              <span className="text-[13px] font-medium text-text-primary max-w-[220px] truncate">
-                {activeConfig.nickname || activeConfig.label}
-              </span>
-              {terminals.get(activeConfig.id)?.sessionContext?.title && terminals.get(activeConfig.id)?.sessionContext?.title !== (activeConfig.nickname || activeConfig.label) && (
-                <>
-                  <span className="w-px h-3.5 bg-seam-strong flex-shrink-0" aria-hidden />
-                  <span className="text-[12px] text-text-secondary max-w-[260px] truncate" title={terminals.get(activeConfig.id)?.sessionContext?.title}>
-                    {terminals.get(activeConfig.id)?.sessionContext?.title}
-                  </span>
-                </>
-              )}
-              {activeConfig.working_directory && (
-                <>
-                  <span className="w-px h-3.5 bg-seam-strong flex-shrink-0" aria-hidden />
-                  <span className="text-[11px] text-text-tertiary max-w-[160px] truncate">
-                    {fileBasename(activeConfig.working_directory)}
-                  </span>
-                </>
-              )}
-              {/* Branch deliberately absent: the interactive branch switcher
-                  lives in the titlebar directly above and the status bar
-                  carries the rich chip (dirty/ahead/behind) - a third static
-                  copy here was duplication. Worktree sessions still get a
-                  subtle fork glyph. */}
-              {activeConfig.task ? (
-                <>
-                  <TaskBadge terminalId={activeConfig.id} task={activeConfig.task} />
-                  <CiRepairBadge terminalId={activeConfig.id} task={activeConfig.task} />
-                </>
-              ) : headerGit?.is_worktree && (
-                <Tooltip label={`Worktree · ${headerGit.current_branch ?? ''}`}>
-                  <GitBranch size={11} className="text-purple-400 flex-shrink-0" />
-                </Tooltip>
-              )}
-              <PrChip terminalId={activeConfig.id} />
-              {activeInst?.model && (
-                <span className={`text-[9px] px-1.5 h-[16px] flex items-center rounded-md font-medium flex-shrink-0 ${getAnyModelBadgeClasses(activeInst.model)}`}>
-                  {getModelBadgeLabel(activeInst.model)}
-                </span>
-              )}
-              {headerCost && (
-                <Tooltip label="Estimated session cost (live)">
-                  <span className="text-[9px] px-1.5 h-[16px] flex items-center rounded-md font-medium flex-shrink-0 bg-emerald-500/15 text-emerald-400 tabular-nums">
-                    {headerCost}
-                  </span>
-                </Tooltip>
-              )}
-              <ContextMeter terminalId={activeConfig.id} />
-              {activeInst?.loopInfo && (
-                <Tooltip label={`Loop: ${activeInst.loopInfo.interval}`}>
-                  <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse flex-shrink-0" />
-                </Tooltip>
-              )}
-            </div>
-          )}
-
-          {/* Open-file pills */}
-          {openFiles.length > 0 && (
-            <>
-              {activeConfig && (
-                <span className="w-px h-5 bg-seam-strong mx-1 flex-shrink-0" aria-hidden />
-              )}
-              <div className="flex items-center gap-1 min-w-0 overflow-x-auto scrollbar-none">
-                {openFiles.map((tab) => {
-                  const isActive = activeFilePath === tab.path;
-                  const isRace = tab.mode === 'race';
-                  const dirty = !isRace && tab.content !== tab.original;
-                  return (
-                    <Tooltip key={tab.path} label={isRace ? `Race: ${tab.content}` : tab.path}>
-                    <button
-                      onClick={() => focusFile(tab.path)}
-                      onAuxClick={(e) => {
-                        if (e.button !== 1) return;
+      {/* Open-file pills. The active session identity and actions live in the
+          TitleBar row above (one merged band), so this strip only appears
+          while files are open. */}
+      {openFiles.length > 0 && (
+        <div className="py-1 px-2.5 bg-elevation-1 border-b border-seam-strong flex items-center gap-2 min-w-0">
+          <div className="flex items-center gap-1 min-w-0 overflow-x-auto scrollbar-none">
+            {openFiles.map((tab) => {
+              const isActive = activeFilePath === tab.path;
+              const isRace = tab.mode === 'race';
+              const dirty = !isRace && tab.content !== tab.original;
+              return (
+                <Tooltip key={tab.path} label={isRace ? `Race: ${tab.content}` : tab.path}>
+                <button
+                  onClick={() => focusFile(tab.path)}
+                  onAuxClick={(e) => {
+                    if (e.button !== 1) return;
+                    e.preventDefault();
+                    requestCloseFile(tab.path);
+                  }}
+                  className={`group relative flex items-center gap-1.5 px-2.5 h-7 rounded-[10px] text-[12px] transition-colors flex-shrink-0 ${
+                    isActive
+                      ? 'bg-fill-active text-text-primary ring-1 ring-inset ring-seam-strong'
+                      : 'hover:bg-fill-hover text-text-secondary'
+                  }`}
+                >
+                  {isRace
+                    ? <Flag size={11} className="text-accent-primary flex-shrink-0" strokeWidth={1.75} />
+                    : <FileIcon size={11} className="text-text-tertiary flex-shrink-0" strokeWidth={1.75} />}
+                  <span className="max-w-[140px] truncate">{isRace ? tab.content : fileBasename(tab.path)}</span>
+                  <span
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      requestCloseFile(tab.path);
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
                         e.preventDefault();
+                        e.stopPropagation();
                         requestCloseFile(tab.path);
-                      }}
-                      className={`group relative flex items-center gap-1.5 px-2.5 h-7 rounded-[10px] text-[12px] transition-colors flex-shrink-0 ${
-                        isActive
-                          ? 'bg-fill-active text-text-primary ring-1 ring-inset ring-seam-strong'
-                          : 'hover:bg-fill-hover text-text-secondary'
-                      }`}
-                    >
-                      {isRace
-                        ? <Flag size={11} className="text-accent-primary flex-shrink-0" strokeWidth={1.75} />
-                        : <FileIcon size={11} className="text-text-tertiary flex-shrink-0" strokeWidth={1.75} />}
-                      <span className="max-w-[140px] truncate">{isRace ? tab.content : fileBasename(tab.path)}</span>
-                      <span
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          requestCloseFile(tab.path);
-                        }}
-                        role="button"
-                        tabIndex={0}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            requestCloseFile(tab.path);
-                          }
-                        }}
-                        className="p-0.5 rounded hover:bg-fill-active text-text-tertiary hover:text-text-primary transition-colors flex items-center justify-center"
-                        aria-label={dirty ? 'Unsaved changes' : 'Close'}
-                      >
-                        {dirty ? (
-                          <span className="w-2 h-2 rounded-full bg-accent-primary" />
-                        ) : (
-                          <X size={12} />
-                        )}
-                      </span>
-                    </button>
-                    </Tooltip>
-                  );
-                })}
-              </div>
-            </>
-          )}
-
-          {/* Right cluster: project scripts + insight toggle + close active.
-              The grid toggle lives in the titlebar tools capsule. */}
-          <div className="ml-auto flex items-center gap-1 flex-shrink-0">
-            {showFileTree && activeTerminalId && !activeFilePath && (() => {
-              const inst = terminals.get(activeTerminalId);
-              if (!inst || inst.scriptParentId) return null;
-              return <ScriptsMenu terminalId={activeTerminalId} cwd={inst.config.working_directory} />;
-            })()}
-            {activeTerminalId && activeConfig && !activeFilePath && (
-              <ViewModeSwitch terminalId={activeTerminalId} />
-            )}
-            {/* Close active session (#59). Only visible while a real terminal
-                is focused - hidden while browsing a file, and hidden entirely
-                when there is no active session. Like the sidebar card X it
-                asks first (CloseSessionConfirm); Ctrl+W anchors there too. */}
-            {activeConfig && !activeFilePath && (
-              <>
-                <span className="w-px h-4 bg-seam-strong mx-0.5 flex-shrink-0" aria-hidden />
-                {/* Labelled, circled glyph so it never reads as the window's
-                    caption X that sits right above it. */}
-                <Tooltip label="Close this session" shortcut="Ctrl+W">
-                  <button
-                    onClick={closeActiveSession}
-                    aria-label="Close Session"
-                    data-close-session-anchor
-                    aria-keyshortcuts="Control+W"
-                    className="flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11.5px] font-medium hover:bg-fill-hover text-text-secondary hover:text-text-primary transition-colors"
+                      }
+                    }}
+                    className="p-0.5 rounded hover:bg-fill-active text-text-tertiary hover:text-text-primary transition-colors flex items-center justify-center"
+                    aria-label={dirty ? 'Unsaved changes' : 'Close'}
                   >
-                    <XCircle size={13} strokeWidth={1.75} />
-                    <span className="hidden sm:inline">Close session</span>
-                  </button>
+                    {dirty ? (
+                      <span className="w-2 h-2 rounded-full bg-accent-primary" />
+                    ) : (
+                      <X size={12} />
+                    )}
+                  </span>
+                </button>
                 </Tooltip>
-              </>
-            )}
+              );
+            })}
           </div>
         </div>
       )}
