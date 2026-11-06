@@ -29,10 +29,11 @@ import { pickBreadcrumb } from '../lib/breadcrumb';
 
 
 /**
- * Concentric Toolbar: there is no title bar. This renders an absolutely
- * positioned row of glass capsules that floats over the top edge of the
- * content cards (App.tsx reserves --h-toolbar at the top of each card). The
- * row itself is the window drag region; only its controls are no-drag.
+ * Toolbar row: absolutely positioned over the solid `.toolbar-band` that
+ * App.tsx paints at the top --h-toolbar of each content card, so the controls
+ * sit on chrome, never over terminal output. Controls are flat
+ * `.toolbar-group`s. The row itself is the window drag region; only its
+ * controls are no-drag.
  */
 export function TitleBar() {
   const { triggerChangesRefresh } = useAppStore();
@@ -189,7 +190,7 @@ export function TitleBar() {
           </span>
         )}
 
-        <div className="glass-capsule h-8 pr-0.5 min-w-0">
+        <div className="toolbar-group h-8 pr-0.5 min-w-0">
         {/* Project breadcrumb - static status display, not a control (user
             decision: no click target, no chevron). */}
         <Tooltip label={active?.config.working_directory || 'No active session'}>
@@ -324,7 +325,7 @@ export function TitleBar() {
       <div className="flex items-center gap-1.5 no-drag flex-shrink-0">
         <UpdatePill />
 
-        <div className="glass-capsule h-8 px-0.5">
+        <div className="toolbar-group h-8 px-0.5">
           {/* ONE inspector toggle - the Changes/Agents/Commands switcher
               lives inside the Inspector itself. Reopens on the Changes tab. */}
           <Tooltip label={browserOpen ? 'Close browser' : 'Open browser'}>
@@ -362,7 +363,12 @@ export function TitleBar() {
           <HeaderAuth />
         </div>
 
-        {!isMac && <CaptionButtons />}
+        {!isMac && (
+          <>
+            <span className="w-px h-4 bg-seam-strong mx-0.5" aria-hidden />
+            <CaptionButtons />
+          </>
+        )}
       </div>
     </div>
   );
