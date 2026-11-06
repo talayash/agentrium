@@ -1,5 +1,28 @@
 [
   {
+    "version": "1.42.2",
+    "date": "2026-11-06",
+    "features": [
+      { "title": "Fix bugs & performance" },
+      {
+        "title": "Context window meter",
+        "description": "See how full each session's context window is, in the header and on session cards, with a nudge to type /compact when it runs high."
+      },
+      {
+        "title": "One-row header",
+        "description": "The session name, view mode switch and close button now share the top toolbar, giving the terminal more room."
+      },
+      {
+        "title": "Colored icons",
+        "description": "Icons across the toolbar, sidebar, Inspector and session menu are colored by what they do, so you can find actions at a glance."
+      },
+      {
+        "title": "Solid toolbar",
+        "description": "The toolbar sits on its own solid band, so controls never float over terminal output."
+      }
+    ]
+  },
+  {
     "version": "1.42.1",
     "date": "2026-11-05",
     "features": [
