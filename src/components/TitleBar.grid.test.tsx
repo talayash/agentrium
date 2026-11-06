@@ -40,7 +40,7 @@ describe('title bar grid toggle', () => {
   it('sits right after the browser button in the tools capsule', () => {
     render(<TitleBar />);
     const browser = screen.getByRole('button', { name: 'Open browser' });
-    const browserWrapper = browser.closest('.glass-capsule > *') ?? browser;
+    const browserWrapper = browser.closest('.toolbar-group > *') ?? browser;
     const next = browserWrapper.nextElementSibling;
     expect(next?.contains(gridButton())).toBe(true);
   });

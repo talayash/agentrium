@@ -381,7 +381,7 @@
   --radius-window: 16px;
   --inset-window: 6px;
   --radius-card: calc(var(--radius-window) - var(--inset-window));
-  --h-toolbar: 44px; /* floating-toolbar zone at the top of each card */
+  --h-toolbar: 44px; /* solid toolbar band at the top of each card */
   --material-lens-bg: rgba(20, 24, 46, 0.52);
   --material-capsule-bg: rgba(255, 255, 255, 0.07);
   /* Specular hot-spot: light source fixed top-left, like real glass. */
@@ -516,19 +516,20 @@ button.bg-accent-primary.text-white:disabled { box-shadow: var(--btn-edges); }
     -webkit-backdrop-filter: none;
   }
 }
-/* Scroll-edge effect: content softly fades out under the floating toolbar
-   instead of meeting a hard divider line. */
-.toolbar-edge { position: relative; }
-.toolbar-edge::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 100%;
-  height: 10px;
-  z-index: 1;
-  pointer-events: none;
-  background: linear-gradient(to bottom, var(--elevation-0), transparent);
+/* Solid chrome band: the --h-toolbar zone at the top of each card is painted
+   in the chrome tone with a hairline under it, so the TitleBar controls sit
+   on their own surface instead of floating over terminal output. */
+.toolbar-band {
+  background: var(--elevation-1);
+  box-shadow: inset 0 -1px 0 var(--seam-strong);
+}
+/* Flat control group inside the band (no glass, no rim). */
+.toolbar-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 9999px;
 }
 @media (prefers-reduced-transparency: reduce) {
   .material-lens, .glass-capsule::before {

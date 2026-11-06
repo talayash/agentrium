@@ -193,7 +193,7 @@ export function TerminalTabs() {
           sessions happens in the sidebar's SessionCards; open files render as
           pills after the divider. */}
       {showHeader && (
-        <div className="py-1.5 px-2.5 border-b border-seam flex items-center gap-2 min-w-0">
+        <div className="py-1.5 px-2.5 bg-elevation-1 border-b border-seam-strong flex items-center gap-2 min-w-0">
           {activeConfig && (
             <div
               className={`flex items-center gap-2 min-w-0 ${activeFilePath ? 'opacity-60' : ''}`}

@@ -45,13 +45,13 @@ export function TrafficLights({ vertical = false }: { vertical?: boolean }) {
   );
 }
 
-/** Windows/Linux caption buttons as one glass capsule (concentric toolbar). */
+/** Windows/Linux caption buttons as one flat group in the toolbar band. */
 export function CaptionButtons() {
   const appWindow = getCurrentWindow();
   const btn =
     'w-7 h-7 flex items-center justify-center rounded-full text-text-secondary transition-colors';
   return (
-    <div className="glass-capsule h-8 px-0.5 no-drag">
+    <div className="toolbar-group h-8 px-0.5 no-drag">
       <button onClick={() => appWindow.minimize()} className={`${btn} hover:bg-fill-hover`} aria-label="Minimize">
         <Minus size={12} strokeWidth={1.75} />
       </button>

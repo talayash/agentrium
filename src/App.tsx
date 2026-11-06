@@ -1092,8 +1092,8 @@ function App() {
           {/* Concentric Toolbar band: the sidebar slab and the content cards
               sit --inset-window from the window edge and from each other, and
               their radius is the window radius minus that inset, so every
-              corner nests. There is no title bar: TitleBar floats as glass
-              capsules over the top --h-toolbar of the cards on the right. */}
+              corner nests. TitleBar is one row positioned over the solid
+              --h-toolbar band at the top of the cards on the right. */}
           <div className="flex-1 flex overflow-hidden gap-[var(--inset-window)] p-[var(--inset-window)]">
             <AnimatePresence mode="wait">
               {sidebarOpen && (
@@ -1114,9 +1114,9 @@ function App() {
 
             <div className="relative flex-1 flex gap-[var(--inset-window)] min-w-0">
               <main className="flex-1 flex flex-col overflow-hidden rounded-[var(--radius-card)] bg-elevation-0 shadow-elevation-3 ring-1 ring-inset ring-seam min-w-0">
-                {/* Reserved toolbar zone; the floating capsules sit on it and
-                    content fades out beneath it (scroll-edge effect). */}
-                <div className="toolbar-edge h-[var(--h-toolbar)] flex-shrink-0" aria-hidden />
+                {/* Solid toolbar band; TitleBar's controls sit on it, and the
+                    content starts below its hairline. */}
+                <div className="toolbar-band h-[var(--h-toolbar)] flex-shrink-0" aria-hidden />
                 <BrowserWorkspace>
                   <TerminalTabs />
                 </BrowserWorkspace>
@@ -1129,7 +1129,7 @@ function App() {
                     className="h-full overflow-hidden rounded-[var(--radius-card)] shadow-elevation-3 material-lens flex flex-col transition-all duration-150 ease-out"
                     style={{ width: 400 }}
                   >
-                    <div className="h-[var(--h-toolbar)] flex-shrink-0" aria-hidden />
+                    <div className="toolbar-band h-[var(--h-toolbar)] flex-shrink-0" aria-hidden />
                     <div className="flex-1 min-h-0">
                       <Inspector />
                     </div>
