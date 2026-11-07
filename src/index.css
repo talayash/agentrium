@@ -1131,6 +1131,75 @@ h2, h3 { letter-spacing: var(--track-title); line-height: 1.3; }
 .view-switch-seg[aria-disabled="true"]:hover { color: rgb(var(--text-secondary) / 0.72); }
 .view-switch-seg:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 1px; }
 
+/* Sidebar navigator (Sessions / Files / History in Sidebar.tsx): the toolbar's
+   recessed track and raised thumb, but every glyph keeps its own hue so the
+   three navigators read apart at a glance. Inactive glyphs are a muted mix
+   of their hue; hover and the active tab show the full hue. Labels drop when
+   the track is too narrow for them (container query on the track, since the
+   sidebar is resizable down to 200px independent of the window). Files uses
+   amber, not --accent-warm, which stays ambient-only. */
+:root {
+  --nav-sessions: #4ade80;
+  --nav-files: #fbbf24;
+  --nav-history: #a78bfa;
+}
+:root[data-theme="light"] {
+  --nav-sessions: #16a34a;
+  --nav-files: #d97706;
+  --nav-history: #7c3aed;
+}
+[data-hue="sessions"] { --hue: var(--nav-sessions); }
+[data-hue="files"] { --hue: var(--nav-files); }
+[data-hue="history"] { --hue: var(--nav-history); }
+.sidebar-nav {
+  container-type: inline-size;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  height: 36px;
+  padding: 2px;
+  border-radius: 10px;
+  background-color: var(--elevation-0);
+  box-shadow: inset 0 0 0 1px var(--seam-strong);
+}
+.sidebar-nav-tab {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 8px;
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1;
+  color: rgb(var(--text-secondary) / 0.72);
+  transition: color 150ms, background-color 150ms, box-shadow 150ms;
+}
+.sidebar-nav-tab > svg,
+.sidebar-nav-rail > svg {
+  color: color-mix(in srgb, var(--hue) 55%, rgb(var(--text-secondary) / 0.72));
+  transition: color 150ms;
+}
+.sidebar-nav-tab:hover { color: rgb(var(--text-secondary)); }
+.sidebar-nav-tab:hover > svg,
+.sidebar-nav-rail:hover > svg { color: var(--hue); }
+.sidebar-nav-tab[aria-pressed="true"] {
+  color: rgb(var(--text-primary));
+  background-color: var(--elevation-4);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.28), inset 0 0 0 1px var(--seam-strong);
+}
+.sidebar-nav-tab[aria-pressed="true"] > svg { color: var(--hue); }
+.sidebar-nav-tab:focus-visible,
+.sidebar-nav-rail:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 1px; }
+.sidebar-nav-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@container (max-width: 230px) {
+  .sidebar-nav-label { display: none; }
+}
+.sidebar-nav-rail { transition: background-color 150ms; }
+.sidebar-nav-rail:hover { background-color: var(--fill-hover); }
+
 /* Panel toggles (Browser / Grid / Inspector in TitleBar.tsx). Same track as
    the view switch, but independent on/off buttons: each open panel gets its
    own raised thumb instead of one sliding thumb. Labels drop below lg so the

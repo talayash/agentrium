@@ -15,14 +15,15 @@ interface NavItem {
   id: SidebarNav;
   label: string;
   Icon: LucideIcon;
-  /** Icon hue family (see the icon tone block in index.css). */
-  tone: 'run' | 'file';
+  /** Glyph hue: `--nav-<hue>` in index.css. One colour per navigator so the
+   *  three read apart at a glance. */
+  hue: 'sessions' | 'files' | 'history';
 }
 
 const NAV: NavItem[] = [
-  { id: 'sessions', label: 'Sessions', Icon: Terminal, tone: 'run' },
-  { id: 'files', label: 'Files', Icon: FolderTree, tone: 'file' },
-  { id: 'history', label: 'History', Icon: History, tone: 'run' },
+  { id: 'sessions', label: 'Sessions', Icon: Terminal, hue: 'sessions' },
+  { id: 'files', label: 'Files', Icon: FolderTree, hue: 'files' },
+  { id: 'history', label: 'History', Icon: History, hue: 'history' },
 ];
 
 /**
@@ -54,13 +55,13 @@ export function Sidebar() {
   if (sidebarCollapsed) {
     return (
       <div className="h-full flex flex-col items-center py-2 gap-1" style={{ width: 'var(--w-rail)' }}>
-        {NAV.map(({ id, label, Icon, tone }) => (
+        {NAV.map(({ id, label, Icon, hue }) => (
           <Tooltip key={id} label={label} side="right">
             <button
               onClick={() => { setNav(id); toggleSidebarCollapse(); }}
               aria-label={label}
-              data-tone={tone}
-              className="tone-btn w-8 h-8 flex items-center justify-center rounded-lg transition-colors"
+              data-hue={hue}
+              className="sidebar-nav-rail w-8 h-8 flex items-center justify-center rounded-lg"
             >
               <Icon size={16} strokeWidth={1.75} />
             </button>
@@ -105,23 +106,27 @@ export function Sidebar() {
       {/* Navigator switcher + collapse control (the collapse affordance lives
           IN the sidebar - the titlebar logo is a brand mark, not a toggle). */}
       <div className="flex gap-1 p-2 items-center">
-        {NAV.map(({ id, label, Icon, tone }) => {
-          const on = nav === id;
-          return (
-            <Tooltip key={id} label={label}>
-              <button
-                onClick={() => setNav(id)}
-                aria-pressed={on}
-                aria-label={label}
-                data-tone={tone}
-                // Duotone: the hue tile + rim marks the active navigator.
-                className="tone-tab flex-1 h-9 rounded-lg flex items-center justify-center transition-[background-color,box-shadow,transform] duration-100 active:scale-[0.96]"
-              >
-                <Icon size={16} strokeWidth={on ? 2 : 1.75} />
-              </button>
-            </Tooltip>
-          );
-        })}
+        {/* Same recessed track + raised thumb as the toolbar's view switch,
+            but each glyph keeps its own hue (`.sidebar-nav*` in index.css). */}
+        <div className="sidebar-nav flex-1 min-w-0" role="group" aria-label="Navigator">
+          {NAV.map(({ id, label, Icon, hue }) => {
+            const on = nav === id;
+            return (
+              <Tooltip key={id} label={label}>
+                <button
+                  onClick={() => setNav(id)}
+                  aria-pressed={on}
+                  aria-label={label}
+                  data-hue={hue}
+                  className="sidebar-nav-tab"
+                >
+                  <Icon size={15} strokeWidth={on ? 2 : 1.75} />
+                  <span className="sidebar-nav-label">{label}</span>
+                </button>
+              </Tooltip>
+            );
+          })}
+        </div>
         <Tooltip label="Collapse Sidebar">
           <button
             onClick={toggleSidebarCollapse}
