@@ -379,7 +379,7 @@
    (terminal, editor) stays solid. */
 :root {
   --radius-window: 16px;
-  --inset-window: 6px;
+  --inset-window: 3px;
   --radius-card: calc(var(--radius-window) - var(--inset-window));
   --h-toolbar: 44px; /* solid toolbar band at the top of each card */
   --material-lens-bg: rgba(20, 24, 46, 0.52);
