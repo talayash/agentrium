@@ -197,7 +197,7 @@ export function Sidebar() {
             e.currentTarget.blur();
             openNewTerminalModal();
           }}
-          className="glass-capsule glass-capsule-accent w-full h-10 justify-center gap-2 text-white text-[13px] font-semibold hover:brightness-110 active:scale-[0.98] transition-[filter,transform] duration-100"
+          className="glass-capsule glass-capsule-accent w-full h-10 justify-center gap-2 text-white text-[13px] font-semibold active:translate-y-px transition-[filter,transform] duration-100"
         >
           <Plus size={15} strokeWidth={2.5} />
           New Session

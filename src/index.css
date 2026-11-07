@@ -427,95 +427,72 @@
   -webkit-backdrop-filter: blur(20px) saturate(180%);
   box-shadow: var(--glass-edges), 0 0 0 1px var(--seam), var(--shadow-float-sm);
 }
-/* --- Primary buttons: liquid accent glass --------------------------------
-   Every primary action is a clear glass pill tinted with the user's accent
-   (blue by default): mostly see-through so the surface behind shows, a
-   brighter tint at the top fading down (the pop-ups' blue-to-white light), a
-   soft glossy cap, an accent rim, a warm glint on hover (the --accent-warm
-   counter-light) and an accent bloom. Everything derives from
-   --accent-primary via color-mix, so a custom accent re-tints the pills.
-   Dark: light label on a deep translucent tint. Light: dark accent label on a
-   pale translucent tint. Both stay well above AA. */
+/* --- Buttons: tactile keycaps --------------------------------------------
+   Solid fill, a hairline highlight on top and a darker 2px lip at the
+   bottom; pressing pushes the key down 1px and flattens the lip. Primary
+   derives from --accent-primary, so a custom accent re-tints it. Its rest
+   fill is the accent darkened 15% so the white label clears WCAG AA on the
+   default blue; hover lifts it to the full accent. Opaque, so there is no
+   reduced-transparency variant. */
 :root {
-  --btn-top: color-mix(in srgb, var(--accent-primary) 40%, rgba(255, 255, 255, 0.08));
-  --btn-bottom: color-mix(in srgb, var(--accent-primary) 24%, transparent);
-  --btn-top-hover: color-mix(in srgb, var(--accent-primary) 50%, rgba(255, 255, 255, 0.1));
-  --btn-bottom-hover: color-mix(in srgb, var(--accent-primary) 32%, transparent);
-  --btn-text: color-mix(in srgb, var(--accent-primary) 12%, #ffffff);
-  --btn-fill: linear-gradient(180deg, var(--btn-top), var(--btn-bottom));
-  --btn-fill-hover: linear-gradient(180deg, var(--btn-top-hover), var(--btn-bottom-hover));
-  /* Glossy upper lens: a faint bright cap over the top half, like light on wet glass. */
-  --btn-gloss: linear-gradient(180deg, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.05) 48%, rgba(255, 255, 255, 0) 52%);
-  /* Diagonal glint that sweeps across on hover ("shine"), warm-white so it
-     echoes the orange ambient light. Parked off the right edge at rest;
-     background-position slides it over. */
-  --btn-glint: linear-gradient(105deg, transparent 38%, rgba(255, 236, 220, 0.3) 50%, transparent 62%);
-  --btn-edges:
-    inset 0 1px 0 rgba(255, 255, 255, 0.32),
-    inset 0 0 0 1px color-mix(in srgb, var(--accent-primary) 55%, rgba(255, 255, 255, 0.2)),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.2);
-  --btn-bloom: 0 1px 2px rgba(2, 8, 32, 0.2), 0 6px 18px var(--accent-glow-sm);
-  --btn-bloom-hover: 0 1px 2px rgba(2, 8, 32, 0.2), 0 8px 24px var(--accent-glow-md);
+  --key-fill: color-mix(in srgb, var(--accent-primary) 85%, #000);
+  --key-fill-hover: var(--accent-primary);
+  --key-lip: color-mix(in srgb, var(--accent-primary) 55%, #000);
+  --key-shine: inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  --key-drop: 0 1px 2px rgba(0, 0, 0, 0.3);
 }
 :root[data-theme="light"] {
-  --btn-top: color-mix(in srgb, var(--accent-primary) 16%, rgba(255, 255, 255, 0.7));
-  --btn-bottom: color-mix(in srgb, var(--accent-primary) 26%, rgba(255, 255, 255, 0.5));
-  --btn-top-hover: color-mix(in srgb, var(--accent-primary) 20%, rgba(255, 255, 255, 0.75));
-  --btn-bottom-hover: color-mix(in srgb, var(--accent-primary) 32%, rgba(255, 255, 255, 0.55));
-  --btn-text: color-mix(in srgb, var(--accent-primary) 45%, #050a1c);
-  --btn-gloss: linear-gradient(180deg, rgba(255, 255, 255, 0.6) 0%, rgba(255, 255, 255, 0.15) 48%, rgba(255, 255, 255, 0) 52%);
-  --btn-glint: linear-gradient(105deg, transparent 38%, rgba(255, 255, 255, 0.7) 50%, transparent 62%);
-  --btn-edges:
-    inset 0 1px 0 rgba(255, 255, 255, 0.95),
-    inset 0 0 0 1px color-mix(in srgb, var(--accent-primary) 35%, rgba(255, 255, 255, 0.4)),
-    inset 0 -1px 0 color-mix(in srgb, var(--accent-primary) 20%, transparent);
-  --btn-bloom: 0 1px 2px rgba(30, 40, 80, 0.08), 0 6px 18px var(--accent-glow-sm);
-  --btn-bloom-hover: 0 1px 2px rgba(30, 40, 80, 0.08), 0 8px 24px var(--accent-glow-md);
+  --key-drop: 0 1px 2px rgba(20, 30, 60, 0.18);
 }
 /* Every primary button: Button variant="primary" and the hand-rolled
    `bg-accent-primary text-white` ones. Specificity (0,2,1) beats the Tailwind
    bg/hover/text utilities, so colour and hover are owned here. */
 button.bg-accent-primary.text-white {
-  color: var(--btn-text);
-  background-color: transparent;
-  background-image: var(--btn-glint), var(--btn-gloss), var(--btn-fill);
-  background-size: 250% 100%, 100% 100%, 100% 100%;
-  background-position: 130% 0, 0 0, 0 0;
-  background-repeat: no-repeat;
-  backdrop-filter: blur(12px) saturate(160%);
-  -webkit-backdrop-filter: blur(12px) saturate(160%);
-  box-shadow: var(--btn-edges), var(--btn-bloom);
-  /* Soft corners; the browser clamps this to a pill on short buttons. */
-  border-radius: var(--radius-lg);
-  transition: background-position 600ms var(--ease-out), box-shadow var(--dur-base) var(--ease-out), transform 100ms ease-out, opacity 100ms ease-out;
+  color: #fff;
+  background-color: var(--key-fill);
+  background-image: none;
+  box-shadow: var(--key-shine), inset 0 -2px 0 var(--key-lip), var(--key-drop);
+  border-radius: 8px;
+  transition: background-color 120ms ease-out, box-shadow 120ms ease-out, transform 80ms ease-out, opacity 100ms ease-out;
 }
-button.bg-accent-primary.text-white:hover:not(:disabled) {
-  background-color: transparent;
-  background-image: var(--btn-glint), var(--btn-gloss), var(--btn-fill-hover);
-  background-position: -30% 0, 0 0, 0 0;
-  box-shadow: var(--btn-edges), var(--btn-bloom-hover);
+button.bg-accent-primary.text-white:hover:not(:disabled) { background-color: var(--key-fill-hover); }
+button.bg-accent-primary.text-white:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), inset 0 -1px 0 var(--key-lip);
 }
-button.bg-accent-primary.text-white:disabled { box-shadow: var(--btn-edges); }
-/* The one prominent action in a group (sidebar New Session): same liquid accent glass. */
-.glass-capsule-accent { color: var(--btn-text); }
+button.bg-accent-primary.text-white:disabled { box-shadow: var(--key-shine), inset 0 -2px 0 var(--key-lip); }
+/* The one prominent action in a group (sidebar New Session): same keycap,
+   painted on the capsule's ::before layer. */
+.glass-capsule-accent { color: #fff; }
 .glass-capsule-accent::before {
-  background: var(--btn-gloss), var(--btn-fill);
-  box-shadow: var(--btn-edges), var(--btn-bloom);
+  background: var(--key-fill);
+  box-shadow: var(--key-shine), inset 0 -2px 0 var(--key-lip), var(--key-drop);
 }
-@media (prefers-reduced-transparency: reduce) {
-  /* Solid stand-in for the tint: deep accent under the light label (dark),
-     pale accent under the dark label (light). */
-  :root { --btn-solid: color-mix(in srgb, var(--accent-primary) 35%, var(--elevation-2)); }
-  :root[data-theme="light"] { --btn-solid: color-mix(in srgb, var(--accent-primary) 22%, white); }
-  .glass-capsule-accent::before { background: var(--btn-solid); }
-  button.bg-accent-primary.text-white,
-  button.bg-accent-primary.text-white:hover:not(:disabled) {
-    background-image: none;
-    background-color: var(--btn-solid);
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-  }
+.glass-capsule-accent:hover::before { background: var(--key-fill-hover); }
+.glass-capsule-accent:active::before { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), inset 0 -1px 0 var(--key-lip); }
+/* Keycap variants for Button.tsx (secondary / destructive / success). */
+.key-neutral {
+  background-color: var(--elevation-3);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), inset 0 -2px 0 rgba(0, 0, 0, 0.28), var(--key-drop);
 }
+.key-neutral:hover:not(:disabled) { filter: brightness(1.12); }
+:root[data-theme="light"] .key-neutral {
+  background-color: #fff;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12), inset 0 -2px 0 rgba(0, 0, 0, 0.08), var(--key-drop);
+}
+:root[data-theme="light"] .key-neutral:hover:not(:disabled) { filter: none; background-color: #f5f6f9; }
+.key-danger,
+.key-success {
+  --key-tone: var(--error);
+  background-color: var(--key-tone);
+  box-shadow: var(--key-shine), inset 0 -2px 0 color-mix(in srgb, var(--key-tone) 58%, #000), var(--key-drop);
+}
+.key-success { --key-tone: var(--success); }
+.key-danger:hover:not(:disabled),
+.key-success:hover:not(:disabled) { filter: brightness(1.08); }
+.key-neutral:active:not(:disabled),
+.key-danger:active:not(:disabled),
+.key-success:active:not(:disabled) { filter: brightness(0.96); }
 /* Solid chrome band: the --h-toolbar zone at the top of each card is painted
    in the chrome tone with a hairline under it, so the TitleBar controls sit
    on their own surface instead of floating over terminal output. */
