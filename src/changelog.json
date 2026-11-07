@@ -1,5 +1,32 @@
 [
   {
+    "version": "1.42.3",
+    "date": "2026-11-07",
+    "features": [
+      { "title": "Fix bugs & performance" },
+      {
+        "title": "Session tab header",
+        "description": "The active session's name, branch and controls now sit on a tab that flows into the terminal, so the header reads clearly as session on the left and app on the right."
+      },
+      {
+        "title": "Labelled view switch and panel toggles",
+        "description": "CLI, Mixed and Insight, plus Browser, Grid and Inspector, now show small labels in a matching segmented track."
+      },
+      {
+        "title": "New button style",
+        "description": "Buttons are solid keys that press down when clicked, with clearer labels."
+      },
+      {
+        "title": "Colour-coded sidebar",
+        "description": "Sessions, Files and History each have their own colour."
+      },
+      {
+        "title": "Tighter window layout",
+        "description": "Less space around the panels, so more room for your sessions."
+      }
+    ]
+  },
+  {
     "version": "1.42.2",
     "date": "2026-11-06",
     "features": [
