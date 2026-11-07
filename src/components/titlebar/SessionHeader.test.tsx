@@ -60,14 +60,15 @@ describe('merged session header', () => {
     expect(screen.queryByText('creditly-folder')).toBeNull();
   });
 
-  it('renders an icon-only view switch and the close-session anchor', () => {
+  it('renders a labelled view switch and the close-session anchor', () => {
     const { container } = render(<SessionActions />);
     const radios = screen.getAllByRole('radio');
     expect(radios.map((r) => r.getAttribute('aria-label'))).toEqual(['CLI', 'Mixed', 'Insight']);
-    expect(radios.every((r) => r.textContent === '')).toBe(true);
+    expect(radios.map((r) => r.textContent)).toEqual(['CLI', 'Mixed', 'Insight']);
     const close = screen.getByRole('button', { name: 'Close Session' });
     expect(close.hasAttribute('data-close-session-anchor')).toBe(true);
     expect(container.querySelectorAll('[data-close-session-anchor]')).toHaveLength(1);
+    expect(container.querySelectorAll('[data-session-divider]')).toHaveLength(1);
   });
 
   it('hides the actions while a file is focused', () => {

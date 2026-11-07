@@ -37,12 +37,12 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('title bar grid toggle', () => {
-  it('sits right after the browser button in the tools capsule', () => {
+  it('sits between Browser and Inspector in the labelled panels track', () => {
     render(<TitleBar />);
-    const browser = screen.getByRole('button', { name: 'Open browser' });
-    const browserWrapper = browser.closest('.toolbar-group > *') ?? browser;
-    const next = browserWrapper.nextElementSibling;
-    expect(next?.contains(gridButton())).toBe(true);
+    const track = screen.getByRole('group', { name: 'Panels' });
+    const buttons = Array.from(track.querySelectorAll('button'));
+    expect(buttons.map((b) => b.getAttribute('aria-label'))).toEqual(['Open browser', 'Toggle Grid View', 'Open Inspector']);
+    expect(buttons.map((b) => b.querySelector('.toolbar-toggle-label')?.textContent)).toEqual(['Browser', 'Grid', 'Inspector']);
   });
 
   it('reflects and toggles grid mode', () => {
@@ -58,11 +58,16 @@ describe('title bar grid toggle', () => {
   it('shows how many terminals are in the grid', () => {
     useAppStore.setState({ gridTerminalIds: ['a', 'b'] });
     render(<TitleBar />);
-    expect(gridButton().textContent).toBe('2');
+    expect(gridButton().querySelector('.toolbar-toggle-count')?.textContent).toBe('2');
   });
 
-  it('shows no count badge when the grid is empty', () => {
+  it('keeps the session tab free-standing when no session surface is below it', () => {
+    const { container } = render(<TitleBar />);
+    expect(container.querySelector('.session-tab')?.getAttribute('data-merged')).toBe('false');
+  });
+
+  it('shows no count chip when the grid is empty', () => {
     render(<TitleBar />);
-    expect(gridButton().textContent).toBe('');
+    expect(gridButton().querySelector('.toolbar-toggle-count')).toBeNull();
   });
 });

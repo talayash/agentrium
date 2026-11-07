@@ -9,7 +9,7 @@ import {
   Upload,
   PanelRight,
   Globe,
-  Grid3X3,
+  LayoutGrid,
 } from 'lucide-react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { invoke } from '@tauri-apps/api/core';
@@ -74,6 +74,11 @@ export function TitleBar() {
   const branchMenuRef = useRef<HTMLDivElement>(null);
   // Session identity + actions live in this row (no second header strip).
   const showSession = useSessionHeaderVisible();
+  // The tab only pours into the content below when that content is the
+  // session's own surface. With the open-file strip under the band, or in
+  // grid/split mode (their own headers), it stays a free-standing capsule.
+  const hasFileStrip = useAppStore((s) => s.openFiles.length > 0);
+  const tabMerged = showSession && !hasFileStrip;
 
   const active = activeTerminalId ? terminals.get(activeTerminalId) : null;
   const gitInfo = activeTerminalId ? gitInfoCache.get(activeTerminalId) : null;
@@ -154,15 +159,6 @@ export function TitleBar() {
     ? 'bg-error'
     : 'bg-text-tertiary';
 
-  // Neutral monochrome styling for the tool capsule.
-  // Instant press dip - feedback on pointer-down, not release.
-  const toolBtn = (active: boolean) =>
-    `no-drag w-7 h-7 flex items-center justify-center rounded-full transition-[background-color,color,transform] duration-100 active:scale-95 ${
-      active
-        ? 'bg-fill-active text-text-primary'
-        : 'text-text-secondary hover:bg-fill-hover hover:text-text-primary'
-    }`;
-
   return (
     <div
       onMouseDown={(e) => {
@@ -184,7 +180,7 @@ export function TitleBar() {
     >
       {/* Leading: window controls + brand only while the sidebar (their
           normal home) is hidden, then the context capsule. */}
-      <div className="flex items-center gap-2 min-w-0">
+      <div className="flex items-center self-stretch gap-2 min-w-0">
         {!sidebarOpen && isMac && <span className="pl-2"><TrafficLights /></span>}
         {!sidebarOpen && (
           <span className="flex items-center gap-2 flex-shrink-0">
@@ -193,6 +189,11 @@ export function TitleBar() {
           </span>
         )}
 
+        {/* Session tab: everything about the active session sits on a tab cut
+            from the content surface and merges into the terminal below it,
+            so it reads as part of the session, while the app controls on the
+            right stay on the chrome band (`.session-tab` in index.css). */}
+        <div className="session-tab" data-merged={tabMerged}>
         <div className="toolbar-group h-8 pr-0.5 min-w-0">
         {/* Project breadcrumb - static status display, not a control (user
             decision: no click target, no chevron). */}
@@ -323,57 +324,60 @@ export function TitleBar() {
           </>
         )}
 
-        {/* Only shows when another session is blocked on the user. */}
-        <WaitingPill />
         </div>
+        {showSession && <SessionActions />}
+        </div>
+
+        {/* Only shows when another session is blocked on the user. App-level,
+            so it sits on the chrome next to the tab, not inside it. */}
+        <WaitingPill />
       </div>
 
-      {/* Trailing: tools capsule, caption buttons. */}
+      {/* Trailing: app tools capsule, caption buttons. */}
       <div className="flex items-center gap-1.5 no-drag flex-shrink-0">
-        {showSession && <SessionActions />}
         <UpdatePill />
 
         <div className="toolbar-group h-8 px-0.5">
-          {/* ONE inspector toggle - the Changes/Agents/Commands switcher
+          {/* Panel toggles share the view switch's recessed track; an open
+              panel gets the same raised thumb (`.toolbar-track` in index.css).
+              ONE inspector toggle - the Changes/Agents/Commands switcher
               lives inside the Inspector itself. Reopens on the Changes tab. */}
-          <Tooltip label={browserOpen ? 'Close browser' : 'Open browser'}>
-            <button
-              onClick={toggleBrowser}
-              aria-label={browserOpen ? 'Close browser' : 'Open browser'}
-              aria-pressed={browserOpen}
-              data-tone="web"
-              className={`tone-btn ${toolBtn(browserOpen)}`}
-            >
-              <Globe size={15} strokeWidth={1.9} />
-            </button>
-          </Tooltip>
-          <Tooltip label={gridCount > 0 ? `Toggle Grid View (${gridCount} in grid)` : 'Toggle Grid View'} shortcut="Ctrl+G">
-            <button
-              onClick={toggleGridMode}
-              aria-label="Toggle Grid View"
-              aria-pressed={gridMode}
-              data-tone="view"
-              className={`tone-btn relative ${toolBtn(gridMode || gridCount > 0)}`}
-            >
-              <Grid3X3 size={15} strokeWidth={1.9} />
-              {gridCount > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 min-w-[13px] h-[13px] px-[3px] rounded-full bg-accent-primary text-white text-[9px] font-semibold leading-[13px] text-center">
-                  {gridCount}
-                </span>
-              )}
-            </button>
-          </Tooltip>
-          <Tooltip label={inspectorOpen ? 'Close Inspector' : 'Open Inspector'}>
-            <button
-              onClick={toggleInspector}
-              aria-label={inspectorOpen ? 'Close Inspector' : 'Open Inspector'}
-              aria-pressed={inspectorOpen}
-              data-tone="view"
-              className={`tone-btn ${toolBtn(inspectorOpen)}`}
-            >
-              <PanelRight size={15} strokeWidth={1.9} />
-            </button>
-          </Tooltip>
+          <div className="toolbar-track no-drag h-[26px] mx-0.5" role="group" aria-label="Panels">
+            <Tooltip label={browserOpen ? 'Close browser' : 'Open browser'}>
+              <button
+                onClick={toggleBrowser}
+                aria-label={browserOpen ? 'Close browser' : 'Open browser'}
+                aria-pressed={browserOpen}
+                className="toolbar-toggle"
+              >
+                <Globe size={13} strokeWidth={1.75} />
+                <span className="toolbar-toggle-label">Browser</span>
+              </button>
+            </Tooltip>
+            <Tooltip label={gridCount > 0 ? `Toggle Grid View (${gridCount} in grid)` : 'Toggle Grid View'} shortcut="Ctrl+G">
+              <button
+                onClick={toggleGridMode}
+                aria-label="Toggle Grid View"
+                aria-pressed={gridMode}
+                className="toolbar-toggle"
+              >
+                <LayoutGrid size={13} strokeWidth={1.75} />
+                <span className="toolbar-toggle-label">Grid</span>
+                {gridCount > 0 && <span className="toolbar-toggle-count">{gridCount}</span>}
+              </button>
+            </Tooltip>
+            <Tooltip label={inspectorOpen ? 'Close Inspector' : 'Open Inspector'}>
+              <button
+                onClick={toggleInspector}
+                aria-label={inspectorOpen ? 'Close Inspector' : 'Open Inspector'}
+                aria-pressed={inspectorOpen}
+                className="toolbar-toggle"
+              >
+                <PanelRight size={13} strokeWidth={1.75} />
+                <span className="toolbar-toggle-label">Inspector</span>
+              </button>
+            </Tooltip>
+          </div>
           <ThemeToggle />
           <SyncStatusChip />
           <HeaderAuth />

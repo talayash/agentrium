@@ -69,6 +69,12 @@ describe('ViewModeSwitch', () => {
     expect(screen.getAllByRole('radio').map((r) => r.getAttribute('aria-label'))).toEqual(['CLI', 'Mixed', 'Insight']);
   });
 
+  it('compact (toolbar) form shows a visible label on every segment', () => {
+    seed(makeConfig('a', { view_mode: 'cli' }));
+    render(<ViewModeSwitch terminalId="a" compact />);
+    expect(screen.getAllByRole('radio').map((r) => r.textContent)).toEqual(['CLI', 'Mixed', 'Insight']);
+  });
+
   it('the group tooltip has no hard-coded shortcut text', async () => {
     vi.useFakeTimers();
     try {

@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef, useState } from 'react';
 import { Columns, Layers, TerminalSquare, type LucideIcon } from 'lucide-react';
 import { useTerminalStore } from '../../store/terminalStore';
 import {
@@ -21,27 +22,52 @@ const ICONS: Record<ViewMode, LucideIcon> = {
 
 /** Session header switch between CLI, Mixed and Insight. Hidden when only
  *  CLI is available (shells, script children). Segments the agent cannot
- *  drive stay visible but disabled. */
+ *  drive stay visible but disabled. Styled as a segmented control: a raised
+ *  neutral thumb slides under the active mode (`.view-switch*` in index.css). */
 export function ViewModeSwitch({ terminalId, compact = false }: { terminalId: string; compact?: boolean }) {
   const instance = useTerminalStore((s) => s.terminals.get(terminalId));
   const setViewMode = useTerminalStore((s) => s.setViewMode);
-  if (!instance) return null;
-  const available = availableViewModes(instance);
-  if (available.length < 2) return null;
-  const current = effectiveViewMode(instance);
+  const thumbRef = useRef<HTMLSpanElement>(null);
+  // The thumb stays invisible and un-animated until its first placement, so
+  // it never slides in from the left edge on mount.
+  const [placed, setPlaced] = useState(false);
+
+  const available = instance ? availableViewModes(instance) : [];
+  const current = instance ? effectiveViewMode(instance) : null;
+  const availableKey = available.join(',');
+
+  // Measured, not computed: segment widths depend on the label text, the
+  // font and the `sm:` breakpoint that hides labels, so the thumb follows the
+  // checked segment's real box and re-measures whenever the group resizes.
+  useLayoutEffect(() => {
+    const thumb = thumbRef.current;
+    const group = thumb?.parentElement;
+    if (!thumb || !group) return;
+    const place = () => {
+      const seg = group.querySelector<HTMLElement>('[role="radio"][aria-checked="true"]');
+      if (!seg) return;
+      thumb.style.left = `${seg.offsetLeft}px`;
+      thumb.style.width = `${seg.offsetWidth}px`;
+      setPlaced(true);
+    };
+    place();
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(place);
+    ro.observe(group);
+    return () => ro.disconnect();
+  }, [current, availableKey]);
+
+  if (!instance || available.length < 2) return null;
   return (
-    // Compact (toolbar) form is icon-only, so the tooltip names the mode.
-    <Tooltip label={compact ? `View mode: ${VIEW_MODE_LABELS[current]}` : 'View mode'} shortcut={CYCLE_SHORTCUT}>
+    // Both forms show each mode's name, so the tooltip only names the group.
+    <Tooltip label="View mode" shortcut={CYCLE_SHORTCUT}>
       <div
         role="radiogroup"
         aria-label="View mode"
         aria-keyshortcuts="Control+Shift+L"
-        className={`no-drag flex items-center p-0.5 gap-0.5 rounded-lg bg-fill-subtle ring-inset ${
-          // Icon-only segments lack text to define the group, so the
-          // compact (toolbar) form gets a heavier, higher-contrast rim.
-          compact ? 'h-6 ring-[1.5px] ring-seam-strong' : 'h-7 ring-1 ring-seam'
-        }`}
+        className={`view-switch no-drag ${compact ? 'h-[26px]' : 'h-7'}`}
       >
+        <span ref={thumbRef} aria-hidden="true" className="view-switch-thumb" data-placed={placed} />
         {VIEW_MODES.map((mode) => {
           const enabled = available.includes(mode);
           const checked = mode === current;
@@ -53,20 +79,15 @@ export function ViewModeSwitch({ terminalId, compact = false }: { terminalId: st
               aria-label={VIEW_MODE_LABELS[mode]}
               aria-checked={checked}
               aria-disabled={!enabled}
-              data-tone={enabled ? 'view' : undefined}
               onClick={() => {
                 if (enabled && !checked) void setViewMode(terminalId, mode);
               }}
-              className={`tone-tab flex items-center gap-1 rounded-lg text-[11.5px] font-medium transition-colors ${compact ? 'h-5 px-1.5' : 'h-6 px-2'} ${
-                checked
-                  ? 'bg-accent-primary/18 text-accent-primary ring-1 ring-inset ring-accent-primary/30'
-                  : enabled
-                    ? 'text-text-secondary hover:text-text-primary hover:bg-fill-hover'
-                    : 'text-text-secondary/40 cursor-not-allowed'
-              }`}
+              className={`view-switch-seg ${compact ? 'h-[22px] px-2 text-[11px]' : 'h-6 px-2.5 text-[11.5px]'}`}
             >
               <Icon size={13} strokeWidth={1.75} />
-              {!compact && <span className="hidden sm:inline">{VIEW_MODE_LABELS[mode]}</span>}
+              {/* Tiny label so the mode reads at a glance; dropped on very
+                  narrow windows where the toolbar has no room for it. */}
+              <span className="hidden sm:inline">{VIEW_MODE_LABELS[mode]}</span>
             </button>
           );
           return enabled ? (

@@ -145,6 +145,11 @@ export function SessionActions() {
   if (!inst || !activeTerminalId || browsingFile) return null;
 
   return (
+    <>
+    {/* Divides the session's identity (breadcrumb, branch) from its controls
+        inside the session tab. Rendered here so it disappears together with
+        the controls and never dangles on its own. */}
+    <span data-session-divider className="w-px h-4 bg-seam-strong mx-1 flex-shrink-0" aria-hidden />
     <div className="toolbar-group h-8 px-0.5 gap-0.5">
       {showFileTree && !inst.scriptParentId && (
         <ScriptsMenu terminalId={activeTerminalId} cwd={inst.config.working_directory} />
@@ -164,5 +169,6 @@ export function SessionActions() {
         </button>
       </Tooltip>
     </div>
+    </>
   );
 }
