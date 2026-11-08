@@ -8,6 +8,11 @@ export interface ScreenSource {
   buffer: { active: { baseY: number; length: number; getLine: (y: number) => IBufferLine | undefined } };
 }
 
+/** A row that is only a horizontal rule. Claude Code draws its input-box rules
+ *  exactly as wide as the terminal, so xterm flags the next row (the `❯` prompt,
+ *  the footer) as wrapped even though it is a separate line. Never join onto one. */
+const RULE_ONLY = /^\s*[─━═-]+\s*$/;
+
 /**
  * Read what the terminal is showing as clean logical lines, newest last.
  *
@@ -25,7 +30,8 @@ export function readBufferTail(term: ScreenSource, maxLines: number): string[] {
   for (let y = start; y < end; y++) {
     const line = buf.getLine(y);
     const text = line ? line.translateToString(true) : '';
-    if (line?.isWrapped && logical.length > 0) logical[logical.length - 1] += text;
+    const prev = logical[logical.length - 1];
+    if (line?.isWrapped && prev !== undefined && !RULE_ONLY.test(prev)) logical[logical.length - 1] += text;
     else logical.push(text);
   }
   const nonBlank = logical.filter((l) => l.trim() !== '');
