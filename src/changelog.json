@@ -1,5 +1,20 @@
 [
   {
+    "version": "1.42.4",
+    "date": "2026-11-08",
+    "features": [
+      { "title": "Fix bugs & performance" },
+      {
+        "title": "Finished sessions alert you again",
+        "description": "When a session finishes its reply, you get the desktop notification and sound again, and the session shows Response ready."
+      },
+      {
+        "title": "Quieter sync when switching windows",
+        "description": "Switching back to Agentrium no longer triggers a sync pull every time; it waits 30 minutes between focus pulls."
+      }
+    ]
+  },
+  {
     "version": "1.42.3",
     "date": "2026-11-07",
     "features": [
