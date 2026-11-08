@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { questionOnScreen, readBufferTail, type ScreenSource } from './terminalScreen';
 import { useTerminalStore } from '../store/terminalStore';
-import { classifySettled, needsTerminal } from './terminalState';
+import { classifySettled, hasReadyPrompt, hasTurnFinishedMarker, needsTerminal } from './terminalState';
 import { ASK_USER_QUESTION_SCREEN } from './__fixtures__/askUserQuestionScreen';
 
 const ROWS = 35;
@@ -76,6 +76,32 @@ describe('readBufferTail reads the screen', () => {
   it('joins wrapped rows and keeps only the last N non-blank logical lines', () => {
     const lines = readBufferTail(term(screen(['a', '', 'Do you want', ' to proceed?', 'b', '', 'c']), { wrapped: [3] }), 3);
     expect(lines).toEqual(['Do you want to proceed?', 'b', 'c']);
+  });
+
+  // Claude Code 2.1.319 draws its input-box rules exactly as wide as the
+  // terminal, so xterm flags the row after each rule as wrapped. Joining them
+  // hid the bare `❯` prompt and a finished turn never counted as completed.
+  it('does not glue the input prompt onto a full-width rule flagged as wrapped', () => {
+    const rule = '─'.repeat(133);
+    const lines = readBufferTail(term(screen([
+      '● OK',
+      '✻ Crunched for 3s · done 2:16 PM',
+      rule,
+      '❯ ',
+      rule,
+      '  ⏵⏵ auto mode on (shift+tab to cycle)',
+    ]), { wrapped: [3, 5] }), 15);
+    expect(lines).toEqual([
+      '● OK',
+      '✻ Crunched for 3s · done 2:16 PM',
+      rule,
+      '❯ ',
+      rule,
+      '  ⏵⏵ auto mode on (shift+tab to cycle)',
+    ]);
+    expect(hasReadyPrompt(lines)).toBe(true);
+    expect(hasTurnFinishedMarker(lines)).toBe(true);
+    expect(classifySettled(lines)).toBe('idle');
   });
 });
 
