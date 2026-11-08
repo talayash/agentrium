@@ -36,8 +36,12 @@ const DEBOUNCE_MS: u64 = 5_000;
 /// any running client kept it awake (and billed) around the clock.
 const PULL_INTERVAL_MS: u64 = 30 * 60 * 1_000;
 /// Regaining focus pulls only if the last pull is at least this old, so
-/// alt-tabbing (and Windows' focus flapping) does not spam the broker.
-const FOCUS_PULL_MIN_GAP_MS: u64 = 5 * 60 * 1_000;
+/// alt-tabbing (and Windows' focus flapping) does not spam the broker. It
+/// matches the background cadence: a 5-minute gap let a user who switches
+/// windows often wake the broker's Neon compute right as it was about to
+/// suspend, keeping it billed all working day. Local edits still push within
+/// `DEBOUNCE_MS`, and "Sync now" pulls on demand.
+const FOCUS_PULL_MIN_GAP_MS: u64 = PULL_INTERVAL_MS;
 
 /// Whether a focus-gained event should pull now. `None` means no pull has
 /// happened yet in this engine run.
@@ -875,6 +879,8 @@ mod tests {
         use std::time::Duration;
         assert!(focus_pull_due(None));
         assert!(!focus_pull_due(Some(Duration::from_secs(10))));
+        // Alt-tabbing back after 6 minutes used to pull and wake Neon.
+        assert!(!focus_pull_due(Some(Duration::from_secs(6 * 60))));
         assert!(!focus_pull_due(Some(Duration::from_millis(FOCUS_PULL_MIN_GAP_MS - 1))));
         assert!(focus_pull_due(Some(Duration::from_millis(FOCUS_PULL_MIN_GAP_MS))));
         assert!(focus_pull_due(Some(Duration::from_secs(3 * 3600))));
@@ -887,6 +893,14 @@ mod tests {
     fn background_pull_is_longer_than_neon_suspend_delay() {
         const NEON_SUSPEND_MS: u64 = 5 * 60 * 1_000;
         const { assert!(PULL_INTERVAL_MS > 2 * NEON_SUSPEND_MS) };
+    }
+
+    /// Same rule for focus pulls: a gap near the suspend delay lets a user who
+    /// switches windows often keep Neon awake all day.
+    #[test]
+    fn focus_pull_gap_is_longer_than_neon_suspend_delay() {
+        const NEON_SUSPEND_MS: u64 = 5 * 60 * 1_000;
+        const { assert!(FOCUS_PULL_MIN_GAP_MS > 2 * NEON_SUSPEND_MS) };
     }
 
     #[test]
