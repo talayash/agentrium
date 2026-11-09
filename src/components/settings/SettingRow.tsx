@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { createContext, useContext, type ReactNode } from 'react';
 import { Toggle as UIToggle } from '../ui/Toggle';
 
 interface RowProps {
@@ -52,7 +52,38 @@ export function Segmented<T extends string>({ value, options, onChange }: SegPro
 }
 
 interface SectionProps { title: ReactNode; description?: string; children: ReactNode }
+
+/**
+ * How a page's own PageHeader renders inside SettingsWindow:
+ * - 'page': standalone (default, e.g. tests rendering a page alone)
+ * - 'sub': one of several pages stacked in a sidebar section; a divider label
+ * - 'hidden': the only page of its section; the section header already says it
+ */
+export type PageHeaderMode = 'page' | 'sub' | 'hidden';
+export const PageHeaderModeContext = createContext<PageHeaderMode>('page');
+export const PageHighlightContext = createContext(false);
+
+// "Terminal - Behavior" reads as "Behavior" once it sits under a Terminal header.
+export function subTitle(title: string): string {
+  const i = title.lastIndexOf(' - ');
+  return i === -1 ? title : title.slice(i + 3);
+}
+
 export function PageHeader({ title, description }: { title: string; description?: string }) {
+  const mode = useContext(PageHeaderModeContext);
+  const highlighted = useContext(PageHighlightContext);
+  if (mode === 'hidden') return null;
+  if (mode === 'sub') {
+    return (
+      <header className="mb-3 mt-1 flex items-baseline gap-3">
+        <h3 className="text-text-secondary uppercase tracking-[0.06em] text-[10.5px] font-semibold whitespace-nowrap flex items-center gap-1.5">
+          {highlighted && <span aria-label="Matches search" className="w-1.5 h-1.5 rounded-full bg-yellow-400" />}
+          {subTitle(title)}
+        </h3>
+        <div className="flex-1 h-px bg-[var(--seam)]" />
+      </header>
+    );
+  }
   return (
     <header className="mb-4">
       <h2 className="text-text-primary text-[length:var(--text-h2)] font-semibold">{title}</h2>

@@ -56,6 +56,45 @@ export const CATEGORY_GROUPS: {
   ]},
 ];
 
+export function pageKey(c: CategoryId): string {
+  return `${c.group}.${c.page}`;
+}
+
+export type NavSectionId =
+  | 'general' | 'terminal' | 'editor' | 'agents' | 'git' | 'tools' | 'notifications' | 'keymap' | 'privacy-about';
+
+// What the sidebar shows. CATEGORY_GROUPS stays the registry that pages and
+// search key off; a section stacks one or more of those pages on one screen.
+export const NAV_SECTIONS: {
+  id: NavSectionId;
+  label: string;
+  description: string;
+  pages: string[];
+}[] = [
+  { id: 'general', label: 'General', description: 'Theme, accent, interface chrome, startup and session restore.',
+    pages: ['appearance-behavior.appearance', 'appearance-behavior.startup-session'] },
+  { id: 'terminal', label: 'Terminal', description: 'Terminal font and colors, shell, selection and pastes.',
+    pages: ['terminal.appearance', 'terminal.behavior', 'terminal.pastes'] },
+  { id: 'editor', label: 'Editor', description: 'The in-app file editor (Monaco) and its language servers.',
+    pages: ['editor.general', 'editor.font', 'editor.language-servers'] },
+  { id: 'agents', label: 'Agents', description: 'Which coding agents Agentrium launches, their keys, defaults and updates.',
+    pages: ['claude.agents-keys', 'claude.defaults', 'claude.learn', 'claude.updates'] },
+  { id: 'git', label: 'Git', description: 'Version control and changelists.',
+    pages: ['vcs.git', 'vcs.changelists'] },
+  { id: 'tools', label: 'Tools', description: 'External launchers and the preview panel.',
+    pages: ['tools.launchers', 'tools.preview'] },
+  { id: 'notifications', label: 'Notifications', description: 'Alerts when responses are ready, sessions need input, or terminals finish.',
+    pages: ['appearance-behavior.notifications'] },
+  { id: 'keymap', label: 'Keymap', description: 'Read-only. Editing keybindings is on the roadmap.',
+    pages: ['appearance-behavior.keymap'] },
+  { id: 'privacy-about', label: 'Privacy & About', description: 'Telemetry choices, version and links.',
+    pages: ['privacy-about.privacy', 'privacy-about.about'] },
+];
+
+export function sectionForPage(key: string): NavSectionId | undefined {
+  return NAV_SECTIONS.find((s) => s.pages.includes(key))?.id;
+}
+
 // Pages register their settings via `registerSetting` at import time.
 const SETTINGS_INDEX: SettingDescriptor[] = [];
 

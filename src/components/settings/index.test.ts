@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CATEGORY_GROUPS, registerSetting, searchSettings } from './index';
+import { CATEGORY_GROUPS, NAV_SECTIONS, pageKey, registerSetting, searchSettings, sectionForPage } from './index';
 
 describe('settings index', () => {
   it('CATEGORY_GROUPS covers the seven IntelliJ-style buckets', () => {
@@ -52,5 +52,26 @@ describe('settings index', () => {
     expect(g.label).toBe('Agents');
     expect(g.pages[0]).toEqual({ id: 'agents-keys', label: 'Agents & Keys' });
     expect(g.pages.map((p) => p.id)).toEqual(['agents-keys', 'defaults', 'learn', 'updates']);
+  });
+});
+
+describe('settings sidebar sections', () => {
+  it('flattens the groups into nine sidebar sections in display order', () => {
+    expect(NAV_SECTIONS.map((s) => s.id)).toEqual([
+      'general', 'terminal', 'editor', 'agents', 'git', 'tools', 'notifications', 'keymap', 'privacy-about',
+    ]);
+  });
+
+  it('shows every registered page exactly once', () => {
+    const all = CATEGORY_GROUPS.flatMap((g) => g.pages.map((p) => pageKey({ group: g.id, page: p.id }))).sort();
+    const shown = NAV_SECTIONS.flatMap((s) => s.pages).sort();
+    expect(shown).toEqual(all);
+  });
+
+  it('sectionForPage maps a search hit back to its sidebar section', () => {
+    expect(sectionForPage('terminal.pastes')).toBe('terminal');
+    expect(sectionForPage('appearance-behavior.startup-session')).toBe('general');
+    expect(sectionForPage('vcs.changelists')).toBe('git');
+    expect(sectionForPage('nope.nope')).toBeUndefined();
   });
 });

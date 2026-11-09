@@ -7,13 +7,15 @@ interface Props {
 
 export function SettingsSearch({ value, onChange }: Props) {
   return (
-    <div className="flex items-center bg-elevation-0 ring-1 ring-seam rounded-md px-2 h-7 w-[360px]">
+    <div className="flex items-center bg-elevation-0 ring-1 ring-seam rounded-md px-2 h-7 w-full">
       <Search size={12} className="text-text-tertiary mr-2" strokeWidth={1.75} />
       <input
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder="Search settings…"
+        aria-label="Search settings"
+        autoFocus
         className="flex-1 bg-transparent text-[12px] text-text-primary placeholder:text-text-tertiary focus:outline-none"
       />
     </div>
