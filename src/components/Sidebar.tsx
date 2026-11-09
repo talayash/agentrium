@@ -1,4 +1,5 @@
-import { Terminal, FolderTree, History, Plus, ChevronsRight, ChevronsLeft, Settings, GitBranch, Flag, UserCog } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Terminal, FolderTree, History, Plus, ChevronsRight, ChevronsLeft, ChevronDown, Settings, GitBranch, Flag, UserCog } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useAppStore } from '../store/appStore';
 import type { SidebarNav } from '../store/appStore';
@@ -188,71 +189,116 @@ export function Sidebar() {
         )}
       </div>
 
-      {/* Prominent primary action + creates + navigation (liquid glass) */}
-      <div className="p-2 flex flex-col gap-1.5">
-        <button
-          onClick={(e) => {
-            // Blur the trigger BEFORE the modal opens - without this, the modal's
-            // focus trap releases back to this button on close, and if the user
-            // then presses Enter (expecting it to reach the newly-created
-            // terminal) the browser dispatches a synthetic click and re-opens
-            // the modal. Focus travels through the modal's own auto-focus and
-            // eventually into xterm; the blur just makes sure the button isn't
-            // the default target if some path skips that. See #58.
-            e.currentTarget.blur();
-            openNewTerminalModal();
-          }}
-          className="glass-capsule glass-capsule-accent w-full h-10 justify-center gap-2 text-white text-[13px] font-semibold active:translate-y-px transition-[filter,transform] duration-100"
-        >
-          <Plus size={15} strokeWidth={2.5} />
-          New Session
-        </button>
-        {/* One style per row: filled primary, ringed secondary creates, ghost navigation. */}
-        {/* Creates: one segmented glass capsule, same shape as the navigation row.
-            All four segments are left-aligned with the same inset so the icon
-            tiles line up in two columns. */}
-        <div className="glass-capsule w-full h-9">
-          <button
-            onClick={(e) => { e.currentTarget.blur(); openNewTaskModal(); }}
-            aria-label="New Task"
-            aria-keyshortcuts="Control+Shift+T"
-            className="flex-1 min-w-0 h-8 rounded-full text-text-primary hover:bg-fill-hover text-[12.5px] font-medium flex items-center justify-start gap-2 pl-3 active:scale-[0.98] transition-[background-color,transform] duration-100"
-          >
-            <IconTile icon={GitBranch} tone="green" size={18} />
-            Task
-          </button>
-          <span className="w-px h-4 bg-seam-strong flex-shrink-0" aria-hidden="true" />
-          <button
-            onClick={(e) => { e.currentTarget.blur(); openNewRaceModal(); }}
-            aria-label="New Race"
-            aria-keyshortcuts="Control+Shift+R"
-            className="flex-1 min-w-0 h-8 rounded-full text-text-primary hover:bg-fill-hover text-[12.5px] font-medium flex items-center justify-start gap-2 pl-3 active:scale-[0.98] transition-[background-color,transform] duration-100"
-          >
-            <IconTile icon={Flag} tone="orange" size={18} />
-            Race
-          </button>
-        </div>
-        {/* Navigation: one segmented glass capsule. */}
-        <div className="glass-capsule w-full h-9">
+      {/* One row: split New Session (Task / Race in its menu) + Profiles and
+          Settings as icons, so the session list keeps the vertical space. */}
+      <div className="sidebar-footer p-2 flex items-center gap-1.5">
+        <NewSessionSplitButton
+          onNewSession={openNewTerminalModal}
+          onNewTask={openNewTaskModal}
+          onNewRace={openNewRaceModal}
+        />
+        <Tooltip label="Profiles">
           <button
             // No-arg call opens the profile manager list; passing the click event
             // through would be read as a profileId and open the focused editor.
             onClick={(e) => { e.currentTarget.blur(); openProfileModal(); }}
-            className="flex-1 min-w-0 h-8 rounded-full text-text-secondary hover:text-text-primary hover:bg-fill-hover text-[12.5px] font-medium flex items-center justify-start gap-2 pl-3 active:scale-[0.98] transition-[background-color,color,transform] duration-100"
+            aria-label="Profiles"
+            data-tone="user"
+            className="tone-btn w-9 h-9 flex items-center justify-center rounded-full flex-shrink-0 transition-colors"
           >
-            <IconTile icon={UserCog} tone="purple" size={18} />
-            Profiles
+            <UserCog size={16} strokeWidth={1.75} />
           </button>
-          <span className="w-px h-4 bg-seam-strong flex-shrink-0" aria-hidden="true" />
+        </Tooltip>
+        <Tooltip label="Settings">
           <button
             onClick={openSettings}
+            aria-label="Settings"
             aria-keyshortcuts="Control+,"
-            className="flex-1 min-w-0 h-8 rounded-full text-text-secondary hover:text-text-primary hover:bg-fill-hover text-[12.5px] font-medium flex items-center justify-start gap-2 pl-3 active:scale-[0.98] transition-[background-color,color,transform] duration-100"
+            data-tone="user"
+            className="tone-btn w-9 h-9 flex items-center justify-center rounded-full flex-shrink-0 transition-colors"
           >
-            <IconTile icon={Settings} tone="gray" size={18} />
-            Settings
+            <Settings size={16} strokeWidth={1.75} />
+          </button>
+        </Tooltip>
+      </div>
+    </div>
+  );
+}
+
+interface SplitProps {
+  onNewSession: () => void;
+  onNewTask: () => void;
+  onNewRace: () => void;
+}
+
+/**
+ * Primary "New Session" with a caret that opens Task / Race above it. Every
+ * trigger blurs itself before its modal opens: otherwise the modal's focus
+ * trap hands focus back to the button on close, and an Enter meant for the new
+ * terminal re-clicks it and reopens the modal (#58).
+ */
+function NewSessionSplitButton({ onNewSession, onNewTask, onNewRace }: SplitProps) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const pick = (e: React.MouseEvent<HTMLButtonElement>, action: () => void) => {
+    e.currentTarget.blur();
+    setOpen(false);
+    action();
+  };
+
+  const itemClass =
+    'w-full h-9 px-2 rounded-lg flex items-center gap-2.5 whitespace-nowrap text-[12.5px] font-medium text-text-primary hover:bg-fill-hover transition-colors';
+
+  return (
+    <div ref={rootRef} className="relative flex-1 min-w-0">
+      {open && (
+        <div role="menu" aria-label="Start something new" className="material-popover absolute bottom-full left-0 right-0 mb-1.5 rounded-xl p-1 z-20">
+          <button role="menuitem" aria-label="New Task" aria-keyshortcuts="Control+Shift+T" onClick={(e) => pick(e, onNewTask)} className={itemClass}>
+            <IconTile icon={GitBranch} tone="green" size={18} />
+            Task
+            <kbd className="split-menu-kbd ml-auto pl-2 text-[10px] font-mono text-text-tertiary">Ctrl+Shift+T</kbd>
+          </button>
+          <button role="menuitem" aria-label="New Race" aria-keyshortcuts="Control+Shift+R" onClick={(e) => pick(e, onNewRace)} className={itemClass}>
+            <IconTile icon={Flag} tone="orange" size={18} />
+            Race
+            <kbd className="split-menu-kbd ml-auto pl-2 text-[10px] font-mono text-text-tertiary">Ctrl+Shift+R</kbd>
           </button>
         </div>
+      )}
+      <div className="glass-capsule glass-capsule-accent w-full h-9">
+        <button
+          onClick={(e) => { e.currentTarget.blur(); setOpen(false); onNewSession(); }}
+          aria-label="New Session"
+          className="flex-1 min-w-0 h-8 rounded-full flex items-center justify-center gap-1.5 whitespace-nowrap overflow-hidden text-white text-[13px] font-semibold active:translate-y-px transition-transform duration-100"
+        >
+          <Plus size={15} strokeWidth={2.5} className="flex-shrink-0" />
+          <span>New<span className="new-session-word"> Session</span></span>
+        </button>
+        <span className="w-px h-5 bg-white/30 flex-shrink-0" aria-hidden="true" />
+        <button
+          onClick={() => setOpen((v) => !v)}
+          aria-label="More ways to start"
+          aria-haspopup="menu"
+          aria-expanded={open}
+          className="w-7 h-8 rounded-full flex items-center justify-center text-white/90 hover:text-white flex-shrink-0"
+        >
+          <ChevronDown size={14} strokeWidth={2.25} className={`transition-transform duration-150 ${open ? 'rotate-180' : ''}`} />
+        </button>
       </div>
     </div>
   );
