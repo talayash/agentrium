@@ -990,7 +990,11 @@ pub async fn get_context_usage(
                 .filter_map(|id| {
                     let t = terminals.terminals.get(id)?;
                     let sid = t.config.claude_session_id.clone()?;
-                    Some((id.clone(), t.config.agent.clone(), sid, t.config.working_directory.clone()))
+                    let launch = crate::context_usage::LaunchConfig {
+                        args: t.config.claude_args.clone(),
+                        env_vars: t.config.env_vars.clone(),
+                    };
+                    Some((id.clone(), t.config.agent.clone(), sid, t.config.working_directory.clone(), launch))
                 })
                 .collect();
             (targets, terminals.terminals.keys().cloned().collect())
@@ -999,8 +1003,8 @@ pub async fn get_context_usage(
             crate::context_usage::retain(&live);
             targets
                 .into_iter()
-                .filter_map(|(id, agent, sid, cwd)| {
-                    let usage = crate::context_usage::usage_for_terminal(&id, &agent, &sid, &cwd)?;
+                .filter_map(|(id, agent, sid, cwd, launch)| {
+                    let usage = crate::context_usage::usage_for_terminal(&id, &agent, &sid, &cwd, &launch)?;
                     Some((id, usage))
                 })
                 .collect()

@@ -22,7 +22,69 @@ pub struct ContextUsage {
     /// Window size when the transcript states it (Codex). Claude transcripts
     /// do not, so the frontend derives it from the model.
     pub window_tokens: Option<u64>,
+    /// Model the transcript reports (Claude strips any `[1m]` suffix here).
     pub model: Option<String>,
+    /// Claude only: the model the session was configured with, resolved the
+    /// way the CLI does (see `configured_claude_model`). A `[1m]` suffix here
+    /// is the one reliable sign of a 1M window below 200k of usage.
+    pub configured_model: Option<String>,
+}
+
+/// Non-blank, trimmed.
+fn present(s: Option<&str>) -> Option<String> {
+    s.map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+}
+
+fn settings_model(path: &Path) -> Option<String> {
+    let text = std::fs::read_to_string(path).ok()?;
+    let v: Value = serde_json::from_str(&text).ok()?;
+    present(v.get("model").and_then(Value::as_str))
+}
+
+/// The Claude model a session runs, in the CLI's precedence: `--model` arg,
+/// `ANTHROPIC_MODEL` from the terminal's env, then from the app's own env
+/// (which the PTY inherits), then `model` in the project's
+/// `.claude/settings.local.json`, `.claude/settings.json`, and the user's
+/// `settings.json` in `claude_dir`. Blank or unreadable sources are skipped.
+/// Only used to spot a `[1m]` alias: a plain alias can still be 1M by plan
+/// default, so the absence of `[1m]` proves nothing.
+pub fn configured_claude_model(
+    args: &[String],
+    env_vars: &HashMap<String, String>,
+    process_env_model: Option<String>,
+    cwd: &Path,
+    claude_dir: Option<&Path>,
+) -> Option<String> {
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        if a == "--model" {
+            if let Some(m) = present(it.next().map(String::as_str)) {
+                return Some(m);
+            }
+        } else if let Some(m) = present(a.strip_prefix("--model=")) {
+            return Some(m);
+        }
+    }
+    present(env_vars.get("ANTHROPIC_MODEL").map(String::as_str))
+        .or_else(|| present(process_env_model.as_deref()))
+        .or_else(|| settings_model(&cwd.join(".claude").join("settings.local.json")))
+        .or_else(|| settings_model(&cwd.join(".claude").join("settings.json")))
+        .or_else(|| claude_dir.and_then(|d| settings_model(&d.join("settings.json"))))
+}
+
+/// Inputs for `configured_claude_model` taken from the terminal's config.
+pub struct LaunchConfig {
+    pub args: Vec<String>,
+    pub env_vars: HashMap<String, String>,
+}
+
+fn user_claude_dir() -> Option<PathBuf> {
+    if let Some(d) = present(std::env::var("CLAUDE_CONFIG_DIR").ok().as_deref()) {
+        return Some(PathBuf::from(d));
+    }
+    directories::BaseDirs::new().map(|d| d.home_dir().join(".claude"))
 }
 
 /// First read covers the last 1 MiB; a transcript whose tail is one huge tool
@@ -60,6 +122,7 @@ pub fn claude_usage_from_line(line: &str) -> Option<ContextUsage> {
         used_tokens: used,
         window_tokens: None,
         model,
+        configured_model: None,
     })
 }
 
@@ -92,6 +155,7 @@ pub fn codex_usage_from_line(line: &str) -> Option<ContextUsage> {
         used_tokens: used,
         window_tokens: window,
         model: None,
+        configured_model: None,
     })
 }
 
@@ -148,12 +212,15 @@ fn cache() -> &'static Mutex<HashMap<String, Entry>> {
 
 /// Usage for one terminal. Re-reads the transcript only when it grew or was
 /// rewritten, so polling every session every few seconds is mostly a `stat`.
-/// Blocking: call from `spawn_blocking`.
+/// The configured model is re-resolved on the same re-read, so a settings
+/// change shows up on the agent's next reply. Blocking: call from
+/// `spawn_blocking`.
 pub fn usage_for_terminal(
     id: &str,
     agent: &AgentKind,
     session_id: &str,
     cwd: &str,
+    launch: &LaunchConfig,
 ) -> Option<ContextUsage> {
     let provider = crate::session_provider::provider_for(agent);
     if !provider.supports_transcript() {
@@ -170,7 +237,16 @@ pub fn usage_for_terminal(
         return entry.usage.clone();
     }
     match usage_from_file(&path, agent) {
-        Ok(usage) => {
+        Ok(mut usage) => {
+            if let (Some(u), AgentKind::Claude) = (usage.as_mut(), agent) {
+                u.configured_model = configured_claude_model(
+                    &launch.args,
+                    &launch.env_vars,
+                    std::env::var("ANTHROPIC_MODEL").ok(),
+                    Path::new(cwd),
+                    user_claude_dir().as_deref(),
+                );
+            }
             entry.read_at_len = Some(len);
             entry.usage = usage.clone();
             usage
@@ -204,6 +280,7 @@ mod tests {
         assert_eq!(u.used_tokens, 93_012);
         assert_eq!(u.model.as_deref(), Some("claude-opus-4-1"));
         assert_eq!(u.window_tokens, None);
+        assert_eq!(u.configured_model, None);
     }
 
     #[test]
@@ -268,6 +345,115 @@ mod tests {
         assert_eq!(
             last_usage_in(codex, &AgentKind::Codex).unwrap().used_tokens,
             100
+        );
+    }
+
+    fn args(a: &[&str]) -> Vec<String> {
+        a.iter().map(|s| s.to_string()).collect()
+    }
+
+    fn env(model: &str) -> HashMap<String, String> {
+        HashMap::from([("ANTHROPIC_MODEL".to_string(), model.to_string())])
+    }
+
+    /// A project dir and a user claude dir, each with optional settings files.
+    fn settings_dirs(
+        local: Option<&str>,
+        project: Option<&str>,
+        user: Option<&str>,
+    ) -> tempfile::TempDir {
+        let root = tempfile::tempdir().unwrap();
+        let proj = root.path().join("proj").join(".claude");
+        let home = root.path().join("home");
+        std::fs::create_dir_all(&proj).unwrap();
+        std::fs::create_dir_all(&home).unwrap();
+        if let Some(s) = local {
+            std::fs::write(proj.join("settings.local.json"), s).unwrap();
+        }
+        if let Some(s) = project {
+            std::fs::write(proj.join("settings.json"), s).unwrap();
+        }
+        if let Some(s) = user {
+            std::fs::write(home.join("settings.json"), s).unwrap();
+        }
+        root
+    }
+
+    fn resolve(
+        dirs: &tempfile::TempDir,
+        a: &[&str],
+        env_vars: &HashMap<String, String>,
+        process: Option<&str>,
+    ) -> Option<String> {
+        let home = dirs.path().join("home");
+        configured_claude_model(
+            &args(a),
+            env_vars,
+            process.map(str::to_string),
+            &dirs.path().join("proj"),
+            Some(home.as_path()),
+        )
+    }
+
+    #[test]
+    fn configured_model_follows_cli_precedence() {
+        let d = settings_dirs(
+            Some(r#"{"model":"local[1m]"}"#),
+            Some(r#"{"model":"project"}"#),
+            Some(r#"{"model":"user"}"#),
+        );
+        let none = HashMap::new();
+        // --model beats everything, in both spellings
+        assert_eq!(
+            resolve(&d, &["--model", "opus[1m]"], &env("x"), Some("y")).as_deref(),
+            Some("opus[1m]")
+        );
+        assert_eq!(
+            resolve(&d, &["--model=sonnet[1m]"], &none, None).as_deref(),
+            Some("sonnet[1m]")
+        );
+        // terminal env beats the app's own env, which beats settings
+        assert_eq!(
+            resolve(&d, &[], &env("term[1m]"), Some("proc")).as_deref(),
+            Some("term[1m]")
+        );
+        assert_eq!(
+            resolve(&d, &[], &none, Some("proc[1m]")).as_deref(),
+            Some("proc[1m]")
+        );
+        // settings: local > project > user
+        assert_eq!(resolve(&d, &[], &none, None).as_deref(), Some("local[1m]"));
+        let d = settings_dirs(
+            None,
+            Some(r#"{"model":"project[1m]"}"#),
+            Some(r#"{"model":"user"}"#),
+        );
+        assert_eq!(
+            resolve(&d, &[], &none, None).as_deref(),
+            Some("project[1m]")
+        );
+        let d = settings_dirs(None, None, Some(r#"{"model":"opus[1m]"}"#));
+        assert_eq!(resolve(&d, &[], &none, None).as_deref(), Some("opus[1m]"));
+    }
+
+    #[test]
+    fn configured_model_skips_blank_broken_and_missing_sources() {
+        let d = settings_dirs(
+            Some("{not json"),
+            Some(r#"{"model":"  "}"#),
+            Some(r#"{"model":"user[1m]"}"#),
+        );
+        assert_eq!(
+            resolve(&d, &["--model", ""], &env(""), Some("")).as_deref(),
+            Some("user[1m]")
+        );
+        let empty = settings_dirs(None, None, Some(r#"{"theme":"dark"}"#));
+        assert_eq!(resolve(&empty, &["--verbose"], &HashMap::new(), None), None);
+        // a trailing --model with no value is ignored, not a panic
+        assert_eq!(resolve(&empty, &["--model"], &HashMap::new(), None), None);
+        assert_eq!(
+            configured_claude_model(&[], &HashMap::new(), None, Path::new("/nope"), None),
+            None
         );
     }
 

@@ -24,11 +24,16 @@ const LEVEL_HINT: Record<ContextLevel, string> = {
 /** The reading for one terminal, or null while the meter is off or has no data. */
 export function useContextReading(terminalId: string): ContextReading | null {
   const enabled = useAppStore((s) => s.contextMeterEnabled);
+  const setting = useAppStore((s) => s.claudeContextWindow);
   const usage = useContextUsageStore((s) => s.byId.get(terminalId));
-  const inst = useTerminalStore((s) => s.terminals.get(terminalId));
-  if (!enabled || !inst) return null;
-  return readContext(inst.config.agent, usage, inst.model);
+  const seenOver200k = useContextUsageStore((s) => s.seenOver200k.has(terminalId));
+  const agent = useTerminalStore((s) => s.terminals.get(terminalId)?.config.agent);
+  if (!enabled || !agent) return null;
+  return readContext(agent, usage, { setting, seenOver200k });
 }
+
+const UNKNOWN_HINT =
+  "This session's window size is unknown: Claude can run with 200k or 1M depending on your plan and model. Set it in Settings > Appearance to see how full it is.";
 
 const RING_R = 7.5;
 const RING_C = 2 * Math.PI * RING_R;
@@ -44,9 +49,9 @@ function Ring({ reading }: { reading: ContextReading }) {
         fill="none"
         strokeWidth="3"
         strokeLinecap="round"
-        stroke={LEVEL_COLOR[reading.level]}
+        stroke={reading.level ? LEVEL_COLOR[reading.level] : 'transparent'}
         strokeDasharray={RING_C}
-        strokeDashoffset={RING_C * (1 - reading.percent / 100)}
+        strokeDashoffset={RING_C * (1 - (reading.percent ?? 0) / 100)}
         transform="rotate(-90 10 10)"
         className="transition-[stroke-dashoffset] duration-500"
       />
@@ -100,14 +105,18 @@ export function ContextMeter({ terminalId }: { terminalId: string }) {
         <button
           onClick={() => setOpen((o) => !o)}
           aria-expanded={open}
-          aria-label={`Context window ${reading.percent}% full`}
-          data-context-meter={reading.level}
+          aria-label={
+            reading.percent === null
+              ? `Context window: ${formatTokens(reading.used)} tokens used, window size unknown`
+              : `Context window ${reading.percent}% full`
+          }
+          data-context-meter={reading.level ?? 'unknown'}
           className={`flex items-center gap-1.5 h-[18px] pl-1 pr-1.5 rounded-full text-[10px] font-medium tabular-nums ring-1 ring-inset ring-seam-strong transition-colors ${
             open ? 'bg-fill-active text-text-primary' : 'text-text-secondary hover:bg-fill-hover hover:text-text-primary'
           } ${reading.level === 'crit' ? 'context-meter-crit' : ''}`}
         >
           <Ring reading={reading} />
-          {reading.percent}%
+          {reading.percent === null ? formatTokens(reading.used) : `${reading.percent}%`}
         </button>
       </Tooltip>
 
@@ -118,21 +127,33 @@ export function ContextMeter({ terminalId }: { terminalId: string }) {
           className="absolute left-0 top-full mt-1.5 z-50 w-[280px] material-popover ct-pop-in rounded-lg p-3 flex flex-col gap-2.5"
           style={{ transformOrigin: 'top left' }}
         >
-          <div className="flex items-baseline gap-2">
-            <span className="text-[22px] font-semibold text-text-primary tabular-nums leading-none">{reading.percent}%</span>
-            <span className="text-[12px] text-text-secondary tabular-nums">
-              {formatTokens(reading.used)} of {formatTokens(reading.window)} tokens
-            </span>
-          </div>
-          <div className="relative h-1.5 rounded-full bg-fill-active" aria-hidden>
-            <div
-              className="absolute inset-y-0 left-0 rounded-full transition-[width] duration-500"
-              style={{ width: `${reading.percent}%`, background: LEVEL_COLOR[reading.level] }}
-            />
-            <span className="absolute -top-0.5 -bottom-0.5 w-px bg-text-tertiary" style={{ left: `${WARN_AT}%` }} />
-            <span className="absolute -top-0.5 -bottom-0.5 w-px bg-text-tertiary" style={{ left: `${CRIT_AT}%` }} />
-          </div>
-          <p className="text-[11.5px] leading-relaxed text-text-secondary">{LEVEL_HINT[reading.level]}</p>
+          {reading.percent === null || reading.window === null || reading.level === null ? (
+            <>
+              <div className="flex items-baseline gap-2">
+                <span className="text-[22px] font-semibold text-text-primary tabular-nums leading-none">{formatTokens(reading.used)}</span>
+                <span className="text-[12px] text-text-secondary">tokens used</span>
+              </div>
+              <p className="text-[11.5px] leading-relaxed text-text-secondary">{UNKNOWN_HINT}</p>
+            </>
+          ) : (
+            <>
+              <div className="flex items-baseline gap-2">
+                <span className="text-[22px] font-semibold text-text-primary tabular-nums leading-none">{reading.percent}%</span>
+                <span className="text-[12px] text-text-secondary tabular-nums">
+                  {formatTokens(reading.used)} of {formatTokens(reading.window)} tokens
+                </span>
+              </div>
+              <div className="relative h-1.5 rounded-full bg-fill-active" aria-hidden>
+                <div
+                  className="absolute inset-y-0 left-0 rounded-full transition-[width] duration-500"
+                  style={{ width: `${reading.percent}%`, background: LEVEL_COLOR[reading.level] }}
+                />
+                <span className="absolute -top-0.5 -bottom-0.5 w-px bg-text-tertiary" style={{ left: `${WARN_AT}%` }} />
+                <span className="absolute -top-0.5 -bottom-0.5 w-px bg-text-tertiary" style={{ left: `${CRIT_AT}%` }} />
+              </div>
+              <p className="text-[11.5px] leading-relaxed text-text-secondary">{LEVEL_HINT[reading.level]}</p>
+            </>
+          )}
           <div className="flex items-center gap-2">
             <button
               onClick={stageCompact}
@@ -152,7 +173,8 @@ export function ContextMeter({ terminalId }: { terminalId: string }) {
 /** Thin fill bar for a sidebar session card. */
 export function ContextBar({ terminalId }: { terminalId: string }) {
   const reading = useContextReading(terminalId);
-  if (!reading) return null;
+  // A fill bar needs a window; an unknown one shows only in the session strip.
+  if (!reading || reading.percent === null || reading.window === null || reading.level === null) return null;
   return (
     <div
       className="mt-1.5 h-[3px] rounded-full bg-fill-active overflow-hidden"
