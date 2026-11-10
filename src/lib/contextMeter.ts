@@ -10,7 +10,7 @@ export interface ContextUsage {
   configured_model: string | null;
 }
 
-/** Settings > Appearance override for Claude's window. */
+/** Settings > General (Appearance) override for Claude's window. */
 export type ClaudeWindowSetting = 'auto' | '200k' | '1m';
 
 export interface WindowHints {

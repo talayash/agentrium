@@ -95,7 +95,7 @@ it('shows tokens only, never a warning, when the window is unknown', () => {
   fireEvent.click(chip);
   const dialog = screen.getByRole('dialog').textContent ?? '';
   expect(dialog).toMatch(/185k\s*tokens used/);
-  expect(dialog).toContain('Settings > Appearance');
+  expect(dialog).toContain('Settings > General');
   expect(dialog).not.toContain('%');
   // /compact stays available
   expect(screen.getByRole('button', { name: /Type \/compact/ })).toBeTruthy();

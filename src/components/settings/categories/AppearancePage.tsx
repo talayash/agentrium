@@ -12,6 +12,8 @@ registerSetting({ category: cat, id: 'reduce-motion', label: 'Reduce motion',key
 registerSetting({ category: cat, id: 'status-bar',    label: 'Status bar',     keywords: ['minimal', 'chrome', 'bottom', 'hide'] });
 registerSetting({ category: cat, id: 'tab-activity',  label: 'Tab activity',   keywords: ['minimal', 'indicator', 'dot', 'busy', 'hide'] });
 registerSetting({ category: cat, id: 'compact-titlebar', label: 'Compact title bar', keywords: ['minimal', 'brand', 'chrome', 'hide'] });
+registerSetting({ category: cat, id: 'context-meter', label: 'Context window meter', keywords: ['context', 'tokens', 'compact', 'usage'] });
+registerSetting({ category: cat, id: 'claude-context-window', label: 'Claude context window', keywords: ['context', '1m', '200k', 'tokens', 'window size'] });
 
 // Apple system palette: blue, green, purple, orange, red.
 const ACCENT_PRESETS = ['#007AFF', '#34C759', '#AF52DE', '#FF9500', '#FF3B30'];

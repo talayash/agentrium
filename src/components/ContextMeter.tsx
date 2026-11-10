@@ -33,7 +33,7 @@ export function useContextReading(terminalId: string): ContextReading | null {
 }
 
 const UNKNOWN_HINT =
-  "This session's window size is unknown: Claude can run with 200k or 1M depending on your plan and model. Set it in Settings > Appearance to see how full it is.";
+  "This session's window size is unknown: Claude can run with 200k or 1M depending on your plan and model. Set it in Settings > General to see how full it is.";
 
 const RING_R = 7.5;
 const RING_C = 2 * Math.PI * RING_R;

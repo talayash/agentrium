@@ -68,6 +68,15 @@ describe('settings sidebar sections', () => {
     expect(shown).toEqual(all);
   });
 
+  it('finds the context meter settings under General', async () => {
+    await import('./categories/AppearancePage');
+    const ids = (q: string) => searchSettings(q).map((d) => d.id);
+    expect(ids('context window')).toEqual(expect.arrayContaining(['context-meter', 'claude-context-window']));
+    expect(ids('1m')).toContain('claude-context-window');
+    const hit = searchSettings('claude context window').find((d) => d.id === 'claude-context-window')!;
+    expect(sectionForPage(pageKey(hit.category))).toBe('general');
+  });
+
   it('sectionForPage maps a search hit back to its sidebar section', () => {
     expect(sectionForPage('terminal.pastes')).toBe('terminal');
     expect(sectionForPage('appearance-behavior.startup-session')).toBe('general');
