@@ -27,6 +27,8 @@ export default function AppearancePage() {
   const showTabActivity = useAppStore((s) => s.showTabActivity);
   const contextMeterEnabled = useAppStore((s) => s.contextMeterEnabled);
   const setContextMeterEnabled = useAppStore((s) => s.setContextMeterEnabled);
+  const claudeContextWindow = useAppStore((s) => s.claudeContextWindow);
+  const setClaudeContextWindow = useAppStore((s) => s.setClaudeContextWindow);
   const compactTitleBar = useAppStore((s) => s.compactTitleBar);
   const {
     setThemeMode, setUiDensity, setColorfulFolderIcons, setAccentColorHex, setUiFontScale, setUiReduceMotion,
@@ -125,6 +127,22 @@ export default function AppearancePage() {
         <SettingRow label="Context window meter" description="Show how full each session's context window is, in the session strip and on sidebar cards.">
           <Toggle value={contextMeterEnabled} onChange={setContextMeterEnabled} label="Context window meter" />
         </SettingRow>
+        {contextMeterEnabled && (
+          <SettingRow
+            label="Claude context window"
+            description="Auto detects a 1M window from a [1m] model alias or from usage over 200k, and otherwise shows tokens without a percentage. Pick a size if you know your plan's window."
+          >
+            <Segmented
+              value={claudeContextWindow}
+              onChange={setClaudeContextWindow}
+              options={[
+                { value: 'auto', label: 'Auto' },
+                { value: '200k', label: '200k' },
+                { value: '1m',   label: '1M' },
+              ]}
+            />
+          </SettingRow>
+        )}
         <SettingRow label="Compact title bar" description="Hide the centered product name to free up the drag area.">
           <Toggle value={compactTitleBar} onChange={setCompactTitleBar} label="Compact title bar" />
         </SettingRow>

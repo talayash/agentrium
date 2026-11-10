@@ -6,6 +6,7 @@ import type { ViewMode } from '../lib/viewMode';
 import { MAX_GRID_TERMINALS } from '../lib/gridEmptyCells';
 import { addPin, removePin, togglePin } from '../lib/pinnedTabs';
 import type { AgentKind, BuiltinAgentKind } from '../lib/agents';
+import type { ClaudeWindowSetting } from '../lib/contextMeter';
 import type { CredentialBinding } from '../lib/credentials';
 import type { LearnLevel } from '../lib/learn';
 import type { NewTerminalIsolation } from '../lib/tasks';
@@ -159,6 +160,8 @@ interface AppState {
   showTabActivity: boolean;
   /** Feature flag: context window meter in the session strip and sidebar cards. Default on. */
   contextMeterEnabled: boolean;
+  /** Claude context window for the meter: 'auto' detects it, else a fixed size. */
+  claudeContextWindow: ClaudeWindowSetting;
   compactTitleBar: boolean;
   notificationSoundEnabled: boolean;
   /** Repeat the attention sound every few seconds until the session is viewed. Off = one sound per alert. */
@@ -415,6 +418,7 @@ interface AppState {
   setShowStatusBar: (v: boolean) => void;
   setShowTabActivity: (v: boolean) => void;
   setContextMeterEnabled: (v: boolean) => void;
+  setClaudeContextWindow: (v: ClaudeWindowSetting) => void;
   setCompactTitleBar: (v: boolean) => void;
   setNotificationSoundEnabled: (enabled: boolean) => void;
   setNotificationSoundRepeat: (enabled: boolean) => void;
@@ -679,6 +683,7 @@ export const useAppStore = create<AppState>()(
       showStatusBar: true,
       showTabActivity: true,
       contextMeterEnabled: true,
+      claudeContextWindow: 'auto',
       compactTitleBar: false,
       notificationSoundEnabled: false,
       notificationSoundRepeat: false,
@@ -915,6 +920,7 @@ export const useAppStore = create<AppState>()(
       setShowStatusBar: (v) => set({ showStatusBar: v }),
       setShowTabActivity: (v) => set({ showTabActivity: v }),
       setContextMeterEnabled: (v) => set({ contextMeterEnabled: v }),
+      setClaudeContextWindow: (v) => set({ claudeContextWindow: v }),
       setCompactTitleBar: (v) => set({ compactTitleBar: v }),
       setNotificationSoundEnabled: (enabled) => set({ notificationSoundEnabled: enabled }),
       setNotificationSoundRepeat: (enabled) => set({ notificationSoundRepeat: enabled }),
@@ -1515,6 +1521,7 @@ export const useAppStore = create<AppState>()(
         showStatusBar: state.showStatusBar,
         showTabActivity: state.showTabActivity,
         contextMeterEnabled: state.contextMeterEnabled,
+        claudeContextWindow: state.claudeContextWindow,
         compactTitleBar: state.compactTitleBar,
         notificationSoundEnabled: state.notificationSoundEnabled,
         notificationSoundRepeat: state.notificationSoundRepeat,

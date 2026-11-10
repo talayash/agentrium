@@ -4,7 +4,19 @@ import type { AgentKind } from './agents';
 export interface ContextUsage {
   used_tokens: number;
   window_tokens: number | null;
+  /** Model the transcript reports. Claude strips `[1m]` here, so it is rarely a signal. */
   model: string | null;
+  /** Claude: model from `--model`, `ANTHROPIC_MODEL` or settings, in CLI precedence. */
+  configured_model: string | null;
+}
+
+/** Settings > Appearance override for Claude's window. */
+export type ClaudeWindowSetting = 'auto' | '200k' | '1m';
+
+export interface WindowHints {
+  setting?: ClaudeWindowSetting;
+  /** This terminal has reported more than 200k tokens at some point. */
+  seenOver200k?: boolean;
 }
 
 export type ContextLevel = 'ok' | 'warn' | 'crit';
@@ -15,23 +27,28 @@ export const CLAUDE_1M_WINDOW = 1_000_000;
 export const WARN_AT = 75;
 export const CRIT_AT = 90;
 
+const is1m = (model: string | null | undefined) => !!model && model.toLowerCase().includes('[1m]');
+
 /**
- * Window size for a session. Codex transcripts state it. Claude transcripts do
- * not, so a `[1m]` model alias in the session's `--model` arg (or usage that
- * already exceeds 200k, which only a 1M window allows) means 1M; anything
- * else is the standard 200k. Other agents have no known window: null hides
- * the meter instead of showing a made-up percentage.
+ * Window size for a session, `'unknown'` when it cannot be told, or null for
+ * agents with no meter. Codex transcripts state it. Claude transcripts do not,
+ * and a plain model can be 1M by plan default, so for Claude, in order:
+ * usage over 200k now or earlier (only a 1M window allows it), the manual
+ * setting, a `[1m]` alias in the configured or transcript model. Anything
+ * else is unknown: the meter shows tokens without a made-up percentage.
  */
 export function contextWindowFor(
   agent: AgentKind,
   usage: ContextUsage,
-  argModel?: string,
-): number | null {
+  hints: WindowHints = {},
+): number | 'unknown' | null {
   if (usage.window_tokens && usage.window_tokens > 0) return usage.window_tokens;
   if (agent !== 'claude') return null;
-  if (argModel?.toLowerCase().includes('[1m]')) return CLAUDE_1M_WINDOW;
-  if (usage.used_tokens > CLAUDE_WINDOW) return CLAUDE_1M_WINDOW;
-  return CLAUDE_WINDOW;
+  if (hints.seenOver200k || usage.used_tokens > CLAUDE_WINDOW) return CLAUDE_1M_WINDOW;
+  if (hints.setting === '200k') return CLAUDE_WINDOW;
+  if (hints.setting === '1m') return CLAUDE_1M_WINDOW;
+  if (is1m(usage.configured_model) || is1m(usage.model)) return CLAUDE_1M_WINDOW;
+  return 'unknown';
 }
 
 /** Whole-number percent, clamped to 0..100. */
@@ -56,22 +73,24 @@ export function formatTokens(n: number): string {
   return String(n);
 }
 
+/** `window`, `percent` and `level` are null when the window is unknown. */
 export interface ContextReading {
   used: number;
-  window: number;
-  percent: number;
-  level: ContextLevel;
+  window: number | null;
+  percent: number | null;
+  level: ContextLevel | null;
 }
 
 /** Everything the meter renders, or null when it should stay hidden. */
 export function readContext(
   agent: AgentKind,
   usage: ContextUsage | undefined,
-  argModel?: string,
+  hints: WindowHints = {},
 ): ContextReading | null {
   if (!usage || usage.used_tokens <= 0) return null;
-  const window = contextWindowFor(agent, usage, argModel);
+  const window = contextWindowFor(agent, usage, hints);
   if (!window) return null;
+  if (window === 'unknown') return { used: usage.used_tokens, window: null, percent: null, level: null };
   const percent = fillPercent(usage.used_tokens, window);
   return { used: usage.used_tokens, window, percent, level: levelFor(percent) };
 }
