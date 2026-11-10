@@ -1,5 +1,24 @@
 [
   {
+    "version": "1.42.5",
+    "date": "2026-11-10",
+    "features": [
+      { "title": "Fix bugs & performance" },
+      {
+        "title": "Accurate context meter for 1M Claude sessions",
+        "description": "The meter now detects a 1M window from a [1m] model in your launch args, ANTHROPIC_MODEL or Claude settings, and keeps it after /compact. When the window can't be told, it shows tokens used instead of a misleading percentage. Pick 200k or 1M under Settings > General to set it yourself."
+      },
+      {
+        "title": "Sessions grouped by what needs you",
+        "description": "The sidebar sorts sessions into Needs you, Working and Idle. Idle sessions fold to one row, and New Session, Task, Race, Profiles and Settings now share a single footer row."
+      },
+      {
+        "title": "Simpler settings with search that jumps",
+        "description": "Settings are now nine icon sections. Search shows match counts per section and takes you straight to the first match."
+      }
+    ]
+  },
+  {
     "version": "1.42.4",
     "date": "2026-11-08",
     "features": [
