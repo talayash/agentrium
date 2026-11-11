@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.42.6",
+    "date": "2026-11-11",
+    "features": [
+      { "title": "Fix bugs & performance" },
+      {
+        "title": "Working sessions stay put in the sidebar",
+        "description": "A session that is working no longer jumps between the Working and Idle groups while its agent is running."
+      }
+    ]
+  },
+  {
     "version": "1.42.5",
     "date": "2026-11-10",
     "features": [
