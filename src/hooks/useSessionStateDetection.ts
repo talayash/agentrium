@@ -85,6 +85,13 @@ export function useSessionStateDetection(): void {
           state = 'busy';
         } else if (inst.xterm) {
           state = classifySettled(lines);
+          // A working agent redraws about once a second, slower than
+          // BUSY_WINDOW_MS, and keeps its input box on screen, so the gap
+          // between two redraws reads as idle. Leave busy only after the same
+          // quiet period a completed turn needs. A blocking prompt still wins.
+          if (state === 'idle' && store.terminalStates.get(id) === 'busy' && last != null && now - last < COMPLETION_QUIET_MS) {
+            state = 'busy';
+          }
         } else {
           // No mounted buffer to read - keep the last known state.
           state = store.terminalStates.get(id) ?? 'idle';

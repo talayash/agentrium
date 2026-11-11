@@ -74,6 +74,24 @@ describe('session state polling and notifications', () => {
     expect(mocks.states.get('one')).toBe('waiting');
   });
 
+  it('stays busy between the redraws of a working agent, then goes idle once output stops', () => {
+    // A working agent redraws its spinner about once a second, with its input
+    // box on screen the whole time, so the settled buffer reads as idle.
+    mocks.classify.mockReturnValue('idle');
+    renderHook(useSessionStateDetection);
+    const seen: (string | undefined)[] = [];
+    for (let i = 0; i < 6; i++) {
+      // Polls land 100 ms and 600 ms after each redraw.
+      mocks.lastOutput.mockReturnValue(10_400 + Math.floor(i / 2) * 1000);
+      tick();
+      seen.push(mocks.states.get('one'));
+    }
+    expect(seen).toEqual(['busy', 'busy', 'busy', 'busy', 'busy', 'busy']);
+    tick();
+    tick();
+    expect(mocks.states.get('one')).toBe('idle');
+  });
+
   it('suppresses notifications for the focused active terminal and reads subsequent focus changes', () => {
     mocks.focused = true;
     const { rerender } = renderHook(useSessionStateDetection);
