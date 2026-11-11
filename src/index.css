@@ -1038,8 +1038,6 @@ h2, h3 { letter-spacing: var(--track-title); line-height: 1.3; }
 .session-needs-attention { --attention: var(--attention-ready); }
 .session-needs-attention[data-attention="input"] { --attention: var(--attention-input); }
 .session-attention-label { color: var(--attention); }
-/* Sidebar "Needs you" group header: same hue as a waiting-input alert. */
-.session-group-needs-you { color: var(--attention-input); }
 
 .session-attention-outline {
   position: absolute;

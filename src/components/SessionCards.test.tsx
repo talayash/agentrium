@@ -135,14 +135,11 @@ describe('session card selection', () => {
   });
 });
 
-describe('session attention groups', () => {
+describe('session list order', () => {
   const session = (id: string, label: string, status = 'Running') => [id, {
     config: { id, label, nickname: null, profile_id: null, working_directory: `/repos/${id}`, claude_args: [], env_vars: {}, created_at: '', status, color_tag: null, agent: 'claude' },
     xterm: null, isWorktree: false,
   }] as const;
-  const groupOf = (name: string) =>
-    screen.getByRole('button', { name }).closest('[data-session-group]')?.getAttribute('data-session-group');
-
   beforeEach(() => {
     useTerminalStore.setState({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -152,32 +149,15 @@ describe('session attention groups', () => {
     });
   });
 
-  it('sorts sessions into Needs you, Working and Idle, in that order, with counts', () => {
-    render(<SessionCards />);
-    expect(groupOf('Gamma')).toBe('needs-you');
-    expect(groupOf('Beta')).toBe('working');
-    expect(groupOf('Alpha')).toBe('idle');
-    expect(groupOf('Delta')).toBe('idle');
-    const headers = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent);
-    expect(headers).toEqual(['Needs you1', 'Working1', 'Idle2']);
-  });
-
-  it('moves a session with a pending alert into Needs you', () => {
-    useSessionAttentionStore.getState().request('a');
-    render(<SessionCards />);
-    expect(groupOf('Alpha')).toBe('needs-you');
-  });
-
-  it('collapses idle sessions to one line but keeps the selected one full', () => {
-    useTerminalStore.setState({ activeTerminalId: 'a' });
-    render(<SessionCards />);
-    expect(screen.getByRole('button', { name: 'Delta' }).dataset.compact).toBe('true');
-    expect(screen.getByRole('button', { name: 'Alpha' }).dataset.compact).toBeUndefined();
-  });
-
-  it('hides groups with no sessions', () => {
-    useTerminalStore.setState({ terminalStates: new Map([['a', 'idle'], ['b', 'idle'], ['c', 'idle'], ['d', 'stopped']]) });
-    render(<SessionCards />);
-    expect(screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)).toEqual(['Idle4']);
+  it('keeps one flat list in store order whatever each session is doing', () => {
+    const { container } = render(<SessionCards />);
+    const order = () => Array.from(container.querySelectorAll('[data-session-card]')).map((el) => el.getAttribute('data-session-card'));
+    expect(order()).toEqual(['a', 'b', 'c', 'd']);
+    expect(screen.queryAllByRole('heading', { level: 3 })).toEqual([]);
+    act(() => {
+      useTerminalStore.setState({ terminalStates: new Map([['a', 'busy'], ['b', 'idle'], ['c', 'idle'], ['d', 'stopped']]) });
+      useSessionAttentionStore.getState().request('d');
+    });
+    expect(order()).toEqual(['a', 'b', 'c', 'd']);
   });
 });

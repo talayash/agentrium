@@ -25,7 +25,6 @@ import { PrChip } from './PrChip';
 import { ContextBar } from './ContextMeter';
 import { cleanUpPrSessions, cleanupToastMessage } from '../lib/prCleanup';
 import { useSessionAttentionStore } from '../store/sessionAttentionStore';
-import { classifySession, groupSessionIds, mergeGroupOrder, GROUP_LABEL } from '../lib/sessionGroups';
 
 // Soft per-agent tint for the card badge (Apple-clean, theme-aware via /alpha).
 const AGENT_TINT: Record<BuiltinAgentKind, string> = {
@@ -119,16 +118,6 @@ export function SessionCards() {
     return pinnedTabIds.length === 0 ? ids : orderTabsPinnedFirst(ids, pinnedTabIds);
   }, [list, pinnedTabIds]);
   const byId = useMemo(() => new Map(list.map((t) => [t.config.id, t] as const)), [list]);
-
-  // Needs you / Working / Idle, each keeping the pinned-first order inside it.
-  const groups = useMemo(
-    () => groupSessionIds(orderedIds, (id) => classifySession({
-      status: byId.get(id)?.config.status ?? 'Stopped',
-      state: terminalStates.get(id),
-      pendingAttention: pendingAttention.has(id),
-    })),
-    [orderedIds, byId, terminalStates, pendingAttention],
-  );
 
   // Close the context menu on outside click / Escape.
   useEffect(() => {
@@ -226,13 +215,11 @@ export function SessionCards() {
     setContextMenu({ x: Math.max(margin, x), y: Math.max(margin, y), terminalId });
   };
 
-  const handleReorder = (newGroupOrder: string[]) => {
-    // A drag only moves cards within one group; slot them back into the full
-    // visible order so other groups keep their places. The store appends any
-    // ids we don't render (shell/script terminals), so committing just the
-    // visible order is safe. The pinned-first partition reapplies on render,
-    // keeping pins glued to the top of their group.
-    reorderTerminals(mergeGroupOrder(orderedIds, newGroupOrder));
+  const handleReorder = (newOrder: string[]) => {
+    // The store appends any ids we don't render (shell/script terminals), so
+    // committing just the visible order is safe. The pinned-first partition
+    // reapplies on render, keeping pins glued to the top.
+    reorderTerminals(newOrder);
   };
 
   if (list.length === 0 && sessionFilter === 'tasks') {
@@ -260,31 +247,17 @@ export function SessionCards() {
   return (
     <>
     {handoffId && <HandoffModal sourceId={handoffId} onClose={() => setHandoffId(null)} />}
-    <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-2 pb-2 flex flex-col">
-    {groups.map(({ group, ids }) => (
-    <section key={group} aria-label={GROUP_LABEL[group]} data-session-group={group} className="flex flex-col">
-    <h3
-      className={`px-2 pt-2.5 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.07em] flex items-center gap-1.5 ${
-        group === 'needs-you' ? 'session-group-needs-you' : 'text-text-tertiary'
-      }`}
-    >
-      {GROUP_LABEL[group]}
-      <span className="tabular-nums font-normal opacity-70">{ids.length}</span>
-    </h3>
     <Reorder.Group
       axis="y"
       as="div"
-      values={ids}
+      values={orderedIds}
       onReorder={handleReorder}
-      className="flex flex-col gap-1.5"
+      className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-2 py-2 flex flex-col gap-1.5"
     >
-      {ids.map((id) => {
+      {orderedIds.map((id) => {
         const t = byId.get(id);
         if (!t) return null;
         const active = id === activeTerminalId;
-        // Idle sessions collapse to one line so Needs you / Working stay in
-        // view; the selected one keeps its full card.
-        const compact = group === 'idle' && !active;
         const unread = !active && unreadTerminalIds.has(id);
         const needsAttention = pendingAttention.has(id);
         const busy = t.config.status === 'Running' && terminalStates.get(id) === 'busy';
@@ -318,8 +291,7 @@ export function SessionCards() {
             data-attention={needsAttention ? (terminalStates.get(id) === 'waiting' ? 'input' : 'ready') : undefined}
             data-selected={active || undefined}
             data-session-card={id}
-            data-compact={compact || undefined}
-            className={`group relative rounded-xl px-3 ${compact ? 'py-1.5' : 'py-2.5'} cursor-pointer transition-[background-color,box-shadow] duration-100 ${needsAttention ? 'session-needs-attention' : ''} ${
+            className={`group relative rounded-xl px-3 py-2.5 cursor-pointer transition-[background-color,box-shadow] duration-100 ${needsAttention ? 'session-needs-attention' : ''} ${
               active
                 ? 'bg-accent-primary/18 border border-[var(--ij-stripe)]'
                 : 'ring-1 bg-fill-hover ring-seam hover:bg-fill-active'
@@ -347,16 +319,13 @@ export function SessionCards() {
               ) : (
                 <Tooltip label={contextTooltip(name, t.sessionContext, t.sessionSummary)} multiline side="right">
                 <span
-                  className={`text-[13px] font-medium text-text-primary truncate ${compact ? 'shrink-0 max-w-[65%]' : ''}`}
+                  className="text-[13px] font-medium text-text-primary truncate"
                   tabIndex={0}
                   onDoubleClick={(e) => { e.stopPropagation(); setRenamingId(id); }}
                 >
                   {name}
                 </span>
                 </Tooltip>
-              )}
-              {compact && dir && (
-                <span className="text-[11px] text-text-tertiary truncate min-w-0">{dir}</span>
               )}
               {unread && !needsAttention && (
                 <span className="w-1.5 h-1.5 rounded-full bg-accent-primary flex-shrink-0" aria-label="Unread output" title="New output you have not viewed; this does not mean the agent is working." />
@@ -416,14 +385,13 @@ export function SessionCards() {
               </span>
             </div>
             {needsAttention && <div className="mt-1 text-xs font-semibold session-attention-label" role="status">{attentionLabel}</div>}
-            {!compact && t.sessionContext?.title && t.sessionContext.title !== name && (
+            {t.sessionContext?.title && t.sessionContext.title !== name && (
               <Tooltip label={contextTooltip(name, t.sessionContext, t.sessionSummary)} multiline side="right">
                 <div className="mt-1 text-[12px] text-text-secondary truncate" tabIndex={0}>
                   {t.sessionContext.title}
                 </div>
               </Tooltip>
             )}
-            {!compact && (
             <div className="mt-1 flex items-center gap-2 text-[11px] text-text-tertiary">
               {dir && <span className="truncate">{dir}</span>}
               {t.config.task ? (
@@ -442,15 +410,11 @@ export function SessionCards() {
               <PrChip terminalId={id} compact />
               {cost && <span className="ml-auto text-emerald-500 font-medium tabular-nums">{cost}</span>}
             </div>
-            )}
-            {!compact && <ContextBar terminalId={id} />}
+            <ContextBar terminalId={id} />
           </Reorder.Item>
         );
       })}
     </Reorder.Group>
-    </section>
-    ))}
-    </div>
 
     {contextMenu && (() => {
       const ctxId = contextMenu.terminalId;
