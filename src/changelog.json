@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.42.7",
+    "date": "2026-11-11",
+    "features": [
+      { "title": "Fix bugs & performance" },
+      {
+        "title": "Sessions stay where you put them",
+        "description": "The sidebar is one list again, in your own order. The Needs you, Working and Idle groups are gone, so sessions no longer move when an agent starts or stops working."
+      }
+    ]
+  },
+  {
     "version": "1.42.6",
     "date": "2026-11-11",
     "features": [
