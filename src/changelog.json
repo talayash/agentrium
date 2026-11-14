@@ -1,5 +1,24 @@
 [
   {
+    "version": "1.42.8",
+    "date": "2026-11-14",
+    "features": [
+      { "title": "Fix bugs & performance" },
+      {
+        "title": "Faster, steadier terminal output",
+        "description": "Heavy output from an agent renders about 17% faster, and output paces itself to what the screen can draw, so a busy session no longer floods the app."
+      },
+      {
+        "title": "Typing stays responsive during big pastes",
+        "description": "A large paste into one session no longer freezes typing in your other sessions."
+      },
+      {
+        "title": "Lighter background tabs",
+        "description": "Sessions you are not looking at release their GPU renderer but keep their output up to date, so switching back is instant."
+      }
+    ]
+  },
+  {
     "version": "1.42.7",
     "date": "2026-11-11",
     "features": [
