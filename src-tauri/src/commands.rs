@@ -501,10 +501,8 @@ pub async fn create_terminal(
     request: CreateTerminalRequest,
 ) -> Result<crate::terminal::TerminalConfig, String> {
     wrap_cmd("create_terminal", async move {
-        // Channel sized for burst output - Claude Code streaming can easily push
-        // hundreds of chunks/sec per terminal. 100 caused backpressure into the
-        // PTY reader thread under load.
-        let (tx, mut rx) = mpsc::channel::<(String, Vec<u8>)>(1000);
+        // Bound the reader queue as well as the renderer's outstanding bytes.
+        let (tx, mut rx) = mpsc::channel::<(String, Vec<u8>)>(crate::terminal_output::QUEUE_CHUNKS);
 
         // Compute log file path
         let log_path = {
@@ -758,22 +756,11 @@ pub async fn create_terminal(
         let otel_agg = state.otel_agg.clone();
 
         let app_clone = app.clone();
+        let output_stream = crate::terminal_output::Stream::new(&terminal_id);
         tokio::spawn(async move {
-            while let Some((id, data)) = rx.recv().await {
-                if let Err(e) = app_clone.emit("terminal-output", serde_json::json!({
-                    "id": id,
-                    "data": data,
-                })) {
-                    // Breaking here permanently freezes this terminal's output,
-                    // so it must be visible in telemetry, not just stderr.
-                    eprintln!("Failed to emit terminal-output: {}", e);
-                    error_reporter::report_bg(
-                        "emit_terminal_output",
-                        format!("Failed to emit terminal-output: {}", e),
-                    );
-                    break;
-                }
-            }
+            output_stream.forward(&app_clone, &mut rx).await;
+            drop(rx);
+            drop(output_stream);
 
             // Terminal process exited - update status, session history, and notify frontend
             // Note: the terminal may have already been removed by close_terminal(), so ignore errors.
@@ -823,6 +810,17 @@ pub async fn create_terminal(
     .await
 }
 
+/// Return output credits after xterm parsing, not merely event receipt.
+#[command]
+pub fn acknowledge_terminal_output(id: String, sequence: u64) {
+    crate::terminal_output::acknowledge(&id, sequence);
+}
+
+#[command]
+pub fn pending_terminal_output(id: String) -> Vec<crate::terminal_output::ReplayBatch> {
+    crate::terminal_output::pending(&id)
+}
+
 /// Maximum size for a single write to terminal (64 KB)
 const MAX_TERMINAL_WRITE_SIZE: usize = 65_536;
 
@@ -840,8 +838,7 @@ pub async fn write_to_terminal(
                 MAX_TERMINAL_WRITE_SIZE
             ));
         }
-        let mut terminals = state.terminals.lock().await;
-        terminals.write(&id, &data)
+        crate::terminal::write_terminal(&state.terminals, &id, data).await
     })
     .await
 }
@@ -5330,7 +5327,7 @@ pub async fn create_script_terminal(
     wrap_cmd("create_script_terminal", async move {
         validate_path_is_trusted(&state, &cwd).await?;
 
-        let (tx, mut rx) = mpsc::channel::<(String, Vec<u8>)>(1000);
+        let (tx, mut rx) = mpsc::channel::<(String, Vec<u8>)>(crate::terminal_output::QUEUE_CHUNKS);
 
         let config = {
             let mut terminals = state.terminals.lock().await;
@@ -5346,20 +5343,11 @@ pub async fn create_script_terminal(
         let terminals_arc = state.terminals.clone();
         let otel_agg = state.otel_agg.clone();
         let app_clone = app.clone();
+        let output_stream = crate::terminal_output::Stream::new(&terminal_id);
         tokio::spawn(async move {
-            while let Some((id, data)) = rx.recv().await {
-                if let Err(e) = app_clone.emit("terminal-output", serde_json::json!({
-                    "id": id,
-                    "data": data,
-                })) {
-                    eprintln!("Failed to emit terminal-output: {}", e);
-                    error_reporter::report_bg(
-                        "emit_terminal_output",
-                        format!("Failed to emit terminal-output: {}", e),
-                    );
-                    break;
-                }
-            }
+            output_stream.forward(&app_clone, &mut rx).await;
+            drop(rx);
+            drop(output_stream);
             let exit_code = finish_terminal(&terminals_arc, &terminal_id).await;
             // Match create_terminal's exit path: drop any aggregator entry so it
             // doesn't outlive the terminal id. Script terminals don't currently
@@ -5397,7 +5385,7 @@ pub async fn create_shell_terminal(
         // exists to prevent the renderer from probing arbitrary paths via git
         // commands, but spawning a shell IS the user's explicit action and the
         // shell has full FS access once spawned anyway.
-        let (tx, mut rx) = mpsc::channel::<(String, Vec<u8>)>(1000);
+        let (tx, mut rx) = mpsc::channel::<(String, Vec<u8>)>(crate::terminal_output::QUEUE_CHUNKS);
 
         let config = {
             let mut terminals = state.terminals.lock().await;
@@ -5408,20 +5396,11 @@ pub async fn create_shell_terminal(
         let terminals_arc = state.terminals.clone();
         let otel_agg = state.otel_agg.clone();
         let app_clone = app.clone();
+        let output_stream = crate::terminal_output::Stream::new(&terminal_id);
         tokio::spawn(async move {
-            while let Some((id, data)) = rx.recv().await {
-                if let Err(e) = app_clone.emit("terminal-output", serde_json::json!({
-                    "id": id,
-                    "data": data,
-                })) {
-                    eprintln!("Failed to emit terminal-output: {}", e);
-                    error_reporter::report_bg(
-                        "emit_terminal_output",
-                        format!("Failed to emit terminal-output: {}", e),
-                    );
-                    break;
-                }
-            }
+            output_stream.forward(&app_clone, &mut rx).await;
+            drop(rx);
+            drop(output_stream);
             let exit_code = finish_terminal(&terminals_arc, &terminal_id).await;
             // Same defensive cleanup as create_script_terminal - see comment there.
             if let Ok(mut agg) = otel_agg.lock() {

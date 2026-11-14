@@ -177,22 +177,16 @@ export function BottomTerminalPane() {
           </button>
         </div>
 
-        {/* Active terminal view - only one is mounted at a time. Each tab has
-            its own xterm instance via TerminalView, scrollback survives by
-            being driven from the store buffers. */}
-        {!collapsed && (
-          <div className="flex-1 min-h-0 relative">
+        {/* Keep parsing while collapsed; only visible shells retain a GPU renderer. */}
+        <div className="relative shrink-0 overflow-hidden" style={{ height: collapsed ? 0 : height - 28 }}>
+          <div className="relative" style={{ height: height - 28, visibility: collapsed ? 'hidden' : 'visible' }}>
             {bottomTerminalIds.map((id) => (
-              <div
-                key={id}
-                className="absolute inset-0"
-                style={{ display: id === activeBottomTerminalId ? 'block' : 'none' }}
-              >
-                <TerminalView terminalId={id} />
+              <div key={id} className="absolute inset-0" style={{ visibility: !collapsed && id === activeBottomTerminalId ? 'visible' : 'hidden' }}>
+                <TerminalView terminalId={id} isVisible={!collapsed && id === activeBottomTerminalId} />
               </div>
             ))}
           </div>
-        )}
+        </div>
       </div>
     </>
   );

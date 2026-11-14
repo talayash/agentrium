@@ -4,6 +4,7 @@ import { TerminalView } from './TerminalView';
 import type { TerminalConfig } from '../store/terminalStore';
 
 interface ScriptChildPaneProps {
+  isVisible?: boolean;
   parentId: string;
   childId: string;
   scriptName: string;
@@ -16,7 +17,7 @@ interface ScriptChildPaneProps {
  * The pane has a drag-to-resize handle at its top so the user can trade space
  * between the parent (Claude) and the script output.
  */
-export function ScriptChildPane({ parentId: _parentId, childId, scriptName, status, onClose }: ScriptChildPaneProps) {
+export function ScriptChildPane({ parentId: _parentId, childId, scriptName, status, onClose, isVisible = true }: ScriptChildPaneProps) {
   const [height, setHeight] = useState(240); // px
   const draggingRef = useRef(false);
   const startYRef = useRef(0);
@@ -99,7 +100,7 @@ export function ScriptChildPane({ parentId: _parentId, childId, scriptName, stat
 
         {/* Child xterm */}
         <div className="flex-1 min-h-0">
-          <TerminalView terminalId={childId} />
+          <TerminalView terminalId={childId} isVisible={isVisible} />
         </div>
       </div>
     </>

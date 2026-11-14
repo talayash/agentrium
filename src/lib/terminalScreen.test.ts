@@ -1,10 +1,36 @@
-import { describe, expect, it } from 'vitest';
-import { questionOnScreen, readBufferTail, type ScreenSource } from './terminalScreen';
+import { describe, expect, it, vi } from 'vitest';
+import { questionOnScreen, readBufferTail, trackTerminalScreen, type ScreenSource } from './terminalScreen';
 import { useTerminalStore } from '../store/terminalStore';
 import { classifySettled, hasReadyPrompt, hasTurnFinishedMarker, needsTerminal } from './terminalState';
 import { ASK_USER_QUESTION_SCREEN } from './__fixtures__/askUserQuestionScreen';
 
 const ROWS = 35;
+
+it('reuses unchanged screens across consumers and invalidates after parsing or resizing', () => {
+  const lines = ['ready'];
+  const source = term(lines);
+  const getLine = vi.spyOn(source.buffer.active, 'getLine');
+  let parsed!: () => void;
+  let resized!: () => void;
+  const dispose = vi.fn();
+  const stop = trackTerminalScreen(Object.assign(source, {
+    onWriteParsed: (fn: () => void) => { parsed = fn; return { dispose }; },
+    onResize: (fn: () => void) => { resized = fn; return { dispose }; },
+  }) as never);
+  expect(readBufferTail(source, 15)).toEqual(['ready']);
+  expect(readBufferTail(source, Infinity)).toEqual(['ready']);
+  expect(getLine).toHaveBeenCalledTimes(1);
+  lines[0] = 'waiting';
+  parsed();
+  expect(readBufferTail(source, 15)).toEqual(['waiting']);
+  resized();
+  readBufferTail(source, 15);
+  expect(getLine).toHaveBeenCalledTimes(3);
+  stop();
+  expect(dispose).toHaveBeenCalledTimes(2);
+  lines[0] = 'after disposal';
+  expect(readBufferTail(source, 15)).toEqual(['after disposal']);
+});
 
 /** A fake xterm whose screen starts at `baseY`. Rows listed in `wrapped`
  *  continue the row above them (xterm's `isWrapped`). */

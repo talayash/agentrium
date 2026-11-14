@@ -27,6 +27,7 @@ import { TerminalSearch } from './TerminalSearch';
 import { TerminalStatusBar } from './TerminalStatusBar';
 import { InsightLayer } from './insight/InsightLayer';
 import { InsightOnlyView } from './insight/InsightOnlyView';
+import { trackTerminalScreen } from '../lib/terminalScreen';
 import { attachTerminalScrollbar } from './terminalScrollbar';
 import '@xterm/xterm/css/xterm.css';
 
@@ -54,10 +55,13 @@ function formatDroppedPath(path: string): string {
 
 interface TerminalViewProps {
   terminalId: string;
+  isVisible?: boolean;
 }
 
-export function TerminalView({ terminalId }: TerminalViewProps) {
+export function TerminalView({ terminalId, isVisible = true }: TerminalViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const fontMetricsRef = useRef<string | null>(null);
+  const scheduleFitRef = useRef<(() => void) | null>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const searchAddonRef = useRef<SearchAddon | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -218,40 +222,37 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
 
     terminal.open(containerRef.current);
 
-    // Attach WebGL renderer for GPU-accelerated rendering. Gracefully fall
-    // back to the default DOM renderer if the context is lost or unavailable
-    // (older GPUs, headless CI, etc.).
-    let webglAddon: WebglAddon | null = null;
-    try {
-      webglAddon = new WebglAddon();
-      webglAddon.onContextLoss(() => {
-        webglAddon?.dispose();
-        webglAddon = null;
+    const stopTrackingScreen = trackTerminalScreen(terminal);
+    let fitFrame = 0;
+    let disposed = false;
+    let sentSize = '';
+    const fitAndResize = () => {
+      fitFrame = 0;
+      if (disposed) return;
+      fitAddon.fit();
+      const size = `${terminal.cols}x${terminal.rows}`;
+      if (size === sentSize) return;
+      sentSize = size;
+      resizeTerminal(terminalId, terminal.cols, terminal.rows).catch((err) => {
+        if (sentSize === size) sentSize = '';
+        reportInvokeFailure('resize_terminal', err);
       });
-      terminal.loadAddon(webglAddon);
-    } catch (err) {
-      console.warn('WebGL renderer unavailable, using DOM fallback:', err);
-      webglAddon = null;
-    }
-
-    fitAddon.fit();
-
-    // DIAG(pty-size): trace initial fit vs. PTY's hard-coded 120x30 spawn.
-    // Note: initial fit does NOT push size to PTY - it waits for ResizeObserver,
-    // which is the exact race window we're hunting for. Remove after fix.
-    {
-      const rect = containerRef.current.getBoundingClientRect();
-      const ts = new Date().toISOString().slice(11, 23);
-      console.log(
-        `[pty-size] ${ts} fit initial id=${terminalId} cols=${terminal.cols} rows=${terminal.rows} container=${Math.round(rect.width)}x${Math.round(rect.height)}px (PTY still at 120x30)`
-      );
-    }
+    };
+    const scheduleFit = () => {
+      if (!fitFrame) fitFrame = requestAnimationFrame(fitAndResize);
+    };
+    scheduleFitRef.current = scheduleFit;
+    // Always synchronize the initial dimensions, even if the first observer
+    // notification arrives after fit() has already calculated the same size.
+    fitAndResize();
 
     // Auto-focus so keyboard input works immediately without requiring a click.
     // Insight mode routes to the prompt bar instead (the store xterm is not set
     // yet here, so only the non-insight path focuses this terminal directly).
-    if (inputGoesToPromptBar(terminalId)) focusTerminalInput(terminalId);
-    else terminal.focus();
+    if (isVisible) {
+      if (inputGoesToPromptBar(terminalId)) focusTerminalInput(terminalId);
+      else terminal.focus();
+    }
 
     // Re-focus xterm if its textarea loses focus to nothing (body) or to its
     // OWN canvas - that combo happens in WebView2 after PTY output triggers
@@ -264,7 +265,7 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
       requestAnimationFrame(() => {
         // Insight mode with the drawer closed hides this PTY: never pull focus
         // back into it, or keystrokes would reach the agent unseen.
-        if (inputGoesToPromptBar(terminalId)) return;
+        if (inputGoesToPromptBar(terminalId) || isVisibilityHidden(container)) return;
         const focused = document.activeElement;
         if (!focused || focused === document.body) {
           terminal.focus();
@@ -487,28 +488,17 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
       );
     });
 
-    const resizeObserver = new ResizeObserver(() => {
-      const prevCols = terminal.cols;
-      const prevRows = terminal.rows;
-      fitAddon.fit();
-      // DIAG(pty-size): only log when the fit actually changed cols/rows so we
-      // don't spam on every layout tick. Remove after fix.
-      if (terminal.cols !== prevCols || terminal.rows !== prevRows) {
-        const ts = new Date().toISOString().slice(11, 23);
-        console.log(
-          `[pty-size] ${ts} fit observer id=${terminalId} ${prevCols}x${prevRows}→${terminal.cols}x${terminal.rows}`
-        );
-      }
-      resizeTerminal(terminalId, terminal.cols, terminal.rows).catch((err) => {
-        console.error(`Failed to resize terminal ${terminalId}:`, err); reportInvokeFailure('resize_terminal', err);
-      });
-    });
+    const resizeObserver = new ResizeObserver(scheduleFit);
     resizeObserver.observe(containerRef.current);
 
     terminalRef.current = terminal;
     setXterm(terminalId, terminal);
 
     return () => {
+      disposed = true;
+      cancelAnimationFrame(fitFrame);
+      scheduleFitRef.current = null;
+      stopTrackingScreen();
       resizeObserver.disconnect();
       terminal.textarea?.removeEventListener('blur', handleBlur);
       container.removeEventListener('mouseup', handleMouseUp);
@@ -536,7 +526,6 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
       // be written to a disposed terminal (see handleTerminalOutput). Both are
       // synchronous, so no terminal-output callback runs between them.
       setXterm(terminalId, null);
-      webglAddon?.dispose();
       terminal.dispose();
     };
     // Intentionally omit store action refs from deps - they are stable via
@@ -548,6 +537,23 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
   }, [terminalId, !!instance, toggleSearch, scrollback, bidi]);
 
   // Live-apply the six options that don't require recreate (issue #21).
+  // Hidden tabs keep parsing output/history but do not retain a GPU context.
+  useEffect(() => {
+    const terminal = terminalRef.current;
+    if (!terminal || !isVisible) return;
+    let addon: WebglAddon | null = null;
+    try {
+      addon = new WebglAddon();
+      addon.onContextLoss(() => { addon?.dispose(); addon = null; });
+      terminal.loadAddon(addon);
+    } catch (err) {
+      addon?.dispose();
+      addon = null;
+      console.warn('WebGL renderer unavailable, using DOM fallback:', err);
+    }
+    return () => { addon?.dispose(); addon = null; };
+  }, [isVisible, terminalId, !!instance, scrollback, bidi]);
+
   // After font/size/line-height change, xterm cell metrics shift, so we
   // re-fit and push the new size to the PTY so it knows about the new
   // cols/rows. Cursor + theme are pure visual changes - no resize needed.
@@ -560,29 +566,17 @@ export function TerminalView({ terminalId }: TerminalViewProps) {
     terminal.options.cursorStyle = cursorStyle;
     terminal.options.cursorBlink = cursorBlink;
     terminal.options.theme = resolveTerminalTheme(themeName, accentColorHex, effectiveAppTheme);
-    // Refit + push new dimensions to the PTY whenever cell metrics may have
-    // changed. fit() is a no-op if cols/rows didn't actually shift.
-    const prevCols = terminal.cols;
-    const prevRows = terminal.rows;
-    fitAddonRef.current?.fit();
-    // DIAG(pty-size): remove after fix.
-    if (terminal.cols !== prevCols || terminal.rows !== prevRows) {
-      const ts = new Date().toISOString().slice(11, 23);
-      console.log(
-        `[pty-size] ${ts} fit fontchange id=${terminalId} ${prevCols}x${prevRows}→${terminal.cols}x${terminal.rows}`
-      );
-    }
-    resizeTerminal(terminalId, terminal.cols, terminal.rows).catch((err) => {
-      console.error(`Failed to resize terminal ${terminalId}:`, err); reportInvokeFailure('resize_terminal', err);
-    });
+    const metrics = JSON.stringify([fontFamily, fontSize, lineHeight]);
+    if (fontMetricsRef.current !== null && fontMetricsRef.current !== metrics) scheduleFitRef.current?.();
+    fontMetricsRef.current = metrics;
   }, [fontFamily, fontSize, lineHeight, cursorStyle, cursorBlink, themeName, accentColorHex, effectiveAppTheme, terminalId, resizeTerminal]);
 
   useEffect(() => {
     const container = containerRef.current;
     const terminal = terminalRef.current;
-    if (!container || !terminal) return;
+    if (!container || !terminal || !isVisible) return;
     return attachTerminalScrollbar(container, terminal, scrollbarMode);
-  }, [scrollbarMode, terminalId, !!instance, toggleSearch, scrollback, bidi]);
+  }, [scrollbarMode, terminalId, !!instance, toggleSearch, scrollback, bidi, isVisible]);
 
   // OS → terminal file drag-drop. Tauri intercepts drag events at the window
   // level and delivers physical-pixel positions, so we hit-test against this

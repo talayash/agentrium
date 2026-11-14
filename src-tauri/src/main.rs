@@ -6,6 +6,7 @@ mod custom_agents;
 mod credentials;
 mod commands;
 mod terminal;
+mod terminal_output;
 mod config;
 mod database;
 mod telemetry;
@@ -210,6 +211,8 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             commands::create_terminal,
             commands::write_to_terminal,
+            commands::acknowledge_terminal_output,
+            commands::pending_terminal_output,
             commands::resize_terminal,
             commands::close_terminal,
             commands::get_terminals,

@@ -44,8 +44,10 @@ const fit = vi.fn();
 vi.mock('@xterm/addon-fit', () => ({ FitAddon: class { fit() { fit(); } } }));
 vi.mock('@xterm/addon-web-links', () => ({ WebLinksAddon: class {} }));
 vi.mock('@xterm/addon-search', () => ({ SearchAddon: class {} }));
+const webglCreated = vi.fn();
+const webglDisposed = vi.fn();
 vi.mock('@xterm/addon-webgl', () => ({
-  WebglAddon: class { onContextLoss() {} dispose() {} },
+  WebglAddon: class { constructor() { webglCreated(); } onContextLoss() {} dispose() { webglDisposed(); } },
 }));
 vi.mock('@xterm/addon-unicode11', () => ({ Unicode11Addon: class {} }));
 vi.mock('@xterm/addon-serialize', () => ({ SerializeAddon: class {} }));
@@ -67,10 +69,11 @@ import { useInsightStore } from '../../store/insightStore';
 import { focusTerminalInput } from '../../lib/terminalFocus';
 
 const ID = 't1';
+const resizeCallbacks: (() => void)[] = [];
 
-function mountWith(extra: Record<string, unknown>, insight: boolean | 'insight', active: string = ID) {
+function mountWith(extra: Record<string, unknown>, insight: boolean | 'insight', active: string = ID, isVisible = true) {
   const mode = insight === 'insight' ? 'insight' : insight ? 'mixed' : 'cli';
-  vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+  vi.stubGlobal('ResizeObserver', class { constructor(callback: () => void) { resizeCallbacks.push(callback); } observe() {} disconnect() {} });
   vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }));
   useTerminalStore.setState({
     activeTerminalId: active,
@@ -78,7 +81,7 @@ function mountWith(extra: Record<string, unknown>, insight: boolean | 'insight',
     terminalStates: new Map([[ID, 'idle' as never]]),
     terminals: new Map([[ID, { config: { working_directory: 'C:\\p', view_mode: mode, agent: 'claude', status: 'Running' }, ...extra } as never]]),
   });
-  return render(<TerminalView terminalId={ID} />);
+  return render(<TerminalView terminalId={ID} isVisible={isVisible} />);
 }
 
 afterEach(() => {
@@ -89,6 +92,10 @@ afterEach(() => {
   dropHandler = null;
   useInsightFeed.mockReset();
   useInsightStore.setState({ byId: new Map() });
+  resizeCallbacks.length = 0;
+  webglCreated.mockClear();
+  webglDisposed.mockClear();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
@@ -308,4 +315,36 @@ describe('TerminalView insight mounting', () => {
     await switchMode('cli');
     expect(xtermFocus).not.toHaveBeenCalled();
   });
+});
+
+
+it('allocates a GPU renderer only while visible, without recreating xterm', async () => {
+  const view = mountWith({}, false, ID, false);
+  await act(async () => {});
+  const xterm = useTerminalStore.getState().terminals.get(ID)?.xterm;
+  expect(webglCreated).not.toHaveBeenCalled();
+  view.rerender(<TerminalView terminalId={ID} isVisible />);
+  expect(webglCreated).toHaveBeenCalledTimes(1);
+  view.rerender(<TerminalView terminalId={ID} isVisible={false} />);
+  expect(webglDisposed).toHaveBeenCalledTimes(1);
+  expect(useTerminalStore.getState().terminals.get(ID)?.xterm).toBe(xterm);
+});
+
+it('sends the initial dimensions once and coalesces duplicate resize observations', async () => {
+  vi.useFakeTimers();
+  mountWith({}, false);
+  await act(async () => {});
+  expect(invoke.mock.calls.filter(call => call[0] === 'resize_terminal')).toHaveLength(1);
+  invoke.mockClear();
+  fit.mockClear();
+  resizeCallbacks[0]!();
+  resizeCallbacks[0]!();
+  await act(async () => { await vi.advanceTimersByTimeAsync(20); });
+  expect(fit).toHaveBeenCalledTimes(1);
+  expect(invoke).not.toHaveBeenCalledWith('resize_terminal', expect.anything());
+  const xterm = useTerminalStore.getState().terminals.get(ID)!.xterm!;
+  Object.assign(xterm, { cols: 100 });
+  resizeCallbacks[0]!();
+  await act(async () => { await vi.advanceTimersByTimeAsync(20); });
+  expect(invoke).toHaveBeenCalledWith('resize_terminal', { id: ID, cols: 100, rows: 24 });
 });

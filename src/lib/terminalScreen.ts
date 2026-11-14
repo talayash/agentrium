@@ -1,4 +1,5 @@
 import type { IBufferLine } from '@xterm/xterm';
+import type { Terminal } from '@xterm/xterm';
 import type { AskQuestion } from './insightModel';
 import { useTerminalStore } from '../store/terminalStore';
 
@@ -13,6 +14,20 @@ export interface ScreenSource {
  *  the footer) as wrapped even though it is a separate line. Never join onto one. */
 const RULE_ONLY = /^\s*[─━═-]+\s*$/;
 
+const screens = new WeakMap<ScreenSource, { lines?: string[] }>();
+
+/** Cache only terminals whose parser/resize lifecycle we can observe. */
+export function trackTerminalScreen(term: Terminal): () => void {
+  const cache: { lines?: string[] } = {};
+  screens.set(term, cache);
+  const invalidate = () => { cache.lines = undefined; };
+  const subscriptions = [term.onWriteParsed(invalidate), term.onResize(invalidate)];
+  return () => {
+    subscriptions.forEach((subscription) => subscription.dispose());
+    screens.delete(term);
+  };
+}
+
 /**
  * Read what the terminal is showing as clean logical lines, newest last.
  *
@@ -23,6 +38,8 @@ const RULE_ONLY = /^\s*[─━═-]+\s*$/;
  * dropped and only the last `maxLines` non-blank logical lines are kept.
  */
 export function readBufferTail(term: ScreenSource, maxLines: number): string[] {
+  const cache = screens.get(term);
+  if (cache?.lines) return cache.lines.slice(Math.max(0, cache.lines.length - maxLines));
   const buf = term.buffer.active;
   const start = Math.max(0, buf.baseY);
   const end = Math.min(buf.length, start + term.rows);
@@ -35,6 +52,7 @@ export function readBufferTail(term: ScreenSource, maxLines: number): string[] {
     else logical.push(text);
   }
   const nonBlank = logical.filter((l) => l.trim() !== '');
+  if (cache) cache.lines = nonBlank;
   return nonBlank.slice(Math.max(0, nonBlank.length - maxLines));
 }
 

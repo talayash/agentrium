@@ -21,6 +21,7 @@ import { detectFramework, type FrameworkHint } from '../lib/preview/framework';
 // Stay safely under the backend's 64 KB per-write cap so very large pastes
 // (multi-hundred KB) don't hit "Write payload too large".
 const TERMINAL_WRITE_CHUNK_BYTES = 60 * 1024;
+const terminalInputWrites = new Map<string, Promise<void>>();
 
 // PTY output can arrive before the xterm instance is attached: the backend
 // starts streaming as soon as it spawns Claude Code (reader thread + mpsc
@@ -32,34 +33,126 @@ const TERMINAL_WRITE_CHUNK_BYTES = 60 * 1024;
 // #48). We buffer chunks here keyed by terminal id and drain them when
 // setXterm attaches the real xterm. Bounded so a runaway id (e.g. events for
 // a terminal that lives in another window) can't grow the buffer forever.
-const pendingOutputBuffers = new Map<string, Uint8Array[]>();
+interface OutputChunk { data: Uint8Array; sequence?: number }
+interface PendingOutput { chunks: OutputChunk[]; bytes: number }
+const pendingOutputBuffers = new Map<string, PendingOutput>();
+const replayRequests = new Map<string, object>();
+const lastDeliveredSequences = new WeakMap<Terminal, number>();
+const parsingOutput = new WeakMap<Terminal, { chunks: OutputChunk[]; active: boolean }>();
 const MAX_PENDING_OUTPUT_BYTES_PER_TERMINAL = 512 * 1024;
+const outputAcknowledgements = new Map<string, { sequence: number; timer?: ReturnType<typeof setTimeout>; sending: boolean }>();
 
-function bufferPendingOutput(id: string, data: Uint8Array): void {
-  let chunks = pendingOutputBuffers.get(id);
-  const currentBytes = chunks?.reduce((n, c) => n + c.byteLength, 0) ?? 0;
-  if (currentBytes + data.byteLength > MAX_PENDING_OUTPUT_BYTES_PER_TERMINAL) {
-    return; // cap reached - drop rather than grow unbounded
+function acknowledgeOutput(id: string, sequence: number): void {
+  let entry = outputAcknowledgements.get(id);
+  if (!entry) {
+    entry = { sequence, sending: false };
+    outputAcknowledgements.set(id, entry);
   }
-  if (!chunks) {
-    chunks = [];
-    pendingOutputBuffers.set(id, chunks);
+  entry.sequence = Math.max(entry.sequence, sequence);
+  if (entry.sending || entry.timer) return;
+  const current = entry;
+  const send = async () => {
+    current.timer = undefined;
+    if (outputAcknowledgements.get(id) !== current) return;
+    current.sending = true;
+    const sent = current.sequence;
+    try {
+      await invoke('acknowledge_terminal_output', { id, sequence: sent });
+      current.sending = false;
+      if (outputAcknowledgements.get(id) !== current) return;
+      if (current.sequence === sent) outputAcknowledgements.delete(id);
+      else current.timer = setTimeout(() => { void send(); }, 0);
+    } catch {
+      current.sending = false;
+      // Background delivery: retry credits after transient IPC failure so a
+      // busy renderer never leaves the PTY permanently paused.
+      if (outputAcknowledgements.get(id) === current && useTerminalStore.getState().terminals.has(id)) {
+        current.timer = setTimeout(() => { void send(); }, 250);
+      } else outputAcknowledgements.delete(id);
+    }
+  };
+  current.timer = setTimeout(() => { void send(); }, 0);
+}
+
+function bufferPendingOutput(id: string, data: Uint8Array, sequence?: number): void {
+  let pending = pendingOutputBuffers.get(id);
+  // Other windows also receive the global stream. Retain a recent bounded
+  // tail for adoption, not the first 512 KB forever. All unacknowledged output
+  // fits inside this tail (backend window: 256 KB), so transfer cannot strand
+  // credits held by the departing renderer.
+  if (pending && !useTerminalStore.getState().terminals.has(id)) {
+    while (pending.bytes + data.byteLength > MAX_PENDING_OUTPUT_BYTES_PER_TERMINAL && pending.chunks.length) {
+      pending.bytes -= pending.chunks.shift()!.data.byteLength;
+    }
   }
-  chunks.push(data);
+  if ((pending?.bytes ?? 0) + data.byteLength > MAX_PENDING_OUTPUT_BYTES_PER_TERMINAL) return;
+  if (!pending) {
+    pending = { chunks: [], bytes: 0 };
+    pendingOutputBuffers.set(id, pending);
+  }
+  pending.chunks.push({ data, sequence });
+  pending.bytes += data.byteLength;
+}
+
+function writeOutput(id: string, xterm: Terminal, chunk: OutputChunk): void {
+  if (chunk.sequence === undefined) { xterm.write(chunk.data); return; }
+  // A transfer snapshot can overlap live global events still in transit.
+  if (chunk.sequence <= (lastDeliveredSequences.get(xterm) ?? 0)) return;
+  lastDeliveredSequences.set(xterm, chunk.sequence);
+  let parsing = parsingOutput.get(xterm);
+  if (!parsing) {
+    parsing = { chunks: [], active: true };
+    parsingOutput.set(xterm, parsing);
+  }
+  const owner = parsing;
+  owner.chunks.push(chunk);
+  xterm.write(chunk.data, () => {
+    if (!owner.active) return;
+    const index = owner.chunks.indexOf(chunk);
+    if (index !== -1) owner.chunks.splice(index, 1);
+    acknowledgeOutput(id, chunk.sequence!);
+  });
+}
+
+function detachOutput(id: string, xterm: Terminal): void {
+  const parsing = parsingOutput.get(xterm);
+  if (!parsing) return;
+  parsing.active = false;
+  parsingOutput.delete(xterm);
+  // xterm's synchronous parser commits whole write chunks. Preserve writes
+  // still queued when a view is disposed, after its serialized parsed screen.
+  const pending = pendingOutputBuffers.get(id);
+  const chunks = [...parsing.chunks, ...(pending?.chunks ?? [])];
+  if (chunks.length) pendingOutputBuffers.set(id, { chunks, bytes: chunks.reduce((n, c) => n + c.data.byteLength, 0) });
 }
 
 function drainPendingOutput(id: string, xterm: Terminal): void {
-  const chunks = pendingOutputBuffers.get(id);
-  if (!chunks) return;
+  const pending = pendingOutputBuffers.get(id);
+  if (!pending) return;
   pendingOutputBuffers.delete(id);
-  for (const chunk of chunks) {
-    try {
-      xterm.write(chunk);
-    } catch {
-      // xterm disposed mid-drain - the rest is unrecoverable, stop.
-      return;
+  for (const chunk of pending.chunks) writeOutput(id, xterm, chunk);
+}
+
+function replayTransferredOutput(id: string, token: object): void {
+  const current = () => replayRequests.get(id) === token && useTerminalStore.getState().terminals.has(id);
+  invoke<{ sequence: number; data: number[] }[]>('pending_terminal_output', { id }).then((batches) => {
+    if (!current()) return;
+    const merged = new Map<number, OutputChunk>();
+    for (const chunk of pendingOutputBuffers.get(id)?.chunks ?? []) {
+      if (chunk.sequence !== undefined) merged.set(chunk.sequence, chunk);
     }
-  }
+    for (const batch of batches ?? []) merged.set(batch.sequence, { sequence: batch.sequence, data: new Uint8Array(batch.data) });
+    const chunks = [...merged.values()].sort((a, b) => a.sequence! - b.sequence!);
+    pendingOutputBuffers.set(id, { chunks, bytes: chunks.reduce((n, c) => n + c.data.byteLength, 0) });
+    replayRequests.delete(id);
+    const xterm = useTerminalStore.getState().terminals.get(id)?.xterm;
+    if (xterm) drainPendingOutput(id, xterm);
+  }).catch(() => {
+    // Background transfer recovery: retry rather than discard outstanding
+    // output or strand backend credits after a transient IPC failure.
+    if (current()) setTimeout(() => { if (current()) replayTransferredOutput(id, token); }, 250);
+    else if (replayRequests.get(id) === token) replayRequests.delete(id);
+  });
 }
 
 /** Test-only: clear the pre-attach buffer. Vitest keeps module state across
@@ -68,6 +161,9 @@ function drainPendingOutput(id: string, xterm: Terminal): void {
  *  production use. */
 export function __resetPendingOutputBuffersForTest(): void {
   pendingOutputBuffers.clear();
+  replayRequests.clear();
+  for (const entry of outputAcknowledgements.values()) clearTimeout(entry.timer);
+  outputAcknowledgements.clear();
 }
 
 /**
@@ -244,7 +340,7 @@ interface TerminalState {
   resizeTerminal: (id: string, cols: number, rows: number) => Promise<void>;
   setXterm: (id: string, xterm: Terminal | null) => void;
   stashTerminalBuffer: (id: string, data: string) => void;
-  handleTerminalOutput: (id: string, data: Uint8Array) => void;
+  handleTerminalOutput: (id: string, data: Uint8Array, sequence?: number) => void;
   updateTerminalStatus: (id: string, status: TerminalConfig['status']) => void;
   setLoopMode: (id: string, info: LoopInfo | null) => void;
   setSessionSummary: (id: string, summary: string | null) => void;
@@ -587,13 +683,21 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       useSessionAttentionStore.getState().clear(id);
     }
     const bytes = new TextEncoder().encode(data);
-    if (bytes.length <= TERMINAL_WRITE_CHUNK_BYTES) {
-      await invoke('write_to_terminal', { id, data: Array.from(bytes) });
-      return;
-    }
-    for (const chunk of chunkUtf8Bytes(bytes, TERMINAL_WRITE_CHUNK_BYTES)) {
-      await invoke('write_to_terminal', { id, data: Array.from(chunk) });
-    }
+    // Keep whole pastes and subsequent keystrokes ordered per session. Other
+    // terminals have independent queues and remain interactive.
+    const previous = terminalInputWrites.get(id) ?? Promise.resolve();
+    const write = previous.catch(() => { /* the original caller reports its failure */ }).then(async () => {
+      if (bytes.length <= TERMINAL_WRITE_CHUNK_BYTES) {
+        await invoke('write_to_terminal', { id, data: Array.from(bytes) });
+        return;
+      }
+      for (const chunk of chunkUtf8Bytes(bytes, TERMINAL_WRITE_CHUNK_BYTES)) {
+        await invoke('write_to_terminal', { id, data: Array.from(chunk) });
+      }
+    });
+    terminalInputWrites.set(id, write);
+    try { await write; }
+    finally { if (terminalInputWrites.get(id) === write) terminalInputWrites.delete(id); }
   },
 
   sendKeySequence: async (id, keys, gapMs = 40) => {
@@ -605,10 +709,6 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
   },
 
   resizeTerminal: async (id, cols, rows) => {
-    // DIAG(pty-size): trace the IPC gap between JS-side fit and Rust-side
-    // PTY resize. Remove after burn-in bug is resolved.
-    const ts = new Date().toISOString().slice(11, 23);
-    console.log(`[pty-size] ${ts} invoke resize id=${id} cols=${cols} rows=${rows}`);
     await invoke('resize_terminal', { id, cols, rows });
   },
 
@@ -618,6 +718,8 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
     // would keep calling write() on it (a disposed instance is still truthy)
     // whenever the PTY streams while the view is unmounted (e.g. grid/split).
     if (!xterm) {
+      const previous = get().terminals.get(id)?.xterm;
+      if (previous) detachOutput(id, previous);
       set((state) => {
         const inst = state.terminals.get(id);
         if (!inst) return state;
@@ -651,7 +753,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
     // spawn→attach race that used to leave issue-#48 tabs blank). Ordered
     // after restoredOutput/carryOverBuffer so historical scrollback stays
     // above the live stream - same ordering rule the reader thread enforces.
-    drainPendingOutput(id, xterm);
+    if (!replayRequests.has(id)) drainPendingOutput(id, xterm);
 
     set((state) => {
       const inst = state.terminals.get(id);
@@ -678,15 +780,15 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
     });
   },
 
-  handleTerminalOutput: (id, data) => {
+  handleTerminalOutput: (id, data, sequence) => {
     const state = get();
     const instance = state.terminals.get(id);
-    if (instance?.xterm) {
+    if (instance?.xterm && !replayRequests.has(id)) {
       // Guard against a dispose/output race: if the view unmounted between the
       // store read and this write, xterm.write() on a disposed instance throws.
       // Swallow it rather than surface an UnhandledRejection in the event loop.
       try {
-        instance.xterm.write(data);
+        writeOutput(id, instance.xterm, { data, sequence });
       } catch {
         /* terminal disposed - drop this chunk */
       }
@@ -698,7 +800,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       // opens blank" bug (issue #48): a single dropped byte at the start of
       // Claude Code's ANSI-heavy welcome banner wedged xterm's escape parser
       // and left the whole tab looking empty.
-      bufferPendingOutput(id, data);
+      bufferPendingOutput(id, data, sequence);
     }
     // Active-work indicator: record the timestamp in a plain Map (no Zustand
     // set() - that would defeat the streaming-rate optimization below).
@@ -716,6 +818,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
   },
 
   updateTerminalStatus: (id, status) => {
+    if (!get().terminals.has(id)) pendingOutputBuffers.delete(id);
     set((state) => {
       const newTerminals = new Map(state.terminals);
       const instance = newTerminals.get(id);
@@ -727,6 +830,8 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
   },
 
   setLoopMode: (id, info) => {
+    const previous = get().terminals.get(id)?.loopInfo;
+    if (previous?.interval === info?.interval && previous?.prompt === info?.prompt) return;
     set((state) => {
       const newTerminals = new Map(state.terminals);
       const instance = newTerminals.get(id);
@@ -866,6 +971,11 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
   }),
 
   adoptTerminal: (config, restoredOutput) => {
+    const replayToken = get().terminals.has(config.id) ? null : {};
+    if (replayToken) {
+      pendingOutputBuffers.delete(config.id);
+      replayRequests.set(config.id, replayToken);
+    }
     const claudeArgs = config.claude_args || [];
     let model: string | undefined;
     let effort: string | undefined;
@@ -885,6 +995,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       return { terminals: newTerminals, activeTerminalId: config.id };
     });
 
+    if (replayToken) replayTransferredOutput(config.id, replayToken);
     get().fetchGitInfo(config.id);
   },
 

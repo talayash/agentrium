@@ -34,6 +34,7 @@ function fileBasename(p: string): string {
 export function TerminalTabs() {
   const { terminals, activeTerminalId, scriptChildren, closeScript } = useTerminalStore();
   const { gridMode, splitMode, splitTerminalIds, splitOrientation, splitRatio, setSplitOrientation, setSplitRatio, clearSplit, openFiles, activeFilePath, setActiveFilePath, closeFileTab } = useAppStore();
+  const gridTerminalIds = useAppStore((s) => s.gridTerminalIds);
   const terminalMetrics = useTerminalStore((s) => s.terminalMetrics);
 
   const focusFile = useCallback((path: string) => {
@@ -76,10 +77,21 @@ export function TerminalTabs() {
     return () => cancelAnimationFrame(raf);
   }, [activeTerminalId, activeFilePath]);
 
+  const backgroundTerminals = (visibleIds: string[]) => (
+    <div className="absolute inset-0 pointer-events-none" style={{ visibility: 'hidden' }} aria-hidden="true">
+      {[...terminals.keys()].filter(id => !visibleIds.includes(id)).map(id => (
+        <div key={id} className="absolute inset-0">
+          <TerminalView terminalId={id} isVisible={false} />
+        </div>
+      ))}
+    </div>
+  );
+
   // If split mode is active with valid terminals, show split view
   if (splitMode && splitTerminalIds && terminals.has(splitTerminalIds[0]) && terminals.has(splitTerminalIds[1])) {
     return (
-      <div className="h-full flex flex-col">
+      <div className="h-full flex flex-col relative">
+        {backgroundTerminals(splitTerminalIds)}
         {/* Split Toolbar */}
         <div className="py-1.5 px-3 border-b border-seam flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -125,7 +137,8 @@ export function TerminalTabs() {
   // If grid mode is active, show the grid
   if (gridMode) {
     return (
-      <div className="h-full flex flex-col">
+      <div className="h-full flex flex-col relative">
+        {backgroundTerminals(gridTerminalIds)}
         <RaceGridHeader />
         <div className="flex-1 min-h-0">
           <TerminalGrid />
@@ -219,7 +232,7 @@ export function TerminalTabs() {
               aria-hidden={!isVisible}
             >
               <div className="flex-1 min-h-0 flex flex-col">
-                <TerminalView terminalId={tid} />
+                <TerminalView terminalId={tid} isVisible={isVisible} />
               </div>
               {inst?.config.status === 'Stopped' && inst?.sessionSummary && (
                 <SessionInsights summary={inst.sessionSummary} />
@@ -229,6 +242,7 @@ export function TerminalTabs() {
               )}
               {scriptInst && scriptChildId && (
                 <ScriptChildPane
+                  isVisible={isVisible}
                   parentId={tid}
                   childId={scriptChildId}
                   scriptName={scriptInst.scriptName ?? ''}

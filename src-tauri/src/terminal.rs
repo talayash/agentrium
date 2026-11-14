@@ -399,11 +399,33 @@ pub(crate) fn resume_flags_for(
     }
 }
 
+/// Called on the blocking pool, never under the global terminal manager lock.
+pub fn write_bytes(writer: &mut dyn Write, data: &[u8]) -> std::io::Result<()> {
+    writer.write_all(data)?;
+    writer.flush()
+}
+
+type TerminalWriter = std::sync::Arc<tokio::sync::Mutex<Box<dyn Write + Send>>>;
+
+pub async fn write_terminal(
+    manager: &std::sync::Arc<tokio::sync::Mutex<TerminalManager>>,
+    id: &str,
+    data: Vec<u8>,
+) -> Result<(), String> {
+    let writer = manager.lock().await.prepare_write(id);
+    let Some(writer) = writer else { return Ok(()) };
+    // FIFO per terminal. No blocking pipe I/O under the shared manager lock.
+    let mut writer = writer.lock_owned().await;
+    let result = tokio::task::spawn_blocking(move || write_bytes(&mut **writer, &data))
+        .await.map_err(|e| format!("Terminal writer task failed: {}", e))?;
+    manager.lock().await.finish_write(id, result)
+}
+
 pub struct Terminal {
     pub config: TerminalConfig,
     /// Kept alive to maintain the PTY connection
     pub pty_pair: PtyPair,
-    pub writer: Box<dyn Write + Send>,
+    pub writer: TerminalWriter,
     /// The spawned child process. Kept so `close()` can `kill()` it: on Windows
     /// a ConPTY read can block indefinitely after the writer/PTY is dropped, so
     /// relying on EOF alone leaks the reader thread and orphans the process.
@@ -824,7 +846,7 @@ impl TerminalManager {
             Terminal {
                 config: config.clone(),
                 pty_pair,
-                writer,
+                writer: std::sync::Arc::new(tokio::sync::Mutex::new(writer)),
                 child,
                 reader_handle: Some(reader_handle),
                 last_input_at: initial_input,
@@ -969,7 +991,7 @@ impl TerminalManager {
             Terminal {
                 config: config.clone(),
                 pty_pair,
-                writer,
+                writer: std::sync::Arc::new(tokio::sync::Mutex::new(writer)),
                 child,
                 reader_handle: Some(reader_handle),
                 last_input_at: None,
@@ -1095,7 +1117,7 @@ impl TerminalManager {
             Terminal {
                 config: config.clone(),
                 pty_pair,
-                writer,
+                writer: std::sync::Arc::new(tokio::sync::Mutex::new(writer)),
                 child,
                 reader_handle: Some(reader_handle),
                 last_input_at: None,
@@ -1117,31 +1139,32 @@ impl TerminalManager {
     /// is being closed", fingerprint 6c5825d1). A BrokenPipe error while still
     /// Running is the same exit, one tick before the reader thread flips the
     /// status - mark it Stopped and swallow it.
-    pub fn write(&mut self, id: &str, data: &[u8]) -> Result<(), String> {
-        let Some(terminal) = self.terminals.get_mut(id) else {
-            return Ok(());
-        };
+    pub fn prepare_write(&mut self, id: &str) -> Option<TerminalWriter> {
+        let terminal = self.terminals.get_mut(id)?;
         if matches!(terminal.config.status, TerminalStatus::Stopped | TerminalStatus::Error) {
-            return Ok(());
+            return None;
         }
         terminal.last_input_at = Some(std::time::Instant::now());
-        let result = terminal
-            .writer
-            .write_all(data)
-            .map_err(|e| (e.kind(), format!("Failed to write: {}", e)))
-            .and_then(|_| {
-                terminal
-                    .writer
-                    .flush()
-                    .map_err(|e| (e.kind(), format!("Failed to flush: {}", e)))
-            });
+        Some(terminal.writer.clone())
+    }
+
+    #[cfg(test)]
+    pub fn write(&mut self, id: &str, data: &[u8]) -> Result<(), String> {
+        let Some(writer) = self.prepare_write(id) else { return Ok(()) };
+        let result = write_bytes(&mut **writer.blocking_lock(), data);
+        self.finish_write(id, result)
+    }
+
+    pub fn finish_write(&mut self, id: &str, result: std::io::Result<()>) -> Result<(), String> {
         match result {
             Ok(()) => Ok(()),
-            Err((std::io::ErrorKind::BrokenPipe, _)) => {
-                terminal.config.status = TerminalStatus::Stopped;
+            Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => {
+                if let Some(terminal) = self.terminals.get_mut(id) {
+                    terminal.config.status = TerminalStatus::Stopped;
+                }
                 Ok(())
             }
-            Err((_, msg)) => Err(msg),
+            Err(e) => Err(format!("Failed to write to terminal: {}", e)),
         }
     }
 
@@ -1182,6 +1205,7 @@ impl TerminalManager {
     }
 
     pub fn close(&mut self, id: &str) -> Result<(), String> {
+        crate::terminal_output::close(id);
         if let Some(mut terminal) = self.terminals.remove(id) {
             // Kill the child process first. On Windows a ConPTY read can block
             // indefinitely even after the writer/PTY is dropped, so EOF alone
@@ -1204,6 +1228,7 @@ impl TerminalManager {
         // exit - bounded joins mean we don't hang the shutdown.
         let drained: Vec<Terminal> = self.terminals.drain().map(|(_, t)| t).collect();
         for mut terminal in drained {
+            crate::terminal_output::close(&terminal.config.id);
             let _ = terminal.child.kill();
             reap_terminal(terminal.child, terminal.reader_handle.take());
         }
@@ -1445,7 +1470,7 @@ mod tests {
                     legacy_insight_layer: false,
                 },
                 pty_pair,
-                writer,
+                writer: std::sync::Arc::new(tokio::sync::Mutex::new(writer)),
                 child,
                 reader_handle: None,
                 last_input_at: None,
@@ -1508,6 +1533,40 @@ mod tests {
         insert_test_terminal(&mut mgr, "t", TerminalStatus::Running, Box::new(BrokenPipeWriter));
         assert_eq!(mgr.write("t", b"hello"), Ok(()));
         assert_eq!(mgr.terminals.get("t").unwrap().config.status, TerminalStatus::Stopped);
+    }
+
+    #[tokio::test]
+    async fn blocked_writer_does_not_block_another_terminal_or_the_manager() {
+        struct BlockingWriter {
+            entered: Option<tokio::sync::oneshot::Sender<()>>,
+            release: std::sync::mpsc::Receiver<()>,
+        }
+        impl Write for BlockingWriter {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                if let Some(entered) = self.entered.take() { let _ = entered.send(()); }
+                let _ = self.release.recv_timeout(std::time::Duration::from_secs(5));
+                Ok(bytes.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> { Ok(()) }
+        }
+        let (entered, waiting) = tokio::sync::oneshot::channel();
+        let (release, blocked) = std::sync::mpsc::channel();
+        let mut manager = TerminalManager::new();
+        insert_test_terminal(&mut manager, "slow", TerminalStatus::Running,
+            Box::new(BlockingWriter { entered: Some(entered), release: blocked }));
+        insert_test_terminal(&mut manager, "fast", TerminalStatus::Running, Box::new(Vec::<u8>::new()));
+        let manager = std::sync::Arc::new(tokio::sync::Mutex::new(manager));
+        let task = { let manager = manager.clone(); tokio::spawn(async move {
+            write_terminal(&manager, "slow", b"paste".to_vec()).await
+        }) };
+        waiting.await.unwrap();
+        let result = tokio::time::timeout(std::time::Duration::from_secs(1),
+            write_terminal(&manager, "fast", b"typing".to_vec())).await;
+        // Always release the blocking worker before asserting to avoid hanging
+        // runtime shutdown if this regression is ever reintroduced.
+        release.send(()).unwrap();
+        assert_eq!(result.unwrap(), Ok(()));
+        assert_eq!(task.await.unwrap(), Ok(()));
     }
 
     #[test]

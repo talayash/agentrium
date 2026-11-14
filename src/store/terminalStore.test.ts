@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const invokeMock = vi.fn(
   async (_cmd: string, _args?: Record<string, unknown>): Promise<unknown> => undefined,
@@ -231,6 +231,28 @@ describe('terminalStore - writeToTerminal chunking', () => {
     expect((args as { id: string; data: number[] }).data).toEqual([0x68, 0x65, 0x6c, 0x6c, 0x6f]);
   });
 
+  it('keeps paste chunks before later input while other terminals proceed', async () => {
+    let release!: () => void;
+    invokeMock.mockImplementationOnce(() => new Promise<void>(resolve => { release = resolve; }));
+    const paste = useTerminalStore.getState().writeToTerminal('a', 'x'.repeat(70 * 1024));
+    await vi.waitFor(() => expect(release).toBeDefined());
+    const typing = useTerminalStore.getState().writeToTerminal('a', 'z');
+    await useTerminalStore.getState().writeToTerminal('b', 'b');
+    expect(invokeMock.mock.calls.map(([, args]) => args?.id)).toEqual(['a', 'b']);
+    release();
+    await Promise.all([paste, typing]);
+    expect(invokeMock.mock.calls.map(([, args]) => args?.id)).toEqual(['a', 'b', 'a', 'a']);
+    expect(invokeMock.mock.calls.at(-1)?.[1]?.data).toEqual([122]);
+  });
+
+  it('allows subsequent input after an earlier write failed', async () => {
+    invokeMock.mockRejectedValueOnce(new Error('pipe failed'));
+    const first = useTerminalStore.getState().writeToTerminal('a', 'x');
+    const second = useTerminalStore.getState().writeToTerminal('a', 'y');
+    await expect(first).rejects.toThrow('pipe failed');
+    await expect(second).resolves.toBeUndefined();
+  });
+
   it('chunks a paste larger than 60 KB into multiple sequential writes', async () => {
     // 200 KB of ASCII forces 4 chunks under the 60 KB cap (60 + 60 + 60 + 20).
     const big = 'x'.repeat(200 * 1024);
@@ -331,6 +353,73 @@ describe('terminalStore - pre-attach output buffer (issue #48)', () => {
     const write = vi.fn();
     useTerminalStore.getState().setXterm('a', { write } as never);
     expect(write).not.toHaveBeenCalled();
+  });
+});
+
+describe('terminal output flow control', () => {
+  beforeEach(() => { seed(['a']); invokeMock.mockClear(); vi.useFakeTimers(); });
+  afterEach(() => { __resetPendingOutputBuffersForTest(); vi.useRealTimers(); });
+
+  it('returns credits only after parsing and coalesces acknowledgements', async () => {
+    const callbacks: (() => void)[] = [];
+    useTerminalStore.getState().setXterm('a', { write: (_data: Uint8Array, done: () => void) => callbacks.push(done) } as never);
+    useTerminalStore.getState().handleTerminalOutput('a', new Uint8Array([65]), 1);
+    useTerminalStore.getState().handleTerminalOutput('a', new Uint8Array([66]), 2);
+    await vi.runAllTimersAsync();
+    expect(invokeMock).not.toHaveBeenCalled();
+    callbacks.forEach(fn => fn());
+    await vi.runAllTimersAsync();
+    expect(invokeMock).toHaveBeenCalledExactlyOnceWith('acknowledge_terminal_output', { id: 'a', sequence: 2 });
+  });
+
+  it('replays unparsed writes after a view switch without accepting stale callbacks', async () => {
+    const oldCallbacks: (() => void)[] = [];
+    useTerminalStore.getState().setXterm('a', { write: (_data: Uint8Array, done: () => void) => oldCallbacks.push(done) } as never);
+    const bytes = new Uint8Array([27, 91, 51, 49, 109]);
+    useTerminalStore.getState().handleTerminalOutput('a', bytes, 1);
+    useTerminalStore.getState().setXterm('a', null);
+    oldCallbacks[0]!();
+    await vi.runAllTimersAsync();
+    expect(invokeMock).not.toHaveBeenCalled();
+    const write = vi.fn((_data: Uint8Array, done: () => void) => done());
+    useTerminalStore.getState().setXterm('a', { write } as never);
+    expect(write).toHaveBeenCalledWith(bytes, expect.any(Function));
+    await vi.runAllTimersAsync();
+    expect(invokeMock).toHaveBeenCalledWith('acknowledge_terminal_output', { id: 'a', sequence: 1 });
+  });
+
+  it('retains recent foreign-window output so adoption can acknowledge outstanding batches', async () => {
+    const chunk = new Uint8Array(64 * 1024);
+    for (let sequence = 1; sequence <= 12; sequence++) {
+      useTerminalStore.getState().handleTerminalOutput('foreign', chunk, sequence);
+    }
+    useTerminalStore.setState(s => ({ terminals: new Map(s.terminals).set('foreign', { config: makeConfig('foreign'), xterm: null, isWorktree: false }) }));
+    const sequences: (() => void)[] = [];
+    const write = vi.fn((_data: Uint8Array, done: () => void) => sequences.push(done));
+    useTerminalStore.getState().setXterm('foreign', { write } as never);
+    expect(write).toHaveBeenCalledTimes(8);
+    sequences.forEach(done => done());
+    await vi.runAllTimersAsync();
+    expect(invokeMock).toHaveBeenCalledWith('acknowledge_terminal_output', { id: 'foreign', sequence: 12 });
+  });
+
+  it('recovers missed events on adoption and deduplicates overlapping live output', async () => {
+    let resolve!: (value: { sequence: number; data: number[] }[]) => void;
+    invokeMock.mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+    useTerminalStore.getState().adoptTerminal(makeConfig('new-window'));
+    const writes: number[][] = [];
+    useTerminalStore.getState().setXterm('new-window', { write: (data: Uint8Array, done: () => void) => {
+      writes.push([...data]); done();
+    } } as never);
+    useTerminalStore.getState().handleTerminalOutput('new-window', new Uint8Array([66]), 2);
+    expect(writes).toEqual([]);
+    resolve([{ sequence: 1, data: [65] }, { sequence: 2, data: [66] }]);
+    await Promise.resolve();
+    useTerminalStore.getState().handleTerminalOutput('new-window', new Uint8Array([66]), 2);
+    useTerminalStore.getState().handleTerminalOutput('new-window', new Uint8Array([67]), 3);
+    expect(writes).toEqual([[65], [66], [67]]);
+    await vi.runAllTimersAsync();
+    expect(invokeMock).toHaveBeenCalledWith('acknowledge_terminal_output', { id: 'new-window', sequence: 3 });
   });
 });
 

@@ -627,14 +627,17 @@ function App() {
     // overlap so terminal output isn't doubled.
     let cancelled = false;
     let unlistenFn: (() => void) | undefined;
-    listen<{ id: string; data: number[] }>('terminal-output', (event) => {
+    const outputDecoder = new TextDecoder();
+    listen<{ id: string; data: number[]; sequence?: number }>('terminal-output', (event) => {
       if (cancelled) return;
-      const { id, data } = event.payload;
-      handleTerminalOutput(id, new Uint8Array(data));
+      const { id, data, sequence } = event.payload;
+      const bytes = new Uint8Array(data);
+      handleTerminalOutput(id, bytes, sequence);
+      if (!useTerminalStore.getState().terminals.has(id)) return;
 
       // Detect loop mode from terminal output
       try {
-        const text = new TextDecoder().decode(new Uint8Array(data));
+        const text = outputDecoder.decode(bytes);
         const loopMatch = text.match(/loop\s+(\d+[smh])\s+(.+)/i);
         if (loopMatch) {
           setLoopMode(id, { interval: loopMatch[1], prompt: loopMatch[2] });
