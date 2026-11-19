@@ -60,6 +60,12 @@ export const useFactoryStore = create<FactoryStoreState>((set, get) => ({
       for (const f of factoryList) factories[f.id] = f;
       for (const r of runList) runs[r.id] = r;
       set({ factories, runs, loaded: true });
+      // A queued run whose kick was lost (for example to a crash) starts now.
+      const stalled = Object.keys(factories).filter((id) => {
+        const own = runList.filter((r) => r.factoryId === id);
+        return own.some((r) => r.status === 'queued') && !own.some(holdsLine);
+      });
+      await Promise.all(stalled.map((id) => kickQueue(id)));
     } catch (err) {
       // Startup load: the sidebar and floor just show no factories.
       reportInvokeFailure('list_factories', err);
@@ -152,9 +158,11 @@ export function runsForFactory(runs: Record<string, FactoryRun>, factoryId: stri
     .sort((a, b) => Number(isOpenRun(b)) - Number(isOpenRun(a)) || b.createdAt.localeCompare(a.createdAt));
 }
 
-/** The run's station session is open in this app session. */
+/** The run's station session is open in this app session and its process has not exited. */
 export function hasLiveSession(run: FactoryRun): boolean {
-  return !!run.terminalId && useTerminalStore.getState().terminals.has(run.terminalId);
+  if (!run.terminalId) return false;
+  const t = useTerminalStore.getState().terminals.get(run.terminalId);
+  return !!t && t.config.status !== 'Stopped' && t.config.status !== 'Error';
 }
 
 // ---------------------------------------------------------------------------

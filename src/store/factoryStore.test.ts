@@ -69,6 +69,38 @@ describe('factory store', () => {
     expect(vi.mocked(invoke).mock.calls.map(([c]) => c).sort()).toEqual(['list_factories', 'list_factory_runs']);
   });
 
+  it('load kicks the queue of a factory with a queued run and nothing on the line', async () => {
+    useFactoryStore.setState({ factories: {}, runs: {}, loaded: false });
+    const f2: Factory = { ...factory, id: 'f2' };
+    const f3: Factory = { ...factory, id: 'f3' };
+    vi.mocked(invoke).mockImplementation(async (cmd) => {
+      if (cmd === 'list_factories') return [factory, f2, f3];
+      if (cmd === 'list_factory_runs') {
+        return [
+          run({ id: 'a', status: 'queued', terminalId: null }),
+          run({ id: 'b', status: 'queued', terminalId: null }),
+          run({ id: 'c', factoryId: 'f2', status: 'queued', terminalId: null }),
+          run({ id: 'd', factoryId: 'f2', status: 'running' }),
+          run({ id: 'e', factoryId: 'f3', status: 'done' }),
+        ];
+      }
+      return null;
+    });
+    await useFactoryStore.getState().load();
+    await flush();
+    const kicks = vi.mocked(invoke).mock.calls.filter(([c]) => c === 'next_queued_factory_run');
+    expect(kicks).toEqual([['next_queued_factory_run', { factoryId: 'f1' }]]);
+  });
+
+  it('a session that stopped or failed is not live', () => {
+    for (const status of ['Stopped', 'Error'] as const) {
+      useTerminalStore.setState({ terminals: new Map([terminal('t1', status)]) });
+      expect(hasLiveSession(run())).toBe(false);
+    }
+    useTerminalStore.setState({ terminals: new Map([terminal('t1', 'Running')]) });
+    expect(hasLiveSession(run())).toBe(true);
+  });
+
   it('needsYouCount counts gates and blocked runs', () => {
     expect(needsYouCount({
       a: run({ id: 'a', status: 'waiting_gate' }),
