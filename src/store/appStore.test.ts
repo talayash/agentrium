@@ -805,6 +805,10 @@ describe('appStore - persist migration v9 -> v10 (view modes)', () => {
   });
 });
 
+it('factoryEnabled defaults to true', () => {
+  expect(useAppStore.getInitialState().factoryEnabled).toBe(true);
+});
+
 describe('appStore - factory plumbing', () => {
   beforeEach(() => {
     useAppStore.setState({ openFiles: [], activeFilePath: null, gridMode: true, sidebarNav: 'sessions', factoryEnabled: true });

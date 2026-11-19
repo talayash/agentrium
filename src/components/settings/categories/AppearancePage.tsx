@@ -148,7 +148,7 @@ export default function AppearancePage() {
             />
           </SettingRow>
         )}
-        <SettingRow label="AI Factory" description="Run your own agent production lines from a Markdown file in a repo. Experimental.">
+        <SettingRow label="AI Factory" description="Run your own agent production lines from a Markdown file in a repo.">
           <Toggle value={factoryEnabled} onChange={setFactoryEnabled} label="AI Factory" />
         </SettingRow>
         <SettingRow label="Compact title bar" description="Hide the centered product name to free up the drag area.">

@@ -280,3 +280,50 @@ it('Confirm cannot save while lint errors exist', async () => {
   await click('Confirm');
   expect(calls('save_factory')).toHaveLength(0);
 });
+
+const profile = (id: string, name: string, working_directory: string) => ({
+  id, name, working_directory, agent: 'claude', claude_args: [], env_vars: {},
+});
+const withProfiles = (list: unknown[]) => {
+  const base = invokeMock.getMockImplementation()!;
+  invokeMock.mockImplementation(async (cmd: string, args: Record<string, unknown>) =>
+    (cmd === 'get_profiles' ? list : base(cmd, args)));
+};
+
+it('offers profiles that have a working directory and fills the repo path when one is chosen', async () => {
+  withProfiles([
+    profile('p1', 'Zeta', 'C:\work\zeta'),
+    profile('p2', 'Alpha', 'C:\work\alpha'),
+    profile('p3', 'No folder', '  '),
+    profile('p4', 'Alpha copy', 'c:\WORK\alpha'),
+  ]);
+  render(<AddFactoryModal />);
+  await flush();
+  const select = screen.getByLabelText('Profile') as HTMLSelectElement;
+  const options = Array.from(select.options);
+  expect(options.map((o) => o.textContent)).toEqual(['Choose a profile...', 'Alpha', 'Zeta']);
+  expect(options[0].value).toBe('');
+  expect(options[1].title).toBe('C:\work\alpha');
+  fireEvent.change(select, { target: { value: options[2].value } });
+  expect((screen.getByLabelText('Repository') as HTMLInputElement).value).toBe('C:\work\zeta');
+  expect(select.value).toBe(options[2].value);
+});
+
+it('hides the profile picker when there are no profiles', async () => {
+  withProfiles([profile('p3', 'No folder', '')]);
+  render(<AddFactoryModal />);
+  await flush();
+  expect(screen.queryByLabelText('Profile')).toBeNull();
+  expect(screen.getByLabelText('Repository')).toBeTruthy();
+});
+
+it('typing in the repository field clears the chosen profile', async () => {
+  withProfiles([profile('p1', 'Zeta', 'C:\work\zeta')]);
+  render(<AddFactoryModal />);
+  await flush();
+  const select = screen.getByLabelText('Profile') as HTMLSelectElement;
+  fireEvent.change(select, { target: { value: select.options[1].value } });
+  expect(select.value).not.toBe('');
+  fireEvent.change(screen.getByLabelText('Repository'), { target: { value: 'C:\work\other' } });
+  expect(select.value).toBe('');
+});

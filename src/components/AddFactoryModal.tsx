@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { FolderOpen } from 'lucide-react';
 import { reportInvokeFailure } from '../lib/errorReporter';
@@ -7,7 +8,7 @@ import {
   type DefinitionReview, type FactoryCandidate, type LintItem,
 } from '../lib/factory';
 import { launchImportSession } from '../lib/factoryActions';
-import { knownRepoPaths, repoPathForTerminal } from '../lib/tasks';
+import { knownRepoPaths, repoPathForTerminal, type TaskProfile } from '../lib/tasks';
 import { useAppStore } from '../store/appStore';
 import { useFactoryStore } from '../store/factoryStore';
 import { useTerminalStore } from '../store/terminalStore';
@@ -23,6 +24,20 @@ const TAG = 'text-[10.5px] px-1.5 py-0.5 rounded bg-fill-hover text-text-tertiar
 const POLL_MS = 2000;
 const IMPORT_TIMEOUT_MS = 5 * 60 * 1000;
 const STEPS = ['Repo', 'Factory file', 'Check what Agentrium understood', 'Ready'];
+
+/** Profiles with a working directory, one per folder (case-insensitive), by name. */
+function profileRepos(list: TaskProfile[]): TaskProfile[] {
+  const seen = new Set<string>();
+  return list
+    .filter((p) => p.working_directory.trim() !== '')
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .filter((p) => {
+      const key = p.working_directory.trim().replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
 
 function LintList({ items, tone }: { items: LintItem[]; tone: 'error' | 'warning' }) {
   if (items.length === 0) return null;
@@ -46,6 +61,8 @@ export function AddFactoryModal() {
   const [repoPath, setRepoPath] = useState(
     () => repoPathForTerminal(useTerminalStore.getState().activeTerminalId) ?? repoOptions[0] ?? '',
   );
+  const [profiles, setProfiles] = useState<TaskProfile[]>([]);
+  const [profileId, setProfileId] = useState('');
   const [candidates, setCandidates] = useState<FactoryCandidate[]>([]);
   const [sourcePath, setSourcePath] = useState('');
   const [review, setReview] = useState<DefinitionReview | null>(null);
@@ -73,6 +90,20 @@ export function AddFactoryModal() {
     mounted.current = true;
     return () => { mounted.current = false; stopPolling(); };
   }, [stopPolling]);
+
+  useEffect(() => {
+    invoke<TaskProfile[]>('get_profiles')
+      .then((list) => { if (mounted.current) setProfiles(profileRepos(list)); })
+      .catch(() => {
+        // profiles are optional here: the path field still works
+      });
+  }, []);
+
+  const chooseProfile = (id: string) => {
+    setProfileId(id);
+    const chosen = profiles.find((p) => p.id === id);
+    if (chosen) setRepoPath(chosen.working_directory);
+  };
 
   const browseRepo = async () => {
     try {
@@ -225,12 +256,23 @@ export function AddFactoryModal() {
           ))}
         </ol>
 
+        {step === 1 && profiles.length > 0 && (
+          <label className="flex flex-col gap-1 text-[12px] text-text-secondary">
+            Profile
+            <select aria-label="Profile" value={profileId} onChange={(e) => chooseProfile(e.target.value)}
+              className={INPUT} disabled={busy}>
+              <option value="">Choose a profile...</option>
+              {profiles.map((p) => <option key={p.id} value={p.id} title={p.working_directory}>{p.name}</option>)}
+            </select>
+          </label>
+        )}
+
         {step === 1 && (
           <label className="flex flex-col gap-1 text-[12px] text-text-secondary">
             Repository
             <div className="flex gap-2">
               <input autoFocus aria-label="Repository" list="add-factory-repos" value={repoPath}
-                onChange={(e) => setRepoPath(e.target.value)} placeholder="Path to a git repository"
+                onChange={(e) => { setRepoPath(e.target.value); setProfileId(''); }} placeholder="Path to a git repository"
                 className={`${INPUT} font-mono text-[12px]`} disabled={busy} />
               <datalist id="add-factory-repos">{repoOptions.map((r) => <option key={r} value={r} />)}</datalist>
               <button type="button" onClick={browseRepo} disabled={busy}

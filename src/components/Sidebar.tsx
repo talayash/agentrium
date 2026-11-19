@@ -297,7 +297,7 @@ function NewSessionSplitButton({ onNewSession, onNewTask, onNewRace, onNewFactor
   return (
     <div ref={rootRef} className="relative flex-1 min-w-0">
       {open && (
-        <div role="menu" aria-label="Start something new" className="material-popover absolute bottom-full left-0 right-0 mb-1.5 rounded-xl p-1 z-20">
+        <div role="menu" aria-label="Start something new" className="material-popover absolute bottom-full left-0 min-w-full w-max mb-1.5 rounded-xl p-1 z-20">
           <button role="menuitem" aria-label="New Task" aria-keyshortcuts="Control+Shift+T" onClick={(e) => pick(e, onNewTask)} className={itemClass}>
             <IconTile icon={GitBranch} tone="green" size={18} />
             Task
@@ -309,9 +309,9 @@ function NewSessionSplitButton({ onNewSession, onNewTask, onNewRace, onNewFactor
             <kbd className="split-menu-kbd ml-auto pl-2 text-[10px] font-mono text-text-tertiary">Ctrl+Shift+R</kbd>
           </button>
           {onNewFactoryRun && (
-            <button role="menuitem" aria-label="New Factory run" aria-keyshortcuts="Control+Shift+Y" onClick={(e) => pick(e, onNewFactoryRun)} className={itemClass}>
+            <button role="menuitem" aria-label="New Factory" aria-keyshortcuts="Control+Shift+Y" onClick={(e) => pick(e, onNewFactoryRun)} className={itemClass}>
               <IconTile icon={Factory} tone="blue" size={18} />
-              Factory run
+              Factory
               <kbd className="split-menu-kbd ml-auto pl-2 text-[10px] font-mono text-text-tertiary">Ctrl+Shift+Y</kbd>
             </button>
           )}

@@ -161,7 +161,7 @@ interface AppState {
   showTabActivity: boolean;
   /** Feature flag: context window meter in the session strip and sidebar cards. Default on. */
   contextMeterEnabled: boolean;
-  /** Feature flag: AI Factory (sidebar, floor, shortcut, run tracking). Default off. */
+  /** Feature flag: AI Factory (sidebar, floor, shortcut, run tracking). Default on; a persisted false is kept. */
   factoryEnabled: boolean;
   /** Claude context window for the meter: 'auto' detects it, else a fixed size. */
   claudeContextWindow: ClaudeWindowSetting;
@@ -701,7 +701,7 @@ export const useAppStore = create<AppState>()(
       showStatusBar: true,
       showTabActivity: true,
       contextMeterEnabled: true,
-      factoryEnabled: false,
+      factoryEnabled: true,
       claudeContextWindow: 'auto',
       compactTitleBar: false,
       notificationSoundEnabled: false,
