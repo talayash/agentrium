@@ -40,7 +40,7 @@ export interface FactoryRun {
   id: string; factoryId: string; input: string; status: RunStatus; currentStep: string;
   attempts: Record<string, number>; rejectReason: string; checkOutput: string; definition: Definition;
   workspacePath: string; branch: string | null; runDir: string; terminalId: string | null;
-  createdAt: string; updatedAt: string;
+  stationStartedAt: string | null; createdAt: string; updatedAt: string;
 }
 export type StepAction =
   | { kind: 'start_station'; stepId: string; stepName: string; attempt: number; prompt: string; agent: AgentKind; cwd: string; task: TaskInfo | null }

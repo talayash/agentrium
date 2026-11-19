@@ -27,7 +27,7 @@ function run(over: Partial<FactoryRun> = {}): FactoryRun {
   return {
     id: 'r1', factoryId: 'f1', input: 'PROJ-1', status: 'running', currentStep: 'S1', attempts: { S1: 1 },
     rejectReason: '', checkOutput: '', definition: def(), workspacePath: '/wt', branch: null, runDir: '/rd',
-    terminalId: null, createdAt: 't', updatedAt: 't', ...over,
+    terminalId: null, stationStartedAt: null, createdAt: 't', updatedAt: 't', ...over,
   };
 }
 

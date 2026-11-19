@@ -423,7 +423,8 @@ impl Database {
                 run_dir TEXT NOT NULL,
                 terminal_id TEXT,
                 created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
+                updated_at TEXT NOT NULL,
+                station_started_at TEXT
             );
             CREATE TABLE IF NOT EXISTS factory_run_events (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -437,7 +438,14 @@ impl Database {
             CREATE INDEX IF NOT EXISTS idx_factory_run_events_run ON factory_run_events(run_id);
             ",
         )
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+        // Databases created before the column existed.
+        if let Err(e) = conn.execute("ALTER TABLE factory_runs ADD COLUMN station_started_at TEXT", []) {
+            if !e.to_string().contains("duplicate column name") {
+                return Err(e.to_string());
+            }
+        }
+        Ok(())
     }
 
     /// Per-repo worktree setup command (for example `npm ci`), keyed by the
@@ -2108,7 +2116,7 @@ impl Database {
 
     const FACTORY_RUN_COLUMNS: &'static str =
         "id, factory_id, input, status, current_step, attempts_json, reject_reason, check_output, \
-         definition_json, workspace_path, branch, run_dir, terminal_id, created_at, updated_at";
+         definition_json, workspace_path, branch, run_dir, terminal_id, created_at, updated_at, station_started_at";
 
     fn row_to_factory(r: &rusqlite::Row<'_>) -> rusqlite::Result<Option<crate::factory::Factory>> {
         let definition_json: String = r.get(4)?;
@@ -2152,6 +2160,7 @@ impl Database {
             terminal_id: r.get(12)?,
             created_at: r.get(13)?,
             updated_at: r.get(14)?,
+            station_started_at: r.get(15)?,
         }))
     }
 
@@ -2202,12 +2211,13 @@ impl Database {
         let definition_json = serde_json::to_string(&run.definition).map_err(|e| e.to_string())?;
         self.conn.execute(
             "INSERT INTO factory_runs (id, factory_id, input, status, current_step, attempts_json, reject_reason,
-                check_output, definition_json, workspace_path, branch, run_dir, terminal_id, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+                check_output, definition_json, workspace_path, branch, run_dir, terminal_id, created_at, updated_at,
+                station_started_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
             params![
                 run.id, run.factory_id, run.input, run.status.as_str(), run.current_step, attempts_json,
                 run.reject_reason, run.check_output, definition_json, run.workspace_path, run.branch,
-                run.run_dir, run.terminal_id, run.created_at, run.updated_at
+                run.run_dir, run.terminal_id, run.created_at, run.updated_at, run.station_started_at
             ],
         ).map_err(|e| e.to_string())?;
         Ok(())
@@ -2219,11 +2229,13 @@ impl Database {
         self.conn.execute(
             "UPDATE factory_runs SET
                 status = ?2, current_step = ?3, attempts_json = ?4, reject_reason = ?5, check_output = ?6,
-                workspace_path = ?7, branch = ?8, run_dir = ?9, terminal_id = ?10, updated_at = ?11
+                workspace_path = ?7, branch = ?8, run_dir = ?9, terminal_id = ?10, updated_at = ?11,
+                station_started_at = ?12
              WHERE id = ?1",
             params![
                 run.id, run.status.as_str(), run.current_step, attempts_json, run.reject_reason,
-                run.check_output, run.workspace_path, run.branch, run.run_dir, run.terminal_id, run.updated_at
+                run.check_output, run.workspace_path, run.branch, run.run_dir, run.terminal_id, run.updated_at,
+                run.station_started_at
             ],
         ).map_err(|e| e.to_string())?;
         Ok(())
@@ -3660,9 +3672,69 @@ mod tests {
             branch: None,
             run_dir: "C:\\runs\\r".into(),
             terminal_id: None,
+            station_started_at: None,
             created_at: created_at.into(),
             updated_at: created_at.into(),
         }
+    }
+
+    #[test]
+    fn station_started_at_round_trips_and_migrates() {
+        // A database file written by a build from before the column existed.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("old.db");
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE factories (
+                    id TEXT PRIMARY KEY, name TEXT NOT NULL, repo_path TEXT NOT NULL,
+                    source_path TEXT NOT NULL UNIQUE, definition_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+                 );
+                 CREATE TABLE factory_runs (
+                    id TEXT PRIMARY KEY,
+                    factory_id TEXT NOT NULL REFERENCES factories(id) ON DELETE CASCADE,
+                    input TEXT NOT NULL, status TEXT NOT NULL, current_step TEXT NOT NULL DEFAULT '',
+                    attempts_json TEXT NOT NULL DEFAULT '{}', reject_reason TEXT NOT NULL DEFAULT '',
+                    check_output TEXT NOT NULL DEFAULT '', definition_json TEXT NOT NULL,
+                    workspace_path TEXT NOT NULL, branch TEXT, run_dir TEXT NOT NULL, terminal_id TEXT,
+                    created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+                 );",
+            )
+            .unwrap();
+            let def = serde_json::to_string(
+                &crate::factory_def::parse_definition(crate::factory_def::SAMPLE).unwrap(),
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO factories VALUES ('f1', 'Demo', 'C:\\repo', 'C:\\repo\\SKILL.md', ?1, 'c', 'u')",
+                params![def],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO factory_runs (id, factory_id, input, status, current_step, definition_json,
+                    workspace_path, run_dir, created_at, updated_at)
+                 VALUES ('old', 'f1', 'A-1', 'running', 'S1', ?1, 'C:\\repo', 'C:\\runs\\old', 'c', 'u')",
+                params![def],
+            )
+            .unwrap();
+        }
+        let conn = Connection::open(&path).unwrap();
+        Database::init_schema(&conn).unwrap();
+        // Second launch: the migration is idempotent.
+        Database::init_schema(&conn).unwrap();
+        let db = Database { conn };
+
+        let mut old = db.get_factory_run("old").unwrap().unwrap();
+        assert_eq!(old.station_started_at, None);
+        old.station_started_at = Some("2026-11-19T10:00:00+00:00".into());
+        db.update_factory_run(&old).unwrap();
+        assert_eq!(db.get_factory_run("old").unwrap().unwrap(), old);
+
+        let mut fresh = sample_run("new", "f1", crate::factory_engine::RunStatus::Running, "2026-11-19T11:00:00Z");
+        fresh.station_started_at = Some("2026-11-19T11:00:00+00:00".into());
+        db.insert_factory_run(&fresh).unwrap();
+        assert_eq!(db.get_factory_run("new").unwrap().unwrap(), fresh);
     }
 
     #[test]

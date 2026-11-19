@@ -22,7 +22,7 @@ const mkFactory = (id: string, name: string, updatedAt: string): Factory => ({
 });
 const mkRun = (id: string, factoryId: string, status: RunStatus, step: string, extra: Partial<FactoryRun> = {}): FactoryRun => ({
   id, factoryId, input: `T-${id}`, status, currentStep: step, attempts: {}, rejectReason: '', checkOutput: '',
-  definition: def, workspacePath: '/wt', branch: null, runDir: '/rd', terminalId: null,
+  definition: def, workspacePath: '/wt', branch: null, runDir: '/rd', terminalId: null, stationStartedAt: null,
   createdAt: '2026-11-01T00:00:00Z', updatedAt: '2026-11-01T00:00:00Z', ...extra,
 });
 const setState = (factories: Factory[], runs: FactoryRun[]) =>

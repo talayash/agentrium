@@ -83,6 +83,9 @@ pub struct FactoryRun {
     pub branch: Option<String>,
     pub run_dir: String,
     pub terminal_id: Option<String>,
+    /// When the current station attempt was opened (any way in except a
+    /// Resume). An artifact older than this does not finish the station.
+    pub station_started_at: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -301,6 +304,7 @@ mod tests {
             branch: None,
             run_dir: String::new(),
             terminal_id: None,
+            station_started_at: None,
             created_at: String::new(),
             updated_at: String::new(),
         }

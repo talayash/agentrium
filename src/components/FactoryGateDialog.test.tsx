@@ -26,7 +26,7 @@ const factory: Factory = {
 };
 const mkRun = (status: RunStatus, currentStep = 'G1'): FactoryRun => ({
   id: 'r1', factoryId: 'f1', input: 'WGCP-7', status, currentStep, attempts: {}, rejectReason: '',
-  checkOutput: '', definition: def, workspacePath: '/wt', branch: null, runDir: '/rd', terminalId: null,
+  checkOutput: '', definition: def, workspacePath: '/wt', branch: null, runDir: '/rd', terminalId: null, stationStartedAt: null,
   createdAt: '', updatedAt: '',
 });
 const files: Record<string, string | null> = { 'plan.md': '# Plan', 'risks.md': null };

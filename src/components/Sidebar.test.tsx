@@ -112,7 +112,7 @@ const ffactory: Factory = {
 };
 const frun = (id: string, status: RunStatus, step: string): FactoryRun => ({
   id, factoryId: 'f1', input: `T-${id}`, status, currentStep: step, attempts: {}, rejectReason: '', checkOutput: '',
-  definition: fdef, workspacePath: '/wt', branch: null, runDir: '/rd', terminalId: null,
+  definition: fdef, workspacePath: '/wt', branch: null, runDir: '/rd', terminalId: null, stationStartedAt: null,
   createdAt: '2026-11-01T00:00:00Z', updatedAt: '2026-11-01T00:00:00Z',
 });
 

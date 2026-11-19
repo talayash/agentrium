@@ -7,6 +7,7 @@ import {
 import { useTerminalStore, type TerminalConfig, type TerminalInstance } from './terminalStore';
 import { useAppStore } from './appStore';
 import { useToastStore } from './toastStore';
+import { BUSY_GRACE_MS } from './raceStore';
 import type { Definition, Factory, FactoryRun, RunStep } from '../lib/factory';
 import type { SessionState } from '../lib/terminalState';
 
@@ -25,7 +26,7 @@ function run(over: Partial<FactoryRun> = {}): FactoryRun {
   return {
     id: 'r1', factoryId: 'f1', input: 'ABC-1', status: 'running', currentStep: 'plan', attempts: { plan: 1 },
     rejectReason: '', checkOutput: '', definition, workspacePath: 'C:\\wt\\abc-1', branch: null,
-    runDir: 'C:\\runs\\r1', terminalId: 't1', createdAt: '2026-11-19T00:00:00.000Z', updatedAt: '2026-11-19T00:00:00.000Z',
+    runDir: 'C:\\runs\\r1', terminalId: 't1', stationStartedAt: null, createdAt: '2026-11-19T00:00:00.000Z', updatedAt: '2026-11-19T00:00:00.000Z',
     ...over,
   };
 }
@@ -48,7 +49,7 @@ beforeEach(() => {
   vi.mocked(invoke).mockImplementation(async (cmd) => (cmd === 'evaluate_factory_station' ? waitingStep() : undefined));
   useToastStore.getState().clearAll();
   useAppStore.setState({ factoryEnabled: false });
-  useFactoryStore.setState({ factories: { f1: factory }, runs: { r1: run() }, loaded: true, evaluating: {}, seenBusy: {}, exitHandled: {} });
+  useFactoryStore.setState({ factories: { f1: factory }, runs: { r1: run() }, loaded: true, evaluating: {}, seenBusy: {}, exitHandled: {}, sessionOpenedAt: {} });
   useTerminalStore.setState({ terminals: new Map([terminal('t1')]), terminalStates: new Map() });
 });
 
@@ -139,6 +140,31 @@ describe('turn tracking', () => {
     expect(invoke).not.toHaveBeenCalled();
     expect(hasLiveSession(gone)).toBe(false);
     expect(hasLiveSession(run())).toBe(true);
+  });
+
+  it('a busy blip inside the grace period does not arm tracking', async () => {
+    const opened = Date.now();
+    useFactoryStore.getState().markSessionOpened('t1', opened);
+    setState('busy');
+    trackFactoryRuns(opened + 1_000);
+    setState('idle');
+    trackFactoryRuns(opened + 2_000);
+    await flush();
+    expect(useFactoryStore.getState().seenBusy.t1).toBeUndefined();
+    expect(evalCalls()).toHaveLength(0);
+  });
+
+  it('busy after the grace period then idle evaluates once', async () => {
+    const opened = Date.now();
+    useFactoryStore.getState().markSessionOpened('t1', opened);
+    setState('busy');
+    trackFactoryRuns(opened + BUSY_GRACE_MS);
+    expect(useFactoryStore.getState().seenBusy.t1).toBe(true);
+    setState('idle');
+    trackFactoryRuns(opened + BUSY_GRACE_MS + 1_000);
+    trackFactoryRuns(opened + BUSY_GRACE_MS + 2_000);
+    await flush();
+    expect(evalCalls()).toHaveLength(1);
   });
 
   it('a waiting outcome re-arms on the next busy to idle edge', async () => {
@@ -249,5 +275,26 @@ describe('subscription', () => {
     await flush();
     unsub();
     expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it('a tracking pass runs when an evaluation finishes', async () => {
+    useAppStore.setState({ factoryEnabled: true });
+    vi.mocked(invoke).mockImplementation(async (cmd) => {
+      if (cmd === 'list_factories') return [factory];
+      if (cmd === 'list_factory_runs') return [run()];
+      if (cmd === 'evaluate_factory_station') return waitingStep();
+      return null;
+    });
+    // An evaluation is in flight when the turn ends, so the idle edge is skipped.
+    useFactoryStore.setState({ evaluating: { r1: 'e0' }, seenBusy: { t1: true } });
+    setState('idle');
+    const unsub = subscribeFactoryTracking();
+    await flush();
+    expect(evalCalls()).toHaveLength(0);
+
+    useFactoryStore.setState({ evaluating: {} });
+    await flush();
+    unsub();
+    expect(evalCalls()).toHaveLength(1);
   });
 });

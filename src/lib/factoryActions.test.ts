@@ -17,7 +17,7 @@ function run(over: Partial<FactoryRun> = {}): FactoryRun {
   return {
     id: 'r1', factoryId: 'f1', input: 'ABC-1', status: 'running', currentStep: 'plan', attempts: { plan: 1 },
     rejectReason: '', checkOutput: '', definition, workspacePath: 'C:\\wt\\abc-1', branch: 'agentrium/abc-1',
-    runDir: 'C:\\runs\\r1', terminalId: null, createdAt: '2026-11-19T00:00:00.000Z', updatedAt: '2026-11-19T00:00:00.000Z',
+    runDir: 'C:\\runs\\r1', terminalId: null, stationStartedAt: null, createdAt: '2026-11-19T00:00:00.000Z', updatedAt: '2026-11-19T00:00:00.000Z',
     ...over,
   };
 }
@@ -70,7 +70,7 @@ beforeEach(() => {
     createTerminal, closeTerminal, setActiveTerminal,
   });
   useAppStore.setState({ activeFilePath: null, setPromptDraft });
-  useFactoryStore.setState({ factories: {}, runs: {}, loaded: true, evaluating: {}, seenBusy: {}, exitHandled: {} });
+  useFactoryStore.setState({ factories: {}, runs: {}, loaded: true, evaluating: {}, seenBusy: {}, exitHandled: {}, sessionOpenedAt: {} });
 });
 
 const step = (action: StepAction, over: Partial<FactoryRun> = {}): RunStep => {
@@ -89,6 +89,7 @@ describe('performStep', () => {
     expect(args[10]).toBe('claude');
     expect(invoke).toHaveBeenCalledWith('set_factory_run_terminal', { runId: 'r1', terminalId: 'new' });
     expect(useFactoryStore.getState().runs.r1.terminalId).toBe('new');
+    expect(useFactoryStore.getState().sessionOpenedAt.new).toEqual(expect.any(Number));
     expect(setPromptDraft).not.toHaveBeenCalled();
   });
 

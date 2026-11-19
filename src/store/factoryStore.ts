@@ -9,6 +9,7 @@ import { reportInvokeFailure } from '../lib/errorReporter';
 import { toast } from './toastStore';
 import { useTerminalStore } from './terminalStore';
 import { useAppStore } from './appStore';
+import { BUSY_GRACE_MS } from './raceStore';
 
 interface FactoryStoreState {
   factories: Record<string, Factory>;
@@ -20,8 +21,11 @@ interface FactoryStoreState {
   seenBusy: Record<string, true>;
   /** Exited terminal ids already evaluated once, so an exited session is not re-checked on every pass. */
   exitHandled: Record<string, true>;
+  /** Terminal id -> when performStep opened it as a station session (ms). */
+  sessionOpenedAt: Record<string, number>;
 
   load: () => Promise<void>;
+  markSessionOpened: (terminalId: string, at?: number) => void;
   upsertFactory: (f: Factory) => void;
   /** Drop a deleted factory and its runs (the backend deletes them with it). */
   removeFactory: (id: string) => void;
@@ -46,6 +50,7 @@ export const useFactoryStore = create<FactoryStoreState>((set, get) => ({
   evaluating: {},
   seenBusy: {},
   exitHandled: {},
+  sessionOpenedAt: {},
 
   load: async () => {
     try {
@@ -61,6 +66,9 @@ export const useFactoryStore = create<FactoryStoreState>((set, get) => ({
       set({ loaded: true });
     }
   },
+
+  markSessionOpened: (terminalId, at = Date.now()) =>
+    set((s) => ({ sessionOpenedAt: { ...s.sessionOpenedAt, [terminalId]: at } })),
 
   upsertFactory: (f) => set((s) => ({ factories: { ...s.factories, [f.id]: f } })),
 
@@ -153,8 +161,12 @@ export function hasLiveSession(run: FactoryRun): boolean {
 // Tracking: evaluate a station once its agent finished a turn
 // ---------------------------------------------------------------------------
 
-/** One pass over every running run. Exported for tests. */
-export function trackFactoryRuns(): void {
+/**
+ * One pass over every running run. Exported for tests. A terminal counts as
+ * seen busy only when it is busy at least BUSY_GRACE_MS after its station
+ * session opened, so a startup blip never arms an evaluation.
+ */
+export function trackFactoryRuns(now = Date.now()): void {
   const { terminals, terminalStates } = useTerminalStore.getState();
   for (const run of Object.values(useFactoryStore.getState().runs)) {
     if (run.status !== 'running' || !run.terminalId) continue;
@@ -163,7 +175,11 @@ export function trackFactoryRuns(): void {
     if (!t) continue;
     const state = terminalStates.get(id);
     if (state === 'busy' && !useFactoryStore.getState().seenBusy[id]) {
-      useFactoryStore.setState((s) => ({ seenBusy: { ...s.seenBusy, [id]: true } }));
+      // No entry (for example after a hot reload): fall back to the terminal's creation time.
+      const opened = useFactoryStore.getState().sessionOpenedAt[id] ?? Date.parse(t.config.created_at);
+      if (!Number.isNaN(opened) && now - opened >= BUSY_GRACE_MS) {
+        useFactoryStore.setState((s) => ({ seenBusy: { ...s.seenBusy, [id]: true } }));
+      }
     }
     const s = useFactoryStore.getState();
     if (s.evaluating[run.id]) continue;
@@ -193,7 +209,8 @@ export function subscribeFactoryTracking(): () => void {
       if (s.terminals !== p.terminals || s.terminalStates !== p.terminalStates) schedule();
     }),
     useFactoryStore.subscribe((s, p) => {
-      if (s.runs !== p.runs) schedule();
+      // An idle edge that landed during an evaluation is picked up once it finishes.
+      if (s.runs !== p.runs || s.evaluating !== p.evaluating) schedule();
     }),
   ];
   return () => unsubs.forEach((u) => u());

@@ -30,7 +30,7 @@ beforeEach(() => {
       return {
         run: {
           id: 'r1', factoryId: 'f1', input: 'A-1', status: 'running', currentStep: 'build', attempts: {}, rejectReason: '',
-          checkOutput: '', definition: def(), workspacePath: '/repo', branch: null, runDir: '', terminalId: null, createdAt: '', updatedAt: '',
+          checkOutput: '', definition: def(), workspacePath: '/repo', branch: null, runDir: '', terminalId: null, stationStartedAt: null, createdAt: '', updatedAt: '',
         },
         action: { kind: 'waiting' },
       };

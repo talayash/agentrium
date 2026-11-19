@@ -752,7 +752,9 @@ fn outcome_kind(action: &Action) -> Option<&'static str> {
 }
 
 /// Every run transition goes through here, so persistence is uniform: apply
-/// the event, store the run, log the event, build the action.
+/// the event, store the run, log the event, build the action. Opening a
+/// station by any event except a Resume (which re-opens the same attempt)
+/// moves `station_started_at`.
 fn transition(
     db: &Database,
     mut run: FactoryRun,
@@ -762,8 +764,12 @@ fn transition(
 ) -> Result<RunStep, String> {
     let line_busy = db.factory_line_busy(&run.factory_id, &run.id)?;
     let step_before = run.current_step.clone();
+    let resumed = event == RunEvent::Resume;
     let action = apply(&mut run, event, line_busy)?;
     let at = now();
+    if matches!(action, Action::StartStation { .. }) && !resumed {
+        run.station_started_at = Some(at.clone());
+    }
     run.updated_at = at.clone();
     db.update_factory_run(&run)?;
     let step_id = if step_before.is_empty() {
@@ -812,6 +818,7 @@ pub(crate) fn start_run_in(
         branch,
         run_dir: run_dir.to_string_lossy().into_owned(),
         terminal_id: None,
+        station_started_at: None,
         created_at: at.clone(),
         updated_at: at,
     };
@@ -823,8 +830,31 @@ pub(crate) fn start_run_in(
     transition(db, run, RunEvent::Start, "started", "")
 }
 
+/// True when the artifact at `path` is a regular file (never through a link)
+/// that counts for this evaluation: a manual evaluation takes any existing
+/// file, a tracked one only a file modified at or after the station opened.
+fn artifact_counts(path: &Path, started_at: Option<&str>, manual: bool) -> bool {
+    let Ok(meta) = std::fs::symlink_metadata(path) else {
+        return false;
+    };
+    if !meta.file_type().is_file() {
+        return false;
+    }
+    if manual {
+        return true;
+    }
+    let Some(started) = started_at.and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+    else {
+        return true;
+    };
+    match meta.modified() {
+        Ok(modified) => chrono::DateTime::<chrono::Utc>::from(modified) >= started,
+        Err(_) => true,
+    }
+}
+
 /// What evaluating the current station should do. Pure apart from checking
-/// whether the station's artifact exists in the run folder.
+/// whether the station's artifact is in the run folder and fresh enough.
 pub(crate) fn evaluate_decision(run: &FactoryRun, manual: bool) -> Result<EvalDecision, String> {
     match run.status {
         RunStatus::Running => {}
@@ -840,7 +870,8 @@ pub(crate) fn evaluate_decision(run: &FactoryRun, manual: bool) -> Result<EvalDe
             if !is_plain_file_name(name) {
                 return Err(user_err("Not an artifact name."));
             }
-            if !Path::new(&run.run_dir).join(name).is_file() {
+            let path = Path::new(&run.run_dir).join(name);
+            if !artifact_counts(&path, run.station_started_at.as_deref(), manual) {
                 if manual {
                     return Err(user_err(format!("{name} is not in the run folder yet.")));
                 }
@@ -1778,10 +1809,25 @@ mod tests {
         assert_eq!(step.run.input, "fix the login bug");
     }
 
+    /// Write plan.md as the agent would during the station. Its modified time
+    /// is set past `station_started_at` explicitly: the file system clock can
+    /// lag the clock that stamped the mark by a few milliseconds.
+    fn write_plan(run: &FactoryRun) {
+        let plan = Path::new(&run.run_dir).join("plan.md");
+        std::fs::write(&plan, "plan").unwrap();
+        let started =
+            chrono::DateTime::parse_from_rfc3339(run.station_started_at.as_deref().unwrap())
+                .unwrap();
+        set_mtime(
+            &plan,
+            std::time::SystemTime::from(started) + Duration::from_secs(1),
+        );
+    }
+
     /// Start a run, put plan.md in place and begin its check.
     fn checking(e: &Env) -> (FactoryRun, CheckToken) {
         let run = start(e, "A-1").unwrap().run;
-        std::fs::write(Path::new(&run.run_dir).join("plan.md"), "plan").unwrap();
+        write_plan(&run);
         begin_check(&e.db, &run).unwrap()
     }
 
@@ -1873,7 +1919,7 @@ mod tests {
     fn evaluate_runs_the_check_when_the_artifact_exists() {
         let e = env();
         let run = start(&e, "A-1").unwrap().run;
-        std::fs::write(Path::new(&run.run_dir).join("plan.md"), "plan").unwrap();
+        write_plan(&run);
         assert_eq!(
             evaluate_decision(&run, false).unwrap(),
             EvalDecision::RunCheck {
@@ -1881,6 +1927,99 @@ mod tests {
                 timeout: std::time::Duration::from_secs(300),
             }
         );
+    }
+
+    fn set_mtime(path: &Path, at: std::time::SystemTime) {
+        std::fs::File::options()
+            .write(true)
+            .open(path)
+            .unwrap()
+            .set_modified(at)
+            .unwrap();
+    }
+
+    /// Start a run, pass S1 with plan.md written an hour ago, then reject at
+    /// G1 so S1 is re-entered. Returns the re-entered run and plan.md's path.
+    fn re_entered(e: &Env) -> (FactoryRun, PathBuf) {
+        let run = start(e, "A-1").unwrap().run;
+        let plan = Path::new(&run.run_dir).join("plan.md");
+        std::fs::write(&plan, "old plan").unwrap();
+        set_mtime(
+            &plan,
+            std::time::SystemTime::now() - Duration::from_secs(3600),
+        );
+        finish_evaluation(&e.db, &run, CheckOutcome::Pass).unwrap();
+        let step =
+            answer_gate_in(&e.db, &run.id, "G1", false, Some("cover AC2".to_string())).unwrap();
+        assert!(
+            matches!(&step.action, StepAction::StartStation { step_id, .. } if step_id == "S1")
+        );
+        (step.run, plan)
+    }
+
+    fn check_of_s1() -> EvalDecision {
+        EvalDecision::RunCheck {
+            command: "node check.js A-1".to_string(),
+            timeout: Duration::from_secs(300),
+        }
+    }
+
+    #[test]
+    fn stale_artifact_does_not_pass_a_re_entered_station() {
+        let e = env();
+        let (run, _) = re_entered(&e);
+        assert_eq!(
+            evaluate_decision(&run, false).unwrap(),
+            EvalDecision::Waiting
+        );
+    }
+
+    #[test]
+    fn artifact_written_after_re_entry_passes() {
+        let e = env();
+        let (run, plan) = re_entered(&e);
+        std::fs::write(&plan, "new plan").unwrap();
+        set_mtime(
+            &plan,
+            std::time::SystemTime::now() + Duration::from_secs(60),
+        );
+        assert_eq!(evaluate_decision(&run, false).unwrap(), check_of_s1());
+    }
+
+    #[test]
+    fn manual_evaluation_accepts_a_stale_artifact() {
+        let e = env();
+        let (run, _) = re_entered(&e);
+        assert_eq!(evaluate_decision(&run, true).unwrap(), check_of_s1());
+    }
+
+    #[test]
+    fn resume_does_not_move_station_started_at() {
+        let e = env();
+        let started = start(&e, "A-1").unwrap().run;
+        assert!(started.station_started_at.is_some());
+        let mut run = started;
+        let mark = Some("2026-11-19T00:00:00+00:00".to_string());
+        run.station_started_at = mark.clone();
+        e.db.update_factory_run(&run).unwrap();
+
+        let resumed = control_in(&e.db, &run.id, RunControl::Resume).unwrap();
+        assert!(matches!(resumed.action, StepAction::StartStation { .. }));
+        assert_eq!(resumed.run.station_started_at, mark);
+        assert_eq!(
+            e.db.get_factory_run(&run.id)
+                .unwrap()
+                .unwrap()
+                .station_started_at,
+            mark
+        );
+
+        // Any other way into a station moves the mark.
+        let failed =
+            finish_evaluation(&e.db, &resumed.run, CheckOutcome::Fail("again".to_string()))
+                .unwrap();
+        assert!(matches!(failed.action, StepAction::StartStation { .. }));
+        assert_ne!(failed.run.station_started_at, mark);
     }
 
     fn shared(db: Database) -> std::sync::Arc<std::sync::Mutex<Database>> {
@@ -1891,7 +2030,7 @@ mod tests {
     async fn evaluate_refuses_a_run_that_is_already_checking() {
         let e = env();
         let mut run = start(&e, "A-1").unwrap().run;
-        std::fs::write(Path::new(&run.run_dir).join("plan.md"), "plan").unwrap();
+        write_plan(&run);
         run.status = RunStatus::Checking;
         e.db.update_factory_run(&run).unwrap();
         let err = evaluate_decision(&run, true).unwrap_err();
@@ -2099,7 +2238,7 @@ mod tests {
         station0_mut(&mut def).check.as_mut().unwrap().command = command.to_string();
         let e = env_with(def);
         let run = start(&e, "A-1").unwrap().run;
-        std::fs::write(Path::new(&run.run_dir).join("plan.md"), "plan").unwrap();
+        write_plan(&run);
         (e, run)
     }
 

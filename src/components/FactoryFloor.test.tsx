@@ -28,7 +28,7 @@ const factory: Factory = {
 };
 const mkRun = (id: string, status: RunStatus, currentStep: string, extra: Partial<FactoryRun> = {}): FactoryRun => ({
   id, factoryId: 'f1', input: `WGCP-${id}`, status, currentStep, attempts: { [currentStep]: 1 }, rejectReason: '',
-  checkOutput: '', definition: def, workspacePath: '/wt', branch: null, runDir: '/rd', terminalId: null,
+  checkOutput: '', definition: def, workspacePath: '/wt', branch: null, runDir: '/rd', terminalId: null, stationStartedAt: null,
   createdAt: '2026-11-01T00:00:00Z', updatedAt: new Date().toISOString(), ...extra,
 });
 const setRuns = (...runs: FactoryRun[]) =>

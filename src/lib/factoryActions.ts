@@ -56,6 +56,7 @@ export async function performStep(step: RunStep, factoryName: string): Promise<v
         reportInvokeFailure('create_terminal', err);
         return;
       }
+      useFactoryStore.getState().markSessionOpened(id);
       setFactoryRunTerminal(run.id, id).catch((err) => reportInvokeFailure('set_factory_run_terminal', err));
       useFactoryStore.setState((s) => {
         const stored = s.runs[run.id];
