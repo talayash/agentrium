@@ -45,8 +45,9 @@ const report = (e: any, body: Record<string, unknown>) =>
     headers: { 'cf-connecting-ip': `198.51.100.${++ipN}` },
     body: JSON.stringify({ installation_id: crypto.randomUUID(), app_version: '1.41.9', os: 'windows', ...body }),
   }), e, { waitUntil() {} } as any);
-const summary = async (e: any) =>
-  (await (await worker.fetch(new Request('https://local/errors/summary?days=7', { headers: { 'x-ct-token': TOKEN } }), e, {} as any)).json()) as any;
+const summaryRes = (e: any, query = '') =>
+  worker.fetch(new Request(`https://local/errors/summary?days=7${query}`, { headers: { 'x-ct-token': TOKEN } }), e, {} as any);
+const summary = async (e: any, query = '') => (await (await summaryRes(e, query)).json()) as any;
 
 const REAL = { source: 'rust_command', kind: 'git_push', message: 'git push failed: remote rejected', stack: 'at commands.rs:3337\nat wrap_cmd' };
 
@@ -90,5 +91,46 @@ describe('error groups cannot be rewritten by an unauthenticated report', () => 
     expect(g.message).toBe(REAL.message);
     expect(g.stack).toBe(REAL.stack);
     expect(g.message_variants).toBe(2);
+  });
+});
+
+describe('min_version drops installs that never updated', () => {
+  const OLD = { source: 'rust_command', kind: 'sync_pull', message: 'refresh: no refresh token stored' };
+
+  it('removes older versions from every count and lists them', async () => {
+    const e = env();
+    await report(e, { ...OLD, app_version: '1.34.1', os: 'macos' });
+    await report(e, { ...OLD, app_version: '1.34.1', os: 'macos' });
+    await report(e, { ...REAL, app_version: '1.42.8' });
+    // 1.9.0 sorts after 1.39.0 as text: the floor must compare numerically.
+    await report(e, { ...REAL, app_version: '1.9.0' });
+
+    const s = await summary(e, '&min_version=1.39.0');
+    expect(s.min_version).toBe('1.39.0');
+    expect([...s.excluded_versions].sort()).toEqual(['1.34.1', '1.9.0']);
+    expect(s.total_errors).toBe(1);
+    expect(s.affected_installations).toBe(1);
+    expect(s.unique_fingerprints).toBe(1);
+    expect(s.unresolved_groups).toBe(1);
+    expect(s.top_groups).toHaveLength(1);
+    expect(s.top_groups[0].versions).toBe('1.42.8');
+    expect(s.by_version).toEqual([{ version: '1.42.8', count: 1 }]);
+    expect(s.by_os).toEqual([{ os: 'windows', count: 1 }]);
+    expect(s.by_source).toEqual([{ source: 'rust_command', count: 1 }]);
+    expect(s.by_day.reduce((n: number, d: any) => n + d.count, 0)).toBe(1);
+  });
+
+  it('without the param counts everything, as before', async () => {
+    const e = env();
+    await report(e, { ...OLD, app_version: '1.34.1' });
+    await report(e, { ...REAL, app_version: '1.42.8' });
+    const s = await summary(e);
+    expect(s.total_errors).toBe(2);
+    expect(s.excluded_versions).toEqual([]);
+  });
+
+  it('rejects a malformed floor', async () => {
+    const res = await summaryRes(env(), '&min_version=latest');
+    expect(res.status).toBe(400);
   });
 });

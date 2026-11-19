@@ -61,6 +61,12 @@ describe('reportError noise filtering', () => {
     expect(invokeMock).not.toHaveBeenCalled();
   });
 
+  it('drops the webgl renderer row race TypeError', () => {
+    reportError('TypeError', "Uncaught TypeError: Cannot read properties of undefined (reading 'loadCell')");
+
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
+
   it('still reports a genuine TypeError about other properties', () => {
     reportError('TypeError', "Cannot read properties of undefined (reading 'config')");
 

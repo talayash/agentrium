@@ -19,7 +19,7 @@ import { admitErrorReport, admitIngest, boundedJson, validDimensions, versionWit
  *   GET  /stats/live             active in last 15 min, by version/os/country
  *   GET  /stats/history?days=30&metric=dau|heartbeats|update_checks|version|os|country
  *   GET  /stats/insights?days=30  growth/retention/release/error aggregates for /admin (token, KV-cached 15 min)
- *   GET  /errors/summary?days=7&limit=20   top error groups + by source/version/os/day
+ *   GET  /errors/summary?days=7&limit=20[&min_version=1.39.0]   top error groups + by source/version/os/day
  *   POST /errors/resolve         mark fingerprints resolved / un-resolved (token)
  *   POST /feedback/delete        soft-delete / restore inbox messages (token)
  *   POST /admin/login_attempt    admin-dashboard login rate limit (token)
@@ -30,7 +30,7 @@ import { admitErrorReport, admitIngest, boundedJson, validDimensions, versionWit
  */
 
 import { constantTimeEqual, checkLoginAttempt, parseMatchBody, matchInstallations, listLiveInstallations, getSessionFloor, revokeAdminSessions } from './admin';
-import { parseResolveBody, isGroupResolved, isKnownBenignReport, errorsSince, computeFingerprint } from './errors';
+import { parseResolveBody, isGroupResolved, isKnownBenignReport, errorsSince, computeFingerprint, parseVersion, versionsBelow } from './errors';
 import { handleInsights } from './insights-route';
 import { CORS_HEADERS, json, todayUTC } from './http';
 
@@ -583,11 +583,30 @@ async function handleErrorsSummary(url: URL, env: Env): Promise<Response> {
   const limit = Math.min(Math.max(parseInt(url.searchParams.get('limit') ?? '20', 10) || 20, 1), 100);
   const since = errorsSince(days);
 
+  // Optional floor: drop every event from installs older than min_version, so
+  // stale clients that never updated do not bury current issues. Resolved to
+  // an explicit version list here because semver does not sort as TEXT.
+  const minVersion = url.searchParams.get('min_version');
+  if (minVersion !== null && !parseVersion(minVersion)) {
+    return json({ error: 'invalid_min_version' }, 400);
+  }
+  let excludedVersions: string[] = [];
+  if (minVersion) {
+    const seen = await env.DB.prepare('SELECT DISTINCT app_version AS v FROM errors WHERE ts >= ?')
+      .bind(since)
+      .all<{ v: string | null }>();
+    excludedVersions = versionsBelow((seen.results ?? []).map((r) => r.v), minVersion);
+  }
+  // json_each over a bound array; an empty array excludes nothing.
+  const excluded = JSON.stringify(excludedVersions);
+  const notExcluded = 'app_version NOT IN (SELECT value FROM json_each(?))';
+  const eNotExcluded = 'e.' + notExcluded;
+
   const [totals, groupsRes, bySourceRes, byVersionRes, byOsRes, byDayRes, unresolvedRow] = await Promise.all([
     env.DB.prepare(
-      "SELECT COUNT(*) AS total, COUNT(DISTINCT installation_id) AS affected_installations, COUNT(DISTINCT fingerprint) AS unique_fingerprints FROM errors WHERE ts >= ?",
+      "SELECT COUNT(*) AS total, COUNT(DISTINCT installation_id) AS affected_installations, COUNT(DISTINCT fingerprint) AS unique_fingerprints FROM errors WHERE ts >= ? AND " + notExcluded,
     )
-      .bind(since)
+      .bind(since, excluded)
       .first<{ total: number; affected_installations: number; unique_fingerprints: number }>(),
     env.DB.prepare(
       "SELECT e.fingerprint AS fingerprint, COUNT(*) AS occurrences, COUNT(DISTINCT e.installation_id) AS users, " +
@@ -605,10 +624,10 @@ async function handleErrorsSummary(url: URL, env: Env): Promise<Response> {
         // fingerprint), so MAX just satisfies the aggregate rule.
         'MAX(es.resolved_at) AS resolved_at, MAX(es.resolved_version) AS resolved_version ' +
         'FROM errors e LEFT JOIN error_state es ON es.fingerprint = e.fingerprint ' +
-        "WHERE e.ts >= ? " +
+        "WHERE e.ts >= ? AND " + eNotExcluded + ' ' +
         'GROUP BY e.fingerprint ORDER BY occurrences DESC LIMIT ?',
     )
-      .bind(since, limit)
+      .bind(since, excluded, limit)
       .all<{
         fingerprint: string;
         occurrences: number;
@@ -625,24 +644,24 @@ async function handleErrorsSummary(url: URL, env: Env): Promise<Response> {
         resolved_version: string | null;
       }>(),
     env.DB.prepare(
-      "SELECT source, COUNT(*) AS count FROM errors WHERE ts >= ? GROUP BY source ORDER BY count DESC",
+      "SELECT source, COUNT(*) AS count FROM errors WHERE ts >= ? AND " + notExcluded + " GROUP BY source ORDER BY count DESC",
     )
-      .bind(since)
+      .bind(since, excluded)
       .all<{ source: string; count: number }>(),
     env.DB.prepare(
-      "SELECT app_version AS version, COUNT(*) AS count FROM errors WHERE ts >= ? GROUP BY app_version ORDER BY count DESC",
+      "SELECT app_version AS version, COUNT(*) AS count FROM errors WHERE ts >= ? AND " + notExcluded + " GROUP BY app_version ORDER BY count DESC",
     )
-      .bind(since)
+      .bind(since, excluded)
       .all<{ version: string; count: number }>(),
     env.DB.prepare(
-      "SELECT os, COUNT(*) AS count FROM errors WHERE ts >= ? GROUP BY os ORDER BY count DESC",
+      "SELECT os, COUNT(*) AS count FROM errors WHERE ts >= ? AND " + notExcluded + " GROUP BY os ORDER BY count DESC",
     )
-      .bind(since)
+      .bind(since, excluded)
       .all<{ os: string; count: number }>(),
     env.DB.prepare(
-      "SELECT substr(ts, 1, 10) AS date, COUNT(*) AS count FROM errors WHERE ts >= ? GROUP BY substr(ts, 1, 10) ORDER BY date",
+      "SELECT substr(ts, 1, 10) AS date, COUNT(*) AS count FROM errors WHERE ts >= ? AND " + notExcluded + " GROUP BY substr(ts, 1, 10) ORDER BY date",
     )
-      .bind(since)
+      .bind(since, excluded)
       .all<{ date: string; count: number }>(),
     // Counted over every group in the window, not just the `limit` returned
     // above, so the tab badge stays right when the top list is truncated.
@@ -651,10 +670,10 @@ async function handleErrorsSummary(url: URL, env: Env): Promise<Response> {
       'SELECT COUNT(*) AS n FROM (' +
         'SELECT e.fingerprint, MAX(e.ts) AS last_seen, MAX(es.resolved_at) AS resolved_at ' +
         'FROM errors e LEFT JOIN error_state es ON es.fingerprint = e.fingerprint ' +
-        "WHERE e.ts >= ? GROUP BY e.fingerprint) g " +
+        "WHERE e.ts >= ? AND " + eNotExcluded + ' GROUP BY e.fingerprint) g ' +
         'WHERE g.resolved_at IS NULL OR g.last_seen > g.resolved_at',
     )
-      .bind(since)
+      .bind(since, excluded)
       .first<{ n: number }>(),
   ]);
 
@@ -667,6 +686,8 @@ async function handleErrorsSummary(url: URL, env: Env): Promise<Response> {
 
   return json({
     window_days: days,
+    min_version: minVersion,
+    excluded_versions: excludedVersions,
     generated_at: new Date().toISOString(),
     total_errors: totals?.total ?? 0,
     affected_installations: totals?.affected_installations ?? 0,

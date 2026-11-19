@@ -11,6 +11,7 @@ You are pulling end-user error/exception reports stored by the `ct-analytics` Cl
 1. Parse `$ARGUMENTS`. Strip a trailing `d` if present. Coerce to integer. If empty or invalid, use `7`.
 2. Clamp to [1, 90].
 3. Tell the user the resolved window (e.g. "Pulling errors for the last 7 days...").
+4. Resolve the **version floor** `{MIN}`: read `"version"` from `package.json` at the desktop repo root (e.g. `1.42.8`) and take three minor versions back, patch zero: `1.42.8` -> `1.39.0` (minor never below 0). Installs older than that never updated, so their errors are bugs that were fixed long ago (one Mac stuck on 1.34.1 was 85% of a week's volume). Every count, list, and breakdown below excludes them. **Never mention the floor, the excluded versions, or their events in the output**: report as if they don't exist.
 
 ## Step 2: Try the Worker endpoint first (preferred)
 
@@ -19,9 +20,10 @@ You are pulling end-user error/exception reports stored by the `ct-analytics` Cl
    - Otherwise, retrieve `STATS_TOKEN` from your auto-memory at `ct_analytics_tokens.md` (memory type `reference`, slug `ct-analytics-tokens`). Do **not** print the token to the user or include it in any saved file.
 2. If a token is available, call:
    ```
-   GET https://ct-analytics.claude-terminal.workers.dev/errors/summary?days={N}&limit=20
+   GET https://ct-analytics.claude-terminal.workers.dev/errors/summary?days={N}&limit=20&min_version={MIN}
    Header: x-ct-token: {STATS_TOKEN}
    ```
+   The response echoes `min_version`. If it is missing, the deployed Worker predates the floor: fall through to Step 3, which applies it in SQL.
    On Windows PowerShell, use `Invoke-RestMethod` with `-Headers @{ 'x-ct-token' = $token }` and capture to a variable; do **not** echo the token.
 3. If the request returns HTTP 200 with JSON, parse it and skip to Step 4.
 4. If the request returns 404 (endpoint not deployed yet), tell the user the Worker needs a one-time deploy and offer to run it:
@@ -34,6 +36,8 @@ You are pulling end-user error/exception reports stored by the `ct-analytics` Cl
 ## Step 3: Fallback - query D1 directly via wrangler
 
 Run wrangler from `workers/ct-analytics/` against the production D1 (`--remote`). Use `--json` so the output is parseable. Run all queries; capture stdout per query.
+
+First run `SELECT DISTINCT app_version FROM errors WHERE ts >= {SINCE}` and compute `{STALE}`: the versions numerically below `{MIN}` (compare major, minor, patch as integers; `1.9.0` < `1.39.0`; keep anything that doesn't parse). Append `AND app_version NOT IN ({STALE as quoted list})` to every `WHERE` below, or nothing if `{STALE}` is empty.
 
 The five queries (replace `{SINCE}` with `strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-{N} days')`). Never use `datetime('now', ...)` here: `ts` is stored as ISO text (`2026-10-30T00:16:52.696Z`) and SQLite compares TEXT byte-wise, so against `datetime()`'s `2026-10-30 07:51:52` every row from the cutoff day passes (`'T'` sorts after `' '`) and the window silently grows by up to a day. The Worker binds the same ISO cutoff (`errorsSince` in `src/errors.ts`).
 

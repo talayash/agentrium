@@ -4,9 +4,24 @@ import {
   isGroupResolved,
   isKnownBenignReport,
   errorsSince,
+  versionsBelow,
   FINGERPRINT_MAX,
   RESOLVE_MAX_FINGERPRINTS,
 } from './errors';
+
+describe('versionsBelow', () => {
+  it('compares numerically, not as text', () => {
+    expect(versionsBelow(['1.34.1', '1.9.0', '1.41.9', '1.42.8', '2.0.0'], '1.39.0')).toEqual(['1.34.1', '1.9.0']);
+  });
+
+  it('keeps the floor itself and anything unparsable', () => {
+    expect(versionsBelow(['1.39.0', 'dev', null, '1.38.99'], '1.39.0')).toEqual(['1.38.99']);
+  });
+
+  it('excludes nothing for an invalid floor', () => {
+    expect(versionsBelow(['1.0.0'], 'latest')).toEqual([]);
+  });
+});
 
 describe('parseResolveBody', () => {
   it('accepts a resolve request', () => {

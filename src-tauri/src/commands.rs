@@ -1914,6 +1914,19 @@ pub async fn install_claude_code() -> Result<String, String> {
     .await
 }
 
+/// Windows Push Notification errors (`WPN_E_*`, HRESULT 0x803E01xx) mean the
+/// OS notification platform is off or unavailable on this machine, e.g.
+/// "Bildirim platformu kullanılamıyor." (0x803E0105). That is the user's
+/// environment, not a defect, so it stays out of telemetry. Matched on the
+/// HRESULT because the message text is localized.
+fn notification_err(msg: String) -> String {
+    if msg.to_ascii_uppercase().contains("0X803E01") {
+        error_reporter::user_err(msg)
+    } else {
+        msg
+    }
+}
+
 #[command]
 pub async fn send_notification(title: String, body: String) -> Result<(), String> {
     wrap_cmd("send_notification", async move {
@@ -1923,7 +1936,7 @@ pub async fn send_notification(title: String, body: String) -> Result<(), String
                 .body(&body)
                 .show()
                 .map(|_| ())
-                .map_err(|e| e.to_string())
+                .map_err(|e| notification_err(e.to_string()))
         })
         .await
         .map_err(|e| e.to_string())?
@@ -2987,7 +3000,13 @@ pub async fn get_repo_branches(
             .map_err(|e| format!("Failed to list branches: {}", e))?;
 
         if !output.status.success() {
-            return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            // A folder that is not a git checkout is the user's setup, not a
+            // defect: keep it out of telemetry (same rule as list_worktrees).
+            if stderr.contains("not a git repository") {
+                return Err(error_reporter::user_err(stderr));
+            }
+            return Err(stderr);
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
@@ -6306,6 +6325,16 @@ mod wrap_cmd_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn notification_platform_unavailable_is_an_environment_error() {
+        // Real report from a Turkish Windows install (0x803E0105).
+        let msg = "Os(Error { code: HRESULT(0x803E0105), message: \"Bildirim platformu kullanılamıyor.\" })";
+        assert!(error_reporter::is_user_error(&notification_err(msg.to_string())));
+        assert!(error_reporter::is_user_error(&notification_err("HRESULT(0x803e0111)".to_string())));
+        // Anything else still reaches telemetry.
+        assert!(!error_reporter::is_user_error(&notification_err("HRESULT(0x80070005)".to_string())));
+    }
 
     #[test]
     fn npm_network_failures_are_classified_as_environment_errors() {

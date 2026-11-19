@@ -16,6 +16,12 @@ const NOISE_PATTERNS: readonly RegExp[] = [
   // terminal is already gone, so nothing is broken. Upstream race; revisit if
   // xterm ever guards those callbacks.
   /Cannot read properties of undefined \(reading 'dimensions'\)/,
+  // @xterm/addon-webgl 0.18 `_updateModel` reads `buffer.lines.get(row +
+  // ydisp).loadCell(...)` with no bounds check. When the buffer shrinks
+  // (resize, clear, alt-screen switch) between a render being scheduled and
+  // drawn, that row no longer exists and the frame throws; the next frame
+  // draws the new buffer correctly. Upstream race, nothing for us to fix.
+  /Cannot read properties of undefined \(reading 'loadCell'\)/,
 ];
 
 /**
