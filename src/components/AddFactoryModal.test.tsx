@@ -6,6 +6,8 @@ vi.mock('@tauri-apps/api/core', () => ({ invoke: (...a: unknown[]) => invokeMock
 vi.mock('@tauri-apps/plugin-dialog', () => ({ open: vi.fn() }));
 const launchImportSession = vi.fn();
 vi.mock('../lib/factoryActions', () => ({ launchImportSession: (...a: unknown[]) => launchImportSession(...a) }));
+const reportInvokeFailure = vi.fn();
+vi.mock('../lib/errorReporter', () => ({ reportInvokeFailure: (...a: unknown[]) => reportInvokeFailure(...a) }));
 import { AddFactoryModal } from './AddFactoryModal';
 import { useAppStore } from '../store/appStore';
 import { useFactoryStore } from '../store/factoryStore';
@@ -34,6 +36,7 @@ const calls = (name: string) => invokeMock.mock.calls.filter((c) => c[0] === nam
 
 beforeEach(() => {
   vi.useFakeTimers();
+  reportInvokeFailure.mockReset();
   launchImportSession.mockReset().mockResolvedValue('term-1');
   readResult = review();
   pollResult = null;
@@ -143,6 +146,7 @@ it('Confirm saves, writes the file only for an agent import, opens the floor', a
   await toStep2();
   await pick('.agentrium/a.md');
   await click('Confirm');
+  expect(calls('save_factory')[0][1].definition).toEqual(def(true));
   expect(calls('save_factory')[0][1]).toMatchObject({ repoPath: '/r', sourcePath: '/r/.agentrium/a.md', writeFile: false });
   expect(useAppStore.getState().openFiles.map((t) => t.path)).toContain('factory:f1');
   expect(useAppStore.getState().addFactoryModalOpen).toBe(false);
@@ -167,4 +171,112 @@ it('a parse error shows the message and no Confirm', async () => {
   expect(screen.getByText('bad yaml at line 3').className).toContain('text-error');
   expect(screen.queryByRole('button', { name: 'Confirm' })).toBeNull();
   expect(screen.getByRole('button', { name: 'Back' })).toBeTruthy();
+});
+
+/** Make one command reject, keep the rest as set up in beforeEach. */
+function rejectCommand(name: string, message: string) {
+  const base = invokeMock.getMockImplementation()!;
+  invokeMock.mockImplementation(async (cmd: string, args: Record<string, unknown>) => {
+    if (cmd === name) throw message;
+    return base(cmd, args);
+  });
+}
+
+it('a rejected list_factory_candidates shows an alert and reports it', async () => {
+  rejectCommand('list_factory_candidates', 'repo not trusted');
+  await toStep2();
+  expect(screen.getByRole('alert').textContent).toContain('repo not trusted');
+  expect(reportInvokeFailure).toHaveBeenCalledWith('list_factory_candidates', 'repo not trusted');
+});
+
+it('a rejected read_factory_definition_file shows an alert and reports it', async () => {
+  rejectCommand('read_factory_definition_file', 'outside repo');
+  await toStep2();
+  await pick('.agentrium/a.md');
+  expect(screen.getByRole('alert').textContent).toContain('outside repo');
+  expect(reportInvokeFailure).toHaveBeenCalledWith('read_factory_definition_file', 'outside repo');
+});
+
+it('a rejected begin_factory_import shows an alert and reports it', async () => {
+  readResult = null;
+  rejectCommand('begin_factory_import', 'cannot begin');
+  await toStep2();
+  await pick('.agentrium/b.md');
+  expect(screen.getByRole('alert').textContent).toContain('cannot begin');
+  expect(reportInvokeFailure).toHaveBeenCalledWith('begin_factory_import', 'cannot begin');
+  expect(launchImportSession).not.toHaveBeenCalled();
+});
+
+it('a rejected save_factory shows an alert, reports it and keeps the modal open', async () => {
+  rejectCommand('save_factory', 'disk full');
+  await toStep2();
+  await pick('.agentrium/a.md');
+  await click('Confirm');
+  expect(screen.getByRole('alert').textContent).toContain('disk full');
+  expect(reportInvokeFailure).toHaveBeenCalledWith('save_factory', 'disk full');
+  expect(useAppStore.getState().addFactoryModalOpen).toBe(true);
+});
+
+it('launchImportSession rejecting stays on step 2 without polling', async () => {
+  readResult = null;
+  launchImportSession.mockRejectedValue('spawn failed');
+  await toStep2();
+  await pick('.agentrium/b.md');
+  expect(screen.getByRole('alert').textContent).toContain('spawn failed');
+  expect(reportInvokeFailure).toHaveBeenCalledWith('create_terminal', 'spawn failed');
+  await flush(10000);
+  expect(calls('poll_factory_import')).toHaveLength(0);
+  expect(screen.queryByRole('button', { name: 'Confirm' })).toBeNull();
+});
+
+it('unmounting mid-import stops polling', async () => {
+  readResult = null;
+  await toStep2();
+  await pick('.agentrium/b.md');
+  await flush(4000);
+  const n = calls('poll_factory_import').length;
+  expect(n).toBeGreaterThan(0);
+  cleanup();
+  await flush(10000);
+  expect(calls('poll_factory_import')).toHaveLength(n);
+});
+
+it('unmounting while launchImportSession is pending never starts polling', async () => {
+  readResult = null;
+  let release: (id: string) => void = () => {};
+  launchImportSession.mockImplementation(() => new Promise<string>((r) => { release = r; }));
+  await toStep2();
+  fireEvent.click(screen.getByLabelText(/\.agentrium\/b\.md/));
+  await click('Next');
+  cleanup();
+  await act(async () => { release('term-1'); });
+  await flush(10000);
+  expect(calls('poll_factory_import')).toHaveLength(0);
+});
+
+it('a failed poll tick is swallowed and the next tick retries', async () => {
+  readResult = null;
+  await toStep2();
+  await pick('.agentrium/b.md');
+  const base = invokeMock.getMockImplementation()!;
+  let failed = false;
+  invokeMock.mockImplementation(async (cmd: string, args: Record<string, unknown>) => {
+    if (cmd === 'poll_factory_import' && !failed) { failed = true; throw 'boom'; }
+    return base(cmd, args);
+  });
+  pollResult = review();
+  await flush(2000);
+  expect(failed).toBe(true);
+  expect(screen.queryByRole('button', { name: 'Confirm' })).toBeNull();
+  expect(screen.queryByRole('alert')).toBeNull();
+  await flush(2000);
+  expect(screen.getByRole('button', { name: 'Confirm' })).toBeTruthy();
+});
+
+it('Confirm cannot save while lint errors exist', async () => {
+  readResult = review({ lint: { errors: [{ step_id: null, message: 'bad' }], warnings: [] } });
+  await toStep2();
+  await pick('.agentrium/a.md');
+  await click('Confirm');
+  expect(calls('save_factory')).toHaveLength(0);
 });

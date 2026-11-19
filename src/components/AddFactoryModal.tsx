@@ -67,7 +67,12 @@ export function AddFactoryModal() {
     giveUpTimer.current = null;
     setImporting(false);
   }, []);
-  useEffect(() => stopPolling, [stopPolling]);
+  // False after unmount: async steps must not start timers or set state then.
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; stopPolling(); };
+  }, [stopPolling]);
 
   const browseRepo = async () => {
     try {
@@ -106,10 +111,12 @@ export function AddFactoryModal() {
     setError('');
     try {
       const list = await listFactoryCandidates(repoPath.trim());
+      if (!mounted.current) return;
       setCandidates(list);
       setSourcePath(list[0]?.path ?? '');
       setStep(2);
     } catch (err) {
+      if (!mounted.current) return;
       setError(String(err));
       reportInvokeFailure('list_factory_candidates', err);
     } finally {
@@ -141,26 +148,32 @@ export function AddFactoryModal() {
       try {
         existing = await readFactoryDefinitionFile(repoPath.trim(), sourcePath);
       } catch (err) {
+        if (!mounted.current) return;
         setError(String(err));
         reportInvokeFailure('read_factory_definition_file', err);
         return;
       }
+      if (!mounted.current) return;
       if (existing) { toReview(existing, false); return; }
       let ticket;
       try {
         ticket = await beginFactoryImport(repoPath.trim(), sourcePath);
       } catch (err) {
+        if (!mounted.current) return;
         setError(String(err));
         reportInvokeFailure('begin_factory_import', err);
         return;
       }
+      if (!mounted.current) return;
       try {
         await launchImportSession(repoPath.trim(), ticket.prompt, 'claude');
       } catch (err) {
+        if (!mounted.current) return;
         setError(String(err));
         reportInvokeFailure('create_terminal', err);
         return;
       }
+      if (!mounted.current) return;
       setImporting(true);
       startPolling(ticket.importId);
     } finally {
@@ -170,7 +183,7 @@ export function AddFactoryModal() {
   };
 
   const confirm = async () => {
-    if (working.current || !review?.definition) return;
+    if (working.current || !review?.definition || review.lint.errors.length > 0) return;
     working.current = true;
     setBusy(true);
     setError('');
