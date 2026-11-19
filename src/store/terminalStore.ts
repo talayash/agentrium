@@ -397,6 +397,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
     try {
       const { useAppStore } = await import('./appStore');
       const costTracking = useAppStore.getState().costTrackingEnabled;
+      const recordSessionLog = useAppStore.getState().recordSessionLogs;
       const viewMode = options?.viewMode ?? useAppStore.getState().defaultViewMode;
       const config = await invoke<TerminalConfig>('create_terminal', {
         request: {
@@ -409,6 +410,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
           resume_session_id: resumeSessionId || null,
           continue_recent: !!continueRecent,
           cost_tracking: costTracking,
+          record_session_log: recordSessionLog,
           agent,
           credential_bindings: credentialBindings ?? [],
           task: task ?? null,

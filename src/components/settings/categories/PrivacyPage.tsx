@@ -7,7 +7,7 @@ import { PageHeader, PageSection, SettingRow, Toggle } from '../SettingRow';
 import { registerSetting } from '../index';
 
 const cat = { group: 'privacy-about', page: 'privacy' } as const;
-['telemetry', 'error-reporting', 'external-summaries'].forEach((id) =>
+['telemetry', 'error-reporting', 'external-summaries', 'session-logs'].forEach((id) =>
   registerSetting({ category: cat, id, label: id.replace(/-/g, ' '), keywords: ['privacy', 'analytics', 'crash'] })
 );
 
@@ -20,11 +20,21 @@ export default function PrivacyPage() {
   }, []);
   const telemetryEnabled = useAppStore((s) => s.telemetryEnabled);
   const errorReportingEnabled = useAppStore((s) => s.errorReportingEnabled);
-  const { setTelemetryEnabled, setErrorReportingEnabled } = useAppStore.getState();
+  const recordSessionLogs = useAppStore((s) => s.recordSessionLogs);
+  const { setTelemetryEnabled, setErrorReportingEnabled, setRecordSessionLogs } = useAppStore.getState();
 
   return (
     <div>
       <PageHeader title="Privacy" />
+
+      <PageSection title="Local session logs">
+        <SettingRow
+          label="Record terminal output"
+          description="Save terminal output on this device so you can review session history and summaries. Logs are limited to 32 MiB per session and files older than 30 days are pruned when a new session starts. Turning this off affects new sessions."
+        >
+          <Toggle label="Record terminal output" value={recordSessionLogs} onChange={setRecordSessionLogs} />
+        </SettingRow>
+      </PageSection>
 
       <PageSection title="Session summaries">
         <SettingRow label="External AI summaries" description="Off by default. When enabled, sends up to the last 16 KiB of terminal output to the model service configured in your Claude CLI. Known secrets are scrubbed, but source code and other sensitive text may remain. Leave off to keep session logs local.">

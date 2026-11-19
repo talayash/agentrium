@@ -473,6 +473,7 @@ describe('appStore - persist partialize', () => {
     'newTerminalIsolation',
     'taskWorktreeRoot',
     'taskSetupFiles',
+    'recordSessionLogs',
     'raceCheckCommands',
     'raceCheckTimeoutMin',
     'sessionFilter',

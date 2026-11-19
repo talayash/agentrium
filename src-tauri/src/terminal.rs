@@ -8,6 +8,21 @@ use uuid::Uuid;
 use chrono::{DateTime, Utc};
 use crate::error_reporter;
 
+const MAX_SESSION_LOG_BYTES: u64 = 32 * 1024 * 1024;
+const SESSION_LOG_TRUNCATION_MARKER: &[u8] =
+    b"\n[Session log reached 32 MiB; later output was not saved.]\n";
+
+fn create_private_log_file(path: &str) -> std::io::Result<std::fs::File> {
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    options.open(path)
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TerminalConfig {
     pub id: String,
@@ -826,7 +841,7 @@ impl TerminalManager {
             // Wrap the log file in a BufWriter so fs writes batch instead of
             // issuing one syscall per PTY chunk.
             let mut log_file = log_file_path.and_then(|path| {
-                std::fs::File::create(&path)
+                create_private_log_file(&path)
                     .map_err(|e| {
                         // Without this file the whole session transcript is
                         // silently unrecorded (history/summarize come up empty).
@@ -839,15 +854,31 @@ impl TerminalManager {
                     .ok()
                     .map(|f| BufWriter::with_capacity(64 * 1024, f))
             });
+            let mut logged_bytes = 0u64;
             loop {
                 match reader.read(&mut buf) {
                     Ok(0) => break,
                     Ok(n) => {
                         let data = buf[..n].to_vec();
                         // Write ANSI-stripped output to log file
+                        let mut log_limit_reached = false;
                         if let Some(ref mut file) = log_file {
                             let stripped = strip_ansi_escapes::strip(&data);
-                            let _ = file.write_all(&stripped);
+                            let content_limit = MAX_SESSION_LOG_BYTES - SESSION_LOG_TRUNCATION_MARKER.len() as u64;
+                            let remaining = content_limit.saturating_sub(logged_bytes) as usize;
+                            if stripped.len() > remaining {
+                                if remaining > 0 {
+                                    let _ = file.write_all(&stripped[..remaining]);
+                                }
+                                let _ = file.write_all(SESSION_LOG_TRUNCATION_MARKER);
+                                log_limit_reached = true;
+                            } else if !stripped.is_empty() {
+                                let _ = file.write_all(&stripped);
+                                logged_bytes += stripped.len() as u64;
+                            }
+                        }
+                        if log_limit_reached {
+                            log_file.take();
                         }
                         if tx.blocking_send((terminal_id.clone(), data)).is_err() {
                             break;

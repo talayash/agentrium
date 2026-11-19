@@ -1,4 +1,4 @@
-import { useMemo, useCallback, useEffect } from 'react';
+import { lazy, Suspense, useMemo, useCallback, useEffect } from 'react';
 import { X, SplitSquareHorizontal, RotateCw, File as FileIcon, Flag } from 'lucide-react';
 import { useTerminalStore } from '../store/terminalStore';
 import { focusTerminalInput } from '../lib/terminalFocus';
@@ -9,13 +9,13 @@ import { TerminalGrid } from './TerminalGrid';
 import { SplitView } from './SplitView';
 import { SessionInsights } from './SessionInsights';
 import { SessionMetricsPanel } from './SessionMetricsPanel';
-import { FileEditorView } from './FileEditorView';
+const FileEditorView = lazy(() => import('./FileEditorView').then((m) => ({ default: m.FileEditorView })));
 import { WelcomeScreen } from './WelcomeScreen';
 import { ScriptChildPane } from './ScriptChildPane';
 import { BottomTerminalPane } from './BottomTerminalPane';
 import { Tooltip } from './ui/Tooltip';
 import { RaceGridHeader } from './RaceHeader';
-import { RaceCompareView } from './RaceCompareView';
+const RaceCompareView = lazy(() => import('./RaceCompareView').then((m) => ({ default: m.RaceCompareView })));
 
 function fileBasename(p: string): string {
   const trimmed = p.replace(/[\\/]+$/, '');
@@ -255,9 +255,11 @@ export function TerminalTabs() {
         })}
         {activeFilePath && openFiles.some((t) => t.path === activeFilePath) && (
           <div key={`file:${activeFilePath}`} className="absolute inset-0 z-10 bg-elevation-0">
-            {openFiles.find((t) => t.path === activeFilePath)?.mode === 'race'
-              ? <RaceCompareView raceId={activeFilePath.slice('race:'.length)} />
-              : <FileEditorView path={activeFilePath} />}
+            <Suspense fallback={<div className="flex h-full items-center justify-center text-text-tertiary text-xs">Loading editor…</div>}>
+              {openFiles.find((t) => t.path === activeFilePath)?.mode === 'race'
+                ? <RaceCompareView raceId={activeFilePath.slice('race:'.length)} />
+                : <FileEditorView path={activeFilePath} />}
+            </Suspense>
           </div>
         )}
         {!activeTerminalId && !activeFilePath && <WelcomeScreen />}

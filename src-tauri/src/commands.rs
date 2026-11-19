@@ -406,6 +406,9 @@ pub struct CreateTerminalRequest {
     /// Whether to enable per-session OTel cost/token tracking for this terminal.
     #[serde(default)]
     pub cost_tracking: bool,
+    /// Whether to save a local PTY transcript for this terminal.
+    #[serde(default = "default_record_session_log")]
+    pub record_session_log: bool,
     /// Which coding agent to spawn (Claude or Codex).
     /// Defaults to Claude for compatibility with older frontends that don't
     /// send this field.
@@ -427,6 +430,10 @@ pub struct CreateTerminalRequest {
     /// Initial view mode for this terminal.
     #[serde(default)]
     pub view_mode: crate::terminal::ViewMode,
+}
+
+fn default_record_session_log() -> bool {
+    true
 }
 
 /// Tell the frontend which conversation id the backend bound to a live
@@ -511,10 +518,41 @@ pub async fn create_terminal(
                 .data_dir()
                 .to_path_buf();
             let logs_dir = data_dir.join("logs");
-            tokio::fs::create_dir_all(&logs_dir).await.map_err(|e| e.to_string())?;
-            let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
-            let filename = format!("{}_{}.log", uuid::Uuid::new_v4(), timestamp);
-            logs_dir.join(filename).to_string_lossy().to_string()
+            if request.record_session_log {
+                tokio::fs::create_dir_all(&logs_dir).await.map_err(|e| e.to_string())?;
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    tokio::fs::set_permissions(&logs_dir, std::fs::Permissions::from_mode(0o700))
+                        .await
+                        .map_err(|e| format!("could not secure session log directory: {e}"))?;
+                }
+            }
+            // Session transcripts can contain prompts and command output. Keep
+            // old files from accumulating indefinitely, even if recording is
+            // currently disabled. Active logs are refreshed on writes.
+            const SESSION_LOG_RETENTION: std::time::Duration =
+                std::time::Duration::from_secs(30 * 24 * 60 * 60);
+            if let Ok(mut entries) = tokio::fs::read_dir(&logs_dir).await {
+                while let Ok(Some(entry)) = entries.next_entry().await {
+                    let Ok(kind) = entry.file_type().await else { continue };
+                    if !kind.is_file() { continue; }
+                    let old = entry.metadata().await.ok()
+                        .and_then(|metadata| metadata.modified().ok())
+                        .and_then(|modified| modified.elapsed().ok())
+                        .is_some_and(|age| age > SESSION_LOG_RETENTION);
+                    if old {
+                        let _ = tokio::fs::remove_file(entry.path()).await;
+                    }
+                }
+            }
+            if request.record_session_log {
+                let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
+                let filename = format!("{}_{}.log", uuid::Uuid::new_v4(), timestamp);
+                Some(logs_dir.join(filename).to_string_lossy().to_string())
+            } else {
+                None
+            }
         };
 
         let agent = request.agent.clone();
@@ -579,7 +617,7 @@ pub async fn create_terminal(
                 request.color_tag,
                 request.nickname,
                 tx,
-                Some(log_path.clone()),
+                log_path.clone(),
                 request.resume_session_id,
                 continue_recent,
                 otel_endpoint,
@@ -736,7 +774,7 @@ pub async fn create_terminal(
                     &cfg_id,
                     &cfg_label,
                     &cfg_created,
-                    Some(&log_path_c),
+                    log_path_c.as_deref(),
                     Some(&cfg_cwd),
                 )
             })
