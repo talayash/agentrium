@@ -5,6 +5,7 @@ vi.mock('../lib/confirmDialog', () => ({ confirmAction: vi.fn() }));
 vi.mock('../lib/raceActions', () => ({ focusTerminal: vi.fn() }));
 vi.mock('../lib/errorReporter', () => ({ reportInvokeFailure: vi.fn() }));
 import { invoke } from '@tauri-apps/api/core';
+import { reportInvokeFailure } from '../lib/errorReporter';
 import { confirmAction } from '../lib/confirmDialog';
 import { focusTerminal } from '../lib/raceActions';
 import { FactoryFloor } from './FactoryFloor';
@@ -41,6 +42,7 @@ beforeEach(() => {
   vi.mocked(invoke).mockRejectedValue(new Error('unexpected invoke'));
   vi.mocked(confirmAction).mockReset();
   vi.mocked(focusTerminal).mockReset();
+  vi.mocked(reportInvokeFailure).mockReset();
   useTerminalStore.setState({ terminals: new Map() });
   useAppStore.setState({ factoryGateRunId: null, newFactoryRunFactoryId: null, addFactoryModalOpen: false });
 });
@@ -107,6 +109,25 @@ it('Mark done replaces Check now for a station with no check and no artifact', (
   render(<FactoryFloor factoryId="f1" />);
   expect(screen.getByRole('button', { name: 'Check now' })).toBeTruthy();
   expect(screen.queryByRole('button', { name: 'Mark done' })).toBeNull();
+});
+
+it('Check now is offered for a running run with no live session', async () => {
+  setRuns(mkRun('r1', 'running', 's1'));
+  vi.mocked(invoke).mockImplementation(async (cmd) =>
+    (cmd === 'evaluate_factory_station' ? { run: mkRun('r1', 'running', 's1'), action: { kind: 'waiting' } } : undefined));
+  render(<FactoryFloor factoryId="f1" />);
+  expect(screen.getByRole('button', { name: 'Continue' })).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Check now' }));
+  await waitFor(() => expect(invoke).toHaveBeenCalledWith(
+    'evaluate_factory_station', { runId: 'r1', manual: true, evalId: expect.any(String) }));
+});
+
+it('Mark done is offered for a running run with no live session when the station has no check and no artifact', () => {
+  setRuns(mkRun('r1', 'running', 's2'));
+  render(<FactoryFloor factoryId="f1" />);
+  expect(screen.getByRole('button', { name: 'Continue' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Mark done' })).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Check now' })).toBeNull();
 });
 
 it('Check now is disabled while an evaluation is running', () => {
@@ -176,4 +197,50 @@ it('an unknown factory shows the removed state', () => {
   useFactoryStore.setState({ factories: {}, runs: {} });
   render(<FactoryFloor factoryId="nope" />);
   expect(screen.getByText('This factory was removed')).toBeTruthy();
+});
+
+const hhmm = (iso: string) => {
+  const d = new Date(iso);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+};
+
+it('the history toggle expands and lists the run events, and reloads when the run changes', async () => {
+  const events = [
+    { at: '2026-11-19T10:05:00Z', stepId: 's1', kind: 'started', detail: '' },
+    { at: '2026-11-19T10:40:00Z', stepId: 'g1', kind: 'retry_allowed', detail: 'cover AC2 and the edge cases' },
+  ];
+  vi.mocked(invoke).mockImplementation(async (cmd) => (cmd === 'get_factory_run_events' ? events : undefined));
+  setRuns(mkRun('r1', 'done', 's2'));
+  render(<FactoryFloor factoryId="f1" />);
+  const toggle = screen.getByRole('button', { name: 'Show history' });
+  expect(toggle.getAttribute('aria-expanded')).toBe('false');
+  fireEvent.click(toggle);
+  expect(invoke).toHaveBeenCalledWith('get_factory_run_events', { runId: 'r1' });
+  const list = await screen.findByRole('list', { name: 'Run history' });
+  const items = within(list).getAllByRole('listitem');
+  expect(items).toHaveLength(2);
+  expect(within(items[0]).getByText(hhmm(events[0].at))).toBeTruthy();
+  expect(within(items[0]).getByText('s1')).toBeTruthy();
+  expect(within(items[0]).getByText('started')).toBeTruthy();
+  expect(within(items[1]).getByText('retry allowed')).toBeTruthy();
+  expect(within(items[1]).getByText('cover AC2 and the edge cases').getAttribute('title')).toBe('cover AC2 and the edge cases');
+  const hide = screen.getByRole('button', { name: 'Hide history' });
+  expect(hide.getAttribute('aria-expanded')).toBe('true');
+
+  const calls = () => vi.mocked(invoke).mock.calls.filter(([c]) => c === 'get_factory_run_events').length;
+  expect(calls()).toBe(1);
+  act(() => { setRuns(mkRun('r1', 'done', 's2', { updatedAt: '2026-11-19T11:00:00Z' })); });
+  await waitFor(() => expect(calls()).toBe(2));
+
+  fireEvent.click(hide);
+  expect(screen.queryByRole('list', { name: 'Run history' })).toBeNull();
+});
+
+it('the history shows an inline error when it cannot load', async () => {
+  vi.mocked(invoke).mockRejectedValue(new Error('db gone'));
+  setRuns(mkRun('r1', 'done', 's2'));
+  render(<FactoryFloor factoryId="f1" />);
+  fireEvent.click(screen.getByRole('button', { name: 'Show history' }));
+  expect(await screen.findByText('Could not load the history.')).toBeTruthy();
+  expect(reportInvokeFailure).toHaveBeenCalledWith('get_factory_run_events', expect.anything());
 });

@@ -1,4 +1,5 @@
-import { CheckCircle2, Factory as FactoryIcon, Plus, ScanSearch, XCircle } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { CheckCircle2, Factory as FactoryIcon, History, Plus, ScanSearch, XCircle } from 'lucide-react';
 import { EmptyState } from './ui/EmptyState';
 import { Tooltip } from './ui/Tooltip';
 import { useFactoryStore, hasLiveSession, runsForFactory } from '../store/factoryStore';
@@ -11,8 +12,8 @@ import { focusTerminal } from '../lib/raceActions';
 import { formatElapsed } from '../lib/races';
 import { useNowTick } from '../hooks/useNowTick';
 import {
-  currentStep, isOpenRun, needsYou, runStatusText, stepCounts, trackFor,
-  type Definition, type Factory, type FactoryRun, type RunControl, type RunStatus, type TrackCell,
+  currentStep, getFactoryRunEvents, isOpenRun, needsYou, runStatusText, stepCounts, trackFor,
+  type Definition, type Factory, type FactoryRun, type RunControl, type RunEventRow, type RunStatus, type TrackCell,
 } from '../lib/factory';
 
 const ATTENTION = 'var(--attention-input)';
@@ -112,7 +113,51 @@ function RunTrack({ run }: { run: FactoryRun }) {
   );
 }
 
+/** Local wall-clock time of an event, `HH:MM`. */
+function clockTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '--:--';
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+type History = { state: 'loading' } | { state: 'error' } | { state: 'ok'; events: RunEventRow[] };
+
+/** The run's logged transitions, re-loaded whenever the run changes. */
+function RunHistory({ run }: { run: FactoryRun }) {
+  const [history, setHistory] = useState<History>({ state: 'loading' });
+  useEffect(() => {
+    let cancelled = false;
+    getFactoryRunEvents(run.id)
+      .then((events) => { if (!cancelled) setHistory({ state: 'ok', events }); })
+      .catch((err) => {
+        if (!cancelled) setHistory({ state: 'error' });
+        reportInvokeFailure('get_factory_run_events', err);
+      });
+    return () => { cancelled = true; };
+  }, [run.id, run.updatedAt]);
+
+  if (history.state === 'error') {
+    return <p className="px-3 pb-2 pl-8 text-[11.5px] text-error">Could not load the history.</p>;
+  }
+  if (history.state === 'loading') {
+    return <p role="status" className="px-3 pb-2 pl-8 text-[11.5px] text-text-tertiary">Loading...</p>;
+  }
+  return (
+    <ul aria-label="Run history" className="px-3 pb-2 pl-8 flex flex-col gap-0.5">
+      {history.events.map((e, i) => (
+        <li key={i} className="flex items-center gap-2 text-[11px] text-text-secondary min-w-0">
+          <span className="tabular-nums text-text-tertiary flex-shrink-0">{clockTime(e.at)}</span>
+          <span className="font-mono flex-shrink-0">{e.stepId}</span>
+          <span className="flex-shrink-0 text-text-primary">{e.kind.replace(/_/g, ' ')}</span>
+          {e.detail && <span className="truncate min-w-0" title={e.detail}>{e.detail}</span>}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function RunRow({ run, now }: { run: FactoryRun; now: number }) {
+  const [showHistory, setShowHistory] = useState(false);
   const evaluating = useFactoryStore((s) => !!s.evaluating[run.id]);
   const live = hasLiveSession(run);
   const step = currentStep(run);
@@ -139,33 +184,42 @@ function RunRow({ run, now }: { run: FactoryRun; now: number }) {
   }
 
   return (
-    <div data-testid={`run-${run.id}`} className="group flex items-center gap-3 px-3 py-2 border-b border-seam">
-      <span aria-hidden className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${STATUS_DOT[run.status]}`}
-        style={run.status === 'waiting_gate' ? { background: ATTENTION } : undefined} />
-      <span className="font-mono text-[12px] text-text-primary w-[120px] truncate flex-shrink-0" title={run.input}>{run.input}</span>
-      <RunTrack run={run} />
-      <div className="flex flex-col min-w-0 flex-1">
-        <span className="text-[12px] text-text-primary truncate">{runStatusText(run)}</span>
-        <span className="text-[10.5px] text-text-tertiary tabular-nums">{formatElapsed(now - Date.parse(run.updatedAt))}</span>
-      </div>
-      {open && (
-        <span className="flex items-center opacity-60 group-hover:opacity-100 focus-within:opacity-100">
-          {run.status === 'running' && live && (
-            <Tooltip label={checkLabel}>
-              <button type="button" aria-label={checkLabel} disabled={evaluating} className={ICON_BTN}
-                onClick={() => void useFactoryStore.getState().evaluate(run.id, true)}>
-                {noCheckNoArtifact ? <CheckCircle2 size={13} /> : <ScanSearch size={13} />}
+    <div data-testid={`run-${run.id}`} className="border-b border-seam">
+      <div className="group flex items-center gap-3 px-3 py-2">
+        <span aria-hidden className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${STATUS_DOT[run.status]}`}
+          style={run.status === 'waiting_gate' ? { background: ATTENTION } : undefined} />
+        <span className="font-mono text-[12px] text-text-primary w-[120px] truncate flex-shrink-0" title={run.input}>{run.input}</span>
+        <RunTrack run={run} />
+        <div className="flex flex-col min-w-0 flex-1">
+          <span className="text-[12px] text-text-primary truncate">{runStatusText(run)}</span>
+          <span className="text-[10.5px] text-text-tertiary tabular-nums">{formatElapsed(now - Date.parse(run.updatedAt))}</span>
+        </div>
+        {open && (
+          <span className="flex items-center opacity-60 group-hover:opacity-100 focus-within:opacity-100">
+            {run.status === 'running' && (
+              <Tooltip label={checkLabel}>
+                <button type="button" aria-label={checkLabel} disabled={evaluating} className={ICON_BTN}
+                  onClick={() => void useFactoryStore.getState().evaluate(run.id, true)}>
+                  {noCheckNoArtifact ? <CheckCircle2 size={13} /> : <ScanSearch size={13} />}
+                </button>
+              </Tooltip>
+            )}
+            <Tooltip label="Cancel run">
+              <button type="button" aria-label="Cancel run" className={`${ICON_BTN} hover:!text-error`} onClick={() => void cancel()}>
+                <XCircle size={13} />
               </button>
             </Tooltip>
-          )}
-          <Tooltip label="Cancel run">
-            <button type="button" aria-label="Cancel run" className={`${ICON_BTN} hover:!text-error`} onClick={() => void cancel()}>
-              <XCircle size={13} />
-            </button>
-          </Tooltip>
-        </span>
-      )}
-      <span className="flex-shrink-0 min-w-[110px] flex justify-end">{action}</span>
+          </span>
+        )}
+        <Tooltip label={showHistory ? 'Hide history' : 'Show history'}>
+          <button type="button" aria-label={showHistory ? 'Hide history' : 'Show history'} aria-expanded={showHistory}
+            className={`${ICON_BTN} flex-shrink-0`} onClick={() => setShowHistory((v) => !v)}>
+            <History size={13} />
+          </button>
+        </Tooltip>
+        <span className="flex-shrink-0 min-w-[110px] flex justify-end">{action}</span>
+      </div>
+      {showHistory && <RunHistory run={run} />}
     </div>
   );
 }
