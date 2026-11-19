@@ -77,6 +77,10 @@ pub struct ImportTicket {
     pub prompt: String,
 }
 
+fn is_symlink(p: &Path) -> bool {
+    std::fs::symlink_metadata(p).is_ok_and(|m| m.file_type().is_symlink())
+}
+
 fn is_markdown(p: &Path) -> bool {
     p.extension()
         .and_then(|e| e.to_str())
@@ -123,18 +127,25 @@ fn collect_md(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
 pub fn find_candidates(repo: &Path) -> Vec<FactoryCandidate> {
     let mut found: Vec<PathBuf> = Vec::new();
 
-    if let Ok(entries) = std::fs::read_dir(repo.join(".claude").join("skills")) {
-        for entry in entries.flatten() {
-            if entry.file_type().is_ok_and(|t| t.is_dir()) {
-                let skill = entry.path().join("SKILL.md");
-                if std::fs::symlink_metadata(&skill).is_ok_and(|m| m.is_file()) {
-                    found.push(skill);
+    let claude = repo.join(".claude");
+    let skills = claude.join("skills");
+    if !is_symlink(&claude) && !is_symlink(&skills) {
+        if let Ok(entries) = std::fs::read_dir(&skills) {
+            for entry in entries.flatten() {
+                if entry.file_type().is_ok_and(|t| t.is_dir()) {
+                    let skill = entry.path().join("SKILL.md");
+                    if std::fs::symlink_metadata(&skill).is_ok_and(|m| m.is_file()) {
+                        found.push(skill);
+                    }
                 }
             }
         }
     }
 
-    collect_md(&repo.join(".agentrium"), AGENTRIUM_DIR_DEPTH, &mut found);
+    let agentrium = repo.join(".agentrium");
+    if !is_symlink(&agentrium) {
+        collect_md(&agentrium, AGENTRIUM_DIR_DEPTH, &mut found);
+    }
 
     if let Ok(entries) = std::fs::read_dir(repo) {
         for entry in entries.flatten() {
@@ -180,10 +191,57 @@ pub fn review_json(json: &str) -> DefinitionReview {
     }
 }
 
+const NOT_REGULAR: &str = "The definition file next to this Markdown file is a link or not a regular file. Remove it and try again.";
+
+/// Refuse a sibling definition file that exists but is not a regular file
+/// (symlink, directory, ...). `Ok(true)` when a regular file exists.
+fn check_definition_target(path: &Path) -> Result<bool, String> {
+    match std::fs::symlink_metadata(path) {
+        Ok(m) if m.file_type().is_file() => Ok(true),
+        Ok(_) => Err(user_err(NOT_REGULAR)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(user_err(format!("Could not read the definition file: {e}"))),
+    }
+}
+
+/// Every read of the sibling definition file goes through here. `None` when
+/// there is no file. Never reads through a link.
+fn read_definition_file(source: &Path) -> Result<Option<String>, String> {
+    let path = definition_path_for(source);
+    if !check_definition_target(&path)? {
+        return Ok(None);
+    }
+    std::fs::read_to_string(&path)
+        .map(Some)
+        .map_err(|e| user_err(format!("Could not read the definition file: {e}")))
+}
+
+/// Every write of the sibling definition file goes through here: refuse
+/// links, then write a temp file in the same folder and rename over the
+/// target. `source` must already be canonical, so the folder is in the repo.
+fn write_definition_file(source: &Path, json: &str) -> Result<(), String> {
+    let path = definition_path_for(source);
+    check_definition_target(&path)?;
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let tmp = path.with_file_name(format!("{name}.tmp-{}", uuid::Uuid::new_v4()));
+    let fail = |e: std::io::Error| user_err(format!("Could not write the definition file: {e}"));
+    std::fs::write(&tmp, json).map_err(fail)?;
+    if let Err(e) = std::fs::rename(&tmp, &path) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(fail(e));
+    }
+    Ok(())
+}
+
 pub fn disk_state(stored: &Definition, source: &Path) -> DiskState {
     let path = definition_path_for(source);
-    if !path.exists() {
-        return DiskState::Missing;
+    match check_definition_target(&path) {
+        Ok(false) => return DiskState::Missing,
+        Err(_) => return DiskState::Changed,
+        Ok(true) => {}
     }
     match std::fs::read_to_string(&path)
         .ok()
@@ -251,6 +309,17 @@ pub fn factory_data_dir() -> Result<PathBuf, String> {
     Ok(dir)
 }
 
+/// `<data_dir>/<id>.json`, only for a lowercase hyphenated uuid (no braces,
+/// `urn:` prefix, `:` or path separators).
+pub(crate) fn import_output_path(data_dir: &Path, import_id: &str) -> Result<PathBuf, String> {
+    match uuid::Uuid::parse_str(import_id) {
+        Ok(id) if id.hyphenated().to_string() == import_id => {
+            Ok(data_dir.join(format!("{import_id}.json")))
+        }
+        _ => Err(user_err("Unknown import.")),
+    }
+}
+
 fn imports_dir() -> Result<PathBuf, String> {
     let dir = factory_data_dir()?.join("factory-imports");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -309,8 +378,7 @@ pub(crate) fn prepare_save(
     if write_file {
         let mut json = serde_json::to_string_pretty(&definition).map_err(|e| e.to_string())?;
         json.push('\n');
-        std::fs::write(definition_path_for(&source), json)
-            .map_err(|e| user_err(format!("Could not write the definition file: {e}")))?;
+        write_definition_file(&source, &json)?;
     }
     Ok(definition)
 }
@@ -334,13 +402,7 @@ where
 }
 
 fn read_review(source: &Path) -> Result<Option<DefinitionReview>, String> {
-    let path = definition_path_for(source);
-    if !path.exists() {
-        return Ok(None);
-    }
-    let text = std::fs::read_to_string(&path)
-        .map_err(|e| user_err(format!("Could not read the definition file: {e}")))?;
-    Ok(Some(review_json(&text)))
+    Ok(read_definition_file(source)?.map(|text| review_json(&text)))
 }
 
 #[command]
@@ -383,7 +445,7 @@ pub async fn begin_factory_import(
         blocking(move || {
             let source = resolve_source(Path::new(&repo_path), Path::new(&source_path))?;
             let import_id = uuid::Uuid::new_v4().to_string();
-            let output = imports_dir()?.join(format!("{import_id}.json"));
+            let output = import_output_path(&imports_dir()?, &import_id)?;
             let prompt = import_prompt(&source, &output);
             Ok(ImportTicket {
                 import_id,
@@ -399,11 +461,8 @@ pub async fn begin_factory_import(
 #[command]
 pub async fn poll_factory_import(import_id: String) -> Result<Option<DefinitionReview>, String> {
     wrap_cmd("poll_factory_import", async move {
-        if uuid::Uuid::parse_str(&import_id).is_err() {
-            return Err(user_err("Unknown import."));
-        }
         blocking(move || {
-            let path = imports_dir()?.join(format!("{import_id}.json"));
+            let path = import_output_path(&imports_dir()?, &import_id)?;
             if !path.exists() {
                 return Ok(None);
             }
@@ -635,5 +694,130 @@ mod tests {
         write(&source, "x");
         let err = prepare_save(d.path(), &source, sample(), true).unwrap_err();
         assert!(err.contains("Markdown file inside the repo"), "{err}");
+    }
+
+    fn symlink_file(target: &Path, link: &Path) -> bool {
+        #[cfg(unix)]
+        let r = std::os::unix::fs::symlink(target, link);
+        #[cfg(windows)]
+        let r = std::os::windows::fs::symlink_file(target, link);
+        match r {
+            Ok(()) => true,
+            Err(e) => {
+                eprintln!("SKIP: cannot create a symlink here ({e})");
+                false
+            }
+        }
+    }
+
+    fn symlink_dir(target: &Path, link: &Path) -> bool {
+        #[cfg(unix)]
+        let r = std::os::unix::fs::symlink(target, link);
+        #[cfg(windows)]
+        let r = std::os::windows::fs::symlink_dir(target, link);
+        match r {
+            Ok(()) => true,
+            Err(e) => {
+                eprintln!("SKIP: cannot create a symlink here ({e})");
+                false
+            }
+        }
+    }
+
+    #[test]
+    fn save_refuses_a_symlinked_definition_file() {
+        let d = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let source = d.path().join("SKILL.md");
+        write(&source, "x");
+        let target = outside.path().join("victim.txt");
+        write(&target, "precious");
+        if !symlink_file(&target, &definition_path_for(&source)) {
+            return;
+        }
+        let err = prepare_save(d.path(), &source, sample(), true).unwrap_err();
+        assert!(err.contains("link or not a regular file"), "{err}");
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "precious");
+    }
+
+    #[test]
+    fn review_refuses_a_symlinked_definition_file() {
+        let d = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let source = d.path().join("SKILL.md");
+        write(&source, "x");
+        let target = outside.path().join("other.json");
+        write(&target, SAMPLE);
+        if !symlink_file(&target, &definition_path_for(&source)) {
+            return;
+        }
+        let err = read_review(&source).unwrap_err();
+        assert!(err.contains("link or not a regular file"), "{err}");
+    }
+
+    #[test]
+    fn disk_state_is_changed_for_a_symlinked_definition_file() {
+        let d = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let source = d.path().join("SKILL.md");
+        write(&source, "x");
+        let target = outside.path().join("same.json");
+        write(&target, SAMPLE);
+        if !symlink_file(&target, &definition_path_for(&source)) {
+            return;
+        }
+        assert_eq!(disk_state(&sample(), &source), DiskState::Changed);
+    }
+
+    #[test]
+    fn save_replaces_an_existing_regular_definition_file() {
+        let d = tempfile::tempdir().unwrap();
+        let source = d.path().join("SKILL.md");
+        write(&source, "x");
+        std::fs::write(definition_path_for(&source), "old").unwrap();
+        let out = prepare_save(d.path(), &source, sample(), true).unwrap();
+        let text = std::fs::read_to_string(definition_path_for(&source)).unwrap();
+        assert_eq!(parse_definition(&text).unwrap(), out);
+        let leftovers: Vec<String> = std::fs::read_dir(d.path())
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|n| n.contains(".tmp-"))
+            .collect();
+        assert!(leftovers.is_empty(), "{leftovers:?}");
+    }
+
+    #[test]
+    fn import_output_path_accepts_only_plain_hyphenated_uuids() {
+        let dir = Path::new("/data");
+        let id = uuid::Uuid::new_v4().to_string();
+        let ok = import_output_path(dir, &id).unwrap();
+        assert_eq!(ok, dir.join(format!("{id}.json")));
+        for bad in [
+            format!("{{{id}}}"),
+            format!("urn:uuid:{id}"),
+            id.to_uppercase(),
+            "../x".to_string(),
+            String::new(),
+        ] {
+            let err = import_output_path(dir, &bad).unwrap_err();
+            assert!(err.contains("Unknown import."), "{bad}: {err}");
+        }
+    }
+
+    #[test]
+    fn find_candidates_skips_a_symlinked_root() {
+        let d = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        write(&outside.path().join("a.md"), "x");
+        write(&outside.path().join("flow/SKILL.md"), "x");
+        if !symlink_dir(outside.path(), &d.path().join(".agentrium")) {
+            return;
+        }
+        std::fs::create_dir_all(d.path().join(".claude")).unwrap();
+        if !symlink_dir(outside.path(), &d.path().join(".claude/skills")) {
+            return;
+        }
+        assert!(find_candidates(d.path()).is_empty());
     }
 }
