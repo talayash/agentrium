@@ -251,6 +251,15 @@ fn write_definition_file(source: &Path, json: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// `def` with the two fields `prepare_save` stamps blanked, so a stored copy
+/// and the file on disk compare by content only.
+fn without_source_fields(def: &Definition) -> Definition {
+    let mut def = def.clone();
+    def.source.clear();
+    def.source_sha256.clear();
+    def
+}
+
 pub fn disk_state(stored: &Definition, source: &Path) -> DiskState {
     let path = definition_path_for(source);
     match check_definition_target(&path) {
@@ -262,7 +271,9 @@ pub fn disk_state(stored: &Definition, source: &Path) -> DiskState {
         .ok()
         .and_then(|t| parse_definition(&t).ok())
     {
-        Some(on_disk) if &on_disk == stored => DiskState::Same,
+        Some(on_disk) if without_source_fields(&on_disk) == without_source_fields(stored) => {
+            DiskState::Same
+        }
         _ => DiskState::Changed,
     }
 }
@@ -306,6 +317,7 @@ Rules for the conversion:
 - Use "in_place" when the process switches branches or works across several repositories
   in one folder. Otherwise use "worktree".
 - Only add a check when the source names a real command. Never invent one.
+- In a check command, never write {run_dir} without double quotes around the path; prefer the AGENTRIUM_RUN_DIR environment variable.
 - Copy prohibitions into "rules" in the source's own words.
 When the file is written, say "Definition written" and stop."#;
     template
@@ -1397,6 +1409,45 @@ mod tests {
         assert!(p.contains("/data/out.json"));
         assert!(p.contains("\"version\": 1"));
         assert!(p.contains("Definition written"));
+        assert!(p.contains(
+            "- In a check command, never write {run_dir} without double quotes around the path; prefer the AGENTRIUM_RUN_DIR environment variable."
+        ));
+    }
+
+    #[test]
+    fn disk_state_is_same_after_save_without_write() {
+        let d = tempfile::tempdir().unwrap();
+        let source = d.path().join("SKILL.md");
+        write(&source, "# process\n");
+        let on_disk = sample();
+        assert!(on_disk.source_sha256.is_empty());
+        std::fs::write(
+            definition_path_for(&source),
+            serde_json::to_string_pretty(&on_disk).unwrap(),
+        )
+        .unwrap();
+        let stored = prepare_save(d.path(), &source, on_disk, false).unwrap();
+        assert!(!stored.source_sha256.is_empty());
+        assert_eq!(disk_state(&stored, &source), DiskState::Same);
+    }
+
+    #[test]
+    fn disk_state_ignores_source_fields_but_not_steps() {
+        let d = tempfile::tempdir().unwrap();
+        let source = d.path().join("SKILL.md");
+        write(&source, "x");
+        let file = definition_path_for(&source);
+        let mut stored = sample();
+        stored.source = "OTHER.md".to_string();
+        stored.source_sha256 = "abc".to_string();
+        std::fs::write(&file, serde_json::to_string_pretty(&sample()).unwrap()).unwrap();
+        assert_eq!(disk_state(&stored, &source), DiskState::Same);
+        let mut changed = sample();
+        if let Step::Station(s) = &mut changed.steps[0] {
+            s.prompt.push_str(" more");
+        }
+        std::fs::write(&file, serde_json::to_string_pretty(&changed).unwrap()).unwrap();
+        assert_eq!(disk_state(&stored, &source), DiskState::Changed);
     }
 
     #[test]

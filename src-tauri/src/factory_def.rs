@@ -238,6 +238,17 @@ pub fn validate(def: &Definition) -> Lint {
                     }
                 }
                 if let Some(check) = &st.check {
+                    if check.command.trim().is_empty() {
+                        lint.errors
+                            .push(error(Some(id), format!("{id} has an empty check command.")));
+                    }
+                    if check.command.contains("{run_dir}") && !check.command.contains("\"{run_dir}")
+                    {
+                        lint.warnings.push(error(
+                            Some(id),
+                            "The run folder path can contain spaces. Write \"{run_dir}\" in quotes, or use the AGENTRIUM_RUN_DIR environment variable.".to_string(),
+                        ));
+                    }
                     if let Err(e) = validate_check_command(&check.command) {
                         lint.errors.push(error(
                             Some(id),
@@ -557,6 +568,33 @@ mod tests {
             only_error(&def),
             format!("S1 check command: {}", strip_user_prefix(&refused))
         );
+    }
+
+    #[test]
+    fn lint_warns_about_an_unquoted_run_dir_in_a_check() {
+        let warning = LintItem {
+            step_id: Some("S1".to_string()),
+            message: "The run folder path can contain spaces. Write \"{run_dir}\" in quotes, or use the AGENTRIUM_RUN_DIR environment variable.".to_string(),
+        };
+        let mut def = sample();
+        station_mut(&mut def, 0).check.as_mut().unwrap().command =
+            "node c.js {run_dir}/x".to_string();
+        let lint = validate(&def);
+        assert!(lint.errors.is_empty(), "{:?}", lint.errors);
+        assert!(lint.warnings.contains(&warning), "{:?}", lint.warnings);
+
+        station_mut(&mut def, 0).check.as_mut().unwrap().command =
+            "node c.js \"{run_dir}/x\"".to_string();
+        assert!(!validate(&def).warnings.contains(&warning));
+    }
+
+    #[test]
+    fn lint_empty_check_command() {
+        for blank in ["", "   "] {
+            let mut def = sample();
+            station_mut(&mut def, 0).check.as_mut().unwrap().command = blank.to_string();
+            assert_eq!(only_error(&def), "S1 has an empty check command.");
+        }
     }
 
     #[test]
