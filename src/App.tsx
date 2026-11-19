@@ -22,6 +22,7 @@ import { NewTaskModal } from './components/NewTaskModal';
 import { NewRaceModal } from './components/NewRaceModal';
 import { RaceDecideDialog } from './components/RaceDecideDialog';
 import { subscribeRaceTracking } from './store/raceStore';
+import { subscribeFactoryTracking } from './store/factoryStore';
 import { FinishTaskDialog } from './components/FinishTaskDialog';
 import { CloseSessionConfirm } from './components/CloseSessionConfirm';
 import { PushModal } from './components/PushModal';
@@ -206,6 +207,9 @@ function App() {
   useAttentionInbox();
   // Races: load history, track contender states, raise "ready to compare".
   useEffect(subscribeRaceTracking, []);
+  // AI Factory: reads the flag once per call, so re-subscribe when it is toggled.
+  const factoryEnabled = useAppStore((s) => s.factoryEnabled);
+  useEffect(subscribeFactoryTracking, [factoryEnabled]);
   usePullRequestPoller();
 
   // v1.22.0 - apply theme/density/accent/motion/scale on store change.

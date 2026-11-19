@@ -10,6 +10,7 @@ import type { ClaudeWindowSetting } from '../lib/contextMeter';
 import type { CredentialBinding } from '../lib/credentials';
 import type { LearnLevel } from '../lib/learn';
 import type { NewTerminalIsolation } from '../lib/tasks';
+import { factoryTabPath } from '../lib/factory';
 import { DEFAULT_PR_BODY_TEMPLATE, type PrMethodPreference } from '../lib/pullRequests';
 
 export type TerminalCursorStyle = 'bar' | 'block' | 'underline';
@@ -25,7 +26,7 @@ export const DEFAULT_TERMINAL_FONT_SIZE = 14;
 export type UiDensity = 'compact' | 'comfortable' | 'spacious';
 export type TabHeight = 'small' | 'medium' | 'large';
 /** Which navigator the unified sidebar shows (Apple/Xcode-style single column). */
-export type SidebarNav = 'sessions' | 'files' | 'history';
+export type SidebarNav = 'sessions' | 'files' | 'history' | 'factory';
 export type ThemeMode = 'dark' | 'light' | 'auto';
 export type AutoStageMode = 'none' | 'tracked' | 'all';
 export type MergeStrategy = 'merge' | 'rebase' | 'ff-only';
@@ -52,7 +53,7 @@ export interface FileTabState {
   // 'edit' → plain Monaco editor. 'diff' → Monaco DiffEditor showing HEAD vs working copy.
   // 'race' → not a file: the Race compare view for race `path` = race:<id>
   // (`content` holds the tab title). Never read from or written to disk.
-  mode: 'edit' | 'diff' | 'race';
+  mode: 'edit' | 'diff' | 'race' | 'factory';
   // HEAD version, used as the "original" side in diff mode. Empty string for
   // new/untracked files. Always present so the user can toggle into diff mode.
   headContent: string;
@@ -225,6 +226,12 @@ interface AppState {
   /** Race whose Pick winner / Abandon dialog is open. */
   decideRaceId: string | null;
   decideRaceMode: 'decide' | 'abandon';
+  /** AI Factory: Add factory modal. */
+  addFactoryModalOpen: boolean;
+  /** AI Factory: New run modal. undefined = closed, null = open with a factory picker, string = open for that factory. */
+  newFactoryRunFactoryId: string | null | undefined;
+  /** AI Factory: run whose gate dialog is open. */
+  factoryGateRunId: string | null;
   newTaskModalOpen: boolean;
   newTaskRepoPath: string | null;
   finishTaskTerminalId: string | null;
@@ -465,6 +472,14 @@ interface AppState {
   /** Open (or focus) the Race compare tab. */
   openRaceTab: (raceId: string, title: string) => void;
   openDecideRace: (raceId: string, mode: 'decide' | 'abandon') => void;
+  /** Open (or focus) the Factory floor tab. */
+  openFactoryTab: (factoryId: string, name: string) => void;
+  openAddFactoryModal: () => void;
+  closeAddFactoryModal: () => void;
+  openNewFactoryRun: (factoryId?: string | null) => void;
+  closeNewFactoryRun: () => void;
+  openFactoryGate: (runId: string) => void;
+  closeFactoryGate: () => void;
   closeDecideRace: () => void;
   openFinishTask: (terminalId: string, closeAfter: boolean) => void;
   closeFinishTask: () => void;
@@ -735,6 +750,9 @@ export const useAppStore = create<AppState>()(
       newRacePrompt: null,
       decideRaceId: null,
       decideRaceMode: 'decide' as const,
+      addFactoryModalOpen: false,
+      newFactoryRunFactoryId: undefined,
+      factoryGateRunId: null,
       newTaskModalOpen: false,
       newTaskRepoPath: null,
       finishTaskTerminalId: null,
@@ -924,7 +942,18 @@ export const useAppStore = create<AppState>()(
       setShowStatusBar: (v) => set({ showStatusBar: v }),
       setShowTabActivity: (v) => set({ showTabActivity: v }),
       setContextMeterEnabled: (v) => set({ contextMeterEnabled: v }),
-      setFactoryEnabled: (v) => set({ factoryEnabled: v }),
+      setFactoryEnabled: (v) => set((state) => {
+        if (v) return { factoryEnabled: true };
+        // Flag off: a persisted factory navigator or open floor must not linger.
+        const openFiles = state.openFiles.filter((t) => t.mode !== 'factory');
+        const activeGone = state.activeFilePath !== null && !openFiles.some((t) => t.path === state.activeFilePath);
+        return {
+          factoryEnabled: false,
+          sidebarNav: state.sidebarNav === 'factory' ? 'sessions' as const : state.sidebarNav,
+          openFiles,
+          activeFilePath: activeGone ? (openFiles[openFiles.length - 1]?.path ?? null) : state.activeFilePath,
+        };
+      }),
       setClaudeContextWindow: (v) => set({ claudeContextWindow: v }),
       setCompactTitleBar: (v) => set({ compactTitleBar: v }),
       setNotificationSoundEnabled: (enabled) => set({ notificationSoundEnabled: enabled }),
@@ -996,6 +1025,24 @@ export const useAppStore = create<AppState>()(
       }),
       openDecideRace: (raceId, mode) => set({ decideRaceId: raceId, decideRaceMode: mode }),
       closeDecideRace: () => set({ decideRaceId: null }),
+      openFactoryTab: (factoryId, name) => set((state) => {
+        const path = factoryTabPath(factoryId);
+        if (state.openFiles.some((t) => t.path === path)) return { activeFilePath: path };
+        return {
+          openFiles: [...state.openFiles, {
+            path, content: name, original: name, loading: false, saving: false, error: null,
+            mode: 'factory' as const, headContent: '', repoRoot: null, relativePath: null,
+          }],
+          activeFilePath: path,
+          gridMode: false,
+        };
+      }),
+      openAddFactoryModal: () => set({ addFactoryModalOpen: true }),
+      closeAddFactoryModal: () => set({ addFactoryModalOpen: false }),
+      openNewFactoryRun: (factoryId) => set({ newFactoryRunFactoryId: factoryId ?? null }),
+      closeNewFactoryRun: () => set({ newFactoryRunFactoryId: undefined }),
+      openFactoryGate: (runId) => set({ factoryGateRunId: runId }),
+      closeFactoryGate: () => set({ factoryGateRunId: null }),
       openFinishTask: (terminalId, closeAfter) => set({ finishTaskTerminalId: terminalId, finishTaskCloseAfter: closeAfter }),
       closeFinishTask: () => set({ finishTaskTerminalId: null, finishTaskCloseAfter: false }),
       setSessionFilter: (filter) => set({ sessionFilter: filter }),

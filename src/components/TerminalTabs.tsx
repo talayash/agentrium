@@ -1,5 +1,5 @@
 import { useMemo, useCallback, useEffect } from 'react';
-import { X, SplitSquareHorizontal, RotateCw, File as FileIcon, Flag } from 'lucide-react';
+import { X, SplitSquareHorizontal, RotateCw, File as FileIcon, Flag, Factory } from 'lucide-react';
 import { useTerminalStore } from '../store/terminalStore';
 import { focusTerminalInput } from '../lib/terminalFocus';
 import { useAppStore } from '../store/appStore';
@@ -16,6 +16,8 @@ import { BottomTerminalPane } from './BottomTerminalPane';
 import { Tooltip } from './ui/Tooltip';
 import { RaceGridHeader } from './RaceHeader';
 import { RaceCompareView } from './RaceCompareView';
+import { FactoryFloor } from './FactoryFloor';
+import { FACTORY_TAB_PREFIX } from '../lib/factory';
 
 function fileBasename(p: string): string {
   const trimmed = p.replace(/[\\/]+$/, '');
@@ -159,9 +161,10 @@ export function TerminalTabs() {
             {openFiles.map((tab) => {
               const isActive = activeFilePath === tab.path;
               const isRace = tab.mode === 'race';
-              const dirty = !isRace && tab.content !== tab.original;
+              const isFactory = tab.mode === 'factory';
+              const dirty = !isRace && !isFactory && tab.content !== tab.original;
               return (
-                <Tooltip key={tab.path} label={isRace ? `Race: ${tab.content}` : tab.path}>
+                <Tooltip key={tab.path} label={isRace ? `Race: ${tab.content}` : isFactory ? `Factory: ${tab.content}` : tab.path}>
                 <button
                   onClick={() => focusFile(tab.path)}
                   onAuxClick={(e) => {
@@ -177,8 +180,10 @@ export function TerminalTabs() {
                 >
                   {isRace
                     ? <Flag size={11} className="text-accent-primary flex-shrink-0" strokeWidth={1.75} />
+                    : isFactory
+                    ? <Factory size={11} className="text-accent-primary flex-shrink-0" strokeWidth={1.75} />
                     : <FileIcon size={11} className="text-text-tertiary flex-shrink-0" strokeWidth={1.75} />}
-                  <span className="max-w-[140px] truncate">{isRace ? tab.content : fileBasename(tab.path)}</span>
+                  <span className="max-w-[140px] truncate">{isRace || isFactory ? tab.content : fileBasename(tab.path)}</span>
                   <span
                     onClick={(e) => {
                       e.stopPropagation();
@@ -255,9 +260,12 @@ export function TerminalTabs() {
         })}
         {activeFilePath && openFiles.some((t) => t.path === activeFilePath) && (
           <div key={`file:${activeFilePath}`} className="absolute inset-0 z-10 bg-elevation-0">
-            {openFiles.find((t) => t.path === activeFilePath)?.mode === 'race'
-              ? <RaceCompareView raceId={activeFilePath.slice('race:'.length)} />
-              : <FileEditorView path={activeFilePath} />}
+            {(() => {
+              const mode = openFiles.find((t) => t.path === activeFilePath)?.mode;
+              if (mode === 'race') return <RaceCompareView raceId={activeFilePath.slice('race:'.length)} />;
+              if (mode === 'factory') return <FactoryFloor factoryId={activeFilePath.slice(FACTORY_TAB_PREFIX.length)} />;
+              return <FileEditorView path={activeFilePath} />;
+            })()}
           </div>
         )}
         {!activeTerminalId && !activeFilePath && <WelcomeScreen />}

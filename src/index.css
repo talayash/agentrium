@@ -1142,15 +1142,18 @@ h2, h3 { letter-spacing: var(--track-title); line-height: 1.3; }
   --nav-sessions: #4ade80;
   --nav-files: #fbbf24;
   --nav-history: #a78bfa;
+  --nav-factory: #38bdf8;
 }
 :root[data-theme="light"] {
   --nav-sessions: #16a34a;
   --nav-files: #d97706;
   --nav-history: #7c3aed;
+  --nav-factory: #0284c7;
 }
 [data-hue="sessions"] { --hue: var(--nav-sessions); }
 [data-hue="files"] { --hue: var(--nav-files); }
 [data-hue="history"] { --hue: var(--nav-history); }
+[data-hue="factory"] { --hue: var(--nav-factory); }
 .sidebar-nav {
   container-type: inline-size;
   display: flex;

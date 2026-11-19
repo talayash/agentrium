@@ -116,7 +116,7 @@ function syncTabs(openFiles: FileTabState[], lspEnabled: boolean): void {
   const present = new Set<string>();
   for (const tab of openFiles) {
     // Race compare tabs are not files.
-    if (tab.loading || tab.mode === 'race') continue;
+    if (tab.loading || tab.mode === 'race' || tab.mode === 'factory') continue;
     const binding = lspServerForPath(tab.path);
     if (!binding) continue;
     present.add(tab.path);

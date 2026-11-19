@@ -804,3 +804,54 @@ describe('appStore - persist migration v9 -> v10 (view modes)', () => {
     expect(useAppStore.getState().defaultViewMode).toBe('cli');
   });
 });
+
+describe('appStore - factory plumbing', () => {
+  beforeEach(() => {
+    useAppStore.setState({ openFiles: [], activeFilePath: null, gridMode: true, sidebarNav: 'sessions', factoryEnabled: true });
+  });
+
+  it('openFactoryTab adds one tab and focuses it', () => {
+    useAppStore.getState().openFactoryTab('f1', 'demo');
+    useAppStore.getState().openFactoryTab('f1', 'demo');
+    const st = useAppStore.getState();
+    expect(st.openFiles).toHaveLength(1);
+    expect(st.openFiles[0].path).toBe('factory:f1');
+    expect(st.openFiles[0].mode).toBe('factory');
+    expect(st.openFiles[0].content).toBe('demo');
+    expect(st.activeFilePath).toBe('factory:f1');
+    expect(st.gridMode).toBe(false);
+  });
+
+  it('turning the flag off leaves the factory navigator and closes factory tabs', () => {
+    useAppStore.getState().openRaceTab('r1', 'race');
+    useAppStore.getState().openFactoryTab('f1', 'demo');
+    useAppStore.getState().setSidebarNav('factory');
+    useAppStore.getState().setFactoryEnabled(false);
+    const st = useAppStore.getState();
+    expect(st.factoryEnabled).toBe(false);
+    expect(st.sidebarNav).toBe('sessions');
+    expect(st.openFiles.map((t) => t.path)).toEqual(['race:r1']);
+    expect(st.activeFilePath).toBe('race:r1');
+  });
+
+  it('openNewFactoryRun() opens with a picker and openNewFactoryRun(f1) opens for that factory', () => {
+    expect(useAppStore.getState().newFactoryRunFactoryId).toBeUndefined();
+    useAppStore.getState().openNewFactoryRun();
+    expect(useAppStore.getState().newFactoryRunFactoryId).toBeNull();
+    useAppStore.getState().openNewFactoryRun('f1');
+    expect(useAppStore.getState().newFactoryRunFactoryId).toBe('f1');
+    useAppStore.getState().closeNewFactoryRun();
+    expect(useAppStore.getState().newFactoryRunFactoryId).toBeUndefined();
+  });
+
+  it('add-factory modal and gate dialog open and close', () => {
+    useAppStore.getState().openAddFactoryModal();
+    expect(useAppStore.getState().addFactoryModalOpen).toBe(true);
+    useAppStore.getState().closeAddFactoryModal();
+    expect(useAppStore.getState().addFactoryModalOpen).toBe(false);
+    useAppStore.getState().openFactoryGate('run1');
+    expect(useAppStore.getState().factoryGateRunId).toBe('run1');
+    useAppStore.getState().closeFactoryGate();
+    expect(useAppStore.getState().factoryGateRunId).toBeNull();
+  });
+});

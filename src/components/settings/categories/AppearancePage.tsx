@@ -14,6 +14,7 @@ registerSetting({ category: cat, id: 'tab-activity',  label: 'Tab activity',   k
 registerSetting({ category: cat, id: 'compact-titlebar', label: 'Compact title bar', keywords: ['minimal', 'brand', 'chrome', 'hide'] });
 registerSetting({ category: cat, id: 'context-meter', label: 'Context window meter', keywords: ['context', 'tokens', 'compact', 'usage'] });
 registerSetting({ category: cat, id: 'claude-context-window', label: 'Claude context window', keywords: ['context', '1m', '200k', 'tokens', 'window size'] });
+registerSetting({ category: cat, id: 'ai-factory', label: 'AI Factory', keywords: ['factory', 'pipeline', 'production line', 'agents', 'experimental'] });
 
 // Apple system palette: blue, green, purple, orange, red.
 const ACCENT_PRESETS = ['#007AFF', '#34C759', '#AF52DE', '#FF9500', '#FF3B30'];
@@ -29,6 +30,8 @@ export default function AppearancePage() {
   const showTabActivity = useAppStore((s) => s.showTabActivity);
   const contextMeterEnabled = useAppStore((s) => s.contextMeterEnabled);
   const setContextMeterEnabled = useAppStore((s) => s.setContextMeterEnabled);
+  const factoryEnabled = useAppStore((s) => s.factoryEnabled);
+  const setFactoryEnabled = useAppStore((s) => s.setFactoryEnabled);
   const claudeContextWindow = useAppStore((s) => s.claudeContextWindow);
   const setClaudeContextWindow = useAppStore((s) => s.setClaudeContextWindow);
   const compactTitleBar = useAppStore((s) => s.compactTitleBar);
@@ -145,6 +148,9 @@ export default function AppearancePage() {
             />
           </SettingRow>
         )}
+        <SettingRow label="AI Factory" description="Run your own agent production lines from a Markdown file in a repo. Experimental.">
+          <Toggle value={factoryEnabled} onChange={setFactoryEnabled} label="AI Factory" />
+        </SettingRow>
         <SettingRow label="Compact title bar" description="Hide the centered product name to free up the drag area.">
           <Toggle value={compactTitleBar} onChange={setCompactTitleBar} label="Compact title bar" />
         </SettingRow>
