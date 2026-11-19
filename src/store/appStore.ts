@@ -160,6 +160,8 @@ interface AppState {
   showTabActivity: boolean;
   /** Feature flag: context window meter in the session strip and sidebar cards. Default on. */
   contextMeterEnabled: boolean;
+  /** Feature flag: AI Factory (sidebar, floor, shortcut, run tracking). Default off. */
+  factoryEnabled: boolean;
   /** Claude context window for the meter: 'auto' detects it, else a fixed size. */
   claudeContextWindow: ClaudeWindowSetting;
   compactTitleBar: boolean;
@@ -418,6 +420,7 @@ interface AppState {
   setShowStatusBar: (v: boolean) => void;
   setShowTabActivity: (v: boolean) => void;
   setContextMeterEnabled: (v: boolean) => void;
+  setFactoryEnabled: (v: boolean) => void;
   setClaudeContextWindow: (v: ClaudeWindowSetting) => void;
   setCompactTitleBar: (v: boolean) => void;
   setNotificationSoundEnabled: (enabled: boolean) => void;
@@ -683,6 +686,7 @@ export const useAppStore = create<AppState>()(
       showStatusBar: true,
       showTabActivity: true,
       contextMeterEnabled: true,
+      factoryEnabled: false,
       claudeContextWindow: 'auto',
       compactTitleBar: false,
       notificationSoundEnabled: false,
@@ -920,6 +924,7 @@ export const useAppStore = create<AppState>()(
       setShowStatusBar: (v) => set({ showStatusBar: v }),
       setShowTabActivity: (v) => set({ showTabActivity: v }),
       setContextMeterEnabled: (v) => set({ contextMeterEnabled: v }),
+      setFactoryEnabled: (v) => set({ factoryEnabled: v }),
       setClaudeContextWindow: (v) => set({ claudeContextWindow: v }),
       setCompactTitleBar: (v) => set({ compactTitleBar: v }),
       setNotificationSoundEnabled: (enabled) => set({ notificationSoundEnabled: enabled }),
@@ -1521,6 +1526,7 @@ export const useAppStore = create<AppState>()(
         showStatusBar: state.showStatusBar,
         showTabActivity: state.showTabActivity,
         contextMeterEnabled: state.contextMeterEnabled,
+        factoryEnabled: state.factoryEnabled,
         claudeContextWindow: state.claudeContextWindow,
         compactTitleBar: state.compactTitleBar,
         notificationSoundEnabled: state.notificationSoundEnabled,
