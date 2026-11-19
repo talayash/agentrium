@@ -38,7 +38,10 @@ describe('dirty file close controls', () => {
 describe('factory tab', () => {
   it('shows the pill and the factory floor for an active factory tab', async () => {
     const { useFactoryStore } = await import('../store/factoryStore');
-    useFactoryStore.setState({ factories: { f1: { id: 'f1', name: 'Demo line' } as never } });
+    useFactoryStore.setState({ factories: { f1: {
+      id: 'f1', name: 'Demo line', repoPath: '/repo', sourcePath: '/repo/line.json', diskState: 'same',
+      definition: { version: 1, name: 'Demo line', input: { label: 'Ticket', placeholder: '' }, steps: [] },
+    } as never } });
     useAppStore.setState({
       activeFilePath: 'factory:f1',
       openFiles: [{ path: 'factory:f1', content: 'Demo line', original: 'Demo line', loading: false, saving: false, error: null, mode: 'factory', headContent: '', repoRoot: null, relativePath: null }],
