@@ -29,6 +29,7 @@ mod sync;
 mod sync_privacy;
 mod tasks;
 mod races;
+mod factory;
 mod factory_def;
 mod factory_engine;
 mod pull_requests;

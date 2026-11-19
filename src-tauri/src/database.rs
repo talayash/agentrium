@@ -390,7 +390,54 @@ impl Database {
         .map_err(|e| e.to_string())?;
         Self::migrate_races(conn)?;
         Self::migrate_task_setup(conn)?;
+        Self::migrate_factories(conn)?;
         Ok(())
+    }
+
+    /// AI Factory: factories, their runs and run events. Local only: never
+    /// synced. Idempotent.
+    fn migrate_factories(conn: &Connection) -> Result<(), String> {
+        conn.execute_batch(
+            "
+            CREATE TABLE IF NOT EXISTS factories (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                repo_path TEXT NOT NULL,
+                source_path TEXT NOT NULL UNIQUE,
+                definition_json TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS factory_runs (
+                id TEXT PRIMARY KEY,
+                factory_id TEXT NOT NULL REFERENCES factories(id) ON DELETE CASCADE,
+                input TEXT NOT NULL,
+                status TEXT NOT NULL,
+                current_step TEXT NOT NULL DEFAULT '',
+                attempts_json TEXT NOT NULL DEFAULT '{}',
+                reject_reason TEXT NOT NULL DEFAULT '',
+                check_output TEXT NOT NULL DEFAULT '',
+                definition_json TEXT NOT NULL,
+                workspace_path TEXT NOT NULL,
+                branch TEXT,
+                run_dir TEXT NOT NULL,
+                terminal_id TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS factory_run_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                run_id TEXT NOT NULL REFERENCES factory_runs(id) ON DELETE CASCADE,
+                at TEXT NOT NULL,
+                step_id TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                detail TEXT NOT NULL DEFAULT ''
+            );
+            CREATE INDEX IF NOT EXISTS idx_factory_runs_factory ON factory_runs(factory_id);
+            CREATE INDEX IF NOT EXISTS idx_factory_run_events_run ON factory_run_events(run_id);
+            ",
+        )
+        .map_err(|e| e.to_string())
     }
 
     /// Per-repo worktree setup command (for example `npm ci`), keyed by the
@@ -2052,6 +2099,218 @@ impl Database {
     }
 }
 
+/// AI Factory persistence. Local only: never synced. A row whose stored
+/// definition no longer parses is skipped (lists) or reported absent (gets), so
+/// one corrupt row never breaks the whole list.
+#[allow(dead_code)]
+impl Database {
+    const FACTORY_COLUMNS: &'static str =
+        "id, name, repo_path, source_path, definition_json, created_at, updated_at";
+
+    const FACTORY_RUN_COLUMNS: &'static str =
+        "id, factory_id, input, status, current_step, attempts_json, reject_reason, check_output, \
+         definition_json, workspace_path, branch, run_dir, terminal_id, created_at, updated_at";
+
+    fn row_to_factory(r: &rusqlite::Row<'_>) -> rusqlite::Result<Option<crate::factory::Factory>> {
+        let definition_json: String = r.get(4)?;
+        let Ok(definition) = serde_json::from_str(&definition_json) else {
+            return Ok(None);
+        };
+        Ok(Some(crate::factory::Factory {
+            id: r.get(0)?,
+            name: r.get(1)?,
+            repo_path: r.get(2)?,
+            source_path: r.get(3)?,
+            definition,
+            created_at: r.get(5)?,
+            updated_at: r.get(6)?,
+        }))
+    }
+
+    fn row_to_factory_run(r: &rusqlite::Row<'_>) -> rusqlite::Result<Option<crate::factory_engine::FactoryRun>> {
+        let status: String = r.get(3)?;
+        let attempts_json: String = r.get(5)?;
+        let definition_json: String = r.get(8)?;
+        let (Ok(attempts), Ok(definition)) = (
+            serde_json::from_str(&attempts_json),
+            serde_json::from_str(&definition_json),
+        ) else {
+            return Ok(None);
+        };
+        Ok(Some(crate::factory_engine::FactoryRun {
+            id: r.get(0)?,
+            factory_id: r.get(1)?,
+            input: r.get(2)?,
+            status: crate::factory_engine::RunStatus::parse(&status),
+            current_step: r.get(4)?,
+            attempts,
+            reject_reason: r.get(6)?,
+            check_output: r.get(7)?,
+            definition,
+            workspace_path: r.get(9)?,
+            branch: r.get(10)?,
+            run_dir: r.get(11)?,
+            terminal_id: r.get(12)?,
+            created_at: r.get(13)?,
+            updated_at: r.get(14)?,
+        }))
+    }
+
+    /// Insert, or update the row with the same `source_path`. An existing row
+    /// keeps its id and `created_at`. Returns the stored row.
+    pub fn upsert_factory(&self, f: &crate::factory::Factory) -> Result<crate::factory::Factory, String> {
+        let definition_json = serde_json::to_string(&f.definition).map_err(|e| e.to_string())?;
+        self.conn.execute(
+            "INSERT INTO factories (id, name, repo_path, source_path, definition_json, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+             ON CONFLICT(source_path) DO UPDATE SET
+                name = excluded.name,
+                repo_path = excluded.repo_path,
+                definition_json = excluded.definition_json,
+                updated_at = excluded.updated_at",
+            params![f.id, f.name, f.repo_path, f.source_path, definition_json, f.created_at, f.updated_at],
+        ).map_err(|e| e.to_string())?;
+        let sql = format!("SELECT {} FROM factories WHERE source_path = ?1", Self::FACTORY_COLUMNS);
+        self.conn
+            .query_row(&sql, params![f.source_path], Self::row_to_factory)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "Stored factory definition could not be read back.".to_string())
+    }
+
+    pub fn get_factory(&self, id: &str) -> Result<Option<crate::factory::Factory>, String> {
+        let sql = format!("SELECT {} FROM factories WHERE id = ?1", Self::FACTORY_COLUMNS);
+        let row = self.conn.query_row(&sql, params![id], Self::row_to_factory).optional().map_err(|e| e.to_string())?;
+        Ok(row.flatten())
+    }
+
+    /// By name, case-insensitive.
+    pub fn list_factories(&self) -> Result<Vec<crate::factory::Factory>, String> {
+        let sql = format!("SELECT {} FROM factories ORDER BY name COLLATE NOCASE, created_at", Self::FACTORY_COLUMNS);
+        let mut stmt = self.conn.prepare(&sql).map_err(|e| e.to_string())?;
+        let rows = stmt.query_map([], Self::row_to_factory).map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
+        Ok(rows.into_iter().flatten().collect())
+    }
+
+    /// Runs and their events cascade.
+    pub fn delete_factory(&self, id: &str) -> Result<(), String> {
+        self.conn.execute("DELETE FROM factories WHERE id = ?1", params![id]).map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn insert_factory_run(&self, run: &crate::factory_engine::FactoryRun) -> Result<(), String> {
+        let attempts_json = serde_json::to_string(&run.attempts).map_err(|e| e.to_string())?;
+        let definition_json = serde_json::to_string(&run.definition).map_err(|e| e.to_string())?;
+        self.conn.execute(
+            "INSERT INTO factory_runs (id, factory_id, input, status, current_step, attempts_json, reject_reason,
+                check_output, definition_json, workspace_path, branch, run_dir, terminal_id, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+            params![
+                run.id, run.factory_id, run.input, run.status.as_str(), run.current_step, attempts_json,
+                run.reject_reason, run.check_output, definition_json, run.workspace_path, run.branch,
+                run.run_dir, run.terminal_id, run.created_at, run.updated_at
+            ],
+        ).map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// Writes every mutable column and takes `updated_at` from the run.
+    pub fn update_factory_run(&self, run: &crate::factory_engine::FactoryRun) -> Result<(), String> {
+        let attempts_json = serde_json::to_string(&run.attempts).map_err(|e| e.to_string())?;
+        self.conn.execute(
+            "UPDATE factory_runs SET
+                status = ?2, current_step = ?3, attempts_json = ?4, reject_reason = ?5, check_output = ?6,
+                workspace_path = ?7, branch = ?8, run_dir = ?9, terminal_id = ?10, updated_at = ?11
+             WHERE id = ?1",
+            params![
+                run.id, run.status.as_str(), run.current_step, attempts_json, run.reject_reason,
+                run.check_output, run.workspace_path, run.branch, run.run_dir, run.terminal_id, run.updated_at
+            ],
+        ).map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn get_factory_run(&self, id: &str) -> Result<Option<crate::factory_engine::FactoryRun>, String> {
+        let sql = format!("SELECT {} FROM factory_runs WHERE id = ?1", Self::FACTORY_RUN_COLUMNS);
+        let row = self.conn.query_row(&sql, params![id], Self::row_to_factory_run).optional().map_err(|e| e.to_string())?;
+        Ok(row.flatten())
+    }
+
+    /// Newest first.
+    pub fn list_factory_runs(&self, limit: u32) -> Result<Vec<crate::factory_engine::FactoryRun>, String> {
+        let sql = format!(
+            "SELECT {} FROM factory_runs ORDER BY created_at DESC, rowid DESC LIMIT ?1",
+            Self::FACTORY_RUN_COLUMNS
+        );
+        let mut stmt = self.conn.prepare(&sql).map_err(|e| e.to_string())?;
+        let rows = stmt.query_map(params![limit], Self::row_to_factory_run).map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
+        Ok(rows.into_iter().flatten().collect())
+    }
+
+    pub fn set_factory_run_terminal(&self, run_id: &str, terminal_id: Option<&str>) -> Result<(), String> {
+        self.conn.execute(
+            "UPDATE factory_runs SET terminal_id = ?2 WHERE id = ?1",
+            params![run_id, terminal_id],
+        ).map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// True when another run of the factory is `running` or `checking`.
+    pub fn factory_line_busy(&self, factory_id: &str, except_run_id: &str) -> Result<bool, String> {
+        self.conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM factory_runs
+                WHERE factory_id = ?1 AND id != ?2 AND status IN ('running', 'checking'))",
+            params![factory_id, except_run_id],
+            |r| r.get(0),
+        ).map_err(|e| e.to_string())
+    }
+
+    /// True when any run of the factory is neither `done` nor `cancelled`.
+    pub fn factory_has_open_runs(&self, factory_id: &str) -> Result<bool, String> {
+        self.conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM factory_runs
+                WHERE factory_id = ?1 AND status NOT IN ('done', 'cancelled'))",
+            params![factory_id],
+            |r| r.get(0),
+        ).map_err(|e| e.to_string())
+    }
+
+    /// Id of the oldest queued run of the factory, by `created_at`.
+    pub fn oldest_queued_factory_run(&self, factory_id: &str) -> Result<Option<String>, String> {
+        self.conn.query_row(
+            "SELECT id FROM factory_runs WHERE factory_id = ?1 AND status = 'queued'
+             ORDER BY created_at ASC, rowid ASC LIMIT 1",
+            params![factory_id],
+            |r| r.get(0),
+        ).optional().map_err(|e| e.to_string())
+    }
+
+    pub fn insert_factory_run_event(&self, run_id: &str, at: &str, step_id: &str, kind: &str, detail: &str) -> Result<(), String> {
+        self.conn.execute(
+            "INSERT INTO factory_run_events (run_id, at, step_id, kind, detail) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![run_id, at, step_id, kind, detail],
+        ).map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// Oldest first.
+    pub fn list_factory_run_events(&self, run_id: &str) -> Result<Vec<crate::factory::RunEventRow>, String> {
+        let mut stmt = self.conn.prepare(
+            "SELECT at, step_id, kind, detail FROM factory_run_events WHERE run_id = ?1 ORDER BY id ASC",
+        ).map_err(|e| e.to_string())?;
+        let rows = stmt.query_map(params![run_id], |r| {
+            Ok(crate::factory::RunEventRow {
+                at: r.get(0)?,
+                step_id: r.get(1)?,
+                kind: r.get(2)?,
+                detail: r.get(3)?,
+            })
+        }).map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -2294,6 +2553,13 @@ mod tests {
         let db = Database::new_in_memory().unwrap();
         // Re-running the migration on the same connection must not error.
         Database::init_schema(&db.conn).unwrap();
+        for table in ["factories", "factory_runs", "factory_run_events"] {
+            let n: i64 = db
+                .conn
+                .query_row("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?1", [table], |r| r.get(0))
+                .unwrap();
+            assert_eq!(n, 1, "missing table {table}");
+        }
     }
 
     #[test]
@@ -3361,5 +3627,226 @@ mod tests {
         db.replace_learn_cards("t1", &[learn_card("new", "t1", "2026-10-12T11:00:00Z")]).unwrap();
         let ids: Vec<String> = db.list_learn_cards("t1").unwrap().into_iter().map(|c| c.id).collect();
         assert_eq!(ids, vec!["new".to_string(), "old-saved".to_string()]);
+    }
+
+    fn sample_factory(source_path: &str) -> crate::factory::Factory {
+        crate::factory::Factory {
+            id: "f1".into(),
+            name: "Demo".into(),
+            repo_path: "C:\\repo".into(),
+            source_path: source_path.into(),
+            definition: crate::factory_def::parse_definition(crate::factory_def::SAMPLE).unwrap(),
+            created_at: "2026-11-01T00:00:00Z".into(),
+            updated_at: "2026-11-01T00:00:00Z".into(),
+        }
+    }
+
+    fn sample_run(
+        id: &str,
+        factory_id: &str,
+        status: crate::factory_engine::RunStatus,
+        created_at: &str,
+    ) -> crate::factory_engine::FactoryRun {
+        crate::factory_engine::FactoryRun {
+            id: id.into(),
+            factory_id: factory_id.into(),
+            input: "TICKET-1".into(),
+            status,
+            current_step: "S1".into(),
+            attempts: std::collections::BTreeMap::new(),
+            reject_reason: String::new(),
+            check_output: String::new(),
+            definition: crate::factory_def::parse_definition(crate::factory_def::SAMPLE).unwrap(),
+            workspace_path: "C:\\repo".into(),
+            branch: None,
+            run_dir: "C:\\runs\\r".into(),
+            terminal_id: None,
+            created_at: created_at.into(),
+            updated_at: created_at.into(),
+        }
+    }
+
+    #[test]
+    fn factories_round_trip() {
+        let db = Database::new_in_memory().unwrap();
+        let f = sample_factory("C:\\repo\\SKILL.md");
+        let stored = db.upsert_factory(&f).unwrap();
+        assert_eq!(stored, f);
+        assert_eq!(db.get_factory("f1").unwrap().unwrap(), f);
+        assert!(db.get_factory("missing").unwrap().is_none());
+        assert_eq!(db.list_factories().unwrap(), vec![f]);
+    }
+
+    #[test]
+    fn list_factories_sorts_by_name_case_insensitive() {
+        let db = Database::new_in_memory().unwrap();
+        let mut b = sample_factory("b.md");
+        b.id = "fb".into();
+        b.name = "beta".into();
+        let mut a = sample_factory("a.md");
+        a.id = "fa".into();
+        a.name = "Alpha".into();
+        db.upsert_factory(&b).unwrap();
+        db.upsert_factory(&a).unwrap();
+        let names: Vec<String> = db.list_factories().unwrap().into_iter().map(|f| f.name).collect();
+        assert_eq!(names, vec!["Alpha".to_string(), "beta".to_string()]);
+    }
+
+    #[test]
+    fn upsert_factory_on_same_source_keeps_id() {
+        let db = Database::new_in_memory().unwrap();
+        let first = sample_factory("same.md");
+        db.upsert_factory(&first).unwrap();
+        let mut second = sample_factory("same.md");
+        second.id = "other".into();
+        second.name = "Renamed".into();
+        second.created_at = "2026-12-01T00:00:00Z".into();
+        second.updated_at = "2026-12-01T00:00:00Z".into();
+        let stored = db.upsert_factory(&second).unwrap();
+        assert_eq!(stored.id, "f1");
+        assert_eq!(stored.created_at, "2026-11-01T00:00:00Z");
+        assert_eq!(stored.name, "Renamed");
+        assert_eq!(stored.updated_at, "2026-12-01T00:00:00Z");
+        let all = db.list_factories().unwrap();
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0], stored);
+    }
+
+    #[test]
+    fn factory_runs_round_trip_and_update() {
+        use crate::factory_engine::RunStatus;
+        let db = Database::new_in_memory().unwrap();
+        db.upsert_factory(&sample_factory("s.md")).unwrap();
+        let mut run = sample_run("r1", "f1", RunStatus::Queued, "2026-11-02T00:00:00Z");
+        db.insert_factory_run(&run).unwrap();
+        assert_eq!(db.get_factory_run("r1").unwrap().unwrap(), run);
+        assert!(db.get_factory_run("missing").unwrap().is_none());
+
+        run.status = RunStatus::WaitingGate;
+        run.current_step = "G1".into();
+        run.attempts.insert("S1".into(), 2);
+        run.reject_reason = "too vague".into();
+        run.check_output = "boom".into();
+        run.terminal_id = Some("t9".into());
+        run.branch = Some("agentrium/x".into());
+        run.updated_at = "2026-11-02T01:00:00Z".into();
+        db.update_factory_run(&run).unwrap();
+        assert_eq!(db.get_factory_run("r1").unwrap().unwrap(), run);
+
+        db.set_factory_run_terminal("r1", None).unwrap();
+        assert_eq!(db.get_factory_run("r1").unwrap().unwrap().terminal_id, None);
+        db.set_factory_run_terminal("r1", Some("t10")).unwrap();
+        assert_eq!(db.get_factory_run("r1").unwrap().unwrap().terminal_id.as_deref(), Some("t10"));
+    }
+
+    #[test]
+    fn list_factory_runs_is_newest_first() {
+        use crate::factory_engine::RunStatus;
+        let db = Database::new_in_memory().unwrap();
+        db.upsert_factory(&sample_factory("s.md")).unwrap();
+        db.insert_factory_run(&sample_run("old", "f1", RunStatus::Done, "2026-11-01T00:00:00Z")).unwrap();
+        db.insert_factory_run(&sample_run("new", "f1", RunStatus::Done, "2026-11-03T00:00:00Z")).unwrap();
+        db.insert_factory_run(&sample_run("mid", "f1", RunStatus::Done, "2026-11-02T00:00:00Z")).unwrap();
+        let ids: Vec<String> = db.list_factory_runs(10).unwrap().into_iter().map(|r| r.id).collect();
+        assert_eq!(ids, vec!["new", "mid", "old"]);
+        assert_eq!(db.list_factory_runs(2).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn line_busy_ignores_the_asking_run_and_other_factories() {
+        use crate::factory_engine::RunStatus;
+        let db = Database::new_in_memory().unwrap();
+        db.upsert_factory(&sample_factory("one.md")).unwrap();
+        let mut f2 = sample_factory("two.md");
+        f2.id = "f2".into();
+        db.upsert_factory(&f2).unwrap();
+        db.insert_factory_run(&sample_run("A", "f1", RunStatus::Running, "2026-11-01T00:00:00Z")).unwrap();
+        db.insert_factory_run(&sample_run("B", "f1", RunStatus::Queued, "2026-11-02T00:00:00Z")).unwrap();
+        db.insert_factory_run(&sample_run("C", "f2", RunStatus::Running, "2026-11-03T00:00:00Z")).unwrap();
+        assert!(!db.factory_line_busy("f1", "A").unwrap());
+        assert!(db.factory_line_busy("f1", "B").unwrap());
+        let mut a = db.get_factory_run("A").unwrap().unwrap();
+        a.status = RunStatus::Checking;
+        db.update_factory_run(&a).unwrap();
+        assert!(db.factory_line_busy("f1", "B").unwrap());
+        a.status = RunStatus::WaitingGate;
+        db.update_factory_run(&a).unwrap();
+        assert!(!db.factory_line_busy("f1", "B").unwrap());
+    }
+
+    #[test]
+    fn open_runs_exclude_done_and_cancelled() {
+        use crate::factory_engine::RunStatus;
+        let db = Database::new_in_memory().unwrap();
+        db.upsert_factory(&sample_factory("s.md")).unwrap();
+        db.insert_factory_run(&sample_run("d", "f1", RunStatus::Done, "2026-11-01T00:00:00Z")).unwrap();
+        db.insert_factory_run(&sample_run("c", "f1", RunStatus::Cancelled, "2026-11-02T00:00:00Z")).unwrap();
+        assert!(!db.factory_has_open_runs("f1").unwrap());
+        db.insert_factory_run(&sample_run("b", "f1", RunStatus::Blocked, "2026-11-03T00:00:00Z")).unwrap();
+        assert!(db.factory_has_open_runs("f1").unwrap());
+    }
+
+    #[test]
+    fn oldest_queued_run_is_returned() {
+        use crate::factory_engine::RunStatus;
+        let db = Database::new_in_memory().unwrap();
+        db.upsert_factory(&sample_factory("s.md")).unwrap();
+        assert_eq!(db.oldest_queued_factory_run("f1").unwrap(), None);
+        db.insert_factory_run(&sample_run("late", "f1", RunStatus::Queued, "2026-11-03T00:00:00Z")).unwrap();
+        db.insert_factory_run(&sample_run("early", "f1", RunStatus::Queued, "2026-11-01T00:00:00Z")).unwrap();
+        db.insert_factory_run(&sample_run("run", "f1", RunStatus::Running, "2026-10-01T00:00:00Z")).unwrap();
+        assert_eq!(db.oldest_queued_factory_run("f1").unwrap().as_deref(), Some("early"));
+    }
+
+    #[test]
+    fn events_are_listed_oldest_first() {
+        use crate::factory_engine::RunStatus;
+        let db = Database::new_in_memory().unwrap();
+        db.upsert_factory(&sample_factory("s.md")).unwrap();
+        db.insert_factory_run(&sample_run("r1", "f1", RunStatus::Running, "2026-11-01T00:00:00Z")).unwrap();
+        db.insert_factory_run_event("r1", "2026-11-01T00:00:01Z", "S1", "start", "attempt 1").unwrap();
+        db.insert_factory_run_event("r1", "2026-11-01T00:00:02Z", "S1", "check_failed", "").unwrap();
+        let events = db.list_factory_run_events("r1").unwrap();
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].kind, "start");
+        assert_eq!(events[0].detail, "attempt 1");
+        assert_eq!(events[1].kind, "check_failed");
+        assert_eq!(events[1].step_id, "S1");
+        assert_eq!(events[1].at, "2026-11-01T00:00:02Z");
+        assert!(db.list_factory_run_events("nope").unwrap().is_empty());
+    }
+
+    #[test]
+    fn delete_factory_cascades_runs_and_events() {
+        use crate::factory_engine::RunStatus;
+        let db = Database::new_in_memory().unwrap();
+        db.upsert_factory(&sample_factory("s.md")).unwrap();
+        db.insert_factory_run(&sample_run("r1", "f1", RunStatus::Running, "2026-11-01T00:00:00Z")).unwrap();
+        db.insert_factory_run_event("r1", "2026-11-01T00:00:01Z", "S1", "start", "").unwrap();
+        db.delete_factory("f1").unwrap();
+        assert!(db.get_factory("f1").unwrap().is_none());
+        assert!(db.get_factory_run("r1").unwrap().is_none());
+        let n: i64 = db.conn.query_row("SELECT COUNT(*) FROM factory_run_events", [], |r| r.get(0)).unwrap();
+        assert_eq!(n, 0);
+    }
+
+    #[test]
+    fn corrupt_definition_json_is_skipped_in_lists() {
+        use crate::factory_engine::RunStatus;
+        let db = Database::new_in_memory().unwrap();
+        db.upsert_factory(&sample_factory("good.md")).unwrap();
+        let mut bad = sample_factory("bad.md");
+        bad.id = "fbad".into();
+        db.upsert_factory(&bad).unwrap();
+        db.conn.execute("UPDATE factories SET definition_json = 'not json' WHERE id = 'fbad'", []).unwrap();
+        let ids: Vec<String> = db.list_factories().unwrap().into_iter().map(|f| f.id).collect();
+        assert_eq!(ids, vec!["f1".to_string()]);
+        assert!(db.get_factory("fbad").unwrap().is_none());
+
+        db.insert_factory_run(&sample_run("rgood", "f1", RunStatus::Done, "2026-11-01T00:00:00Z")).unwrap();
+        db.insert_factory_run(&sample_run("rbad", "f1", RunStatus::Done, "2026-11-02T00:00:00Z")).unwrap();
+        db.conn.execute("UPDATE factory_runs SET definition_json = 'not json' WHERE id = 'rbad'", []).unwrap();
+        let ids: Vec<String> = db.list_factory_runs(10).unwrap().into_iter().map(|r| r.id).collect();
+        assert_eq!(ids, vec!["rgood".to_string()]);
     }
 }
