@@ -153,15 +153,13 @@ impl Definition {
         })
     }
 
-    /// True when any station's check command uses the `{input}` placeholder.
-    pub fn uses_input_in_check(&self) -> bool {
-        self.steps.iter().any(|s| match s {
-            Step::Station(st) => st
-                .check
-                .as_ref()
-                .is_some_and(|c| c.command.contains("{input}")),
-            Step::Gate(_) => false,
-        })
+    /// True when any station has a check command. The run input reaches every
+    /// check (through `{input}` or the `AGENTRIUM_FACTORY_INPUT` env var), so
+    /// such a factory only accepts safe input.
+    pub fn has_check(&self) -> bool {
+        self.steps
+            .iter()
+            .any(|s| matches!(s, Step::Station(st) if st.check.is_some()))
     }
 }
 
@@ -434,8 +432,17 @@ mod tests {
         assert_eq!(def.index_of("nope"), None);
         assert!(def.gate("G1").is_some());
         assert!(def.gate("S1").is_none());
-        assert!(def.uses_input_in_check());
+        assert!(def.has_check());
         assert_eq!(def.steps[1].name(), "Plan approval");
+    }
+
+    #[test]
+    fn has_check_is_true_for_any_check_with_or_without_input() {
+        let mut def = sample();
+        station_mut(&mut def, 0).check.as_mut().unwrap().command = "npm test".to_string();
+        assert!(def.has_check());
+        station_mut(&mut def, 0).check = None;
+        assert!(!def.has_check());
     }
 
     #[test]

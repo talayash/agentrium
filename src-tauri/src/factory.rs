@@ -1,8 +1,10 @@
 //! AI Factory: definition management and the run lifecycle commands.
 //! Factories and runs are local only (never synced).
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
@@ -671,7 +673,7 @@ fn checked_input(def: &Definition, input: &str) -> Result<String, String> {
             def.input.label.trim().to_lowercase()
         )));
     }
-    if def.uses_input_in_check() && !input_is_safe(input) {
+    if def.has_check() && !input_is_safe(input) {
         return Err(user_err(
             "This factory passes the input to a check command, so it may only contain letters, digits and . _ : / # @ -",
         ));
@@ -681,20 +683,6 @@ fn checked_input(def: &Definition, input: &str) -> Result<String, String> {
 
 fn first_chars(s: &str, n: usize) -> String {
     s.chars().take(n).collect()
-}
-
-/// The action for a run that was not moved (its stored state, as is).
-fn idle_action(run: &FactoryRun) -> StepAction {
-    match run.status {
-        RunStatus::Queued => StepAction::Queued,
-        RunStatus::Running | RunStatus::Checking => StepAction::Waiting,
-        RunStatus::WaitingGate => StepAction::AwaitGate {
-            step_id: run.current_step.clone(),
-        },
-        RunStatus::Blocked => StepAction::Blocked,
-        RunStatus::Done => StepAction::Finished,
-        RunStatus::Cancelled => StepAction::Cancelled,
-    }
 }
 
 fn step_action(db: &Database, run: &FactoryRun, action: Action) -> Result<StepAction, String> {
@@ -869,9 +857,25 @@ fn same_attempt(run: &FactoryRun, snapshot: &FactoryRun) -> bool {
         && run.attempts.get(&run.current_step) == snapshot.attempts.get(&snapshot.current_step)
 }
 
-/// Mark the run `Checking` before its check starts. Refuses unless the stored
-/// run is still `Running` at the attempt that was evaluated.
-fn begin_check(db: &Database, snapshot: &FactoryRun) -> Result<FactoryRun, String> {
+/// Identifies one `Checking` state created by one `begin_check`. Drawn from a
+/// process-wide counter, so no two `begin_check` calls ever get the same one;
+/// a check never outlives the process, so tokens never need to survive a
+/// restart.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct CheckToken(u64);
+
+/// Run id -> token of the check that currently owns that run's `Checking`.
+fn check_owners() -> &'static Mutex<HashMap<String, CheckToken>> {
+    static OWNERS: OnceLock<Mutex<HashMap<String, CheckToken>>> = OnceLock::new();
+    OWNERS.get_or_init(Default::default)
+}
+
+/// Mark the run `Checking` before its check starts and record which check
+/// owns that state. Refuses unless the stored run is still `Running` at the
+/// attempt that was evaluated. Runs under the DB lock (inside `db_op`), so it
+/// is serialised with `finish_check` and every other transition.
+fn begin_check(db: &Database, snapshot: &FactoryRun) -> Result<(FactoryRun, CheckToken), String> {
+    static NEXT: AtomicU64 = AtomicU64::new(1);
     let mut run = load_run(db, &snapshot.id)?;
     if run.status == RunStatus::Checking {
         return Err(user_err("This run is already being checked."));
@@ -882,7 +886,12 @@ fn begin_check(db: &Database, snapshot: &FactoryRun) -> Result<FactoryRun, Strin
     run.status = RunStatus::Checking;
     run.updated_at = now();
     db.update_factory_run(&run)?;
-    Ok(run)
+    let token = CheckToken(NEXT.fetch_add(1, Ordering::Relaxed));
+    check_owners()
+        .lock()
+        .map_err(|e| e.to_string())?
+        .insert(run.id.clone(), token);
+    Ok((run, token))
 }
 
 fn back_to_running(db: &Database, run: &mut FactoryRun) -> Result<(), String> {
@@ -894,18 +903,56 @@ fn back_to_running(db: &Database, run: &mut FactoryRun) -> Result<(), String> {
     Ok(())
 }
 
-/// Apply a station's result. A run that moved on meanwhile (cancelled,
-/// resumed into a new attempt) is returned unchanged.
+fn ignored(run: FactoryRun) -> RunStep {
+    RunStep {
+        run,
+        action: StepAction::Waiting,
+    }
+}
+
+/// Apply a station's result without a check (the `EvalDecision::Pass` path):
+/// only while the run still holds the line at the evaluated attempt.
 pub(crate) fn finish_evaluation(
     db: &Database,
     snapshot: &FactoryRun,
     outcome: CheckOutcome,
 ) -> Result<RunStep, String> {
-    let mut run = load_run(db, &snapshot.id)?;
+    let run = load_run(db, &snapshot.id)?;
     if !run.status.holds_line() || !same_attempt(&run, snapshot) {
-        let action = idle_action(&run);
-        return Ok(RunStep { run, action });
+        return Ok(ignored(run));
     }
+    apply_outcome(db, run, outcome)
+}
+
+/// Apply a check's result only while the run is still in the `Checking` state
+/// that this check's `begin_check` created. A late result (after a Resume,
+/// Cancel, or a newer check) is ignored: no change, no event.
+pub(crate) fn finish_check(
+    db: &Database,
+    run_id: &str,
+    token: CheckToken,
+    outcome: CheckOutcome,
+) -> Result<RunStep, String> {
+    let owns = {
+        let mut owners = check_owners().lock().map_err(|e| e.to_string())?;
+        let owns = owners.get(run_id) == Some(&token);
+        if owns {
+            owners.remove(run_id);
+        }
+        owns
+    };
+    let run = load_run(db, run_id)?;
+    if !owns || run.status != RunStatus::Checking {
+        return Ok(ignored(run));
+    }
+    apply_outcome(db, run, outcome)
+}
+
+fn apply_outcome(
+    db: &Database,
+    mut run: FactoryRun,
+    outcome: CheckOutcome,
+) -> Result<RunStep, String> {
     match outcome {
         CheckOutcome::Pass => transition(db, run, RunEvent::StationPassed, "passed", ""),
         CheckOutcome::Fail(output) => {
@@ -979,7 +1026,7 @@ pub(crate) async fn evaluate_station(
                 running.insert(eval_id.clone(), cancel.clone());
             }
             let _guard = CheckGuard(eval_id);
-            let checking = db_op(db, move |db| begin_check(db, &run)).await?;
+            let (checking, token) = db_op(db, move |db| begin_check(db, &run)).await?;
             let envs = [
                 ("AGENTRIUM_RUN_DIR".to_string(), checking.run_dir.clone()),
                 (
@@ -992,7 +1039,7 @@ pub(crate) async fn evaluate_station(
                 Ok(result) => outcome_of(&result, timeout.as_secs()),
                 Err(e) => CheckOutcome::SpawnError(e),
             };
-            db_op(db, move |db| finish_evaluation(db, &checking, outcome)).await
+            db_op(db, move |db| finish_check(db, &checking.id, token, outcome)).await
         }
     }
 }
@@ -1659,12 +1706,92 @@ mod tests {
     }
 
     #[test]
+    fn start_refuses_unsafe_input_when_any_station_has_a_check() {
+        // The command never mentions {input}, but the input still reaches it
+        // through AGENTRIUM_FACTORY_INPUT, which cmd expands before parsing.
+        let mut def = sample();
+        station0_mut(&mut def).check.as_mut().unwrap().command = "npm test".to_string();
+        let e = env_with(def);
+        let err = start(&e, "fix A & B").unwrap_err();
+        assert!(err.contains("may only contain"), "{err}");
+        assert!(e.db.list_factory_runs(500).unwrap().is_empty());
+    }
+
+    /// No station has a check, so nothing can execute the input.
+    #[test]
     fn start_allows_free_text_input_when_no_check_uses_it() {
         let mut def = sample();
         station0_mut(&mut def).check = None;
         let e = env_with(def);
         let step = start(&e, "fix the login bug").unwrap();
         assert_eq!(step.run.input, "fix the login bug");
+    }
+
+    /// Start a run, put plan.md in place and begin its check.
+    fn checking(e: &Env) -> (FactoryRun, CheckToken) {
+        let run = start(e, "A-1").unwrap().run;
+        std::fs::write(Path::new(&run.run_dir).join("plan.md"), "plan").unwrap();
+        begin_check(&e.db, &run).unwrap()
+    }
+
+    #[test]
+    fn late_check_result_after_resume_is_ignored() {
+        let e = env();
+        let (run, token) = checking(&e);
+        assert_eq!(run.status, RunStatus::Checking);
+        control_in(&e.db, &run.id, RunControl::Resume).unwrap();
+        let before = kinds(&e.db, &run.id);
+
+        let step = finish_check(&e.db, &run.id, token, CheckOutcome::Pass).unwrap();
+        assert_eq!(step.action, StepAction::Waiting);
+        assert_eq!(step.run.status, RunStatus::Running);
+        assert_eq!(step.run.current_step, "S1");
+        assert_eq!(kinds(&e.db, &run.id), before);
+        assert_eq!(e.db.get_factory_run(&run.id).unwrap().unwrap(), step.run);
+    }
+
+    #[test]
+    fn late_check_result_after_cancel_is_ignored() {
+        let e = env();
+        let (run, token) = checking(&e);
+        control_in(&e.db, &run.id, RunControl::Cancel).unwrap();
+        let before = kinds(&e.db, &run.id);
+
+        let step = finish_check(
+            &e.db,
+            &run.id,
+            token,
+            CheckOutcome::Fail("boom".to_string()),
+        )
+        .unwrap();
+        assert_eq!(step.action, StepAction::Waiting);
+        assert_eq!(step.run.status, RunStatus::Cancelled);
+        assert_eq!(kinds(&e.db, &run.id), before);
+    }
+
+    #[test]
+    fn only_the_newest_check_after_resume_is_applied() {
+        let e = env();
+        let (run, old) = checking(&e);
+        let resumed = control_in(&e.db, &run.id, RunControl::Resume).unwrap().run;
+        let (_, new) = begin_check(&e.db, &resumed).unwrap();
+        assert_ne!(old, new);
+
+        let ignored = finish_check(&e.db, &run.id, old, CheckOutcome::Pass).unwrap();
+        assert_eq!(ignored.action, StepAction::Waiting);
+        assert_eq!(ignored.run.status, RunStatus::Checking);
+
+        let applied = finish_check(&e.db, &run.id, new, CheckOutcome::Pass).unwrap();
+        assert_eq!(
+            applied.action,
+            StepAction::AwaitGate {
+                step_id: "G1".to_string()
+            }
+        );
+        // The token is spent: a repeat of the same result changes nothing.
+        let again = finish_check(&e.db, &run.id, new, CheckOutcome::Pass).unwrap();
+        assert_eq!(again.action, StepAction::Waiting);
+        assert_eq!(again.run.status, RunStatus::WaitingGate);
     }
 
     #[test]
