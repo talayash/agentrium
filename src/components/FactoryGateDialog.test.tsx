@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 vi.mock('../lib/errorReporter', () => ({ reportInvokeFailure: vi.fn() }));
 import { invoke } from '@tauri-apps/api/core';
@@ -137,4 +137,50 @@ it('a gate that is no longer waiting shows the already-answered state', () => {
   expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
   fireEvent.click(screen.getAllByRole('button', { name: 'Close' })[0]);
   expect(useAppStore.getState().factoryGateRunId).toBeNull();
+});
+
+const ALREADY = 'This gate was already answered.';
+
+it('answering does not flash the already-answered state', async () => {
+  let resolveAnswer: (v: unknown) => void = () => {};
+  vi.mocked(invoke).mockImplementation(async (cmd, args) => {
+    if (cmd === 'get_factory_artifact') return artifactFor(args);
+    if (cmd === 'answer_factory_gate') {
+      // The run moves on (for example from another listener) before the answer resolves.
+      useFactoryStore.setState({ runs: { r1: mkRun('running', 's1') } });
+      return new Promise((r) => { resolveAnswer = r; });
+    }
+    return null;
+  });
+  render(<FactoryGateDialog />);
+  await screen.findByText('# Plan');
+  let flashed = false;
+  const seen = () => { if (document.body.textContent?.includes(ALREADY)) flashed = true; };
+  const observer = new MutationObserver(seen);
+  observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+
+  fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+  await waitFor(() => expect(answers().length).toBe(1));
+  await act(async () => { await Promise.resolve(); });
+  seen();
+  expect(screen.getByRole('button', { name: 'Approve' })).toBeTruthy();
+
+  await act(async () => { resolveAnswer(answered()); });
+  await waitFor(() => expect(useAppStore.getState().factoryGateRunId).toBeNull());
+  observer.disconnect();
+  seen();
+  expect(flashed).toBe(false);
+});
+
+it('re-entering the gate clears the previous file text before the new load resolves', async () => {
+  render(<FactoryGateDialog />);
+  await screen.findByText('# Plan');
+  vi.mocked(invoke).mockImplementation(async (cmd) => {
+    if (cmd === 'get_factory_artifact') return new Promise(() => {});
+    return null;
+  });
+  act(() => { useFactoryStore.setState({ runs: { r1: mkRun('running', 's1') } }); });
+  act(() => { useFactoryStore.setState({ runs: { r1: mkRun('waiting_gate') } }); });
+  expect(screen.queryByText('# Plan')).toBeNull();
+  expect(screen.getAllByText('Loading...').length).toBe(2);
 });

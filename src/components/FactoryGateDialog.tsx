@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAppStore } from '../store/appStore';
 import { useFactoryStore } from '../store/factoryStore';
-import { getFactoryArtifact, currentStep } from '../lib/factory';
+import { getFactoryArtifact, currentStep, type FactoryRun, type GateStep } from '../lib/factory';
 import { reportInvokeFailure } from '../lib/errorReporter';
 import { Modal } from './ui/Modal';
 
@@ -11,19 +11,34 @@ type Artifact = { state: 'loading' } | { state: 'missing' } | { state: 'error'; 
 export function FactoryGateDialog() {
   const runId = useAppStore((s) => s.factoryGateRunId);
   const close = useAppStore((s) => s.closeFactoryGate);
-  const run = useFactoryStore((s) => (runId ? s.runs[runId] : undefined));
-  const factoryName = useFactoryStore((s) => (run ? s.factories[run.factoryId]?.name : undefined));
+  const storedRun = useFactoryStore((s) => (runId ? s.runs[runId] : undefined));
+  const factoryName = useFactoryStore((s) => (storedRun ? s.factories[storedRun.factoryId]?.name : undefined));
   const [artifacts, setArtifacts] = useState<Record<string, Artifact>>({});
   const [reason, setReason] = useState('');
   const [reasonMissing, setReasonMissing] = useState(false);
   const [busy, setBusy] = useState(false);
+  /**
+   * The gate this dialog is answering, kept from the click until the dialog
+   * closes: the store moves the run on before the dialog closes, and the form
+   * must not turn into the already-answered state in between.
+   */
+  const [answering, setAnswering] = useState<{ run: FactoryRun; gate: GateStep } | null>(null);
 
-  const step = run ? currentStep(run) : undefined;
-  const gate = step?.kind === 'gate' ? step : undefined;
-  const open = !!run && !!gate && run.status === 'waiting_gate';
+  useEffect(() => {
+    setAnswering(null);
+    setBusy(false);
+  }, [runId]);
+
+  const step = storedRun ? currentStep(storedRun) : undefined;
+  const waiting = storedRun && step?.kind === 'gate' && storedRun.status === 'waiting_gate'
+    ? { run: storedRun, gate: step } : null;
+  const shown = answering ?? waiting;
+  const open = !!shown;
+  const gate = shown?.gate;
   const showKey = gate ? gate.show.join('\n') : '';
 
   useEffect(() => {
+    setArtifacts({});
     if (!open || !runId || !gate) return;
     let cancelled = false;
     const patch = (name: string, a: Artifact) => {
@@ -44,7 +59,7 @@ export function FactoryGateDialog() {
 
   if (!runId) return null;
 
-  if (!open || !run || !gate) {
+  if (!shown || !gate) {
     return (
       <Modal title="Gate" showHeader onClose={close} closeOn="none" panelClassName="w-full max-w-sm">
         <div className="p-4 flex flex-col gap-4 text-[13px]">
@@ -58,19 +73,21 @@ export function FactoryGateDialog() {
   }
 
   const answer = (approve: boolean) => {
-    if (busy) return;
+    if (busy || !waiting) return;
     if (!approve && !reason.trim()) {
       setReasonMissing(true);
       return;
     }
     setReasonMissing(false);
     setBusy(true);
+    setAnswering(waiting);
     // The store shows the error toast and reports the failure, then rethrows: stay open.
-    useFactoryStore.getState().answerGate(run.id, gate.id, approve, reason)
+    useFactoryStore.getState().answerGate(waiting.run.id, waiting.gate.id, approve, reason)
       .then(() => close())
-      .catch(() => { setBusy(false); });
+      .catch(() => { setBusy(false); setAnswering(null); });
   };
 
+  const run = shown.run;
   const reasonId = `gate-reason-${run.id}`;
 
   return (
