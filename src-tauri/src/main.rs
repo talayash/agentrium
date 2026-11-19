@@ -30,6 +30,7 @@ mod sync_privacy;
 mod tasks;
 mod races;
 mod factory_def;
+mod factory_engine;
 mod pull_requests;
 mod browser;
 mod insight_parse;
