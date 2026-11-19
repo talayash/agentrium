@@ -77,3 +77,20 @@ it('closes the New Session menu on Escape', () => {
   fireEvent.keyDown(document, { key: 'Escape' });
   expect(screen.queryByRole('menu')).toBeNull();
 });
+
+it('the New menu has a Factory run entry only when the flag is on', () => {
+  const original = useAppStore.getState();
+  const openNewFactoryRun = vi.fn();
+  useAppStore.setState({ sidebarCollapsed: false, factoryEnabled: false, openNewFactoryRun });
+  onTestFinished(() => useAppStore.setState({ factoryEnabled: original.factoryEnabled, openNewFactoryRun: original.openNewFactoryRun }));
+  const { unmount } = render(<Sidebar />);
+  fireEvent.click(screen.getByRole('button', { name: 'More ways to start' }));
+  expect(screen.queryByRole('menuitem', { name: 'New Factory run' })).toBeNull();
+  unmount();
+  useAppStore.setState({ factoryEnabled: true });
+  render(<Sidebar />);
+  fireEvent.click(screen.getByRole('button', { name: 'More ways to start' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'New Factory run' }));
+  expect(openNewFactoryRun).toHaveBeenCalledWith(null);
+  expect(screen.queryByRole('menu')).toBeNull();
+});

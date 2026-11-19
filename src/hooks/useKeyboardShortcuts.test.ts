@@ -116,3 +116,19 @@ describe('shortcuts from the Insight prompt bar', () => {
     expect(toggleCommandPalette).not.toHaveBeenCalled();
   });
 });
+
+describe('Ctrl+Shift+Y', () => {
+  const pressY = () =>
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Y', code: 'KeyY', ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true }));
+
+  it('opens the new run modal when the flag is on and does nothing when it is off', () => {
+    renderHook(() => useKeyboardShortcuts());
+    useAppStore.setState({ factoryEnabled: false, newFactoryRunFactoryId: undefined });
+    pressY();
+    expect(useAppStore.getState().newFactoryRunFactoryId).toBeUndefined();
+    useAppStore.setState({ factoryEnabled: true });
+    pressY();
+    expect(useAppStore.getState().newFactoryRunFactoryId).toBeNull();
+    useAppStore.setState({ factoryEnabled: false, newFactoryRunFactoryId: undefined });
+  });
+});

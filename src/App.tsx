@@ -21,6 +21,7 @@ import { WorktreeModal } from './components/WorktreeModal';
 import { NewTaskModal } from './components/NewTaskModal';
 import { NewRaceModal } from './components/NewRaceModal';
 import { AddFactoryModal } from './components/AddFactoryModal';
+import { NewFactoryRunModal } from './components/NewFactoryRunModal';
 import { RaceDecideDialog } from './components/RaceDecideDialog';
 import { FactoryGateDialog } from './components/FactoryGateDialog';
 import { subscribeRaceTracking } from './store/raceStore';
@@ -165,6 +166,7 @@ function App() {
   useSessionContext();
   const newTaskModalOpen = useAppStore((s) => s.newTaskModalOpen);
   const newRaceModalOpen = useAppStore((s) => s.newRaceModalOpen);
+  const newFactoryRunFactoryId = useAppStore((s) => s.newFactoryRunFactoryId);
   const decideRaceId = useAppStore((s) => s.decideRaceId);
   const factoryGateRunId = useAppStore((s) => s.factoryGateRunId);
   const addFactoryModalOpen = useAppStore((s) => s.addFactoryModalOpen);
@@ -1171,6 +1173,7 @@ function App() {
             {newTaskModalOpen && <NewTaskModal key="new-task" />}
             {newRaceModalOpen && <NewRaceModal key="new-race" />}
             {addFactoryModalOpen && <AddFactoryModal key="add-factory" />}
+            {newFactoryRunFactoryId !== undefined && <NewFactoryRunModal key="new-factory-run" />}
             {decideRaceId && <RaceDecideDialog key={`decide-${decideRaceId}`} />}
             {factoryGateRunId && <FactoryGateDialog key={`gate-${factoryGateRunId}`} />}
             {finishTaskTerminalId && <FinishTaskDialog key={`finish-${finishTaskTerminalId}`} />}

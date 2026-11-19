@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Terminal, FolderTree, History, Plus, ChevronsRight, ChevronsLeft, ChevronDown, Settings, GitBranch, Flag, UserCog } from 'lucide-react';
+import { Terminal, FolderTree, History, Plus, ChevronsRight, ChevronsLeft, ChevronDown, Settings, GitBranch, Flag, UserCog, Factory } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useAppStore } from '../store/appStore';
 import type { SidebarNav } from '../store/appStore';
@@ -42,6 +42,8 @@ export function Sidebar() {
   const openNewTerminalModal = useAppStore((s) => s.openNewTerminalModal);
   const openNewTaskModal = useAppStore((s) => s.openNewTaskModal);
   const openNewRaceModal = useAppStore((s) => s.openNewRaceModal);
+  const factoryEnabled = useAppStore((s) => s.factoryEnabled);
+  const openNewFactoryRun = useAppStore((s) => s.openNewFactoryRun);
   const sessionFilter = useAppStore((s) => s.sessionFilter);
   const setSessionFilter = useAppStore((s) => s.setSessionFilter);
   const taskCount = useTerminalStore((s) => {
@@ -196,6 +198,7 @@ export function Sidebar() {
           onNewSession={openNewTerminalModal}
           onNewTask={openNewTaskModal}
           onNewRace={openNewRaceModal}
+          onNewFactoryRun={factoryEnabled ? () => openNewFactoryRun(null) : undefined}
         />
         <Tooltip label="Profiles">
           <button
@@ -229,6 +232,7 @@ interface SplitProps {
   onNewSession: () => void;
   onNewTask: () => void;
   onNewRace: () => void;
+  onNewFactoryRun?: () => void;
 }
 
 /**
@@ -237,7 +241,7 @@ interface SplitProps {
  * trap hands focus back to the button on close, and an Enter meant for the new
  * terminal re-clicks it and reopens the modal (#58).
  */
-function NewSessionSplitButton({ onNewSession, onNewTask, onNewRace }: SplitProps) {
+function NewSessionSplitButton({ onNewSession, onNewTask, onNewRace, onNewFactoryRun }: SplitProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -278,6 +282,13 @@ function NewSessionSplitButton({ onNewSession, onNewTask, onNewRace }: SplitProp
             Race
             <kbd className="split-menu-kbd ml-auto pl-2 text-[10px] font-mono text-text-tertiary">Ctrl+Shift+R</kbd>
           </button>
+          {onNewFactoryRun && (
+            <button role="menuitem" aria-label="New Factory run" aria-keyshortcuts="Control+Shift+Y" onClick={(e) => pick(e, onNewFactoryRun)} className={itemClass}>
+              <IconTile icon={Factory} tone="blue" size={18} />
+              Factory run
+              <kbd className="split-menu-kbd ml-auto pl-2 text-[10px] font-mono text-text-tertiary">Ctrl+Shift+Y</kbd>
+            </button>
+          )}
         </div>
       )}
       <div className="glass-capsule glass-capsule-accent w-full h-9">

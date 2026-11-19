@@ -199,6 +199,12 @@ export function useKeyboardShortcuts() {
         useAppStore.getState().openNewRaceModal();
       }
 
+      // New factory run: Ctrl+Shift+Y (AI Factory, behind its feature flag)
+      if (ctrl && shift && matchesKeyCode(e, 'Y') && useAppStore.getState().factoryEnabled) {
+        e.preventDefault();
+        useAppStore.getState().openNewFactoryRun(null);
+      }
+
       // Duplicate active terminal: Ctrl+Shift+D
       if (ctrl && shift && matchesKeyCode(e, 'D')) {
         e.preventDefault();
