@@ -244,3 +244,14 @@ it('the history shows an inline error when it cannot load', async () => {
   expect(await screen.findByText('Could not load the history.')).toBeTruthy();
   expect(reportInvokeFailure).toHaveBeenCalledWith('get_factory_run_events', expect.anything());
 });
+
+it('a history load that fails after the list closed is not reported', async () => {
+  let reject: (e: unknown) => void = () => {};
+  vi.mocked(invoke).mockImplementation(() => new Promise((_, r) => { reject = r; }));
+  setRuns(mkRun('r1', 'done', 's2'));
+  render(<FactoryFloor factoryId="f1" />);
+  fireEvent.click(screen.getByRole('button', { name: 'Show history' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Hide history' }));
+  await act(async () => { reject(new Error('late')); });
+  expect(reportInvokeFailure).not.toHaveBeenCalled();
+});

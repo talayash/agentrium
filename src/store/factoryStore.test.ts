@@ -1,8 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 import { invoke } from '@tauri-apps/api/core';
 import {
-  hasLiveSession, needsYouCount, runsForFactory, subscribeFactoryTracking, trackFactoryRuns, useFactoryStore,
+  clearGraceTimers, hasLiveSession, needsYouCount, runsForFactory, subscribeFactoryTracking, trackFactoryRuns, useFactoryStore,
 } from './factoryStore';
 import { useTerminalStore, type TerminalConfig, type TerminalInstance } from './terminalStore';
 import { useAppStore } from './appStore';
@@ -49,8 +49,13 @@ beforeEach(() => {
   vi.mocked(invoke).mockImplementation(async (cmd) => (cmd === 'evaluate_factory_station' ? waitingStep() : undefined));
   useToastStore.getState().clearAll();
   useAppStore.setState({ factoryEnabled: false });
-  useFactoryStore.setState({ factories: { f1: factory }, runs: { r1: run() }, loaded: true, evaluating: {}, seenBusy: {}, exitHandled: {}, sessionOpenedAt: {} });
+  useFactoryStore.setState({ factories: { f1: factory }, runs: { r1: run() }, loaded: true, evaluating: {}, seenBusy: {}, exitHandled: {}, sessionOpenedAt: {}, lastSeenState: {} });
   useTerminalStore.setState({ terminals: new Map([terminal('t1')]), terminalStates: new Map() });
+});
+
+afterEach(() => {
+  clearGraceTimers();
+  vi.useRealTimers();
 });
 
 describe('factory store', () => {
@@ -199,6 +204,46 @@ describe('turn tracking', () => {
     expect(evalCalls()).toHaveLength(1);
   });
 
+  it('busy inside the grace and still busy past it evaluates on the idle edge', async () => {
+    const opened = Date.now();
+    useFactoryStore.getState().markSessionOpened('t1', opened);
+    setState('busy');
+    trackFactoryRuns(opened + 1_000);
+    setState('idle');
+    trackFactoryRuns(opened + 30_000);
+    await flush();
+    expect(evalCalls()).toHaveLength(1);
+  });
+
+  it('a turn that starts and ends inside the grace is not evaluated', async () => {
+    const opened = Date.now();
+    useFactoryStore.getState().markSessionOpened('t1', opened);
+    setState('busy');
+    trackFactoryRuns(opened + 1_000);
+    setState('idle');
+    trackFactoryRuns(opened + 3_000);
+    await flush();
+    expect(evalCalls()).toHaveLength(0);
+  });
+
+  it('a pass is scheduled for the end of the grace', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    const opened = Date.now();
+    useFactoryStore.getState().markSessionOpened('t1', opened);
+    vi.setSystemTime(opened + 1_000);
+    setState('busy');
+    trackFactoryRuns();
+    expect(useFactoryStore.getState().seenBusy.t1).toBeUndefined();
+    vi.advanceTimersByTime(BUSY_GRACE_MS - 1_000);
+    // The scheduled pass marked the turn without any store change.
+    expect(useFactoryStore.getState().seenBusy.t1).toBe(true);
+    vi.useRealTimers();
+    setState('idle');
+    trackFactoryRuns();
+    await flush();
+    expect(evalCalls()).toHaveLength(1);
+  });
+
   it('a waiting outcome re-arms on the next busy to idle edge', async () => {
     setState('busy');
     trackFactoryRuns();
@@ -307,6 +352,20 @@ describe('subscription', () => {
     await flush();
     unsub();
     expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it('unsubscribe clears the pending grace timer', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    useAppStore.setState({ factoryEnabled: true });
+    vi.mocked(invoke).mockImplementation(async () => null);
+    const unsub = subscribeFactoryTracking();
+    useFactoryStore.getState().markSessionOpened('t1', Date.now());
+    const before = vi.getTimerCount();
+    setState('busy');
+    trackFactoryRuns();
+    expect(vi.getTimerCount()).toBe(before + 1);
+    unsub();
+    expect(vi.getTimerCount()).toBe(before);
   });
 
   it('a tracking pass runs when an evaluation finishes', async () => {

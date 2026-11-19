@@ -10,6 +10,7 @@ import { toast } from './toastStore';
 import { useTerminalStore } from './terminalStore';
 import { useAppStore } from './appStore';
 import { BUSY_GRACE_MS } from './raceStore';
+import type { SessionState } from '../lib/terminalState';
 
 interface FactoryStoreState {
   factories: Record<string, Factory>;
@@ -23,6 +24,8 @@ interface FactoryStoreState {
   exitHandled: Record<string, true>;
   /** Terminal id -> when performStep opened it as a station session (ms). */
   sessionOpenedAt: Record<string, number>;
+  /** Terminal id -> the session state the last tracking pass observed. */
+  lastSeenState: Record<string, SessionState>;
 
   load: () => Promise<void>;
   markSessionOpened: (terminalId: string, at?: number) => void;
@@ -51,6 +54,7 @@ export const useFactoryStore = create<FactoryStoreState>((set, get) => ({
   seenBusy: {},
   exitHandled: {},
   sessionOpenedAt: {},
+  lastSeenState: {},
 
   load: async () => {
     try {
@@ -169,25 +173,61 @@ export function hasLiveSession(run: FactoryRun): boolean {
 // Tracking: evaluate a station once its agent finished a turn
 // ---------------------------------------------------------------------------
 
+/** Terminal id -> the pending pass scheduled for the end of its busy grace. */
+const graceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+/** Cancel every pending end-of-grace pass. */
+export function clearGraceTimers(): void {
+  for (const timer of graceTimers.values()) clearTimeout(timer);
+  graceTimers.clear();
+}
+
+/** Run one tracking pass when the grace of a terminal that is busy inside it ends. */
+function scheduleGracePass(id: string, delayMs: number): void {
+  if (graceTimers.has(id)) return;
+  graceTimers.set(id, setTimeout(() => {
+    graceTimers.delete(id);
+    trackFactoryRuns();
+  }, Math.max(0, delayMs)));
+}
+
 /**
  * One pass over every running run. Exported for tests. A terminal counts as
  * seen busy only when it is busy at least BUSY_GRACE_MS after its station
- * session opened, so a startup blip never arms an evaluation.
+ * session opened, so a startup blip never arms an evaluation. Passes run
+ * only on store changes, so a turn that went busy inside the grace and
+ * stayed busy past it is caught twice over: a pass is scheduled for the end
+ * of the grace, and an idle observation right after a busy one past the
+ * grace counts the turn.
  */
 export function trackFactoryRuns(now = Date.now()): void {
   const { terminals, terminalStates } = useTerminalStore.getState();
+  for (const [id, timer] of graceTimers) {
+    if (!terminals.has(id)) {
+      clearTimeout(timer);
+      graceTimers.delete(id);
+    }
+  }
   for (const run of Object.values(useFactoryStore.getState().runs)) {
     if (run.status !== 'running' || !run.terminalId) continue;
     const id = run.terminalId;
     const t = terminals.get(id);
     if (!t) continue;
     const state = terminalStates.get(id);
-    if (state === 'busy' && !useFactoryStore.getState().seenBusy[id]) {
+    const before = useFactoryStore.getState();
+    const previous = before.lastSeenState[id];
+    if (!before.seenBusy[id]) {
       // No entry (for example after a hot reload): fall back to the terminal's creation time.
-      const opened = useFactoryStore.getState().sessionOpenedAt[id] ?? Date.parse(t.config.created_at);
-      if (!Number.isNaN(opened) && now - opened >= BUSY_GRACE_MS) {
+      const opened = before.sessionOpenedAt[id] ?? Date.parse(t.config.created_at);
+      const pastGrace = !Number.isNaN(opened) && now - opened >= BUSY_GRACE_MS;
+      if ((state === 'busy' || (state === 'idle' && previous === 'busy')) && pastGrace) {
         useFactoryStore.setState((s) => ({ seenBusy: { ...s.seenBusy, [id]: true } }));
+      } else if (state === 'busy' && !Number.isNaN(opened)) {
+        scheduleGracePass(id, opened + BUSY_GRACE_MS - now);
       }
+    }
+    if (state && state !== previous) {
+      useFactoryStore.setState((s) => ({ lastSeenState: { ...s.lastSeenState, [id]: state } }));
     }
     const s = useFactoryStore.getState();
     if (s.evaluating[run.id]) continue;
@@ -221,5 +261,8 @@ export function subscribeFactoryTracking(): () => void {
       if (s.runs !== p.runs || s.evaluating !== p.evaluating) schedule();
     }),
   ];
-  return () => unsubs.forEach((u) => u());
+  return () => {
+    unsubs.forEach((u) => u());
+    clearGraceTimers();
+  };
 }

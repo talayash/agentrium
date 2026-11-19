@@ -120,17 +120,18 @@ function clockTime(iso: string): string {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
-type History = { state: 'loading' } | { state: 'error' } | { state: 'ok'; events: RunEventRow[] };
+type HistoryState = { state: 'loading' } | { state: 'error' } | { state: 'ok'; events: RunEventRow[] };
 
 /** The run's logged transitions, re-loaded whenever the run changes. */
 function RunHistory({ run }: { run: FactoryRun }) {
-  const [history, setHistory] = useState<History>({ state: 'loading' });
+  const [history, setHistory] = useState<HistoryState>({ state: 'loading' });
   useEffect(() => {
     let cancelled = false;
     getFactoryRunEvents(run.id)
       .then((events) => { if (!cancelled) setHistory({ state: 'ok', events }); })
       .catch((err) => {
-        if (!cancelled) setHistory({ state: 'error' });
+        if (cancelled) return;
+        setHistory({ state: 'error' });
         reportInvokeFailure('get_factory_run_events', err);
       });
     return () => { cancelled = true; };
