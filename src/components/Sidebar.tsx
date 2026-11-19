@@ -7,8 +7,11 @@ import { FileTreePanel } from './FileTreePanel';
 import { SessionsPanel } from './SessionsPanel';
 import { SessionCards } from './SessionCards';
 import { RaceSidebarGroups } from './RaceSidebarGroups';
+import { FactoryNavigator } from './FactoryNavigator';
+import { FactorySidebarGroups } from './FactorySidebarGroups';
 import { RaceHistory } from './RaceHistory';
 import { useTerminalStore } from '../store/terminalStore';
+import { useFactoryStore, needsYouCount } from '../store/factoryStore';
 import { IconTile } from './ui/IconTile';
 import { Tooltip } from './ui/Tooltip';
 
@@ -18,14 +21,29 @@ interface NavItem {
   Icon: LucideIcon;
   /** Glyph hue: `--nav-<hue>` in index.css. One colour per navigator so the
    *  three read apart at a glance. */
-  hue: 'sessions' | 'files' | 'history';
+  hue: 'sessions' | 'files' | 'history' | 'factory';
 }
 
-const NAV: NavItem[] = [
+const BASE_NAV: NavItem[] = [
   { id: 'sessions', label: 'Sessions', Icon: Terminal, hue: 'sessions' },
   { id: 'files', label: 'Files', Icon: FolderTree, hue: 'files' },
   { id: 'history', label: 'History', Icon: History, hue: 'history' },
 ];
+const FACTORY_NAV: NavItem = { id: 'factory', label: 'Factory', Icon: Factory, hue: 'factory' };
+
+/** Count badge on the Factory tab: runs waiting for the user. */
+function NeedsYouPip({ count }: { count: number }) {
+  if (count <= 0) return null;
+  return (
+    <span
+      aria-label={`${count} waiting for you`}
+      className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] px-[3px] rounded-full text-[9.5px] font-semibold leading-[14px] text-center tabular-nums"
+      style={{ background: 'var(--attention-input)', color: '#1b1230' }}
+    >
+      {count}
+    </span>
+  );
+}
 
 /**
  * Unified adaptive sidebar (Apple/Xcode navigator model). A segmented switcher
@@ -54,6 +72,10 @@ export function Sidebar() {
   const openSettings = useAppStore((s) => s.openSettings);
   const openProfileModal = useAppStore((s) => s.openProfileModal);
   const sessionCount = useTerminalStore((s) => s.terminals.size);
+  const waitingCount = useFactoryStore((s) => needsYouCount(s.runs));
+  const NAV = factoryEnabled ? [...BASE_NAV, FACTORY_NAV] : BASE_NAV;
+  // sidebarNav is persisted, so it can be 'factory' while the flag is off.
+  const effectiveNav = nav === 'factory' && !factoryEnabled ? 'sessions' : nav;
 
   if (sidebarCollapsed) {
     return (
@@ -64,9 +86,10 @@ export function Sidebar() {
               onClick={() => { setNav(id); toggleSidebarCollapse(); }}
               aria-label={label}
               data-hue={hue}
-              className="sidebar-nav-rail w-8 h-8 flex items-center justify-center rounded-lg"
+              className="sidebar-nav-rail relative w-8 h-8 flex items-center justify-center rounded-lg"
             >
               <Icon size={16} strokeWidth={1.75} />
+              {id === 'factory' && <NeedsYouPip count={waitingCount} />}
             </button>
           </Tooltip>
         ))}
@@ -113,7 +136,7 @@ export function Sidebar() {
             but each glyph keeps its own hue (`.sidebar-nav*` in index.css). */}
         <div className="sidebar-nav flex-1 min-w-0" role="group" aria-label="Navigator">
           {NAV.map(({ id, label, Icon, hue }) => {
-            const on = nav === id;
+            const on = effectiveNav === id;
             return (
               <Tooltip key={id} label={label}>
                 <button
@@ -121,10 +144,11 @@ export function Sidebar() {
                   aria-pressed={on}
                   aria-label={label}
                   data-hue={hue}
-                  className="sidebar-nav-tab"
+                  className="sidebar-nav-tab relative"
                 >
                   <Icon size={15} strokeWidth={on ? 2 : 1.75} />
                   <span className="sidebar-nav-label">{label}</span>
+                  {id === 'factory' && <NeedsYouPip count={waitingCount} />}
                 </button>
               </Tooltip>
             );
@@ -143,7 +167,7 @@ export function Sidebar() {
 
       {/* Body - one navigator at a time */}
       <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-        {nav === 'sessions' && (
+        {effectiveNav === 'sessions' && (
           <>
             <div className="flex items-center gap-1.5 px-4 pt-1 pb-1.5 text-text-tertiary text-[11px] font-semibold uppercase tracking-[0.06em]">
               Sessions
@@ -168,11 +192,13 @@ export function Sidebar() {
                 ))}
               </div>
             </div>
+            {factoryEnabled && <FactorySidebarGroups />}
             <RaceSidebarGroups />
             <SessionCards />
           </>
         )}
-        {nav === 'files' && (
+        {effectiveNav === 'factory' && <FactoryNavigator />}
+        {effectiveNav === 'files' && (
           showFileTree ? (
             <FileTreePanel />
           ) : (
@@ -183,7 +209,7 @@ export function Sidebar() {
             </div>
           )
         )}
-        {nav === 'history' && (
+        {effectiveNav === 'history' && (
           <div className="flex-1 min-h-0 flex flex-col">
             <RaceHistory />
             <SessionsPanel />
