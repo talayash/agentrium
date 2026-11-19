@@ -819,16 +819,19 @@ fn pump<R: tokio::io::AsyncRead + Unpin + Send + 'static>(
     })
 }
 
-/// Run `command` in `cwd`. A non-zero exit, a timeout and a cancel are all
-/// results (data), not errors; only a failure to spawn is an error.
+/// Run `command` in `cwd` with `envs` added to the environment. A non-zero
+/// exit, a timeout and a cancel are all results (data), not errors; only a
+/// failure to spawn is an error.
 pub async fn run_check(
     command: &str,
     cwd: &Path,
     timeout: Duration,
     cancel: Arc<Notify>,
+    envs: &[(String, String)],
 ) -> Result<RaceCheckResult, String> {
     let started = Instant::now();
     let mut cmd = check_command_for(command);
+    cmd.envs(envs.iter().map(|(k, v)| (k, v)));
     cmd.current_dir(cwd)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
@@ -1338,7 +1341,7 @@ pub async fn run_race_check(
             running.insert(run_id.clone(), cancel.clone());
         }
         let _guard = CheckGuard(run_id);
-        run_check(&command, &cwd, timeout, cancel).await
+        run_check(&command, &cwd, timeout, cancel, &[]).await
     })
     .await
 }
@@ -1987,6 +1990,7 @@ mod tests {
             dir.path(),
             Duration::from_secs(30),
             Arc::new(Notify::new()),
+            &[],
         )
         .await
         .unwrap();
@@ -2011,6 +2015,7 @@ mod tests {
             dir.path(),
             Duration::from_secs(60),
             Arc::new(Notify::new()),
+            &[],
         )
         .await
         .unwrap();
@@ -2033,6 +2038,7 @@ mod tests {
             dir.path(),
             Duration::from_secs(1),
             Arc::new(Notify::new()),
+            &[],
         )
         .await
         .unwrap();
@@ -2058,6 +2064,7 @@ mod tests {
             dir.path(),
             Duration::from_secs(60),
             cancel,
+            &[],
         )
         .await
         .unwrap();

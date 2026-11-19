@@ -2102,7 +2102,6 @@ impl Database {
 /// AI Factory persistence. Local only: never synced. A row whose stored
 /// definition no longer parses is skipped (lists) or reported absent (gets), so
 /// one corrupt row never breaks the whole list.
-#[allow(dead_code)]
 impl Database {
     const FACTORY_COLUMNS: &'static str =
         "id, name, repo_path, source_path, definition_json, created_at, updated_at";

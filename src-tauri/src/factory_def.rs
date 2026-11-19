@@ -1,6 +1,5 @@
 //! AI Factory definition file format: types, parsing, lint and prompt rendering.
 //! Pure functions only, no I/O. Everything here is the on-disk wire format (snake_case).
-#![allow(dead_code)]
 
 use serde::{Deserialize, Serialize};
 

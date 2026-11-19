@@ -978,7 +978,7 @@ pub(crate) async fn run_task_setup_impl(
     if !cwd.is_dir() {
         return Err(user_err("The task's worktree no longer exists."));
     }
-    run_check(&command, &cwd, timeout, cancel).await.map(Some)
+    run_check(&command, &cwd, timeout, cancel, &[]).await.map(Some)
 }
 
 #[command]

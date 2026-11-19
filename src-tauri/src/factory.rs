@@ -1,16 +1,29 @@
-//! AI Factory persisted types. Factories and runs are local only (never synced).
-#![allow(dead_code)]
+//! AI Factory: definition management and the run lifecycle commands.
+//! Factories and runs are local only (never synced).
 
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tauri::{command, State};
+use tokio::sync::Notify;
 
 use crate::commands::{db_op, wrap_cmd};
+use crate::config::AgentKind;
+use crate::database::Database;
 use crate::error_reporter::user_err;
-use crate::factory_def::{parse_definition, validate, Definition, Lint};
-use crate::tasks::ensure_repo_trusted;
+use crate::factory_def::{
+    input_is_safe, is_plain_file_name, parse_definition, render_check_command, render_prompt,
+    validate, Definition, Lint, PromptVars, Workspace,
+};
+use crate::factory_engine::{apply, wrong_state, Action, FactoryRun, RunEvent, RunStatus};
+use crate::races::{cancel_check, run_check, running_checks, CheckGuard, RaceCheckResult};
+use crate::tasks::{
+    ensure_repo_trusted, finish_task_impl, same_path, start_task_impl, FinishAction,
+    StartTaskRequest, TaskInfo,
+};
 use crate::AppState;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -533,6 +546,703 @@ pub async fn delete_factory(state: State<'_, AppState>, factory_id: String) -> R
     .await
 }
 
+// ---------------------------------------------------------------------------
+// Run lifecycle
+// ---------------------------------------------------------------------------
+
+const RUN_LIST_LIMIT: u32 = 500;
+const MAX_ARTIFACT_BYTES: u64 = 2 * 1024 * 1024;
+const EVENT_DETAIL_CHARS: usize = 500;
+const BRANCH_SLUG_LEN: usize = 40;
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum StepAction {
+    #[serde(rename_all = "camelCase")]
+    StartStation {
+        step_id: String,
+        step_name: String,
+        attempt: u32,
+        prompt: String,
+        agent: AgentKind,
+        cwd: String,
+        /// Boxed only to keep the enum small; serialises as a plain object.
+        task: Option<Box<TaskInfo>>,
+    },
+    #[serde(rename_all = "camelCase")]
+    AwaitGate {
+        step_id: String,
+    },
+    Queued,
+    Blocked,
+    Finished,
+    Cancelled,
+    /// evaluate only: the station is not finished yet
+    Waiting,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RunStep {
+    pub run: FactoryRun,
+    pub action: StepAction,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RunControl {
+    Resume,
+    AllowRetry,
+    LineFreed,
+    Cancel,
+}
+
+/// Where a new run works. A worktree run carries the task it was given.
+pub(crate) enum WorkspaceSpec {
+    InPlace,
+    Worktree(TaskInfo),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum EvalDecision {
+    Waiting,
+    RunCheck { command: String, timeout: Duration },
+    Pass,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum CheckOutcome {
+    Pass,
+    Fail(String),
+    Cancelled,
+    SpawnError(String),
+}
+
+fn now() -> String {
+    chrono::Utc::now().to_rfc3339()
+}
+
+fn run_missing() -> String {
+    user_err("This run no longer exists.")
+}
+
+fn load_run(db: &Database, run_id: &str) -> Result<FactoryRun, String> {
+    db.get_factory_run(run_id)?.ok_or_else(run_missing)
+}
+
+/// Lowercase, every char outside `[a-z0-9]` becomes `-`, repeats collapsed,
+/// `-` trimmed, capped at 40 chars.
+fn branch_slug(text: &str) -> String {
+    let mut out = String::new();
+    for c in text.chars() {
+        let c = c.to_ascii_lowercase();
+        let c = if c.is_ascii_lowercase() || c.is_ascii_digit() {
+            c
+        } else {
+            '-'
+        };
+        if !(c == '-' && out.ends_with('-')) {
+            out.push(c);
+        }
+    }
+    let mut s: String = out
+        .trim_matches('-')
+        .chars()
+        .take(BRANCH_SLUG_LEN)
+        .collect();
+    s.truncate(s.trim_end_matches('-').len());
+    s
+}
+
+pub(crate) fn worktree_branch(factory_name: &str, input: &str) -> String {
+    format!(
+        "agentrium/factory-{}-{}",
+        branch_slug(factory_name),
+        branch_slug(input)
+    )
+}
+
+/// The trimmed input, or the user error that refuses it.
+fn checked_input(def: &Definition, input: &str) -> Result<String, String> {
+    let input = input.trim();
+    if input.is_empty() {
+        return Err(user_err(format!(
+            "Enter the {}.",
+            def.input.label.trim().to_lowercase()
+        )));
+    }
+    if def.uses_input_in_check() && !input_is_safe(input) {
+        return Err(user_err(
+            "This factory passes the input to a check command, so it may only contain letters, digits and . _ : / # @ -",
+        ));
+    }
+    Ok(input.to_string())
+}
+
+fn first_chars(s: &str, n: usize) -> String {
+    s.chars().take(n).collect()
+}
+
+/// The action for a run that was not moved (its stored state, as is).
+fn idle_action(run: &FactoryRun) -> StepAction {
+    match run.status {
+        RunStatus::Queued => StepAction::Queued,
+        RunStatus::Running | RunStatus::Checking => StepAction::Waiting,
+        RunStatus::WaitingGate => StepAction::AwaitGate {
+            step_id: run.current_step.clone(),
+        },
+        RunStatus::Blocked => StepAction::Blocked,
+        RunStatus::Done => StepAction::Finished,
+        RunStatus::Cancelled => StepAction::Cancelled,
+    }
+}
+
+fn step_action(db: &Database, run: &FactoryRun, action: Action) -> Result<StepAction, String> {
+    Ok(match action {
+        Action::StartStation { step_id, attempt } => {
+            let station = run
+                .definition
+                .station(&step_id)
+                .ok_or_else(|| user_err("This run is not at a station."))?;
+            let prompt = render_prompt(
+                &run.definition,
+                station,
+                &PromptVars {
+                    input: &run.input,
+                    run_dir: &run.run_dir,
+                    reject_reason: &run.reject_reason,
+                    check_output: &run.check_output,
+                },
+            );
+            let task = match run.branch {
+                Some(_) => db
+                    .list_tasks()?
+                    .into_iter()
+                    .find(|t| same_path(&t.worktree_path, &run.workspace_path))
+                    .map(Box::new),
+                None => None,
+            };
+            StepAction::StartStation {
+                step_name: station.name.clone(),
+                step_id,
+                attempt,
+                prompt,
+                agent: run.definition.agent.clone(),
+                cwd: run.workspace_path.clone(),
+                task,
+            }
+        }
+        Action::AwaitGate { step_id } => StepAction::AwaitGate { step_id },
+        Action::Queued => StepAction::Queued,
+        Action::Blocked => StepAction::Blocked,
+        Action::Finished => StepAction::Finished,
+        Action::Cancelled => StepAction::Cancelled,
+    })
+}
+
+/// Event kind logged after the caller's own kind when the transition ended
+/// somewhere worth its own line.
+fn outcome_kind(action: &Action) -> Option<&'static str> {
+    match action {
+        Action::Queued => Some("queued"),
+        Action::Blocked => Some("blocked"),
+        Action::Finished => Some("finished"),
+        _ => None,
+    }
+}
+
+/// Every run transition goes through here, so persistence is uniform: apply
+/// the event, store the run, log the event, build the action.
+fn transition(
+    db: &Database,
+    mut run: FactoryRun,
+    event: RunEvent,
+    event_kind: &str,
+    detail: &str,
+) -> Result<RunStep, String> {
+    let line_busy = db.factory_line_busy(&run.factory_id, &run.id)?;
+    let step_before = run.current_step.clone();
+    let action = apply(&mut run, event, line_busy)?;
+    let at = now();
+    run.updated_at = at.clone();
+    db.update_factory_run(&run)?;
+    let step_id = if step_before.is_empty() {
+        &run.current_step
+    } else {
+        &step_before
+    };
+    db.insert_factory_run_event(&run.id, &at, step_id, event_kind, detail)?;
+    if let Some(kind) = outcome_kind(&action).filter(|k| *k != event_kind) {
+        db.insert_factory_run_event(&run.id, &at, &run.current_step, kind, "")?;
+    }
+    let action = step_action(db, &run, action)?;
+    Ok(RunStep { run, action })
+}
+
+/// Validate the input, create the run folder, store the run as queued and
+/// start it. The caller has already created the worktree for a worktree run.
+pub(crate) fn start_run_in(
+    db: &Database,
+    factory: &Factory,
+    input: &str,
+    data_dir: &Path,
+    workspace: WorkspaceSpec,
+) -> Result<RunStep, String> {
+    let input = checked_input(&factory.definition, input)?;
+    let id = uuid::Uuid::new_v4().to_string();
+    let run_dir = data_dir.join("factory-runs").join(&id);
+    std::fs::create_dir_all(&run_dir)
+        .map_err(|e| format!("Could not create the run folder: {e}"))?;
+    let (workspace_path, branch) = match workspace {
+        WorkspaceSpec::InPlace => (factory.repo_path.clone(), None),
+        WorkspaceSpec::Worktree(task) => (task.worktree_path, Some(task.branch)),
+    };
+    let at = now();
+    let run = FactoryRun {
+        id,
+        factory_id: factory.id.clone(),
+        input,
+        status: RunStatus::Queued,
+        current_step: String::new(),
+        attempts: Default::default(),
+        reject_reason: String::new(),
+        check_output: String::new(),
+        definition: factory.definition.clone(),
+        workspace_path,
+        branch,
+        run_dir: run_dir.to_string_lossy().into_owned(),
+        terminal_id: None,
+        created_at: at.clone(),
+        updated_at: at,
+    };
+    if let Err(e) = db.insert_factory_run(&run) {
+        // Nothing refers to the folder yet; do not leave it behind.
+        let _ = std::fs::remove_dir_all(&run_dir);
+        return Err(e);
+    }
+    transition(db, run, RunEvent::Start, "started", "")
+}
+
+/// What evaluating the current station should do. Pure apart from checking
+/// whether the station's artifact exists in the run folder.
+pub(crate) fn evaluate_decision(run: &FactoryRun, manual: bool) -> Result<EvalDecision, String> {
+    match run.status {
+        RunStatus::Running => {}
+        RunStatus::Checking => return Err(user_err("This run is already being checked.")),
+        _ => return Err(wrong_state(run)),
+    }
+    let station = run
+        .definition
+        .station(&run.current_step)
+        .ok_or_else(|| user_err("This run is not at a station."))?;
+    let has_artifact = match &station.artifact {
+        Some(name) => {
+            if !is_plain_file_name(name) {
+                return Err(user_err("Not an artifact name."));
+            }
+            if !Path::new(&run.run_dir).join(name).is_file() {
+                if manual {
+                    return Err(user_err(format!("{name} is not in the run folder yet.")));
+                }
+                return Ok(EvalDecision::Waiting);
+            }
+            true
+        }
+        None => false,
+    };
+    if let Some(command) = render_check_command(station, &run.input, &run.run_dir) {
+        return Ok(EvalDecision::RunCheck {
+            command,
+            timeout: Duration::from_secs(station.timeout_secs()),
+        });
+    }
+    if has_artifact || manual {
+        Ok(EvalDecision::Pass)
+    } else {
+        Ok(EvalDecision::Waiting)
+    }
+}
+
+/// True when `run` is still at the same station attempt as `snapshot`.
+fn same_attempt(run: &FactoryRun, snapshot: &FactoryRun) -> bool {
+    run.current_step == snapshot.current_step
+        && run.attempts.get(&run.current_step) == snapshot.attempts.get(&snapshot.current_step)
+}
+
+/// Mark the run `Checking` before its check starts. Refuses unless the stored
+/// run is still `Running` at the attempt that was evaluated.
+fn begin_check(db: &Database, snapshot: &FactoryRun) -> Result<FactoryRun, String> {
+    let mut run = load_run(db, &snapshot.id)?;
+    if run.status == RunStatus::Checking {
+        return Err(user_err("This run is already being checked."));
+    }
+    if run.status != RunStatus::Running || !same_attempt(&run, snapshot) {
+        return Err(wrong_state(&run));
+    }
+    run.status = RunStatus::Checking;
+    run.updated_at = now();
+    db.update_factory_run(&run)?;
+    Ok(run)
+}
+
+fn back_to_running(db: &Database, run: &mut FactoryRun) -> Result<(), String> {
+    if run.status == RunStatus::Checking {
+        run.status = RunStatus::Running;
+        run.updated_at = now();
+        db.update_factory_run(run)?;
+    }
+    Ok(())
+}
+
+/// Apply a station's result. A run that moved on meanwhile (cancelled,
+/// resumed into a new attempt) is returned unchanged.
+pub(crate) fn finish_evaluation(
+    db: &Database,
+    snapshot: &FactoryRun,
+    outcome: CheckOutcome,
+) -> Result<RunStep, String> {
+    let mut run = load_run(db, &snapshot.id)?;
+    if !run.status.holds_line() || !same_attempt(&run, snapshot) {
+        let action = idle_action(&run);
+        return Ok(RunStep { run, action });
+    }
+    match outcome {
+        CheckOutcome::Pass => transition(db, run, RunEvent::StationPassed, "passed", ""),
+        CheckOutcome::Fail(output) => {
+            let detail = first_chars(&output, EVENT_DETAIL_CHARS);
+            transition(
+                db,
+                run,
+                RunEvent::StationFailed { output },
+                "failed",
+                &detail,
+            )
+        }
+        CheckOutcome::Cancelled => {
+            back_to_running(db, &mut run)?;
+            Ok(RunStep {
+                run,
+                action: StepAction::Waiting,
+            })
+        }
+        CheckOutcome::SpawnError(e) => {
+            back_to_running(db, &mut run)?;
+            Err(e)
+        }
+    }
+}
+
+fn outcome_of(result: &RaceCheckResult, timeout_secs: u64) -> CheckOutcome {
+    if result.cancelled {
+        return CheckOutcome::Cancelled;
+    }
+    if result.exit_code == Some(0) && !result.timed_out {
+        return CheckOutcome::Pass;
+    }
+    let mut output = String::new();
+    if result.timed_out {
+        output.push_str(&format!("Timed out after {timeout_secs} s.\n"));
+    }
+    output.push_str(&result.output_tail);
+    CheckOutcome::Fail(output)
+}
+
+/// The body of `evaluate_factory_station`. The check command comes only from
+/// the definition stored on the run row.
+pub(crate) async fn evaluate_station(
+    db: &Arc<Mutex<Database>>,
+    run_id: String,
+    manual: bool,
+    eval_id: String,
+) -> Result<RunStep, String> {
+    let run = db_op(db, move |db| load_run(db, &run_id)).await?;
+    match evaluate_decision(&run, manual)? {
+        EvalDecision::Waiting => Ok(RunStep {
+            run,
+            action: StepAction::Waiting,
+        }),
+        EvalDecision::Pass => {
+            db_op(db, move |db| {
+                finish_evaluation(db, &run, CheckOutcome::Pass)
+            })
+            .await
+        }
+        EvalDecision::RunCheck { command, timeout } => {
+            // Register first so a duplicate id changes nothing and an early
+            // cancel is kept as a permit.
+            let cancel = Arc::new(Notify::new());
+            {
+                let mut running = running_checks().lock().map_err(|e| e.to_string())?;
+                if running.contains_key(&eval_id) {
+                    return Err(user_err("That check is already running."));
+                }
+                running.insert(eval_id.clone(), cancel.clone());
+            }
+            let _guard = CheckGuard(eval_id);
+            let checking = db_op(db, move |db| begin_check(db, &run)).await?;
+            let envs = [
+                ("AGENTRIUM_RUN_DIR".to_string(), checking.run_dir.clone()),
+                (
+                    "AGENTRIUM_FACTORY_INPUT".to_string(),
+                    checking.input.clone(),
+                ),
+            ];
+            let cwd = PathBuf::from(&checking.workspace_path);
+            let outcome = match run_check(&command, &cwd, timeout, cancel, &envs).await {
+                Ok(result) => outcome_of(&result, timeout.as_secs()),
+                Err(e) => CheckOutcome::SpawnError(e),
+            };
+            db_op(db, move |db| finish_evaluation(db, &checking, outcome)).await
+        }
+    }
+}
+
+pub(crate) fn answer_gate_in(
+    db: &Database,
+    run_id: &str,
+    step_id: &str,
+    approve: bool,
+    reason: Option<String>,
+) -> Result<RunStep, String> {
+    let run = load_run(db, run_id)?;
+    let step_id = step_id.to_string();
+    if approve {
+        transition(db, run, RunEvent::GateApproved { step_id }, "approved", "")
+    } else {
+        let reason = reason.unwrap_or_default();
+        let detail = reason.trim().to_string();
+        transition(
+            db,
+            run,
+            RunEvent::GateRejected { step_id, reason },
+            "rejected",
+            &detail,
+        )
+    }
+}
+
+pub(crate) fn control_in(db: &Database, run_id: &str, op: RunControl) -> Result<RunStep, String> {
+    let run = load_run(db, run_id)?;
+    let (event, kind) = match op {
+        RunControl::Resume => (RunEvent::Resume, "resumed"),
+        RunControl::AllowRetry => (RunEvent::AllowRetry, "retry_allowed"),
+        RunControl::LineFreed => (RunEvent::LineFreed, "started"),
+        RunControl::Cancel => (RunEvent::Cancel, "cancelled"),
+    };
+    transition(db, run, event, kind, "")
+}
+
+/// Read a text artifact from the run folder. `None` when it is not there yet.
+pub(crate) fn read_artifact(run_dir: &Path, name: &str) -> Result<Option<String>, String> {
+    if !is_plain_file_name(name) {
+        return Err(user_err("Not an artifact name."));
+    }
+    let path = run_dir.join(name);
+    let meta = match std::fs::symlink_metadata(&path) {
+        Ok(m) => m,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(user_err(format!("Could not read {name}: {e}"))),
+    };
+    // Never read through a link: it could point anywhere on the machine.
+    if !meta.file_type().is_file() {
+        return Err(user_err(format!("{name} is not a regular file.")));
+    }
+    if meta.len() > MAX_ARTIFACT_BYTES {
+        return Err(user_err(format!(
+            "{name} is too large to show (over 2 MB)."
+        )));
+    }
+    let bytes =
+        std::fs::read(&path).map_err(|e| user_err(format!("Could not read {name}: {e}")))?;
+    String::from_utf8(bytes)
+        .map(Some)
+        .map_err(|_| user_err(format!("{name} is not a text file.")))
+}
+
+/// Best-effort undo of a worktree created for a run that then failed to start.
+async fn discard_run_worktree(state: &State<'_, AppState>, task: TaskInfo) {
+    // Nothing else refers to this fresh worktree; a failed cleanup leaves a
+    // task the user can still discard from the Tasks UI.
+    let _ = finish_task_impl(
+        &task,
+        &FinishAction::Discard {
+            confirm_unmerged: true,
+        },
+    )
+    .await;
+    let _ = db_op(&state.db, move |db| db.delete_task(&task.worktree_path)).await;
+}
+
+#[command]
+pub async fn start_factory_run(
+    state: State<'_, AppState>,
+    factory_id: String,
+    input: String,
+) -> Result<RunStep, String> {
+    wrap_cmd("start_factory_run", async move {
+        let factory = db_op(&state.db, move |db| db.get_factory(&factory_id))
+            .await?
+            .ok_or_else(|| user_err("This factory no longer exists."))?;
+        ensure_repo_trusted(&state, &factory.repo_path).await?;
+        let input = checked_input(&factory.definition, &input)?;
+        let data_dir = blocking(factory_data_dir).await?;
+        match factory.definition.workspace {
+            Workspace::InPlace => {
+                db_op(&state.db, move |db| {
+                    start_run_in(db, &factory, &input, &data_dir, WorkspaceSpec::InPlace)
+                })
+                .await
+            }
+            Workspace::Worktree => {
+                let request = StartTaskRequest {
+                    repo_path: factory.repo_path.clone(),
+                    title: format!("{} {input}", factory.name),
+                    base_branch: None,
+                    branch_name: Some(worktree_branch(&factory.name, &input)),
+                    worktree_root: None,
+                    setup_files: Vec::new(),
+                };
+                let (_, task) = start_task_impl(&request).await?;
+                let registered = task.clone();
+                let result = db_op(&state.db, move |db| {
+                    db.insert_task(&registered)?;
+                    start_run_in(
+                        db,
+                        &factory,
+                        &input,
+                        &data_dir,
+                        WorkspaceSpec::Worktree(registered),
+                    )
+                })
+                .await;
+                if result.is_err() {
+                    discard_run_worktree(&state, task).await;
+                }
+                result
+            }
+        }
+    })
+    .await
+}
+
+#[command]
+pub async fn list_factory_runs(state: State<'_, AppState>) -> Result<Vec<FactoryRun>, String> {
+    wrap_cmd("list_factory_runs", async move {
+        db_op(&state.db, |db| db.list_factory_runs(RUN_LIST_LIMIT)).await
+    })
+    .await
+}
+
+#[command]
+pub async fn get_factory_run_events(
+    state: State<'_, AppState>,
+    run_id: String,
+) -> Result<Vec<RunEventRow>, String> {
+    wrap_cmd("get_factory_run_events", async move {
+        db_op(&state.db, move |db| {
+            load_run(db, &run_id)?;
+            db.list_factory_run_events(&run_id)
+        })
+        .await
+    })
+    .await
+}
+
+#[command]
+pub async fn set_factory_run_terminal(
+    state: State<'_, AppState>,
+    run_id: String,
+    terminal_id: Option<String>,
+) -> Result<(), String> {
+    wrap_cmd("set_factory_run_terminal", async move {
+        db_op(&state.db, move |db| {
+            load_run(db, &run_id)?;
+            db.set_factory_run_terminal(&run_id, terminal_id.as_deref())
+        })
+        .await
+    })
+    .await
+}
+
+#[command]
+pub async fn evaluate_factory_station(
+    state: State<'_, AppState>,
+    run_id: String,
+    manual: bool,
+    eval_id: String,
+) -> Result<RunStep, String> {
+    wrap_cmd("evaluate_factory_station", async move {
+        evaluate_station(&state.db, run_id, manual, eval_id).await
+    })
+    .await
+}
+
+/// Returns false when no check with that id is running (already finished).
+#[command]
+pub async fn cancel_factory_check(eval_id: String) -> Result<bool, String> {
+    wrap_cmd(
+        "cancel_factory_check",
+        async move { Ok(cancel_check(&eval_id)) },
+    )
+    .await
+}
+
+#[command]
+pub async fn answer_factory_gate(
+    state: State<'_, AppState>,
+    run_id: String,
+    step_id: String,
+    approve: bool,
+    reason: Option<String>,
+) -> Result<RunStep, String> {
+    wrap_cmd("answer_factory_gate", async move {
+        db_op(&state.db, move |db| {
+            answer_gate_in(db, &run_id, &step_id, approve, reason)
+        })
+        .await
+    })
+    .await
+}
+
+#[command]
+pub async fn control_factory_run(
+    state: State<'_, AppState>,
+    run_id: String,
+    op: RunControl,
+) -> Result<RunStep, String> {
+    wrap_cmd("control_factory_run", async move {
+        db_op(&state.db, move |db| control_in(db, &run_id, op)).await
+    })
+    .await
+}
+
+#[command]
+pub async fn next_queued_factory_run(
+    state: State<'_, AppState>,
+    factory_id: String,
+) -> Result<Option<String>, String> {
+    wrap_cmd("next_queued_factory_run", async move {
+        db_op(&state.db, move |db| {
+            db.oldest_queued_factory_run(&factory_id)
+        })
+        .await
+    })
+    .await
+}
+
+#[command]
+pub async fn get_factory_artifact(
+    state: State<'_, AppState>,
+    run_id: String,
+    name: String,
+) -> Result<Option<String>, String> {
+    wrap_cmd("get_factory_artifact", async move {
+        let run = db_op(&state.db, move |db| load_run(db, &run_id)).await?;
+        blocking(move || read_artifact(Path::new(&run.run_dir), &name)).await
+    })
+    .await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -819,5 +1529,447 @@ mod tests {
             return;
         }
         assert!(find_candidates(d.path()).is_empty());
+    }
+
+    // -----------------------------------------------------------------------
+    // Run lifecycle
+    // -----------------------------------------------------------------------
+
+    use crate::database::Database;
+    use crate::factory_def::Station;
+    use crate::factory_engine::RunStatus;
+
+    struct Env {
+        db: Database,
+        factory: Factory,
+        data: tempfile::TempDir,
+        workspace: tempfile::TempDir,
+    }
+
+    fn env_with(def: Definition) -> Env {
+        let db = Database::new_in_memory().unwrap();
+        let data = tempfile::tempdir().unwrap();
+        let workspace = tempfile::tempdir().unwrap();
+        let ws = workspace.path().to_string_lossy().into_owned();
+        let factory = db
+            .upsert_factory(&Factory {
+                id: "f1".to_string(),
+                name: "demo".to_string(),
+                repo_path: ws.clone(),
+                source_path: format!("{ws}/SKILL.md"),
+                definition: def,
+                created_at: "2026-11-19T00:00:00Z".to_string(),
+                updated_at: "2026-11-19T00:00:00Z".to_string(),
+            })
+            .unwrap();
+        Env {
+            db,
+            factory,
+            data,
+            workspace,
+        }
+    }
+
+    fn env() -> Env {
+        env_with(sample())
+    }
+
+    fn start(e: &Env, input: &str) -> Result<RunStep, String> {
+        start_run_in(
+            &e.db,
+            &e.factory,
+            input,
+            e.data.path(),
+            WorkspaceSpec::InPlace,
+        )
+    }
+
+    fn station0_mut(def: &mut Definition) -> &mut Station {
+        match &mut def.steps[0] {
+            Step::Station(s) => s,
+            Step::Gate(_) => panic!("not a station"),
+        }
+    }
+
+    fn kinds(db: &Database, run_id: &str) -> Vec<String> {
+        db.list_factory_run_events(run_id)
+            .unwrap()
+            .into_iter()
+            .map(|e| e.kind)
+            .collect()
+    }
+
+    fn started_prompt(step: &RunStep) -> (String, u32) {
+        match &step.action {
+            StepAction::StartStation {
+                prompt, attempt, ..
+            } => (prompt.clone(), *attempt),
+            other => panic!("expected StartStation, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn start_creates_run_dir_and_first_station() {
+        let e = env();
+        let step = start(&e, "A-1").unwrap();
+        let ws = e.workspace.path().to_string_lossy().into_owned();
+        match &step.action {
+            StepAction::StartStation {
+                step_id,
+                attempt,
+                prompt,
+                cwd,
+                task,
+                ..
+            } => {
+                assert_eq!(step_id, "S1");
+                assert_eq!(*attempt, 1);
+                assert!(prompt.contains("A-1"), "{prompt}");
+                assert!(prompt.contains(&step.run.run_dir), "{prompt}");
+                assert_eq!(cwd, &ws);
+                assert_eq!(task, &None);
+            }
+            other => panic!("expected StartStation, got {other:?}"),
+        }
+        assert!(Path::new(&step.run.run_dir).is_dir());
+        assert!(Path::new(&step.run.run_dir).starts_with(e.data.path().join("factory-runs")));
+        assert_eq!(step.run.status, RunStatus::Running);
+        assert_eq!(kinds(&e.db, &step.run.id), ["started"]);
+    }
+
+    #[test]
+    fn start_refuses_blank_input() {
+        let e = env();
+        let err = start(&e, "   ").unwrap_err();
+        assert!(err.contains("Enter the ticket."), "{err}");
+        assert!(e.db.list_factory_runs(500).unwrap().is_empty());
+    }
+
+    #[test]
+    fn start_refuses_unsafe_input_when_a_check_uses_it() {
+        let e = env();
+        let err = start(&e, "A-1; rm -rf .").unwrap_err();
+        assert!(err.contains("may only contain"), "{err}");
+        assert!(e.db.list_factory_runs(500).unwrap().is_empty());
+        let runs = e.data.path().join("factory-runs");
+        assert!(
+            !runs.exists() || std::fs::read_dir(&runs).unwrap().next().is_none(),
+            "a run dir was created"
+        );
+    }
+
+    #[test]
+    fn start_allows_free_text_input_when_no_check_uses_it() {
+        let mut def = sample();
+        station0_mut(&mut def).check = None;
+        let e = env_with(def);
+        let step = start(&e, "fix the login bug").unwrap();
+        assert_eq!(step.run.input, "fix the login bug");
+    }
+
+    #[test]
+    fn second_in_place_run_is_queued() {
+        let e = env();
+        start(&e, "A-1").unwrap();
+        let second = start(&e, "A-2").unwrap();
+        assert_eq!(second.action, StepAction::Queued);
+        assert_eq!(second.run.status, RunStatus::Queued);
+    }
+
+    #[test]
+    fn evaluate_waits_for_a_missing_artifact() {
+        let e = env();
+        let run = start(&e, "A-1").unwrap().run;
+        assert_eq!(
+            evaluate_decision(&run, false).unwrap(),
+            EvalDecision::Waiting
+        );
+        let err = evaluate_decision(&run, true).unwrap_err();
+        assert!(
+            err.contains("plan.md is not in the run folder yet."),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn evaluate_runs_the_check_when_the_artifact_exists() {
+        let e = env();
+        let run = start(&e, "A-1").unwrap().run;
+        std::fs::write(Path::new(&run.run_dir).join("plan.md"), "plan").unwrap();
+        assert_eq!(
+            evaluate_decision(&run, false).unwrap(),
+            EvalDecision::RunCheck {
+                command: "node check.js A-1".to_string(),
+                timeout: std::time::Duration::from_secs(300),
+            }
+        );
+    }
+
+    fn shared(db: Database) -> std::sync::Arc<std::sync::Mutex<Database>> {
+        std::sync::Arc::new(std::sync::Mutex::new(db))
+    }
+
+    #[tokio::test]
+    async fn evaluate_refuses_a_run_that_is_already_checking() {
+        let e = env();
+        let mut run = start(&e, "A-1").unwrap().run;
+        std::fs::write(Path::new(&run.run_dir).join("plan.md"), "plan").unwrap();
+        run.status = RunStatus::Checking;
+        e.db.update_factory_run(&run).unwrap();
+        let err = evaluate_decision(&run, true).unwrap_err();
+        assert!(err.contains("This run is already being checked."), "{err}");
+
+        let Env {
+            db,
+            data,
+            workspace,
+            ..
+        } = e;
+        let db = shared(db);
+        let err = evaluate_station(&db, run.id.clone(), true, "eval-1".to_string())
+            .await
+            .unwrap_err();
+        assert!(err.contains("This run is already being checked."), "{err}");
+        let stored = db
+            .lock()
+            .unwrap()
+            .get_factory_run(&run.id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(stored, run);
+        drop((data, workspace));
+    }
+
+    #[test]
+    fn station_with_neither_passes_only_manually() {
+        let e = env();
+        let mut run = start(&e, "A-1").unwrap().run;
+        run.current_step = "S2".to_string();
+        assert_eq!(
+            evaluate_decision(&run, false).unwrap(),
+            EvalDecision::Waiting
+        );
+        assert_eq!(evaluate_decision(&run, true).unwrap(), EvalDecision::Pass);
+    }
+
+    #[test]
+    fn finish_evaluation_pass_moves_to_gate_and_logs() {
+        let e = env();
+        let run = start(&e, "A-1").unwrap().run;
+        let step = finish_evaluation(&e.db, &run, CheckOutcome::Pass).unwrap();
+        assert_eq!(
+            step.action,
+            StepAction::AwaitGate {
+                step_id: "G1".to_string()
+            }
+        );
+        assert_eq!(kinds(&e.db, &run.id), ["started", "passed"]);
+    }
+
+    #[test]
+    fn finish_evaluation_fail_restarts_with_output_in_prompt() {
+        let e = env();
+        let run = start(&e, "A-1").unwrap().run;
+        let step = finish_evaluation(
+            &e.db,
+            &run,
+            CheckOutcome::Fail("AC2 is not covered".to_string()),
+        )
+        .unwrap();
+        let (prompt, attempt) = started_prompt(&step);
+        assert!(prompt.contains("AC2 is not covered"), "{prompt}");
+        assert_eq!(attempt, 2);
+        assert_eq!(kinds(&e.db, &run.id), ["started", "failed"]);
+    }
+
+    #[test]
+    fn reject_restarts_station_with_reason_in_prompt() {
+        let e = env();
+        let run = start(&e, "A-1").unwrap().run;
+        finish_evaluation(&e.db, &run, CheckOutcome::Pass).unwrap();
+        let step =
+            answer_gate_in(&e.db, &run.id, "G1", false, Some("cover AC2".to_string())).unwrap();
+        let (prompt, attempt) = started_prompt(&step);
+        assert!(prompt.contains("cover AC2"), "{prompt}");
+        assert_eq!(attempt, 1);
+        let events = e.db.list_factory_run_events(&run.id).unwrap();
+        let last = events.last().unwrap();
+        assert_eq!(
+            (last.kind.as_str(), last.detail.as_str()),
+            ("rejected", "cover AC2")
+        );
+    }
+
+    #[test]
+    fn approve_then_last_station_manual_pass_finishes() {
+        let e = env();
+        let run = start(&e, "A-1").unwrap().run;
+        finish_evaluation(&e.db, &run, CheckOutcome::Pass).unwrap();
+        let step = answer_gate_in(&e.db, &run.id, "G1", true, None).unwrap();
+        assert!(
+            matches!(&step.action, StepAction::StartStation { step_id, .. } if step_id == "S2")
+        );
+        assert_eq!(
+            evaluate_decision(&step.run, true).unwrap(),
+            EvalDecision::Pass
+        );
+        let done = finish_evaluation(&e.db, &step.run, CheckOutcome::Pass).unwrap();
+        assert_eq!(done.action, StepAction::Finished);
+        assert_eq!(done.run.status, RunStatus::Done);
+        assert_eq!(
+            e.db.get_factory_run(&run.id).unwrap().unwrap().status,
+            RunStatus::Done
+        );
+    }
+
+    #[test]
+    fn cancel_then_line_freed_starts_the_queued_run() {
+        let e = env();
+        let a = start(&e, "A-1").unwrap().run;
+        let b = start(&e, "A-2").unwrap().run;
+        let cancelled = control_in(&e.db, &a.id, RunControl::Cancel).unwrap();
+        assert_eq!(cancelled.action, StepAction::Cancelled);
+        assert_eq!(
+            e.db.oldest_queued_factory_run(&e.factory.id).unwrap(),
+            Some(b.id.clone())
+        );
+        let step = control_in(&e.db, &b.id, RunControl::LineFreed).unwrap();
+        assert!(
+            matches!(&step.action, StepAction::StartStation { step_id, .. } if step_id == "S1")
+        );
+    }
+
+    #[test]
+    fn missing_run_is_a_user_error() {
+        let e = env();
+        let err = control_in(&e.db, "nope", RunControl::Cancel).unwrap_err();
+        assert!(err.contains("This run no longer exists."), "{err}");
+    }
+
+    #[test]
+    fn read_artifact_cases() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(d.path().join("plan.md"), "the plan").unwrap();
+        assert_eq!(
+            read_artifact(d.path(), "plan.md").unwrap().as_deref(),
+            Some("the plan")
+        );
+        assert_eq!(read_artifact(d.path(), "missing.md").unwrap(), None);
+        let err = read_artifact(d.path(), "../x").unwrap_err();
+        assert!(err.contains("Not an artifact name."), "{err}");
+        std::fs::write(d.path().join("big.txt"), vec![b'a'; 3 * 1024 * 1024]).unwrap();
+        let err = read_artifact(d.path(), "big.txt").unwrap_err();
+        assert!(err.contains("too large"), "{err}");
+        std::fs::write(d.path().join("bin.dat"), [0xff, 0xfe, 0x00]).unwrap();
+        let err = read_artifact(d.path(), "bin.dat").unwrap_err();
+        assert!(err.contains("is not a text file"), "{err}");
+    }
+
+    #[test]
+    fn step_action_wire_shape() {
+        let action = StepAction::StartStation {
+            step_id: "S1".to_string(),
+            step_name: "Plan".to_string(),
+            attempt: 1,
+            prompt: "p".to_string(),
+            agent: AgentKind::Claude,
+            cwd: "/w".to_string(),
+            task: Some(Box::new(TaskInfo {
+                title: "demo A-1".to_string(),
+                branch: "agentrium/factory-demo-a-1".to_string(),
+                base_branch: "main".to_string(),
+                worktree_path: "/w".to_string(),
+                repo_path: "/r".to_string(),
+                race_id: None,
+            })),
+        };
+        let v = serde_json::to_value(&action).unwrap();
+        assert_eq!(v["kind"], "start_station");
+        assert_eq!(v["stepId"], "S1");
+        assert_eq!(v["stepName"], "Plan");
+        assert_eq!(v["agent"], "claude");
+        assert_eq!(v["task"]["baseBranch"], "main");
+        let gate = serde_json::to_value(StepAction::AwaitGate {
+            step_id: "G1".to_string(),
+        })
+        .unwrap();
+        assert_eq!(
+            gate,
+            serde_json::json!({"kind": "await_gate", "stepId": "G1"})
+        );
+        assert_eq!(
+            serde_json::to_value(StepAction::Waiting).unwrap(),
+            serde_json::json!({"kind": "waiting"})
+        );
+        let op: RunControl = serde_json::from_str("\"allow_retry\"").unwrap();
+        assert_eq!(op, RunControl::AllowRetry);
+    }
+
+    #[test]
+    fn worktree_branch_slugs() {
+        assert_eq!(
+            worktree_branch("Demo Flow", "WGCP-123 fix!"),
+            "agentrium/factory-demo-flow-wgcp-123-fix"
+        );
+        let long = worktree_branch(&"x".repeat(60), "a");
+        assert_eq!(long, format!("agentrium/factory-{}-a", "x".repeat(40)));
+    }
+
+    /// One factory with a single check station, started with input `A-1`.
+    fn check_env(command: &str) -> (Env, FactoryRun) {
+        let mut def = sample();
+        station0_mut(&mut def).check.as_mut().unwrap().command = command.to_string();
+        let e = env_with(def);
+        let run = start(&e, "A-1").unwrap().run;
+        std::fs::write(Path::new(&run.run_dir).join("plan.md"), "plan").unwrap();
+        (e, run)
+    }
+
+    #[tokio::test]
+    async fn check_exit_code_decides_pass_or_fail() {
+        // The passing command also proves AGENTRIUM_RUN_DIR reaches the check.
+        let (pass_cmd, fail_cmd) = if cfg!(windows) {
+            (
+                "if defined AGENTRIUM_RUN_DIR (exit 0) else (exit 7)",
+                "cmd /C exit 1",
+            )
+        } else {
+            (r#"test -n "$AGENTRIUM_RUN_DIR""#, "sh -c 'exit 1'")
+        };
+
+        let (e, run) = check_env(pass_cmd);
+        let Env {
+            db,
+            data,
+            workspace,
+            ..
+        } = e;
+        let db = shared(db);
+        let step = evaluate_station(&db, run.id.clone(), false, "eval-pass".to_string())
+            .await
+            .unwrap();
+        assert_eq!(
+            step.action,
+            StepAction::AwaitGate {
+                step_id: "G1".to_string()
+            }
+        );
+        assert_eq!(kinds(&db.lock().unwrap(), &run.id), ["started", "passed"]);
+        drop((data, workspace));
+
+        let (e, run) = check_env(fail_cmd);
+        let Env {
+            db,
+            data,
+            workspace,
+            ..
+        } = e;
+        let db = shared(db);
+        let step = evaluate_station(&db, run.id.clone(), false, "eval-fail".to_string())
+            .await
+            .unwrap();
+        assert_eq!(started_prompt(&step).1, 2);
+        assert_eq!(kinds(&db.lock().unwrap(), &run.id), ["started", "failed"]);
+        drop((data, workspace));
     }
 }

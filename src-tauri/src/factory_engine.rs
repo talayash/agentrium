@@ -1,6 +1,5 @@
 //! AI Factory run state machine. Pure: no I/O, no clock. `apply` decides the next
 //! status and what the caller should do; the IPC layer performs the side effects.
-#![allow(dead_code)]
 
 use std::collections::BTreeMap;
 
@@ -111,7 +110,7 @@ pub enum Action {
     Cancelled,
 }
 
-fn wrong_state(run: &FactoryRun) -> String {
+pub(crate) fn wrong_state(run: &FactoryRun) -> String {
     user_err(format!(
         "This run is {}, so that action does not apply.",
         run.status.label()
