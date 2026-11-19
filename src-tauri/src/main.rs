@@ -326,6 +326,7 @@ fn main() {
             races::abandon_race,
             races::delete_race,
             factory::list_factory_candidates,
+            factory::confirm_factory_repo,
             factory::read_factory_definition_file,
             factory::begin_factory_import,
             factory::poll_factory_import,

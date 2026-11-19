@@ -55,29 +55,6 @@ function captureFocus(replacing: string | null): () => void {
   };
 }
 
-/** The agent a plain New Session starts with. */
-const PLAIN_SESSION_AGENT: AgentKind = 'claude';
-
-/**
- * Open a plain agent session (no prompt, no task) in `repoPath`, the way New
- * Session does, without moving the user's focus. Returns the terminal id.
- */
-export async function openPlainSession(repoPath: string): Promise<string> {
-  const agent = PLAIN_SESSION_AGENT;
-  const label = repoPath.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || repoPath;
-  const launch = resolveLaunchConfig(
-    agent, null, useAppStore.getState().defaultAgentArgs,
-    useAgentRegistryStore.getState().defaultBindingsFor(agent),
-  );
-  const restoreFocus = captureFocus(null);
-  const id = await useTerminalStore.getState().createTerminal(
-    label, repoPath, launch.args, launch.envVars, undefined, label, undefined, undefined, false, undefined,
-    agent, launch.bindings, null,
-  );
-  restoreFocus();
-  return id;
-}
-
 /** Carry out the session side of one engine transition. */
 export async function performStep(step: RunStep, factoryName: string): Promise<void> {
   const { run, action } = step;

@@ -5,10 +5,8 @@ const invokeMock = vi.fn();
 vi.mock('@tauri-apps/api/core', () => ({ invoke: (...a: unknown[]) => invokeMock(...a) }));
 vi.mock('@tauri-apps/plugin-dialog', () => ({ open: vi.fn() }));
 const launchImportSession = vi.fn();
-const openPlainSession = vi.fn();
 vi.mock('../lib/factoryActions', () => ({
   launchImportSession: (...a: unknown[]) => launchImportSession(...a),
-  openPlainSession: (...a: unknown[]) => openPlainSession(...a),
 }));
 const reportInvokeFailure = vi.fn();
 vi.mock('../lib/errorReporter', () => ({ reportInvokeFailure: (...a: unknown[]) => reportInvokeFailure(...a) }));
@@ -332,7 +330,7 @@ it('typing in the repository field clears the chosen profile', async () => {
   expect(select.value).toBe('');
 });
 
-const UNKNOWN = 'Agentrium has not worked in this folder yet: /r. Open a session there once, or save a profile for it, then try again.';
+const UNKNOWN = 'Agentrium has not worked in this folder yet: /r. Confirm the folder to continue.';
 const failFirstList = (error: string) => {
   const base = invokeMock.getMockImplementation()!;
   let failed = false;
@@ -341,39 +339,75 @@ const failFirstList = (error: string) => {
     return base(cmd, args);
   });
 };
-
-it('an unknown folder offers to open a session there, and retries after it opens', async () => {
-  openPlainSession.mockReset().mockResolvedValue('t9');
-  failFirstList(UNKNOWN);
+/** `confirm_factory_repo` answers with `answer` (or rejects with it when it is a string). */
+const confirmAnswers = (answer: boolean | string) => {
+  const base = invokeMock.getMockImplementation()!;
+  invokeMock.mockImplementation(async (cmd: string, args: Record<string, unknown>) => {
+    if (cmd === 'confirm_factory_repo') {
+      if (typeof answer === 'string') throw answer;
+      return answer;
+    }
+    return base(cmd, args);
+  });
+};
+async function nextWith(path: string) {
   render(<AddFactoryModal />);
-  fireEvent.change(screen.getByLabelText('Repository'), { target: { value: '/r' } });
+  fireEvent.change(screen.getByLabelText('Repository'), { target: { value: path } });
   await click('Next');
-  expect(screen.getByRole('alert').textContent).toBe(UNKNOWN);
-  await click('Open a session there');
-  expect(openPlainSession).toHaveBeenCalledWith('/r');
+}
+
+it('an unknown folder is confirmed in the backend dialog, then Next retries and goes to step 2', async () => {
+  failFirstList(UNKNOWN);
+  confirmAnswers(true);
+  await nextWith(' /r ');
+  expect(calls('confirm_factory_repo')).toEqual([['confirm_factory_repo', { repoPath: '/r' }]]);
   expect(calls('list_factory_candidates')).toHaveLength(2);
   expect(screen.getByText('.agentrium/a.md')).toBeTruthy();
   expect(screen.queryByRole('alert')).toBeNull();
+  expect(reportInvokeFailure).not.toHaveBeenCalled();
 });
 
-it('the button is not offered for other errors', async () => {
-  openPlainSession.mockReset();
-  failFirstList("Invalid path '/r': not found");
-  render(<AddFactoryModal />);
-  fireEvent.change(screen.getByLabelText('Repository'), { target: { value: '/r' } });
-  await click('Next');
-  expect(screen.getByRole('alert').textContent).toBe("Invalid path '/r': not found");
-  expect(screen.queryByRole('button', { name: 'Open a session there' })).toBeNull();
-});
-
-it('a failed session open is shown and reported', async () => {
-  openPlainSession.mockReset().mockRejectedValue('spawn failed');
+it('a declined confirmation stays on step 1 with the inline note', async () => {
   failFirstList(UNKNOWN);
-  render(<AddFactoryModal />);
-  fireEvent.change(screen.getByLabelText('Repository'), { target: { value: '/r' } });
-  await click('Next');
-  await click('Open a session there');
-  expect(screen.getByRole('alert').textContent).toBe('spawn failed');
-  expect(reportInvokeFailure).toHaveBeenCalledWith('create_terminal', 'spawn failed');
+  confirmAnswers(false);
+  await nextWith('/r');
+  expect(screen.getByRole('alert').textContent).toBe('Folder not added. Click Next to try again.');
   expect(calls('list_factory_candidates')).toHaveLength(1);
+  expect(screen.getByLabelText('Repository')).toBeTruthy();
+  expect(reportInvokeFailure).not.toHaveBeenCalled();
+});
+
+it('a rejected confirmation is shown and reported', async () => {
+  failFirstList(UNKNOWN);
+  confirmAnswers('This folder does not exist: /r');
+  await nextWith('/r');
+  expect(screen.getByRole('alert').textContent).toBe('This folder does not exist: /r');
+  expect(reportInvokeFailure).toHaveBeenCalledWith('confirm_factory_repo', 'This folder does not exist: /r');
+  expect(calls('list_factory_candidates')).toHaveLength(1);
+});
+
+it('Next stays disabled while the confirmation is open', async () => {
+  failFirstList(UNKNOWN);
+  let answer: (v: boolean) => void = () => {};
+  const base = invokeMock.getMockImplementation()!;
+  invokeMock.mockImplementation((cmd: string, args: Record<string, unknown>) =>
+    (cmd === 'confirm_factory_repo' ? new Promise<boolean>((r) => { answer = r; }) : base(cmd, args)));
+  await nextWith('/r');
+  expect((screen.getByRole('button', { name: 'Next' }) as HTMLButtonElement).disabled).toBe(true);
+  await act(async () => { answer(true); });
+  await flush();
+  expect(screen.getByText('.agentrium/a.md')).toBeTruthy();
+});
+
+it('other errors do not ask for confirmation, and the old session button is gone', async () => {
+  failFirstList("Invalid path '/r': not found");
+  await nextWith('/r');
+  expect(screen.getByRole('alert').textContent).toBe("Invalid path '/r': not found");
+  expect(calls('confirm_factory_repo')).toHaveLength(0);
+  expect(screen.queryByRole('button', { name: 'Open a session there' })).toBeNull();
+  cleanup();
+  failFirstList(UNKNOWN);
+  confirmAnswers(false);
+  await nextWith('/r');
+  expect(screen.queryByRole('button', { name: 'Open a session there' })).toBeNull();
 });

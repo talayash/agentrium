@@ -4,10 +4,10 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { FolderOpen } from 'lucide-react';
 import { reportInvokeFailure } from '../lib/errorReporter';
 import {
-  beginFactoryImport, listFactoryCandidates, pollFactoryImport, readFactoryDefinitionFile, saveFactory,
+  beginFactoryImport, confirmFactoryRepo, listFactoryCandidates, pollFactoryImport, readFactoryDefinitionFile, saveFactory,
   type DefinitionReview, type FactoryCandidate, type LintItem,
 } from '../lib/factory';
-import { launchImportSession, openPlainSession } from '../lib/factoryActions';
+import { launchImportSession } from '../lib/factoryActions';
 import { knownRepoPaths, repoPathForTerminal, type TaskProfile } from '../lib/tasks';
 import { useAppStore } from '../store/appStore';
 import { useFactoryStore } from '../store/factoryStore';
@@ -25,6 +25,7 @@ const POLL_MS = 2000;
 const IMPORT_TIMEOUT_MS = 5 * 60 * 1000;
 /** Start of the backend's refusal for a folder Agentrium has never worked in. */
 const UNKNOWN_FOLDER = 'Agentrium has not worked in this folder yet';
+const FOLDER_NOT_ADDED = 'Folder not added. Click Next to try again.';
 const STEPS = ['Repo', 'Factory file', 'Check what Agentrium understood', 'Ready'];
 
 /** Profiles with a working directory, one per folder (case-insensitive), by name. */
@@ -142,8 +143,24 @@ export function AddFactoryModal() {
     working.current = true;
     setBusy(true);
     setError('');
+    const repo = repoPath.trim();
+    // The command whose failure lands in the catch below.
+    let failed = 'list_factory_candidates';
     try {
-      const list = await listFactoryCandidates(repoPath.trim());
+      let list: FactoryCandidate[];
+      try {
+        list = await listFactoryCandidates(repo);
+      } catch (err) {
+        if (!String(err).startsWith(UNKNOWN_FOLDER) || !mounted.current) throw err;
+        // A folder the backend does not know yet: it asks the user in its
+        // own native dialog, then Next is retried once.
+        failed = 'confirm_factory_repo';
+        const added = await confirmFactoryRepo(repo);
+        if (!mounted.current) return;
+        if (!added) { setError(FOLDER_NOT_ADDED); return; }
+        failed = 'list_factory_candidates';
+        list = await listFactoryCandidates(repo);
+      }
       if (!mounted.current) return;
       setCandidates(list);
       setSourcePath(list[0]?.path ?? '');
@@ -151,33 +168,11 @@ export function AddFactoryModal() {
     } catch (err) {
       if (!mounted.current) return;
       setError(String(err));
-      reportInvokeFailure('list_factory_candidates', err);
+      reportInvokeFailure(failed, err);
     } finally {
       working.current = false;
       setBusy(false);
     }
-  };
-
-  /** The backend does not know the folder yet: open a session there, then retry Next. */
-  const openSessionThere = async () => {
-    if (working.current) return;
-    working.current = true;
-    setBusy(true);
-    try {
-      await openPlainSession(repoPath.trim());
-    } catch (err) {
-      if (mounted.current) {
-        setError(String(err));
-        reportInvokeFailure('create_terminal', err);
-      }
-      return;
-    } finally {
-      working.current = false;
-      setBusy(false);
-    }
-    if (!mounted.current) return;
-    setError('');
-    await nextFromRepo();
   };
 
   const startPolling = (importId: string) => {
@@ -383,11 +378,6 @@ export function AddFactoryModal() {
         )}
 
         {error && <p role="alert" className="text-[12px] text-error whitespace-pre-wrap">{error}</p>}
-        {step === 1 && error.startsWith(UNKNOWN_FOLDER) && (
-          <button type="button" onClick={() => void openSessionThere()} disabled={busy} className={`${BTN} self-start`}>
-            Open a session there
-          </button>
-        )}
 
         <div className="flex justify-end gap-2 pt-1">
           {importing ? (

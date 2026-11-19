@@ -2,7 +2,7 @@ import { beforeEach, describe, expectTypeOf, expect, it, vi } from 'vitest';
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 import { invoke } from '@tauri-apps/api/core';
 import {
-  beginFactoryImport, cancelFactoryCheck, controlFactoryRun, deleteFactory, getFactoryArtifact, getFactoryRunEvents,
+  beginFactoryImport, cancelFactoryCheck, confirmFactoryRepo, controlFactoryRun, deleteFactory, getFactoryArtifact, getFactoryRunEvents,
   listFactories, listFactoryCandidates, listFactoryRuns, nextQueuedFactoryRun, pollFactoryImport,
   readFactoryDefinitionFile, saveFactory, setFactoryRunTerminal, startFactoryRun,
   type DefinitionReview,
@@ -122,9 +122,10 @@ describe('wrapper wire pins (names and keys from the Rust #[command] fns)', () =
     ['controlFactoryRun', () => controlFactoryRun('r1', 'allow_retry'), 'control_factory_run', { runId: 'r1', op: 'allow_retry' }],
     ['nextQueuedFactoryRun', () => nextQueuedFactoryRun('f1'), 'next_queued_factory_run', { factoryId: 'f1' }],
     ['getFactoryArtifact', () => getFactoryArtifact('r1', 'a.md'), 'get_factory_artifact', { runId: 'r1', name: 'a.md' }],
+    ['confirmFactoryRepo', () => confirmFactoryRepo('/r'), 'confirm_factory_repo', { repoPath: '/r' }],
   ];
 
-  it('covers all 17 wrappers', () => expect(rows).toHaveLength(17));
+  it('covers all 18 wrappers', () => expect(rows).toHaveLength(18));
 
   it.each(rows)('%s', async (_n, call, command, args) => {
     vi.mocked(invoke).mockResolvedValue(null);

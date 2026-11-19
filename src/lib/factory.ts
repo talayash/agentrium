@@ -56,6 +56,9 @@ export type RunControl = 'resume' | 'allow_retry' | 'line_freed' | 'cancel';
 
 export const listFactoryCandidates = (repoPath: string) =>
   invoke<FactoryCandidate[]>('list_factory_candidates', { repoPath });
+/** Grant an unknown repo folder through a native dialog owned by the backend. `false` on Cancel. */
+export const confirmFactoryRepo = (repoPath: string) =>
+  invoke<boolean>('confirm_factory_repo', { repoPath });
 export const readFactoryDefinitionFile = (repoPath: string, sourcePath: string) =>
   invoke<DefinitionReview | null>('read_factory_definition_file', { repoPath, sourcePath });
 export const beginFactoryImport = (repoPath: string, sourcePath: string) =>

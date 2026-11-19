@@ -1,7 +1,7 @@
 //! AI Factory: definition management and the run lifecycle commands.
 //! Factories and runs are local only (never synced).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -9,7 +9,8 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use tauri::{command, State};
+use tauri::{command, AppHandle, Manager, State};
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 use tokio::sync::Notify;
 
 use crate::commands::{db_op, wrap_cmd};
@@ -363,31 +364,133 @@ fn strip_verbatim(p: PathBuf) -> PathBuf {
     }
 }
 
-/// `ensure_repo_trusted`'s refusal for a folder Agentrium has never worked
-/// in, rewritten for the factory flows (it talks about tasks and shows the
-/// `\\?\` prefix). Any other error is returned unchanged.
-fn explain_unknown_repo(err: String) -> String {
-    let path = strip_user_prefix(&err)
+/// The folder named in `ensure_repo_trusted`'s refusal for a folder
+/// Agentrium has never worked in, without the `\\?\` prefix. `None` for any
+/// other error.
+fn unknown_repo_path(err: &str) -> Option<PathBuf> {
+    strip_user_prefix(err)
         .strip_prefix("Open a session in '")
         .and_then(|rest| rest.strip_suffix("' first, then start a task there."))
-        .map(|p| strip_verbatim(PathBuf::from(p)));
-    match path {
-        Some(path) => user_err(format!(
-            "Agentrium has not worked in this folder yet: {}. Open a session there once, or save a profile for it, then try again.",
-            path.display()
-        )),
-        None => err,
-    }
+        .map(|p| strip_verbatim(PathBuf::from(p)))
 }
 
-/// `ensure_repo_trusted` with the unknown-folder refusal explained.
+/// The factory flows' refusal for a folder that is not known yet.
+fn unknown_repo_error(path: &Path) -> String {
+    user_err(format!(
+        "Agentrium has not worked in this folder yet: {}. Confirm the folder to continue.",
+        path.display()
+    ))
+}
+
+/// Canonical folders the user granted in this app run, each through the
+/// native dialog of `confirm_factory_repo`. Nothing else adds to it and it is
+/// never persisted: after a restart a saved factory's own repo keeps working
+/// through `factory_repo_paths`.
+static CONFIRMED_REPOS: OnceLock<Mutex<HashSet<PathBuf>>> = OnceLock::new();
+
+fn confirmed_repos() -> std::sync::MutexGuard<'static, HashSet<PathBuf>> {
+    CONFIRMED_REPOS
+        .get_or_init(Default::default)
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+}
+
+fn remember_confirmed(path: PathBuf) {
+    confirmed_repos().insert(path);
+}
+
+/// `path` (canonical) is a granted folder or inside one. Granting a folder
+/// never grants its parent.
+fn is_confirmed(path: &Path) -> bool {
+    confirmed_repos().iter().any(|root| path.starts_with(root))
+}
+
+/// The repo folders of the saved factories (our own DB, so as trustworthy as
+/// a saved profile).
+fn factory_repo_paths(db: &Database) -> Result<Vec<String>, String> {
+    Ok(db
+        .list_factories()?
+        .into_iter()
+        .map(|f| f.repo_path)
+        .collect())
+}
+
+/// `path` (canonical) equals or is inside one of `folders`.
+fn inside_folders(path: &Path, folders: &[String]) -> bool {
+    folders.iter().any(|f| {
+        canonical_repo(Path::new(f))
+            .map(|root| path.starts_with(root))
+            .unwrap_or(false)
+    })
+}
+
+/// A repo folder is accepted when it passes the task trust rule, was
+/// confirmed in the native dialog in this app run, or belongs to a saved
+/// factory. Any error other than the unknown-folder refusal is returned as is.
 async fn ensure_factory_repo_known(
     state: &State<'_, AppState>,
     repo_path: &str,
 ) -> Result<(), String> {
-    ensure_repo_trusted(state, repo_path)
-        .await
-        .map_err(explain_unknown_repo)
+    let err = match ensure_repo_trusted(state, repo_path).await {
+        Ok(()) => return Ok(()),
+        Err(e) => e,
+    };
+    if unknown_repo_path(&err).is_none() {
+        return Err(err);
+    }
+    let path = canonical_repo(Path::new(repo_path))?;
+    if is_confirmed(&path) {
+        return Ok(());
+    }
+    let folders = db_op(&state.db, factory_repo_paths).await?;
+    let candidate = path.clone();
+    if blocking(move || Ok(inside_folders(&candidate, &folders))).await? {
+        return Ok(());
+    }
+    Err(unknown_repo_error(&path))
+}
+
+/// Canonical form of a folder the user wants to confirm; it must exist.
+fn existing_folder(repo_path: &str) -> Result<PathBuf, String> {
+    match canonical_repo(Path::new(repo_path)) {
+        Ok(p) if p.is_dir() => Ok(p),
+        Ok(p) => Err(user_err(format!(
+            "This folder does not exist: {}",
+            p.display()
+        ))),
+        Err(_) => Err(user_err(format!("This folder does not exist: {repo_path}"))),
+    }
+}
+
+const CONFIRM_TITLE: &str = "Add this folder?";
+
+fn confirm_message(path: &Path) -> String {
+    format!(
+        "Agentrium will read the factory files in this folder and run agent sessions there:\n\n{}",
+        path.display()
+    )
+}
+
+/// Ask in a native dialog owned by the backend, so the renderer cannot answer
+/// it. Non-blocking: the dialog reports through a oneshot channel.
+async fn ask_to_add_folder(app: &AppHandle, path: &Path) -> bool {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let mut dialog = app
+        .dialog()
+        .message(confirm_message(path))
+        .title(CONFIRM_TITLE)
+        .kind(MessageDialogKind::Info)
+        .buttons(MessageDialogButtons::OkCancelCustom(
+            "Add folder".to_string(),
+            "Cancel".to_string(),
+        ));
+    if let Some(window) = app.get_webview_window("main") {
+        dialog = dialog.parent(&window);
+    }
+    dialog.show(move |accepted| {
+        let _ = tx.send(accepted);
+    });
+    rx.await.unwrap_or(false)
 }
 
 fn canonical_repo(repo: &Path) -> Result<PathBuf, String> {
@@ -467,6 +570,31 @@ pub async fn list_factory_candidates(
     wrap_cmd("list_factory_candidates", async move {
         ensure_factory_repo_known(&state, &repo_path).await?;
         blocking(move || Ok(find_candidates(Path::new(&repo_path)))).await
+    })
+    .await
+}
+
+/// Grant a repo folder for the factory flows. `true` when it is already
+/// known or the user accepted the native dialog, `false` on Cancel.
+#[command]
+pub async fn confirm_factory_repo(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    repo_path: String,
+) -> Result<bool, String> {
+    wrap_cmd("confirm_factory_repo", async move {
+        let path = blocking(move || existing_folder(&repo_path)).await?;
+        if ensure_factory_repo_known(&state, &path.to_string_lossy())
+            .await
+            .is_ok()
+        {
+            return Ok(true);
+        }
+        let accepted = ask_to_add_folder(&app, &path).await;
+        if accepted {
+            remember_confirmed(path);
+        }
+        Ok(accepted)
     })
     .await
 }
@@ -1520,24 +1648,113 @@ mod tests {
         let refusal = user_err(
             r"Open a session in '\\?\C:\repositories\backend-workspace' first, then start a task there.",
         );
+        let path = unknown_repo_path(&refusal).unwrap();
         assert_eq!(
-            explain_unknown_repo(refusal),
+            unknown_repo_error(&path),
             user_err(
-                r"Agentrium has not worked in this folder yet: C:\repositories\backend-workspace. Open a session there once, or save a profile for it, then try again."
+                r"Agentrium has not worked in this folder yet: C:\repositories\backend-workspace. Confirm the folder to continue."
             )
         );
+        assert!(!unknown_repo_error(&path).contains(r"\\?\"));
         let plain = user_err("Open a session in '/home/me/repo' first, then start a task there.");
         assert_eq!(
-            explain_unknown_repo(plain),
-            user_err("Agentrium has not worked in this folder yet: /home/me/repo. Open a session there once, or save a profile for it, then try again.")
+            unknown_repo_error(&unknown_repo_path(&plain).unwrap()),
+            user_err("Agentrium has not worked in this folder yet: /home/me/repo. Confirm the folder to continue.")
         );
     }
 
     #[test]
-    fn other_repo_errors_pass_through_unchanged() {
-        let invalid = user_err("Invalid path 'C:\nope': not found");
-        assert_eq!(explain_unknown_repo(invalid.clone()), invalid);
-        assert_eq!(explain_unknown_repo("db locked".to_string()), "db locked");
+    fn confirm_dialog_text() {
+        assert_eq!(CONFIRM_TITLE, "Add this folder?");
+        assert_eq!(
+            confirm_message(Path::new("/home/me/repo")),
+            "Agentrium will read the factory files in this folder and run agent sessions there:\n\n/home/me/repo"
+        );
+    }
+
+    fn canon(p: &Path) -> PathBuf {
+        canonical_repo(p).unwrap()
+    }
+
+    #[test]
+    fn a_confirmed_folder_and_its_subfolders_are_known() {
+        let d = tempfile::tempdir().unwrap();
+        let sub = d.path().join("packages").join("api");
+        std::fs::create_dir_all(&sub).unwrap();
+        assert!(!is_confirmed(&canon(d.path())));
+        remember_confirmed(canon(d.path()));
+        assert!(is_confirmed(&canon(d.path())));
+        assert!(is_confirmed(&canon(&sub)));
+    }
+
+    #[test]
+    fn an_unrelated_folder_or_a_parent_of_a_confirmed_one_is_not_known() {
+        let d = tempfile::tempdir().unwrap();
+        let inner = d.path().join("inner");
+        std::fs::create_dir_all(&inner).unwrap();
+        let other = tempfile::tempdir().unwrap();
+        remember_confirmed(canon(&inner));
+        assert!(!is_confirmed(&canon(other.path())));
+        assert!(!is_confirmed(&canon(d.path())));
+    }
+
+    #[test]
+    fn the_repo_of_a_saved_factory_is_known_after_a_restart() {
+        // A fresh database with a factory saved in an earlier app run and an
+        // empty confirmed set: the factory must still start runs.
+        let repo = tempfile::tempdir().unwrap();
+        let sub = repo.path().join("src");
+        std::fs::create_dir_all(&sub).unwrap();
+        let other = tempfile::tempdir().unwrap();
+        let db = Database::new_in_memory().unwrap();
+        let path = repo.path().to_string_lossy().into_owned();
+        db.upsert_factory(&Factory {
+            id: "f1".to_string(),
+            name: "demo".to_string(),
+            repo_path: path.clone(),
+            source_path: format!("{path}/SKILL.md"),
+            definition: sample(),
+            created_at: "2026-11-19T00:00:00Z".to_string(),
+            updated_at: "2026-11-19T00:00:00Z".to_string(),
+        })
+        .unwrap();
+        let known =
+            |db: &Database, p: &Path| inside_folders(&canon(p), &factory_repo_paths(db).unwrap());
+        assert!(!is_confirmed(&canon(repo.path())));
+        assert!(known(&db, repo.path()));
+        assert!(known(&db, &sub));
+        assert!(!known(&db, other.path()));
+        let empty = Database::new_in_memory().unwrap();
+        assert!(!known(&empty, repo.path()));
+    }
+
+    #[test]
+    fn confirming_needs_an_existing_folder() {
+        let d = tempfile::tempdir().unwrap();
+        assert_eq!(
+            existing_folder(&d.path().to_string_lossy()).unwrap(),
+            canon(d.path())
+        );
+        let missing = d.path().join("nope");
+        let missing = missing.to_string_lossy().into_owned();
+        assert_eq!(
+            existing_folder(&missing).unwrap_err(),
+            user_err(format!("This folder does not exist: {missing}"))
+        );
+        let file = d.path().join("f.txt");
+        write(&file, "x");
+        let err = existing_folder(&file.to_string_lossy()).unwrap_err();
+        assert!(err.contains("This folder does not exist: "), "{err}");
+        assert!(!err.contains(r"\\?\"), "{err}");
+    }
+
+    #[test]
+    fn other_repo_errors_are_not_the_unknown_folder_refusal() {
+        assert_eq!(
+            unknown_repo_path(&user_err("Invalid path 'C:\nope': not found")),
+            None
+        );
+        assert_eq!(unknown_repo_path("db locked"), None);
     }
 
     #[test]
