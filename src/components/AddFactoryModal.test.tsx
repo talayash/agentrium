@@ -5,7 +5,11 @@ const invokeMock = vi.fn();
 vi.mock('@tauri-apps/api/core', () => ({ invoke: (...a: unknown[]) => invokeMock(...a) }));
 vi.mock('@tauri-apps/plugin-dialog', () => ({ open: vi.fn() }));
 const launchImportSession = vi.fn();
-vi.mock('../lib/factoryActions', () => ({ launchImportSession: (...a: unknown[]) => launchImportSession(...a) }));
+const openPlainSession = vi.fn();
+vi.mock('../lib/factoryActions', () => ({
+  launchImportSession: (...a: unknown[]) => launchImportSession(...a),
+  openPlainSession: (...a: unknown[]) => openPlainSession(...a),
+}));
 const reportInvokeFailure = vi.fn();
 vi.mock('../lib/errorReporter', () => ({ reportInvokeFailure: (...a: unknown[]) => reportInvokeFailure(...a) }));
 import { AddFactoryModal } from './AddFactoryModal';
@@ -326,4 +330,50 @@ it('typing in the repository field clears the chosen profile', async () => {
   expect(select.value).not.toBe('');
   fireEvent.change(screen.getByLabelText('Repository'), { target: { value: 'C:\work\other' } });
   expect(select.value).toBe('');
+});
+
+const UNKNOWN = 'Agentrium has not worked in this folder yet: /r. Open a session there once, or save a profile for it, then try again.';
+const failFirstList = (error: string) => {
+  const base = invokeMock.getMockImplementation()!;
+  let failed = false;
+  invokeMock.mockImplementation(async (cmd: string, args: Record<string, unknown>) => {
+    if (cmd === 'list_factory_candidates' && !failed) { failed = true; throw error; }
+    return base(cmd, args);
+  });
+};
+
+it('an unknown folder offers to open a session there, and retries after it opens', async () => {
+  openPlainSession.mockReset().mockResolvedValue('t9');
+  failFirstList(UNKNOWN);
+  render(<AddFactoryModal />);
+  fireEvent.change(screen.getByLabelText('Repository'), { target: { value: '/r' } });
+  await click('Next');
+  expect(screen.getByRole('alert').textContent).toBe(UNKNOWN);
+  await click('Open a session there');
+  expect(openPlainSession).toHaveBeenCalledWith('/r');
+  expect(calls('list_factory_candidates')).toHaveLength(2);
+  expect(screen.getByText('.agentrium/a.md')).toBeTruthy();
+  expect(screen.queryByRole('alert')).toBeNull();
+});
+
+it('the button is not offered for other errors', async () => {
+  openPlainSession.mockReset();
+  failFirstList("Invalid path '/r': not found");
+  render(<AddFactoryModal />);
+  fireEvent.change(screen.getByLabelText('Repository'), { target: { value: '/r' } });
+  await click('Next');
+  expect(screen.getByRole('alert').textContent).toBe("Invalid path '/r': not found");
+  expect(screen.queryByRole('button', { name: 'Open a session there' })).toBeNull();
+});
+
+it('a failed session open is shown and reported', async () => {
+  openPlainSession.mockReset().mockRejectedValue('spawn failed');
+  failFirstList(UNKNOWN);
+  render(<AddFactoryModal />);
+  fireEvent.change(screen.getByLabelText('Repository'), { target: { value: '/r' } });
+  await click('Next');
+  await click('Open a session there');
+  expect(screen.getByRole('alert').textContent).toBe('spawn failed');
+  expect(reportInvokeFailure).toHaveBeenCalledWith('create_terminal', 'spawn failed');
+  expect(calls('list_factory_candidates')).toHaveLength(1);
 });

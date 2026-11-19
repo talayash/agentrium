@@ -363,6 +363,33 @@ fn strip_verbatim(p: PathBuf) -> PathBuf {
     }
 }
 
+/// `ensure_repo_trusted`'s refusal for a folder Agentrium has never worked
+/// in, rewritten for the factory flows (it talks about tasks and shows the
+/// `\\?\` prefix). Any other error is returned unchanged.
+fn explain_unknown_repo(err: String) -> String {
+    let path = strip_user_prefix(&err)
+        .strip_prefix("Open a session in '")
+        .and_then(|rest| rest.strip_suffix("' first, then start a task there."))
+        .map(|p| strip_verbatim(PathBuf::from(p)));
+    match path {
+        Some(path) => user_err(format!(
+            "Agentrium has not worked in this folder yet: {}. Open a session there once, or save a profile for it, then try again.",
+            path.display()
+        )),
+        None => err,
+    }
+}
+
+/// `ensure_repo_trusted` with the unknown-folder refusal explained.
+async fn ensure_factory_repo_known(
+    state: &State<'_, AppState>,
+    repo_path: &str,
+) -> Result<(), String> {
+    ensure_repo_trusted(state, repo_path)
+        .await
+        .map_err(explain_unknown_repo)
+}
+
 fn canonical_repo(repo: &Path) -> Result<PathBuf, String> {
     repo.canonicalize()
         .map(strip_verbatim)
@@ -438,7 +465,7 @@ pub async fn list_factory_candidates(
     repo_path: String,
 ) -> Result<Vec<FactoryCandidate>, String> {
     wrap_cmd("list_factory_candidates", async move {
-        ensure_repo_trusted(&state, &repo_path).await?;
+        ensure_factory_repo_known(&state, &repo_path).await?;
         blocking(move || Ok(find_candidates(Path::new(&repo_path)))).await
     })
     .await
@@ -451,7 +478,7 @@ pub async fn read_factory_definition_file(
     source_path: String,
 ) -> Result<Option<DefinitionReview>, String> {
     wrap_cmd("read_factory_definition_file", async move {
-        ensure_repo_trusted(&state, &repo_path).await?;
+        ensure_factory_repo_known(&state, &repo_path).await?;
         blocking(move || {
             let source = resolve_source(Path::new(&repo_path), Path::new(&source_path))?;
             read_review(&source)
@@ -468,7 +495,7 @@ pub async fn begin_factory_import(
     source_path: String,
 ) -> Result<ImportTicket, String> {
     wrap_cmd("begin_factory_import", async move {
-        ensure_repo_trusted(&state, &repo_path).await?;
+        ensure_factory_repo_known(&state, &repo_path).await?;
         blocking(move || {
             let source = resolve_source(Path::new(&repo_path), Path::new(&source_path))?;
             let import_id = uuid::Uuid::new_v4().to_string();
@@ -511,7 +538,7 @@ pub async fn save_factory(
     write_file: bool,
 ) -> Result<FactoryView, String> {
     wrap_cmd("save_factory", async move {
-        ensure_repo_trusted(&state, &repo_path).await?;
+        ensure_factory_repo_known(&state, &repo_path).await?;
         let (definition, repo, source) = blocking(move || {
             let repo = canonical_repo(Path::new(&repo_path))?;
             let source = resolve_source(&repo, Path::new(&source_path))?;
@@ -1224,7 +1251,7 @@ pub async fn start_factory_run(
         let factory = db_op(&state.db, move |db| db.get_factory(&factory_id))
             .await?
             .ok_or_else(|| user_err("This factory no longer exists."))?;
-        ensure_repo_trusted(&state, &factory.repo_path).await?;
+        ensure_factory_repo_known(&state, &factory.repo_path).await?;
         let input = checked_input(&factory.definition, &input)?;
         let data_dir = blocking(factory_data_dir).await?;
         match factory.definition.workspace {
@@ -1486,6 +1513,31 @@ mod tests {
         assert!(p.contains(
             "- In a check command, never write {run_dir} without double quotes around the path; prefer the AGENTRIUM_RUN_DIR environment variable."
         ));
+    }
+
+    #[test]
+    fn unknown_folder_refusal_is_explained_without_the_verbatim_prefix() {
+        let refusal = user_err(
+            r"Open a session in '\\?\C:\repositories\backend-workspace' first, then start a task there.",
+        );
+        assert_eq!(
+            explain_unknown_repo(refusal),
+            user_err(
+                r"Agentrium has not worked in this folder yet: C:\repositories\backend-workspace. Open a session there once, or save a profile for it, then try again."
+            )
+        );
+        let plain = user_err("Open a session in '/home/me/repo' first, then start a task there.");
+        assert_eq!(
+            explain_unknown_repo(plain),
+            user_err("Agentrium has not worked in this folder yet: /home/me/repo. Open a session there once, or save a profile for it, then try again.")
+        );
+    }
+
+    #[test]
+    fn other_repo_errors_pass_through_unchanged() {
+        let invalid = user_err("Invalid path 'C:\nope': not found");
+        assert_eq!(explain_unknown_repo(invalid.clone()), invalid);
+        assert_eq!(explain_unknown_repo("db locked".to_string()), "db locked");
     }
 
     #[test]

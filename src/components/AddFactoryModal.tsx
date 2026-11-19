@@ -7,7 +7,7 @@ import {
   beginFactoryImport, listFactoryCandidates, pollFactoryImport, readFactoryDefinitionFile, saveFactory,
   type DefinitionReview, type FactoryCandidate, type LintItem,
 } from '../lib/factory';
-import { launchImportSession } from '../lib/factoryActions';
+import { launchImportSession, openPlainSession } from '../lib/factoryActions';
 import { knownRepoPaths, repoPathForTerminal, type TaskProfile } from '../lib/tasks';
 import { useAppStore } from '../store/appStore';
 import { useFactoryStore } from '../store/factoryStore';
@@ -23,6 +23,8 @@ const TAG = 'text-[10.5px] px-1.5 py-0.5 rounded bg-fill-hover text-text-tertiar
 
 const POLL_MS = 2000;
 const IMPORT_TIMEOUT_MS = 5 * 60 * 1000;
+/** Start of the backend's refusal for a folder Agentrium has never worked in. */
+const UNKNOWN_FOLDER = 'Agentrium has not worked in this folder yet';
 const STEPS = ['Repo', 'Factory file', 'Check what Agentrium understood', 'Ready'];
 
 /** Profiles with a working directory, one per folder (case-insensitive), by name. */
@@ -154,6 +156,28 @@ export function AddFactoryModal() {
       working.current = false;
       setBusy(false);
     }
+  };
+
+  /** The backend does not know the folder yet: open a session there, then retry Next. */
+  const openSessionThere = async () => {
+    if (working.current) return;
+    working.current = true;
+    setBusy(true);
+    try {
+      await openPlainSession(repoPath.trim());
+    } catch (err) {
+      if (mounted.current) {
+        setError(String(err));
+        reportInvokeFailure('create_terminal', err);
+      }
+      return;
+    } finally {
+      working.current = false;
+      setBusy(false);
+    }
+    if (!mounted.current) return;
+    setError('');
+    await nextFromRepo();
   };
 
   const startPolling = (importId: string) => {
@@ -359,6 +383,11 @@ export function AddFactoryModal() {
         )}
 
         {error && <p role="alert" className="text-[12px] text-error whitespace-pre-wrap">{error}</p>}
+        {step === 1 && error.startsWith(UNKNOWN_FOLDER) && (
+          <button type="button" onClick={() => void openSessionThere()} disabled={busy} className={`${BTN} self-start`}>
+            Open a session there
+          </button>
+        )}
 
         <div className="flex justify-end gap-2 pt-1">
           {importing ? (

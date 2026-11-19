@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 import { invoke } from '@tauri-apps/api/core';
-import { kickQueue, performStep } from './factoryActions';
+import { kickQueue, openPlainSession, performStep } from './factoryActions';
 import type { Definition, FactoryRun, RunStep, StepAction } from './factory';
 import { useFactoryStore } from '../store/factoryStore';
 import { useTerminalStore, type PromptDelivery, type TerminalConfig, type TerminalInstance } from '../store/terminalStore';
@@ -145,6 +145,23 @@ describe('performStep', () => {
     closeTerminal.mockClear();
     await performStep(step({ kind: 'cancelled' }, { status: 'cancelled', terminalId: 'old' }), 'Ship it');
     expect(closeTerminal).toHaveBeenCalledWith('old');
+  });
+});
+
+describe('openPlainSession', () => {
+  it('opens a plain session in the folder without a prompt and keeps the user where they were', async () => {
+    useAppStore.setState({ activeFilePath: 'factory:f1' });
+    const id = await openPlainSession('C:\\repositories\\backend-workspace\\');
+    expect(id).toBe('new');
+    const args = createTerminal.mock.calls[0];
+    expect(args[0]).toBe('backend-workspace');
+    expect(args[1]).toBe('C:\\repositories\\backend-workspace\\');
+    expect(args[5]).toBe('backend-workspace');
+    expect(args[10]).toBe('claude');
+    expect(args[12]).toBeNull();
+    expect(args).toHaveLength(13);
+    expect(setActiveTerminal).toHaveBeenCalledWith('other');
+    expect(useAppStore.getState().activeFilePath).toBe('factory:f1');
   });
 });
 

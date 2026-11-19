@@ -37,14 +37,53 @@ async function openSession(label: string, cwd: string, agent: AgentKind, task: T
   return id;
 }
 
+/**
+ * Remember where the user is before a session opens, and return the function
+ * that puts them back: a session opened in the background must not steal
+ * focus. When the user was looking at `replacing` (the session being
+ * replaced), focus follows the new session instead.
+ */
+function captureFocus(replacing: string | null): () => void {
+  const prevActive = useTerminalStore.getState().activeTerminalId;
+  const prevFile = useAppStore.getState().activeFilePath;
+  const lookingAtOld = prevFile === null && prevActive !== null && prevActive === replacing;
+  return () => {
+    if (lookingAtOld) return;
+    const terminals = useTerminalStore.getState();
+    if (prevActive && terminals.terminals.has(prevActive)) terminals.setActiveTerminal(prevActive);
+    useAppStore.getState().setActiveFilePath(prevFile);
+  };
+}
+
+/** The agent a plain New Session starts with. */
+const PLAIN_SESSION_AGENT: AgentKind = 'claude';
+
+/**
+ * Open a plain agent session (no prompt, no task) in `repoPath`, the way New
+ * Session does, without moving the user's focus. Returns the terminal id.
+ */
+export async function openPlainSession(repoPath: string): Promise<string> {
+  const agent = PLAIN_SESSION_AGENT;
+  const label = repoPath.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || repoPath;
+  const launch = resolveLaunchConfig(
+    agent, null, useAppStore.getState().defaultAgentArgs,
+    useAgentRegistryStore.getState().defaultBindingsFor(agent),
+  );
+  const restoreFocus = captureFocus(null);
+  const id = await useTerminalStore.getState().createTerminal(
+    label, repoPath, launch.args, launch.envVars, undefined, label, undefined, undefined, false, undefined,
+    agent, launch.bindings, null,
+  );
+  restoreFocus();
+  return id;
+}
+
 /** Carry out the session side of one engine transition. */
 export async function performStep(step: RunStep, factoryName: string): Promise<void> {
   const { run, action } = step;
   switch (action.kind) {
     case 'start_station': {
-      const prevActive = useTerminalStore.getState().activeTerminalId;
-      const prevFile = useAppStore.getState().activeFilePath;
-      const lookingAtOld = prevFile === null && prevActive !== null && prevActive === run.terminalId;
+      const restoreFocus = captureFocus(run.terminalId);
       await closeLive(run.terminalId);
       const label = sessionLabel(factoryName, run, action.stepName);
       let id: string;
@@ -63,11 +102,7 @@ export async function performStep(step: RunStep, factoryName: string): Promise<v
         return stored ? { runs: { ...s.runs, [run.id]: { ...stored, terminalId: id } } } : {};
       });
       // A station starting must not steal focus from wherever the user was.
-      if (!lookingAtOld) {
-        const terminals = useTerminalStore.getState();
-        if (prevActive && terminals.terminals.has(prevActive)) terminals.setActiveTerminal(prevActive);
-        useAppStore.getState().setActiveFilePath(prevFile);
-      }
+      restoreFocus();
       return;
     }
     case 'await_gate':
