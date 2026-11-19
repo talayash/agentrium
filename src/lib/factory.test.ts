@@ -1,7 +1,11 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expectTypeOf, expect, it, vi } from 'vitest';
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 import { invoke } from '@tauri-apps/api/core';
 import {
+  beginFactoryImport, cancelFactoryCheck, controlFactoryRun, deleteFactory, getFactoryArtifact, getFactoryRunEvents,
+  listFactories, listFactoryCandidates, listFactoryRuns, nextQueuedFactoryRun, pollFactoryImport,
+  readFactoryDefinitionFile, saveFactory, setFactoryRunTerminal, startFactoryRun,
+  type DefinitionReview,
   answerFactoryGate, evaluateFactoryStation, factoryTabPath, holdsLine, isOpenRun, needsYou, runStatusText,
   sessionLabel, stepCounts, trackFor, currentStep, FACTORY_TAB_PREFIX,
   type Definition, type FactoryRun, type RunStatus,
@@ -95,5 +99,44 @@ describe('wrappers', () => {
     vi.mocked(invoke).mockResolvedValue({});
     await answerFactoryGate('r1', 'G1', false, 'why');
     expect(invoke).toHaveBeenCalledWith('answer_factory_gate', { runId: 'r1', stepId: 'G1', approve: false, reason: 'why' });
+  });
+});
+
+describe('wrapper wire pins (names and keys from the Rust #[command] fns)', () => {
+  const d = def();
+  const rows: [string, () => Promise<unknown>, string, Record<string, unknown> | undefined][] = [
+    ['listFactoryCandidates', () => listFactoryCandidates('/r'), 'list_factory_candidates', { repoPath: '/r' }],
+    ['readFactoryDefinitionFile', () => readFactoryDefinitionFile('/r', 's.md'), 'read_factory_definition_file', { repoPath: '/r', sourcePath: 's.md' }],
+    ['beginFactoryImport', () => beginFactoryImport('/r', 's.md'), 'begin_factory_import', { repoPath: '/r', sourcePath: 's.md' }],
+    ['pollFactoryImport', () => pollFactoryImport('i1'), 'poll_factory_import', { importId: 'i1' }],
+    ['saveFactory', () => saveFactory('/r', 's.md', d, true), 'save_factory', { repoPath: '/r', sourcePath: 's.md', definition: d, writeFile: true }],
+    ['listFactories', () => listFactories(), 'list_factories', undefined],
+    ['deleteFactory', () => deleteFactory('f1'), 'delete_factory', { factoryId: 'f1' }],
+    ['startFactoryRun', () => startFactoryRun('f1', 'in'), 'start_factory_run', { factoryId: 'f1', input: 'in' }],
+    ['listFactoryRuns', () => listFactoryRuns(), 'list_factory_runs', undefined],
+    ['getFactoryRunEvents', () => getFactoryRunEvents('r1'), 'get_factory_run_events', { runId: 'r1' }],
+    ['setFactoryRunTerminal', () => setFactoryRunTerminal('r1', 't1'), 'set_factory_run_terminal', { runId: 'r1', terminalId: 't1' }],
+    ['evaluateFactoryStation', () => evaluateFactoryStation('r1', false, 'e1'), 'evaluate_factory_station', { runId: 'r1', manual: false, evalId: 'e1' }],
+    ['cancelFactoryCheck', () => cancelFactoryCheck('e1'), 'cancel_factory_check', { evalId: 'e1' }],
+    ['answerFactoryGate', () => answerFactoryGate('r1', 'G1', true, null), 'answer_factory_gate', { runId: 'r1', stepId: 'G1', approve: true, reason: null }],
+    ['controlFactoryRun', () => controlFactoryRun('r1', 'allow_retry'), 'control_factory_run', { runId: 'r1', op: 'allow_retry' }],
+    ['nextQueuedFactoryRun', () => nextQueuedFactoryRun('f1'), 'next_queued_factory_run', { factoryId: 'f1' }],
+    ['getFactoryArtifact', () => getFactoryArtifact('r1', 'a.md'), 'get_factory_artifact', { runId: 'r1', name: 'a.md' }],
+  ];
+
+  it('covers all 17 wrappers', () => expect(rows).toHaveLength(17));
+
+  it.each(rows)('%s', async (_n, call, command, args) => {
+    vi.mocked(invoke).mockResolvedValue(null);
+    await call();
+    if (args === undefined) expect(invoke).toHaveBeenCalledWith(command);
+    else expect(invoke).toHaveBeenCalledWith(command, args);
+  });
+
+  it('readFactoryDefinitionFile can resolve null (no file on disk)', async () => {
+    vi.mocked(invoke).mockResolvedValue(null);
+    const review = await readFactoryDefinitionFile('/r', 's.md');
+    expect(review).toBeNull();
+    expectTypeOf(review).toEqualTypeOf<DefinitionReview | null>();
   });
 });

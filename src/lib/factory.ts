@@ -57,7 +57,7 @@ export type RunControl = 'resume' | 'allow_retry' | 'line_freed' | 'cancel';
 export const listFactoryCandidates = (repoPath: string) =>
   invoke<FactoryCandidate[]>('list_factory_candidates', { repoPath });
 export const readFactoryDefinitionFile = (repoPath: string, sourcePath: string) =>
-  invoke<DefinitionReview>('read_factory_definition_file', { repoPath, sourcePath });
+  invoke<DefinitionReview | null>('read_factory_definition_file', { repoPath, sourcePath });
 export const beginFactoryImport = (repoPath: string, sourcePath: string) =>
   invoke<ImportTicket>('begin_factory_import', { repoPath, sourcePath });
 export const pollFactoryImport = (importId: string) =>
