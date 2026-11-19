@@ -21,6 +21,7 @@ import { WorktreeModal } from './components/WorktreeModal';
 import { NewTaskModal } from './components/NewTaskModal';
 import { NewRaceModal } from './components/NewRaceModal';
 import { RaceDecideDialog } from './components/RaceDecideDialog';
+import { FactoryGateDialog } from './components/FactoryGateDialog';
 import { subscribeRaceTracking } from './store/raceStore';
 import { subscribeFactoryTracking } from './store/factoryStore';
 import { FinishTaskDialog } from './components/FinishTaskDialog';
@@ -164,6 +165,7 @@ function App() {
   const newTaskModalOpen = useAppStore((s) => s.newTaskModalOpen);
   const newRaceModalOpen = useAppStore((s) => s.newRaceModalOpen);
   const decideRaceId = useAppStore((s) => s.decideRaceId);
+  const factoryGateRunId = useAppStore((s) => s.factoryGateRunId);
   const finishTaskTerminalId = useAppStore((s) => s.finishTaskTerminalId);
   const ciRepairTerminalId = useAppStore((s) => s.ciRepairTerminalId);
   const closeCiRepair = useAppStore((s) => s.closeCiRepair);
@@ -1167,6 +1169,7 @@ function App() {
             {newTaskModalOpen && <NewTaskModal key="new-task" />}
             {newRaceModalOpen && <NewRaceModal key="new-race" />}
             {decideRaceId && <RaceDecideDialog key={`decide-${decideRaceId}`} />}
+            {factoryGateRunId && <FactoryGateDialog key={`gate-${factoryGateRunId}`} />}
             {finishTaskTerminalId && <FinishTaskDialog key={`finish-${finishTaskTerminalId}`} />}
             {pushModalOpen && <PushModal />}
             {createPrModalOpen && <CreatePullRequestModal />}
