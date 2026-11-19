@@ -297,6 +297,33 @@ pub struct TokenExchangeResponse {
     pub refresh_token: String,
 }
 
+const AUTH_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+const AUTH_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+const MAX_AUTH_RESPONSE_BYTES: usize = 64 * 1024;
+
+fn auth_http_client() -> Result<reqwest::Client, String> {
+    reqwest::Client::builder()
+        .connect_timeout(AUTH_CONNECT_TIMEOUT)
+        .timeout(AUTH_REQUEST_TIMEOUT)
+        .build()
+        .map_err(|e| format!("could not initialize auth client: {e}"))
+}
+
+async fn read_auth_response(mut response: reqwest::Response) -> Result<Vec<u8>, String> {
+    if response.content_length().is_some_and(|len| len > MAX_AUTH_RESPONSE_BYTES as u64) {
+        return Err("auth response exceeded the 64 KB limit".into());
+    }
+
+    let mut body = Vec::new();
+    while let Some(chunk) = response.chunk().await.map_err(|e| format!("could not read auth response: {e}"))? {
+        if body.len() + chunk.len() > MAX_AUTH_RESPONSE_BYTES {
+            return Err("auth response exceeded the 64 KB limit".into());
+        }
+        body.extend_from_slice(&chunk);
+    }
+    Ok(body)
+}
+
 /// PKCE token exchange (broker: `POST /api/auth/desktop/token`). A wrong
 /// verifier burns the one-time code server-side, so this is called exactly
 /// once per callback.
@@ -307,7 +334,7 @@ pub async fn exchange_code(
     state: &str,
     client: &ClientInfo,
 ) -> Result<TokenExchangeResponse, String> {
-    let resp = reqwest::Client::new()
+    let resp = auth_http_client()?
         .post(format!("{base_url}/api/auth/desktop/token"))
         .json(&serde_json::json!({
             "code": code,
@@ -320,15 +347,15 @@ pub async fn exchange_code(
         .map_err(|e| format!("token exchange request failed: {e}"))?;
 
     let status = resp.status();
-    let body = resp.text().await.unwrap_or_default();
+    let body = read_auth_response(resp).await?;
     if !status.is_success() {
-        let code = serde_json::from_str::<serde_json::Value>(&body)
+        let code = serde_json::from_slice::<serde_json::Value>(&body)
             .ok()
             .and_then(|v| v.get("error").and_then(|e| e.as_str()).map(str::to_owned))
-            .unwrap_or_else(|| body.chars().take(120).collect());
+            .unwrap_or_else(|| String::from_utf8_lossy(&body).chars().take(120).collect());
         return Err(format!("token exchange rejected ({status}): {code}"));
     }
-    serde_json::from_str(&body).map_err(|e| format!("token exchange returned an unexpected body: {e}"))
+    serde_json::from_slice(&body).map_err(|e| format!("token exchange returned an unexpected body: {e}"))
 }
 
 /// Called by the deep-link plugin when the OS routes `agentrium://` URLs to us.
@@ -471,7 +498,7 @@ pub async fn signup_credentials(
     name: Option<String>,
 ) -> Result<(), String> {
     wrap_cmd("signup_credentials", async move {
-        let client = reqwest::Client::new();
+        let client = auth_http_client()?;
         let resp = client
             .post(format!("{API_BASE}/api/auth/desktop/signup"))
             .json(&SignupRequest {
@@ -485,8 +512,9 @@ pub async fn signup_credentials(
             .map_err(|e| format!("network: {e}"))?;
 
         let status = resp.status();
+        let body = read_auth_response(resp).await?;
         if !status.is_success() {
-            let body: serde_json::Value = resp.json().await.unwrap_or_default();
+            let body: serde_json::Value = serde_json::from_slice(&body).unwrap_or_default();
             let error_code = body.get("error").and_then(|v| v.as_str()).unwrap_or("unknown");
             let message = body.get("message").and_then(|v| v.as_str()).map(String::from);
             // 409 = duplicate email is the ONE case the UI explicitly handles
@@ -500,7 +528,7 @@ pub async fn signup_credentials(
             return Err(error_reporter::user_err(user_msg));
         }
 
-        let tokens: CredentialsAuthResponse = resp.json().await.map_err(|e| format!("decode: {e}"))?;
+        let tokens: CredentialsAuthResponse = serde_json::from_slice(&body).map_err(|e| format!("decode: {e}"))?;
         complete_credentials_auth(&app, tokens).await
     })
     .await
@@ -522,7 +550,7 @@ pub async fn signin_credentials(
     password: String,
 ) -> Result<(), String> {
     wrap_cmd("signin_credentials", async move {
-        let client = reqwest::Client::new();
+        let client = auth_http_client()?;
         let resp = client
             .post(format!("{API_BASE}/api/auth/desktop/signin-credentials"))
             .json(&SigninCredentialsRequest {
@@ -535,6 +563,7 @@ pub async fn signin_credentials(
             .map_err(|e| format!("network: {e}"))?;
 
         let status = resp.status();
+        let body = read_auth_response(resp).await?;
         if !status.is_success() {
             let user_msg = match status.as_u16() {
                 401 => "invalid_credentials".to_string(),
@@ -544,7 +573,7 @@ pub async fn signin_credentials(
             return Err(error_reporter::user_err(user_msg));
         }
 
-        let tokens: CredentialsAuthResponse = resp.json().await.map_err(|e| format!("decode: {e}"))?;
+        let tokens: CredentialsAuthResponse = serde_json::from_slice(&body).map_err(|e| format!("decode: {e}"))?;
         complete_credentials_auth(&app, tokens).await
     })
     .await

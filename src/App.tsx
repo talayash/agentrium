@@ -1,4 +1,4 @@
-import { Component, useEffect, useRef, useState } from 'react';
+import { Component, lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { useSessionContext } from './hooks/useSessionContext';
 import type { ErrorInfo, ReactNode } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -29,8 +29,8 @@ import { CreatePullRequestModal } from './components/CreatePullRequestModal';
 import { CiRepairModal } from './components/CiRepairModal';
 import { SessionHistory } from './components/SessionHistory';
 import { SnippetsModal } from './components/SnippetsModal';
-import { PasteAsFileDrawer } from './components/PasteAsFileDrawer';
-import { PromptEditorDrawer } from './components/PromptEditorDrawer';
+const PasteAsFileDrawer = lazy(() => import('./components/PasteAsFileDrawer').then((m) => ({ default: m.PasteAsFileDrawer })));
+const PromptEditorDrawer = lazy(() => import('./components/PromptEditorDrawer').then((m) => ({ default: m.PromptEditorDrawer })));
 import { CommandPalette } from './components/CommandPalette';
 import { SetupWizard } from './components/SetupWizard';
 import { AutoUpdater } from './components/AutoUpdater';
@@ -92,7 +92,6 @@ import { listen } from '@tauri-apps/api/event';
 import type { TerminalMetricsPayload } from './lib/sessionMetrics';
 import { invoke } from '@tauri-apps/api/core';
 import { getVersion } from '@tauri-apps/api/app';
-import { initLsp } from './lib/lsp/lspClient';
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
   constructor(props: { children: ReactNode }) {
@@ -162,6 +161,9 @@ function App() {
   useSessionContext();
   const newTaskModalOpen = useAppStore((s) => s.newTaskModalOpen);
   const newRaceModalOpen = useAppStore((s) => s.newRaceModalOpen);
+  const pasteDrawerOpen = useAppStore((s) => s.pasteDrawerOpen);
+  const promptEditorOpen = useAppStore((s) => s.promptEditorOpen);
+  const hasOpenFiles = useAppStore((s) => s.openFiles.length > 0);
   const decideRaceId = useAppStore((s) => s.decideRaceId);
   const finishTaskTerminalId = useAppStore((s) => s.finishTaskTerminalId);
   const ciRepairTerminalId = useAppStore((s) => s.ciRepairTerminalId);
@@ -324,11 +326,15 @@ function App() {
     });
   }, []);
 
-  // Initialize the LSP client singleton once on mount. Subscribes to
-  // openFiles / lspEnabled changes and wires diagnostics events to Monaco.
+  // Load the LSP/Monaco bridge only when the user has an open file.
   useEffect(() => {
-    initLsp();
-  }, []);
+    if (!hasOpenFiles) return;
+    let cancelled = false;
+    void import('./lib/lsp/lspClient').then(({ initLsp }) => {
+      if (!cancelled) initLsp();
+    });
+    return () => { cancelled = true; };
+  }, [hasOpenFiles]);
 
   // Auth boot (main window only): subscribe to `auth-tokens-received` for the
   // OAuth flow completion, then try to rehydrate from the keychain refresh
@@ -1181,8 +1187,10 @@ function App() {
           <AnimatePresence>
             {globalSearchOpen && <GlobalSearchModal />}
           </AnimatePresence>
-          <PasteAsFileDrawer />
-          <PromptEditorDrawer />
+          <Suspense fallback={null}>
+            {pasteDrawerOpen && <PasteAsFileDrawer />}
+            {promptEditorOpen && <PromptEditorDrawer />}
+          </Suspense>
         </>
       )}
 

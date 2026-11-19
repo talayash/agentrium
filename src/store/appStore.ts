@@ -106,6 +106,7 @@ interface AppState {
   globalBusy: string | null;
   setGlobalBusy: (label: string | null) => void;
   restoreSession: boolean;
+  recordSessionLogs: boolean;
   telemetryEnabled: boolean;
   errorReportingEnabled: boolean;
   // Master switch for language-server features (diagnostics squiggles).
@@ -391,6 +392,7 @@ interface AppState {
   setNotifyOnFinish: (enabled: boolean) => void;
   setRestoreSession: (enabled: boolean) => void;
   setTelemetryEnabled: (enabled: boolean) => void;
+  setRecordSessionLogs: (enabled: boolean) => void;
   setErrorReportingEnabled: (enabled: boolean) => void;
   setShowGitPanel: (enabled: boolean) => void;
   setShowFileTree: (enabled: boolean) => void;
@@ -647,6 +649,7 @@ export const useAppStore = create<AppState>()(
       globalBusy: null,
       setGlobalBusy: (label) => set({ globalBusy: label }),
       restoreSession: true,
+      recordSessionLogs: true,
       telemetryEnabled: true,
       errorReportingEnabled: true,
       lspEnabled: true,
@@ -883,6 +886,7 @@ export const useAppStore = create<AppState>()(
       setNotifyOnFinish: (enabled) => set({ notifyOnFinish: enabled }),
       setRestoreSession: (enabled) => set({ restoreSession: enabled }),
       setTelemetryEnabled: (enabled) => set({ telemetryEnabled: enabled }),
+      setRecordSessionLogs: (enabled) => set({ recordSessionLogs: enabled }),
       setErrorReportingEnabled: (enabled) => set({ errorReportingEnabled: enabled }),
       setLspEnabled: (v) => set({ lspEnabled: v }),
       setCostTrackingEnabled: (v) => set({ costTrackingEnabled: v }),
@@ -1471,6 +1475,7 @@ export const useAppStore = create<AppState>()(
         defaultAgentArgs: state.defaultAgentArgs,
         notifyOnFinish: state.notifyOnFinish,
         restoreSession: state.restoreSession,
+        recordSessionLogs: state.recordSessionLogs,
         telemetryEnabled: state.telemetryEnabled,
         errorReportingEnabled: state.errorReportingEnabled,
         lspEnabled: state.lspEnabled,
