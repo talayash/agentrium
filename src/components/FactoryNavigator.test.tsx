@@ -5,6 +5,7 @@ vi.mock('../lib/confirmDialog', () => ({ confirmAction: vi.fn() }));
 vi.mock('../lib/errorReporter', () => ({ reportInvokeFailure: vi.fn() }));
 import { invoke } from '@tauri-apps/api/core';
 import { confirmAction } from '../lib/confirmDialog';
+import { reportInvokeFailure } from '../lib/errorReporter';
 import { FactoryNavigator } from './FactoryNavigator';
 import { useFactoryStore } from '../store/factoryStore';
 import { useAppStore } from '../store/appStore';
@@ -45,7 +46,7 @@ it('lists factories with run counts', () => {
   expect(within(card).getByText('Ticket line')).toBeTruthy();
   expect(within(card).getByText('shop / line.json')).toBeTruthy();
   expect(within(card).getByText('3 runs')).toBeTruthy();
-  expect(within(card).getByText('1 need you')).toBeTruthy();
+  expect(within(card).getByText('2 need you')).toBeTruthy();
   expect(within(card).getByText('1 blocked')).toBeTruthy();
 });
 
@@ -100,4 +101,31 @@ it('empty state offers to add a factory', () => {
   expect(screen.getByText('No factories yet')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Add a factory' }));
   expect(useAppStore.getState().addFactoryModalOpen).toBe(true);
+});
+
+it('a factory whose only open run is blocked has a visible error dot', () => {
+  setState(mkRun('c', 'blocked', 's1'));
+  render(<FactoryNavigator />);
+  const dot = within(screen.getByTestId('factory-f1')).getByTestId('factory-dot');
+  expect(dot.hasAttribute('data-factory-dot')).toBe(true);
+  expect(dot.className).toContain('bg-error');
+});
+
+it('a factory with a gate run has a violet dot', () => {
+  setState(mkRun('a', 'waiting_gate', 'g1'), mkRun('c', 'blocked', 's1'));
+  render(<FactoryNavigator />);
+  const dot = within(screen.getByTestId('factory-f1')).getByTestId('factory-dot');
+  expect(dot.style.background).toContain('--attention-input');
+  expect(dot.className).not.toContain('bg-error');
+});
+
+it('Remove failure reports and keeps the factory listed', async () => {
+  setState(mkRun('b', 'running', 's1'));
+  vi.mocked(confirmAction).mockResolvedValue(true);
+  vi.mocked(invoke).mockRejectedValue(new Error('boom'));
+  render(<FactoryNavigator />);
+  fireEvent.click(screen.getByRole('button', { name: 'Remove factory Ticket line' }));
+  await waitFor(() => expect(reportInvokeFailure).toHaveBeenCalledWith('delete_factory', expect.anything()));
+  expect(useFactoryStore.getState().factories.f1).toBeDefined();
+  expect(screen.getByTestId('factory-f1')).toBeTruthy();
 });

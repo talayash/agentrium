@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, onTestFinished, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn(() => Promise.resolve([])) }));
 // The navigator bodies are covered by their own tests; stub them so this file
 // only exercises the sidebar chrome.
@@ -141,6 +141,7 @@ it('a persisted factory nav with the flag off shows Sessions', () => {
   render(<Sidebar />);
   expect(screen.getByRole('radiogroup', { name: 'Session filter' })).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Sessions' }).getAttribute('aria-pressed')).toBe('true');
+  expect(within(screen.getByRole('group', { name: 'Navigator' })).getAllByRole('button')).toHaveLength(3);
 });
 
 it('with no factories the Sessions tab is unchanged', () => {

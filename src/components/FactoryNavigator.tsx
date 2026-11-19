@@ -56,10 +56,12 @@ function NeedsYouRow({ run, factory, now }: { run: FactoryRun; factory: Factory;
 
 function FactoryCard({ factory, runs }: { factory: Factory; runs: FactoryRun[] }) {
   const open = runs.filter(isOpenRun);
-  const waiting = open.filter((r) => r.status === 'waiting_gate').length;
+  const gates = open.filter((r) => r.status === 'waiting_gate').length;
   const blocked = open.filter((r) => r.status === 'blocked').length;
+  const waiting = open.filter(needsYou).length;
   const live = open.some(holdsLine);
-  const dot = waiting + blocked > 0 ? '' : live ? 'bg-accent-primary animate-pulse' : 'bg-text-tertiary';
+  // Violet for a gate, error for blocked only, pulsing accent while running, else grey.
+  const dot = gates > 0 ? '' : blocked > 0 ? 'bg-error' : live ? 'bg-accent-primary animate-pulse' : 'bg-text-tertiary';
 
   const remove = async () => {
     const ok = await confirmAction('Remove this factory from Agentrium? Its files in the repo are not touched.', { okLabel: 'Remove' });
@@ -85,8 +87,10 @@ function FactoryCard({ factory, runs }: { factory: Factory; runs: FactoryRun[] }
         >
           <span
             aria-hidden
+            data-factory-dot
+            data-testid="factory-dot"
             className={`mt-1.5 inline-block w-2 h-2 rounded-full flex-shrink-0 ${dot}`}
-            style={waiting + blocked > 0 ? { background: waiting > 0 ? ATTENTION : 'rgb(var(--error))' } : undefined}
+            style={gates > 0 ? { background: ATTENTION } : undefined}
           />
           <span className="min-w-0 flex flex-col">
             <span className="text-[12.5px] font-medium text-text-primary truncate">{factory.name}</span>
