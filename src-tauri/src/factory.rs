@@ -15,7 +15,7 @@ use tokio::sync::Notify;
 use crate::commands::{db_op, wrap_cmd};
 use crate::config::AgentKind;
 use crate::database::Database;
-use crate::error_reporter::user_err;
+use crate::error_reporter::{report_bg, strip_user_prefix, user_err};
 use crate::factory_def::{
     input_is_safe, is_plain_file_name, parse_definition, render_check_command, render_prompt,
     validate, Definition, Lint, PromptVars, Workspace,
@@ -568,6 +568,7 @@ const RUN_LIST_LIMIT: u32 = 500;
 const MAX_ARTIFACT_BYTES: u64 = 2 * 1024 * 1024;
 const EVENT_DETAIL_CHARS: usize = 500;
 const BRANCH_SLUG_LEN: usize = 40;
+const MAX_BRANCH_SUFFIX: u32 = 9;
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -1149,18 +1150,68 @@ pub(crate) fn read_artifact(run_dir: &Path, name: &str) -> Result<Option<String>
         .map_err(|_| user_err(format!("{name} is not a text file.")))
 }
 
+/// The error `start_task_impl` returns when the requested branch exists.
+fn branch_taken(branch: &str) -> String {
+    user_err(format!("Branch '{branch}' already exists."))
+}
+
+/// Create the task worktree for a new run of `factory_name` with `input`.
+/// When the branch name is taken (an earlier run of the same input), retry
+/// with `-2` up to `-9`.
+pub(crate) async fn create_run_worktree(
+    repo_path: &str,
+    factory_name: &str,
+    input: &str,
+) -> Result<TaskInfo, String> {
+    let base = worktree_branch(factory_name, input);
+    for n in 1..=MAX_BRANCH_SUFFIX {
+        let branch = if n == 1 {
+            base.clone()
+        } else {
+            format!("{base}-{n}")
+        };
+        let request = StartTaskRequest {
+            repo_path: repo_path.to_string(),
+            title: format!("{factory_name} {input}"),
+            base_branch: None,
+            branch_name: Some(branch.clone()),
+            worktree_root: None,
+            setup_files: Vec::new(),
+        };
+        match start_task_impl(&request).await {
+            Ok((_, task)) => return Ok(task),
+            Err(e) if e == branch_taken(&branch) => continue,
+            Err(e) => return Err(e),
+        }
+    }
+    Err(user_err(
+        "A run for this input already has a branch. Finish or remove the earlier runs first.",
+    ))
+}
+
 /// Best-effort undo of a worktree created for a run that then failed to start.
 async fn discard_run_worktree(state: &State<'_, AppState>, task: TaskInfo) {
-    // Nothing else refers to this fresh worktree; a failed cleanup leaves a
-    // task the user can still discard from the Tasks UI.
-    let _ = finish_task_impl(
+    // Nothing else refers to this fresh worktree. A failed cleanup keeps the
+    // task row, so the user can still discard it from the Tasks UI.
+    let removed = finish_task_impl(
         &task,
         &FinishAction::Discard {
             confirm_unmerged: true,
         },
     )
     .await;
-    let _ = db_op(&state.db, move |db| db.delete_task(&task.worktree_path)).await;
+    match removed {
+        Ok(_) => {
+            let _ = db_op(&state.db, move |db| db.delete_task(&task.worktree_path)).await;
+        }
+        Err(e) => report_bg(
+            "factory_worktree_cleanup",
+            format!(
+                "Could not remove the worktree of a run that failed to start: {}",
+                strip_user_prefix(&e)
+            ),
+        ),
+    }
 }
 
 #[command]
@@ -1184,15 +1235,7 @@ pub async fn start_factory_run(
                 .await
             }
             Workspace::Worktree => {
-                let request = StartTaskRequest {
-                    repo_path: factory.repo_path.clone(),
-                    title: format!("{} {input}", factory.name),
-                    base_branch: None,
-                    branch_name: Some(worktree_branch(&factory.name, &input)),
-                    worktree_root: None,
-                    setup_files: Vec::new(),
-                };
-                let (_, task) = start_task_impl(&request).await?;
+                let task = create_run_worktree(&factory.repo_path, &factory.name, &input).await?;
                 let registered = task.clone();
                 let result = db_op(&state.db, move |db| {
                     db.insert_task(&registered)?;
@@ -2288,5 +2331,65 @@ mod tests {
         assert_eq!(started_prompt(&step).1, 2);
         assert_eq!(kinds(&db.lock().unwrap(), &run.id), ["started", "failed"]);
         drop((data, workspace));
+    }
+
+    fn git(dir: &Path, args: &[&str]) {
+        let out = std::process::Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "git {:?}: {}",
+            args,
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+
+    /// A git repo with one commit on `main`, inside a temp folder that also
+    /// holds the managed worktree root.
+    fn temp_repo() -> (tempfile::TempDir, PathBuf) {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        git(&repo, &["init", "-q", "-b", "main"]);
+        git(&repo, &["config", "user.email", "t@example.com"]);
+        git(&repo, &["config", "user.name", "Test"]);
+        git(&repo, &["config", "commit.gpgsign", "false"]);
+        std::fs::write(repo.join("README.md"), "hello\n").unwrap();
+        git(&repo, &["add", "README.md"]);
+        git(&repo, &["commit", "-q", "-m", "init"]);
+        (tmp, repo)
+    }
+
+    #[tokio::test]
+    async fn a_second_worktree_run_with_the_same_input_gets_a_suffixed_branch() {
+        let (_tmp, repo) = temp_repo();
+        let repo = repo.to_string_lossy().into_owned();
+        let first = create_run_worktree(&repo, "demo", "A-1").await.unwrap();
+        let second = create_run_worktree(&repo, "demo", "A-1").await.unwrap();
+        assert_eq!(first.branch, "agentrium/factory-demo-a-1");
+        assert_eq!(second.branch, "agentrium/factory-demo-a-1-2");
+        assert_ne!(first.worktree_path, second.worktree_path);
+    }
+
+    #[tokio::test]
+    async fn worktree_run_gives_up_after_nine_branches() {
+        let (_tmp, repo) = temp_repo();
+        git(&repo, &["branch", "agentrium/factory-demo-a-1"]);
+        for n in 2..=9 {
+            git(
+                &repo,
+                &["branch", &format!("agentrium/factory-demo-a-1-{n}")],
+            );
+        }
+        let err = create_run_worktree(&repo.to_string_lossy(), "demo", "A-1")
+            .await
+            .unwrap_err();
+        assert_eq!(
+            err,
+            user_err("A run for this input already has a branch. Finish or remove the earlier runs first.")
+        );
     }
 }
