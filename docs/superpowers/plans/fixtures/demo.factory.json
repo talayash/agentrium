@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "name": "Demo: write a short piece",
+  "source": "demo.md",
+  "input": { "label": "Topic", "placeholder": "tides" },
+  "workspace": "worktree",
+  "steps": [
+    {
+      "kind": "station",
+      "id": "S1",
+      "name": "Outline",
+      "prompt": "Write a 5 line outline about {input} to {run_dir}/outline.md. {reject_reason}",
+      "artifact": "outline.md"
+    },
+    {
+      "kind": "gate",
+      "id": "G1",
+      "name": "Outline approval",
+      "question": "Use this outline?",
+      "pass_label": "Use it",
+      "reject_label": "Change it",
+      "show": ["outline.md"],
+      "on_reject": "S1"
+    },
+    {
+      "kind": "station",
+      "id": "S2",
+      "name": "Write",
+      "prompt": "Read {run_dir}/outline.md and write the piece to {run_dir}/piece.md.",
+      "artifact": "piece.md"
+    }
+  ]
+}

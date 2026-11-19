@@ -663,4 +663,15 @@ mod tests {
             Some("t C:\\r".to_string())
         );
     }
+
+    #[test]
+    fn demo_fixture_is_a_valid_definition() {
+        let json = include_str!("../../docs/superpowers/plans/fixtures/demo.factory.json");
+        let def = parse_definition(json).unwrap();
+        assert!(
+            validate(&def).errors.is_empty(),
+            "errors: {:?}",
+            validate(&def).errors
+        );
+    }
 }
