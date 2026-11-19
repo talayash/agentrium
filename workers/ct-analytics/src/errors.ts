@@ -79,6 +79,31 @@ export function errorsSince(days: number, now: number = Date.now()): string {
   return new Date(now - days * 86_400_000).toISOString();
 }
 
+/** "1.42.8" (optionally "v"-prefixed) as [major, minor, patch]; null otherwise. */
+export function parseVersion(v: string | null | undefined): [number, number, number] | null {
+  const m = /^v?(\d+)\.(\d+)\.(\d+)$/.exec((v ?? '').trim());
+  return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
+}
+
+/**
+ * The app versions in `versions` older than `min`, for `/errors/summary?min_version=`.
+ * Installs that never updated keep reporting bugs fixed long ago (one Mac on
+ * 1.34.1 was 85% of a week's volume), which buries current issues. A version
+ * that does not parse is kept, so a malformed report is never hidden.
+ */
+export function versionsBelow(versions: Array<string | null>, min: string): string[] {
+  const floor = parseVersion(min);
+  if (!floor) return [];
+  return versions.filter((v): v is string => {
+    const p = parseVersion(v);
+    if (!p) return false;
+    for (let i = 0; i < 3; i++) {
+      if (p[i] !== floor[i]) return p[i] < floor[i];
+    }
+    return false;
+  });
+}
+
 /** First non-empty line, the way Rust's `str::lines()` splits (on \n, dropping a trailing \r). */
 function firstNonEmptyLine(s: string | null | undefined): string | undefined {
   if (!s) return undefined;

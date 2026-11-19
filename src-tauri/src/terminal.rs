@@ -281,6 +281,36 @@ pub fn build_agent_command(spec: &crate::agents::AgentSpec, args: &[String]) -> 
 
 /// Apply the per-agent process environment. `_spec` is the hook for any
 /// future agent-specific defaults; there are none today (see below).
+/// The args editors take one argument per line, so `--model claude-opus-5-5`
+/// typed on one line used to reach the CLI as a single argv entry the agent
+/// cannot parse. A line that starts with `-` and holds whitespace before any
+/// `=` is split once into flag and value; the value keeps its inner spaces.
+/// Quotes are rejected by validation anyway, so a flag token can never
+/// legitimately contain a space. Other lines (bare values, `--flag=a b`)
+/// pass through unchanged.
+pub(crate) fn split_flag_value_lines(args: Vec<String>) -> Vec<String> {
+    let mut out = Vec::with_capacity(args.len());
+    for arg in args {
+        let trimmed = arg.trim();
+        let split = trimmed
+            .starts_with('-')
+            .then(|| trimmed.split_once(char::is_whitespace))
+            .flatten()
+            .filter(|(flag, _)| !flag.contains('='));
+        match split {
+            Some((flag, value)) => {
+                out.push(flag.to_string());
+                let value = value.trim();
+                if !value.is_empty() {
+                    out.push(value.to_string());
+                }
+            }
+            None => out.push(arg),
+        }
+    }
+    out
+}
+
 fn configure_agent_environment(
     cmd: &mut CommandBuilder,
     _spec: &crate::agents::AgentSpec,
@@ -507,6 +537,15 @@ impl TerminalManager {
             || Self::BLOCKED_ENV_PREFIXES.iter().any(|p| upper.starts_with(p))
     }
 
+    /// True when the OS can take this pair in a child's environment. A blank
+    /// name (an empty row left in the profile's env editor) or a NUL anywhere
+    /// makes Windows' CreateProcessW fail the whole spawn with "The parameter
+    /// is incorrect" (os error 87), so the terminal never opens. A name with
+    /// `=` cannot round-trip either. Such entries are dropped, not sent.
+    pub(crate) fn is_spawnable_env(name: &str, value: &str) -> bool {
+        !name.trim().is_empty() && !name.contains(['=', '\0']) && !value.contains('\0')
+    }
+
     // The PTY spawn path genuinely needs all of these to avoid an intermediate
     // struct that would just push the complexity elsewhere.
     #[allow(clippy::too_many_arguments)]
@@ -540,6 +579,7 @@ impl TerminalManager {
         // to start. Claude terminals only.
         question_hook_port: Option<u16>,
     ) -> Result<TerminalConfig, String> {
+        let claude_args = split_flag_value_lines(claude_args);
         // Validate claude_args: reject any argument containing shell
         // metacharacters. Narrow exception: bracketed known-model aliases
         // (`sonnet[1m]`, `opus[1m]`) are legitimate Claude CLI inputs and
@@ -590,12 +630,12 @@ impl TerminalManager {
         // Filter out blocked environment variables
         let safe_env_vars: HashMap<String, String> = env_vars
             .into_iter()
-            .filter(|(key, _)| !Self::is_blocked_env_name(key))
+            .filter(|(key, value)| !Self::is_blocked_env_name(key) && Self::is_spawnable_env(key, value))
             .collect();
 
         let safe_secret_env: HashMap<String, String> = secret_env_vars
             .into_iter()
-            .filter(|(key, _)| !Self::is_blocked_env_name(key))
+            .filter(|(key, value)| !Self::is_blocked_env_name(key) && Self::is_spawnable_env(key, value))
             .collect();
 
         // Generate the id early so it can be injected as an OTel resource
@@ -1357,6 +1397,38 @@ mod tests {
         for name in ["ANTHROPIC_API_KEY", "OPENAI_BASE_URL", "CLAUDE_CODE_NO_FLICKER", "MY_GITHUB_ORG", "LANG"] {
             assert!(!TerminalManager::is_blocked_env_name(name), "{name} should be allowed");
         }
+    }
+
+    /// A blank env row (or a NUL) made CreateProcessW fail every spawn with
+    /// os error 87 (report 0a67e3d35c923aef, 1.42.8, Windows).
+    #[test]
+    fn env_entries_windows_cannot_spawn_with_are_dropped() {
+        assert!(TerminalManager::is_spawnable_env("ANTHROPIC_MODEL", "claude-opus-5-5"));
+        assert!(TerminalManager::is_spawnable_env("EMPTY_VALUE_OK", ""));
+        assert!(!TerminalManager::is_spawnable_env("", "x"));
+        assert!(!TerminalManager::is_spawnable_env("  ", "x"));
+        assert!(!TerminalManager::is_spawnable_env("A=B", "x"));
+        assert!(!TerminalManager::is_spawnable_env("FOO", "a\0b"));
+        assert!(!TerminalManager::is_spawnable_env("F\0O", "x"));
+    }
+
+    #[test]
+    fn flag_and_value_typed_on_one_line_become_two_args() {
+        let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+        assert_eq!(
+            split_flag_value_lines(s(&["--model claude-opus-5-5", "--verbose"])),
+            s(&["--model", "claude-opus-5-5", "--verbose"])
+        );
+        // The value keeps inner spaces; extra padding is trimmed.
+        assert_eq!(
+            split_flag_value_lines(s(&["  --append-system-prompt  be brief  "])),
+            s(&["--append-system-prompt", "be brief"])
+        );
+        // Untouched: `=` forms, bare values on their own line, plain flags.
+        assert_eq!(
+            split_flag_value_lines(s(&["--settings=a b", "/Users/me/My Project", "--model", "sonnet[1m]"])),
+            s(&["--settings=a b", "/Users/me/My Project", "--model", "sonnet[1m]"])
+        );
     }
 
     /// Regression test for #70: Claude Code only turns on terminal mouse
