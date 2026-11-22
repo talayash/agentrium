@@ -10,6 +10,7 @@ import { admitErrorReport, admitIngest, boundedJson, validDimensions, versionWit
  *   - D1 (binding: DB)
  *       counters             - all-time scalars (total_installations)
  *       daily_dau            - one row per (date, installation_id), DAU = COUNT(*)
+ *       daily_country_dau    - one row per (date, installation_id), with country
  *       daily_stats          - counters by (date, dimension, bucket)
  *
  * Routes:
@@ -268,6 +269,11 @@ async function handleHeartbeat(
       date,
       payload.installation_id,
     ),
+    env.DB.prepare('INSERT OR IGNORE INTO daily_country_dau (date, installation_id, country) VALUES (?, ?, ?)').bind(
+      date,
+      payload.installation_id,
+      payload.country,
+    ),
     env.DB.prepare(
       "INSERT INTO daily_stats (date, dimension, bucket, count) VALUES (?, ?, '', 1) " +
         'ON CONFLICT(date, dimension, bucket) DO UPDATE SET count = count + 1',
@@ -499,7 +505,7 @@ async function handleFeedbackDelete(request: Request, env: Env): Promise<Respons
 async function handleStats(env: Env): Promise<Response> {
   const date = todayUTC();
 
-  const [dauRow, scalarRows, dimRows, totalRow] = await Promise.all([
+  const [dauRow, scalarRows, dimRows, countryRows, totalRow] = await Promise.all([
     env.DB.prepare('SELECT COUNT(*) AS n FROM daily_dau WHERE date = ?').bind(date).first<{ n: number }>(),
     env.DB.prepare(
       "SELECT dimension, count FROM daily_stats WHERE date = ? AND bucket = '' AND dimension IN ('heartbeats','update_checks')",
@@ -507,10 +513,15 @@ async function handleStats(env: Env): Promise<Response> {
       .bind(date)
       .all<{ dimension: string; count: number }>(),
     env.DB.prepare(
-      "SELECT dimension, bucket, count FROM daily_stats WHERE date = ? AND dimension IN ('version','os','country')",
+      "SELECT dimension, bucket, count FROM daily_stats WHERE date = ? AND dimension IN ('version','os')",
     )
       .bind(date)
       .all<{ dimension: string; bucket: string; count: number }>(),
+    env.DB.prepare(
+      'SELECT country AS bucket, COUNT(*) AS count FROM daily_country_dau WHERE date = ? GROUP BY country',
+    )
+      .bind(date)
+      .all<{ bucket: string; count: number }>(),
     env.DB.prepare("SELECT value FROM counters WHERE key = 'total_installations'").first<{ value: number }>(),
   ]);
 
@@ -523,8 +534,8 @@ async function handleStats(env: Env): Promise<Response> {
   for (const r of dimRows.results ?? []) {
     if (r.dimension === 'version') versionDist[r.bucket] = r.count;
     else if (r.dimension === 'os') osDist[r.bucket] = r.count;
-    else if (r.dimension === 'country') countryDist[r.bucket] = r.count;
   }
+  for (const r of countryRows.results ?? []) countryDist[r.bucket] = r.count;
 
   return json({
     date,
@@ -798,7 +809,10 @@ export default {
     try {
       await env.DB.prepare('DELETE FROM ingest_limits WHERE window < ?').bind(Math.floor(Date.now() / 60000) - 1440).run();
       await env.DB.prepare('DELETE FROM errors WHERE ts < ?').bind(errorsSince(ERROR_RETENTION_DAYS)).run();
-      await env.DB.prepare("DELETE FROM daily_dau WHERE date < date('now', ?)").bind(`-${DAU_RETENTION_DAYS} days`).run();
+      await env.DB.batch([
+        env.DB.prepare("DELETE FROM daily_dau WHERE date < date('now', ?)").bind(`-${DAU_RETENTION_DAYS} days`),
+        env.DB.prepare("DELETE FROM daily_country_dau WHERE date < date('now', ?)").bind(`-${DAU_RETENTION_DAYS} days`),
+      ]);
       // Retention drops the errors themselves, so resolution rows whose
       // fingerprint no longer occurs anywhere would linger forever.
       await env.DB.prepare(
