@@ -1,5 +1,20 @@
 [
   {
+    "version": "1.42.9",
+    "date": "2026-11-25",
+    "features": [
+      { "title": "Fix bugs & performance" },
+      {
+        "title": "Sessions start reliably",
+        "description": "A blank row in a profile's environment variables no longer stops every session from starting, and options like --model claude-opus-5-5 typed on one line now reach Claude correctly."
+      },
+      {
+        "title": "Security hardening",
+        "description": "Logs no longer keep sensitive details, and sign-in is tightened."
+      }
+    ]
+  },
+  {
     "version": "1.42.8",
     "date": "2026-11-14",
     "features": [
